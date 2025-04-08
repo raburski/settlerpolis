@@ -23,7 +23,7 @@ export class MultiplayerService {
 		return MultiplayerService.instance
 	}
 
-	connect(serverUrl: string = import.meta.env.VITE_SERVER_URL || 'http://localhost:3000') {
+	connect(serverUrl: string = 'https://hearty-rejoicing-production.up.railway.app') {
 		if (this.socket) return
 
 		this.socket = io(serverUrl, {

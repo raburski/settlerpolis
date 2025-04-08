@@ -12,7 +12,11 @@ const httpServer = createServer(app)
 // Create Socket.IO server with path prefix
 const io = new Server(httpServer, {
 	cors: {
-		origin: process.env.CLIENT_URL || 'http://localhost:5173',
+		origin: [
+			process.env.CLIENT_URL || 'http://localhost:5173',
+			'http://localhost:8080',
+			'https://rugtopolis-production.up.railway.app'
+		],
 		methods: ['GET', 'POST']
 	},
 	path: '/api/socket.io' // Add path prefix for WebSocket
