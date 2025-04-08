@@ -1,7 +1,7 @@
 import { Scene } from 'phaser'
 import { EventBus } from '../EventBus'
 import { Player } from '../entities/Player'
-import { MultiplayerService, PlayerData } from '../services/MultiplayerService'
+import { MultiplayerService, PlayerData, ChatMessage } from '../services/MultiplayerService'
 import { MultiplayerPlayer } from '../entities/MultiplayerPlayer'
 
 interface TilesetInfo {
@@ -223,6 +223,9 @@ export abstract class MapScene extends Scene {
 		this.setupMultiplayer()
 
 		EventBus.emit('current-scene-ready', this)
+
+		// Listen for chat messages
+		EventBus.on('chat:message', this.handleChatMessage, this)
 	}
 
 	private setupMultiplayer() {
@@ -264,6 +267,19 @@ export abstract class MapScene extends Scene {
 		if (multiplayerPlayer) {
 			multiplayerPlayer.destroy()
 			this.multiplayerPlayers.delete(playerId)
+		}
+	}
+
+	private handleChatMessage(message: ChatMessage) {
+		if (message.scene === this.scene.key) {
+			if (message.playerId === this.multiplayerService.socket?.id) {
+				this.player.displayMessage(message.message)
+			} else {
+				const multiplayerPlayer = this.multiplayerPlayers.get(message.playerId)
+				if (multiplayerPlayer) {
+					multiplayerPlayer.displayMessage(message.message)
+				}
+			}
 		}
 	}
 

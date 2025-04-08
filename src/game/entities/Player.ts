@@ -19,6 +19,7 @@ export class Player {
 	private direction: 'down' | 'up' | 'left' | 'right' = 'down'
 	private horizontalDirection: 'left' | 'right' = 'right'
 	private isMoving: boolean = false
+	private messageText: GameObjects.Text | null = null
 
 	/**
 	 * Preload all player assets
@@ -231,6 +232,27 @@ export class Player {
 		this.hair.setFlipX(flipX)
 		this.clothes.setFlipX(flipX)
 		this.hands.setFlipX(flipX)
+	}
+
+	// Method to display a message above the player's character
+	displayMessage(message: string) {
+		if (this.messageText) {
+			this.messageText.destroy()
+		}
+
+		this.messageText = this.scene.add.text(this.container.x, this.container.y - 50, message, {
+			fontSize: '14px',
+			color: '#ffffff',
+			backgroundColor: 'rgba(0, 0, 0, 0.7)',
+			padding: { x: 5, y: 3 },
+			align: 'center'
+		}).setOrigin(0.5)
+
+		// Remove the message after 5 seconds
+		this.scene.time.delayedCall(5000, () => {
+			this.messageText?.destroy()
+			this.messageText = null
+		})
 	}
 
 	update(): void {
