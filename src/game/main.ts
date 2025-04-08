@@ -9,7 +9,8 @@ const config: Types.Core.GameConfig = {
 		mode: Scale.RESIZE,
 		parent: 'game-container',
 		width: '100%',
-		height: '100%'
+		height: '100%',
+		autoCenter: Scale.CENTER_BOTH
 	},
 	backgroundColor: '#000000',
 	physics: {
@@ -19,6 +20,8 @@ const config: Types.Core.GameConfig = {
 			debug: false
 		}
 	},
+	pixelArt: true,
+	roundPixels: true,
 	scene: [
 		FarmScene
 	]
