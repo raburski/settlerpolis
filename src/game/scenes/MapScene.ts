@@ -1,6 +1,8 @@
 import { Scene } from 'phaser'
 import { EventBus } from '../EventBus'
 import { Player } from '../entities/Player'
+import { MultiplayerService, PlayerData } from '../services/MultiplayerService'
+import { MultiplayerPlayer } from '../entities/MultiplayerPlayer'
 
 interface TilesetInfo {
 	name: string
@@ -17,11 +19,14 @@ export abstract class MapScene extends Scene {
 	protected assetsLoadedPromise: Promise<void> | null = null
 	protected mapKey: string
 	protected mapPath: string
+	protected multiplayerPlayers: Map<string, MultiplayerPlayer> = new Map()
+	protected multiplayerService: MultiplayerService
 
 	constructor(key: string, mapKey: string, mapPath: string) {
 		super(key)
 		this.mapKey = mapKey
 		this.mapPath = mapPath
+		this.multiplayerService = MultiplayerService.getInstance()
 	}
 
 	preload() {
@@ -214,12 +219,65 @@ export abstract class MapScene extends Scene {
 		this.cameras.main.startFollow(this.player.getSprite())
 		this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels)
 
+		// Set up multiplayer
+		this.setupMultiplayer()
+
 		EventBus.emit('current-scene-ready', this)
+	}
+
+	private setupMultiplayer() {
+		// Connect to multiplayer server
+		this.multiplayerService.connect()
+
+		// Join the game
+		const playerSprite = this.player.getSprite()
+		this.multiplayerService.joinGame(
+			playerSprite.x,
+			playerSprite.y,
+			this.scene.key
+		)
+
+		// Set up multiplayer event listeners
+		EventBus.on('player:joined', this.handlePlayerJoined, this)
+		EventBus.on('player:moved', this.handlePlayerMoved, this)
+		EventBus.on('player:left', this.handlePlayerLeft, this)
+	}
+
+	private handlePlayerJoined(playerData: PlayerData) {
+		if (playerData.scene === this.scene.key) {
+			const multiplayerPlayer = new MultiplayerPlayer(this, playerData)
+			this.multiplayerPlayers.set(playerData.id, multiplayerPlayer)
+		}
+	}
+
+	private handlePlayerMoved(playerData: PlayerData) {
+		if (playerData.scene === this.scene.key) {
+			const multiplayerPlayer = this.multiplayerPlayers.get(playerData.id)
+			if (multiplayerPlayer) {
+				multiplayerPlayer.update(playerData)
+			}
+		}
+	}
+
+	private handlePlayerLeft(playerId: string) {
+		const multiplayerPlayer = this.multiplayerPlayers.get(playerId)
+		if (multiplayerPlayer) {
+			multiplayerPlayer.destroy()
+			this.multiplayerPlayers.delete(playerId)
+		}
 	}
 
 	update() {
 		if (this.player) {
 			this.player.update()
+
+			// Update multiplayer position
+			const playerSprite = this.player.getSprite()
+			this.multiplayerService.updatePosition(
+				playerSprite.x,
+				playerSprite.y,
+				this.scene.key
+			)
 		}
 	}
 
