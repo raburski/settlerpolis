@@ -1,4 +1,5 @@
 import { Scene, GameObjects, Physics } from 'phaser'
+import { EventBus } from '../EventBus'
 
 export class Player {
 	private scene: Scene
@@ -104,6 +105,32 @@ export class Player {
 
 		// Start with idle animation
 		this.playAnimation('idle')
+
+		// Listen for chat input visibility changes
+		EventBus.on('chat:inputVisible', this.handleChatInputVisible, this)
+	}
+
+	private handleChatInputVisible(isVisible: boolean) {
+		this.toggleWASDKeys(!isVisible)
+	}
+
+	private toggleWASDKeys(enable: boolean) {
+		const input = this.scene.input.keyboard
+		if (enable) {
+			this.wasdKeys = input.addKeys({
+				W: Phaser.Input.Keyboard.KeyCodes.W,
+				A: Phaser.Input.Keyboard.KeyCodes.A,
+				S: Phaser.Input.Keyboard.KeyCodes.S,
+				D: Phaser.Input.Keyboard.KeyCodes.D
+			}) as {
+				W: Phaser.Input.Keyboard.Key
+				A: Phaser.Input.Keyboard.Key
+				S: Phaser.Input.Keyboard.Key
+				D: Phaser.Input.Keyboard.Key
+			}
+		} else {
+			Object.values(this.wasdKeys).forEach(key => input.removeKey(key))
+		}
 	}
 
 	private createAnimations(): void {

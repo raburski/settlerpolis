@@ -43,28 +43,45 @@ interface PlayerData {
 	scene: string
 }
 
+interface ChatMessage {
+	playerId: string
+	playerName?: string
+	message: string
+	scene: string
+	timestamp: number
+}
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
 	console.log('Player connected:', socket.id)
 
-	// Handle player joining
-	socket.on('player:join', (data: { x: number; y: number; scene: string }) => {
-		players.set(socket.id, {
-			id: socket.id,
-			x: data.x,
-			y: data.y,
-			scene: data.scene
-		})
+	// Add player to the list
+	players.set(socket.id, {
+		id: socket.id,
+		x: 0,
+		y: 0,
+		scene: ''
+	})
 
-		// Send current players to the new player
-		socket.emit('players:list', Array.from(players.values()))
+	// Send list of players to the new player
+	socket.emit('players:list', Array.from(players.values()))
 
-		// Notify other players about the new player
-		socket.broadcast.emit('player:joined', players.get(socket.id))
+	// Broadcast new player to all other players
+	socket.broadcast.emit('player:joined', players.get(socket.id))
+
+	// Handle player joining a scene
+	socket.on('player:join', (data: { x: number, y: number, scene: string }) => {
+		const player = players.get(socket.id)
+		if (player) {
+			player.x = data.x
+			player.y = data.y
+			player.scene = data.scene
+			socket.broadcast.emit('player:joined', player)
+		}
 	})
 
 	// Handle player movement
-	socket.on('player:move', (data: { x: number; y: number; scene: string }) => {
+	socket.on('player:move', (data: { x: number, y: number, scene: string }) => {
 		const player = players.get(socket.id)
 		if (player) {
 			player.x = data.x
@@ -74,7 +91,13 @@ io.on('connection', (socket) => {
 		}
 	})
 
-	// Handle player disconnection
+	// Handle chat messages
+	socket.on('chat:message', (message: ChatMessage) => {
+		// Broadcast the message to all players in the same scene
+		socket.broadcast.emit('chat:message', message)
+	})
+
+	// Handle disconnection
 	socket.on('disconnect', () => {
 		console.log('Player disconnected:', socket.id)
 		players.delete(socket.id)

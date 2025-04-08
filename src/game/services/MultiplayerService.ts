@@ -8,11 +8,20 @@ export interface PlayerData {
 	scene: string
 }
 
+export interface ChatMessage {
+	playerId: string
+	playerName?: string
+	message: string
+	scene: string
+	timestamp: number
+}
+
 export class MultiplayerService {
 	private static instance: MultiplayerService
 	private socket: Socket | null = null
 	private players: Map<string, PlayerData> = new Map()
 	private currentScene: string | null = null
+	private playerName: string = 'Player'
 
 	private constructor() {}
 
@@ -21,6 +30,10 @@ export class MultiplayerService {
 			MultiplayerService.instance = new MultiplayerService()
 		}
 		return MultiplayerService.instance
+	}
+
+	setPlayerName(name: string) {
+		this.playerName = name
 	}
 
 	connect(serverUrl: string = 'https://hearty-rejoicing-production.up.railway.app') {
@@ -57,6 +70,11 @@ export class MultiplayerService {
 			this.players.delete(playerId)
 			EventBus.emit('player:left', playerId)
 		})
+
+		// Chat events
+		this.socket.on('chat:message', (message: ChatMessage) => {
+			EventBus.emit('chat:message', message)
+		})
 	}
 
 	joinGame(x: number, y: number, scene: string) {
@@ -84,5 +102,19 @@ export class MultiplayerService {
 		}
 		this.players.clear()
 		this.currentScene = null
+	}
+
+	sendChatMessage(message: string) {
+		if (!this.socket || !this.currentScene) return
+
+		const chatMessage: ChatMessage = {
+			playerId: this.socket.id,
+			playerName: this.playerName,
+			message,
+			scene: this.currentScene,
+			timestamp: Date.now()
+		}
+
+		this.socket.emit('chat:message', chatMessage)
 	}
 } 

@@ -1,14 +1,18 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { IRefPhaserGame, PhaserGame } from './game/PhaserGame';
+import { Chat } from './game/components/Chat';
 
 function App()
 {
-
     //  References to the PhaserGame component (game and scene are exposed)
     const phaserRef = useRef<IRefPhaserGame | null>(null);
+    const [currentScene, setCurrentScene] = useState<string | null>(null);
+
+    const handleSceneChange = (scene: any) => {
+        setCurrentScene(scene.scene.key);
+    };
 
     const addSprite = () => {
-
         if (phaserRef.current)
         {
             const scene = phaserRef.current.scene;
@@ -28,7 +32,8 @@ function App()
 
     return (
         <div id="app">
-            <PhaserGame ref={phaserRef} />
+            <PhaserGame ref={phaserRef} currentActiveScene={handleSceneChange} />
+            {currentScene && <Chat scene={currentScene} />}
             {/* <div>
                 <div>
                     <button className="button" onClick={addSprite}>Add New Sprite</button>
