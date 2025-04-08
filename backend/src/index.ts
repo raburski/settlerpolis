@@ -41,6 +41,11 @@ interface PlayerData {
 	x: number
 	y: number
 	scene: string
+	appearance: {
+		bodyColor: string
+		hairStyle: string
+		clothingStyle: string
+	}
 }
 
 interface ChatMessage {
@@ -60,7 +65,12 @@ io.on('connection', (socket) => {
 		id: socket.id,
 		x: 0,
 		y: 0,
-		scene: ''
+		scene: '',
+		appearance: {
+			bodyColor: '',
+			hairStyle: '',
+			clothingStyle: ''
+		}
 	})
 
 	// Send list of players to the new player
@@ -70,12 +80,13 @@ io.on('connection', (socket) => {
 	socket.broadcast.emit('player:joined', players.get(socket.id))
 
 	// Handle player joining a scene
-	socket.on('player:join', (data: { x: number, y: number, scene: string }) => {
+	socket.on('player:join', (data: { x: number, y: number, scene: string, appearance: PlayerData['appearance'] }) => {
 		const player = players.get(socket.id)
 		if (player) {
 			player.x = data.x
 			player.y = data.y
 			player.scene = data.scene
+			player.appearance = data.appearance
 			socket.broadcast.emit('player:joined', player)
 		}
 	})

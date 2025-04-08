@@ -237,7 +237,8 @@ export abstract class MapScene extends Scene {
 		this.multiplayerService.joinGame(
 			playerSprite.x,
 			playerSprite.y,
-			this.scene.key
+			this.scene.key,
+			this.player.appearance
 		)
 
 		// Set up multiplayer event listeners

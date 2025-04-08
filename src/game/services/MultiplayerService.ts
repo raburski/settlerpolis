@@ -1,11 +1,21 @@
 import { io, Socket } from 'socket.io-client'
 import { EventBus } from '../EventBus'
 
+export enum Gender {
+	Male = 'Male',
+	Female = 'Female'
+}
+
+export interface PlayerAppearance {
+	gender: Gender
+}
+
 export interface PlayerData {
 	id: string
 	x: number
 	y: number
 	scene: string
+	appearance: PlayerAppearance
 }
 
 export interface ChatMessage {
@@ -14,6 +24,10 @@ export interface ChatMessage {
 	message: string
 	scene: string
 	timestamp: number
+}
+
+const DEFAULT_APPEARANCE: PlayerAppearance = {
+	gender: Gender.Male
 }
 
 export class MultiplayerService {
@@ -77,11 +91,11 @@ export class MultiplayerService {
 		})
 	}
 
-	joinGame(x: number, y: number, scene: string) {
+	joinGame(x: number, y: number, scene: string, appearance: PlayerAppearance = DEFAULT_APPEARANCE) {
 		if (!this.socket) return
 
 		this.currentScene = scene
-		this.socket.emit('player:join', { x, y, scene })
+		this.socket.emit('player:join', { x, y, scene, appearance })
 	}
 
 	updatePosition(x: number, y: number, scene: string) {

@@ -1,37 +1,27 @@
 import { Scene } from 'phaser'
-import { PlayerData } from '../services/MultiplayerService'
+import { PlayerData, Gender } from '../services/MultiplayerService'
+import { BasePlayer } from './BasePlayer'
 
-export class MultiplayerPlayer {
-	private sprite: Phaser.GameObjects.Sprite
-	private scene: Scene
-	private data: PlayerData
+export class MultiplayerPlayer extends BasePlayer {
+	private playerId: string
 	private messageText: Phaser.GameObjects.Text | null = null
 
-	constructor(scene: Scene, data: PlayerData) {
-		this.scene = scene
-		this.data = data
-
-		// Create player sprite
-		this.sprite = scene.add.sprite(data.x, data.y, 'player')
-		this.sprite.setDisplaySize(32, 32)
-		this.sprite.setTint(0xff0000) // Different color to distinguish from local player
+	constructor(scene: Scene, x: number, y: number, playerId: string, appearance: PlayerAppearance) {
+		super(scene, x, y, appearance)
+		this.playerId = playerId
 	}
 
-	update(data: PlayerData) {
-		this.data = data
-		this.sprite.setPosition(data.x, data.y)
+	updateAppearance(newAppearance: PlayerAppearance): void {
+		this.appearance = newAppearance
+		// Logic to update the player's appearance
 	}
 
-	destroy() {
-		this.sprite.destroy()
+	updatePosition(x: number, y: number): void {
+		this.container.setPosition(x, y)
 	}
 
-	getSprite(): Phaser.GameObjects.Sprite {
-		return this.sprite
-	}
-
-	getData(): PlayerData {
-		return this.data
+	getPlayerId(): string {
+		return this.playerId
 	}
 
 	// Method to display a message above the player's character
@@ -40,7 +30,7 @@ export class MultiplayerPlayer {
 			this.messageText.destroy()
 		}
 
-		this.messageText = this.scene.add.text(this.sprite.x, this.sprite.y - 50, message, {
+		this.messageText = this.scene.add.text(this.container.x, this.container.y - 50, message, {
 			fontSize: '14px',
 			color: '#ffffff',
 			backgroundColor: 'rgba(0, 0, 0, 0.7)',
@@ -53,5 +43,10 @@ export class MultiplayerPlayer {
 			this.messageText?.destroy()
 			this.messageText = null
 		})
+	}
+
+	update(data: PlayerData): void {
+		this.updatePosition(data.x, data.y)
+		this.updateAppearance(data.appearance)
 	}
 } 
