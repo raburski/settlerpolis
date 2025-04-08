@@ -93,8 +93,8 @@ export class Player {
 		// Set a collision box for the bottom half of the character
 		// This creates a more 3D-like effect where the character appears to walk behind objects
 		// The character sprite is 80x64 pixels
-		body.setSize(40, 32) // Width: half of the sprite width, Height: half of the sprite height
-		body.setOffset(-20, 16) // Center horizontally, align to bottom
+		body.setSize(40, 8) // Width: half of the sprite width, Height: half of the sprite height
+		body.setOffset(-20, 22) // Center horizontally, align to bottom
 		
 		// Make sure the player can't go out of bounds
 		body.setCollideWorldBounds(true)
