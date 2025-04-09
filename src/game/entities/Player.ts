@@ -16,10 +16,6 @@ export class Player extends BasePlayer {
 		D: Phaser.Input.Keyboard.Key
 	}
 	private speed: number = 160
-	private direction: 'down' | 'up' | 'left' | 'right' = 'down'
-	private horizontalDirection: 'left' | 'right' = 'right'
-	private isMoving: boolean = false
-	private messageText: GameObjects.Text | null = null
 
 	constructor(scene: Scene, x: number, y: number) {
 		super(scene, x, y, DEFAULT_APPEARANCE)
@@ -72,36 +68,36 @@ export class Player extends BasePlayer {
 		// Check for left movement (arrow keys or A)
 		if (this.cursors.left.isDown || this.wasdKeys.A.isDown) {
 			body.setVelocityX(-this.speed)
-			this.direction = 'left'
-			this.horizontalDirection = 'left'
-			this.isMoving = true
+			this.updateDirection('left')
+			this.updateMovement(true)
 		} 
 		// Check for right movement (arrow keys or D)
 		else if (this.cursors.right.isDown || this.wasdKeys.D.isDown) {
 			body.setVelocityX(this.speed)
-			this.direction = 'right'
-			this.horizontalDirection = 'right'
-			this.isMoving = true
+			this.updateDirection('right')
+			this.updateMovement(true)
 		}
 
 		// Check for up movement (arrow keys or W)
 		if (this.cursors.up.isDown || this.wasdKeys.W.isDown) {
 			body.setVelocityY(-this.speed)
-			this.direction = 'up'
-			// Preserve horizontal direction when moving up
-			this.isMoving = true
+			this.updateDirection('up')
+			this.updateMovement(true)
 		} 
 		// Check for down movement (arrow keys or S)
 		else if (this.cursors.down.isDown || this.wasdKeys.S.isDown) {
 			body.setVelocityY(this.speed)
-			this.direction = 'down'
-			// Preserve horizontal direction when moving down
-			this.isMoving = true
+			this.updateDirection('down')
+			this.updateMovement(true)
 		}
 
-		// Play appropriate animation
-		this.playAnimation(this.isMoving ? 'walk' : 'idle')
-		this.isMoving = false
+		// If no movement keys are pressed, set isMoving to false
+		if (!this.cursors.left.isDown && !this.cursors.right.isDown && 
+			!this.cursors.up.isDown && !this.cursors.down.isDown && 
+			!this.wasdKeys.A.isDown && !this.wasdKeys.D.isDown && 
+			!this.wasdKeys.W.isDown && !this.wasdKeys.S.isDown) {
+			this.updateMovement(false)
+		}
 	}
 
 	getSprite(): GameObjects.Container {

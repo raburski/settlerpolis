@@ -48,5 +48,26 @@ export class MultiplayerPlayer extends BasePlayer {
 	update(data: PlayerData): void {
 		this.updatePosition(data.x, data.y)
 		this.updateAppearance(data.appearance)
+		
+		// Update direction based on movement
+		if (data.x > this.container.x) {
+			this.updateDirection('right')
+			this.updateMovement(true)
+		} else if (data.x < this.container.x) {
+			this.updateDirection('left')
+			this.updateMovement(true)
+		} else if (data.y > this.container.y) {
+			this.updateDirection('down')
+			this.updateMovement(true)
+		} else if (data.y < this.container.y) {
+			this.updateDirection('up')
+			this.updateMovement(true)
+		} else {
+			this.updateMovement(false)
+		}
+	}
+
+	destroy(): void {
+		this.container.destroy()
 	}
 } 

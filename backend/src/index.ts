@@ -117,6 +117,11 @@ io.on('connection', (socket) => {
 		socket.broadcast.emit('chat:message', message)
 	})
 
+	// Handle system ping
+	socket.on('system:ping', () => {
+		lastMessageTimestamps.set(socket.id, Date.now())
+	})
+
 	// Handle disconnection
 	socket.on('disconnect', () => {
 		console.log('Player disconnected:', socket.id)

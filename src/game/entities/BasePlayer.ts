@@ -10,6 +10,9 @@ export class BasePlayer {
 	protected hands: GameObjects.Sprite
 	protected messageText: GameObjects.Text | null = null
 	protected appearance: PlayerAppearance
+	protected direction: 'down' | 'up' | 'left' | 'right' = 'down'
+	protected horizontalDirection: 'left' | 'right' = 'right'
+	protected isMoving: boolean = false
 
 	constructor(scene: Scene, x: number, y: number, appearance: PlayerAppearance) {
 		this.scene = scene
@@ -165,6 +168,34 @@ export class BasePlayer {
 			this.messageText?.destroy()
 			this.messageText = null
 		})
+	}
+
+	public getSprite(): GameObjects.Container {
+		return this.container
+	}
+
+	public setCollisionWith(layer: Phaser.Tilemaps.TilemapLayer): void {
+		this.scene.physics.add.collider(this.container, layer)
+	}
+
+	public destroy(): void {
+		this.container.destroy()
+	}
+
+	public updatePosition(x: number, y: number): void {
+		this.container.setPosition(x, y)
+	}
+
+	public updateDirection(direction: 'down' | 'up' | 'left' | 'right'): void {
+		this.direction = direction
+		if (direction === 'left' || direction === 'right') {
+			this.horizontalDirection = direction
+		}
+	}
+
+	public updateMovement(isMoving: boolean): void {
+		this.isMoving = isMoving
+		this.playAnimation(this.isMoving ? 'walk' : 'idle')
 	}
 
 	public static preload(scene: Scene): void {
