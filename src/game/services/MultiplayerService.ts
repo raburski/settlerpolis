@@ -1,6 +1,6 @@
 import { io, Socket } from 'socket.io-client'
 import { EventBus } from '../EventBus'
-import { Event } from '../../../shared/events/Event'
+import { Event } from '../../../backend/src/Event'
 
 export enum Gender {
 	Male = 'Male',

@@ -4,7 +4,7 @@ import { Player } from '../entities/Player'
 import { MultiplayerService, PlayerData, ChatMessage } from '../services/MultiplayerService'
 import { MultiplayerPlayer } from '../entities/MultiplayerPlayer'
 import { BasePlayer } from '../entities/BasePlayer'
-import { Event } from '../../../shared/events/Event'
+import { Event } from '../../../backend/src/Event'
 
 interface TilesetInfo {
 	name: string
