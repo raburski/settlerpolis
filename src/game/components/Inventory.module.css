@@ -22,16 +22,29 @@
 	justify-content: space-between;
 }
 
-.dropButton {
+.buttons {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+
+.dropButton, .consumeButton {
 	background: none;
 	border: none;
-	color: #ff4444;
 	cursor: pointer;
 	padding: 4px;
 	opacity: 0.7;
 	transition: opacity 0.2s;
 }
 
-.dropButton:hover {
+.dropButton {
+	color: #ff4444;
+}
+
+.consumeButton {
+	color: #44ff44;
+}
+
+.dropButton:hover, .consumeButton:hover {
 	opacity: 1;
 } 

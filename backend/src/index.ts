@@ -4,18 +4,20 @@ import { Server, Socket } from 'socket.io'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import { Event } from './Event'
-import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, PlayerTransitionData, InventoryData, Item, Inventory, DroppedItem, DropItemData, PickUpItemData } from './DataTypes'
+import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, PlayerTransitionData, InventoryData, Item, Inventory, DroppedItem, DropItemData, PickUpItemData, ConsumeItemData } from './DataTypes'
 import { Position } from './types'
 import { PICKUP_RANGE } from './consts'
 import { v4 as uuidv4 } from 'uuid'
+import { ItemType } from './types'
 
 const DEFAULT_INVENTORY_ITEM_NAME = 'Butelka mózgotrzepa'
 
 // Function to create a new item with a random ID
-function createItemWithRandomId(name: string): Item {
+function createItemWithRandomId(name: string, type: ItemType = ItemType.Consumable): Item {
 	return {
 		id: uuidv4(),
-		name
+		name,
+		type
 	}
 }
 
@@ -306,7 +308,8 @@ io.on('connection', (socket: Socket) => {
 				// Add item to player's inventory
 				const inventoryItem: Item = {
 					id: pickedItem.id,
-					name: pickedItem.name
+					name: pickedItem.name,
+					type: pickedItem.type
 				}
 				inventory.items.push(inventoryItem)
 
@@ -315,6 +318,29 @@ io.on('connection', (socket: Socket) => {
 
 				// Broadcast to all players in the scene that an item was picked up
 				broadcastFromSystemToScene(player.scene, Event.Scene.RemoveItems, { itemIds: [data.itemId] })
+			}
+		}
+	})
+
+	// Handle item consume
+	socket.on(Event.Inventory.Consume, (data: ConsumeItemData) => {
+		const inventory = inventories.get(socket.id)
+
+		if (inventory) {
+			const itemIndex = inventory.items.findIndex(item => item.id === data.itemId)
+
+			if (itemIndex !== -1) {
+				// Check if item is consumable
+				const item = inventory.items[itemIndex]
+				if (item.type !== ItemType.Consumable) {
+					return // Item is not consumable
+				}
+
+				// Remove item from inventory
+				inventory.items.splice(itemIndex, 1)
+
+				// Update player's inventory
+				socket.emit(Event.Inventory.Loaded, { inventory })
 			}
 		}
 	})

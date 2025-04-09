@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client'
 import { EventBus } from '../EventBus'
 import { Event } from '../../../backend/src/Event'
-import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, InventoryData, DropItemData, DroppedItem, PickUpItemData } from '../../../backend/src/DataTypes'
+import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, InventoryData, DropItemData, DroppedItem, PickUpItemData, ConsumeItemData } from '../../../backend/src/DataTypes'
 
 export enum Gender {
 	Male = 'Male',
@@ -41,6 +41,8 @@ export class MultiplayerService {
 		EventBus.on(Event.Inventory.Drop, this.handleDropItem, this)
 		// Listen for inventory pickup events
 		EventBus.on(Event.Inventory.PickUp, this.handlePickUpItem, this)
+		// Listen for inventory consume events
+		EventBus.on(Event.Inventory.Consume, this.handleConsumeItem, this)
 	}
 
 	static getInstance(): MultiplayerService {
@@ -210,11 +212,16 @@ export class MultiplayerService {
 		this.send(Event.Inventory.PickUp, data)
 	}
 
+	private handleConsumeItem = (data: ConsumeItemData) => {
+		this.send(Event.Inventory.Consume, data)
+	}
+
 	public destroy(): void {
 		// Remove event listeners
 		EventBus.off('player:sendMessage', this.handleSendMessage, this)
 		EventBus.off(Event.Inventory.Drop, this.handleDropItem, this)
 		EventBus.off(Event.Inventory.PickUp, this.handlePickUpItem, this)
+		EventBus.off(Event.Inventory.Consume, this.handleConsumeItem, this)
 		
 		// Stop ping interval
 		this.stopPingInterval()

@@ -1,4 +1,4 @@
-import { Position } from "./types"
+import { Position, ItemType } from "./types"
 
 export interface PlayerSourcedData {
     sourcePlayerId?: string
@@ -7,6 +7,7 @@ export interface PlayerSourcedData {
 export interface Item {
 	id: string
 	name: string
+	type: ItemType
 }
 
 export interface DroppedItem extends Item {
@@ -28,6 +29,10 @@ export interface DropItemData extends PlayerSourcedData {
 }
 
 export interface PickUpItemData extends PlayerSourcedData {
+	itemId: string
+}
+
+export interface ConsumeItemData extends PlayerSourcedData {
 	itemId: string
 }
 

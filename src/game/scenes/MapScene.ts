@@ -40,7 +40,7 @@ export abstract class MapScene extends Scene {
 		Player.preload(this)
 		
 		// Load item placeholder
-		this.load.image('item-placeholder', 'assets/items/placeholder.png')
+		this.load.image('mozgotrzep', 'assets/items/mozgotrzep.png')
 		
 		// Load map and other assets
 		this.assetManager.preload()
@@ -274,7 +274,7 @@ export abstract class MapScene extends Scene {
 	private handleAddItems = (data: { items: DroppedItem[] }) => {
 		data.items.forEach(item => {
 			// Create a sprite for the dropped item
-			const sprite = this.add.sprite(item.position.x, item.position.y, 'item-placeholder')
+			const sprite = this.add.sprite(item.position.x, item.position.y, 'mozgotrzep')
 			
 			// Set initial state for animation
 			sprite.setScale(0)

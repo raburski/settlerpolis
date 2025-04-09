@@ -19,7 +19,8 @@ export const Event = {
 	Inventory: {
 		Loaded: 'inventory:loaded',
 		Drop: 'inventory:drop',
-		PickUp: 'inventory:pickup'
+		PickUp: 'inventory:pickup',
+		Consume: 'inventory:consume'
 	},
 	Scene: {
 		AddItems: 'scene:add-items',

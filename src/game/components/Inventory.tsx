@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { EventBus } from '../EventBus'
 import { Event } from '../../../backend/src/Event'
-import { Inventory as InventoryType } from '../../../backend/src/DataTypes'
+import { Inventory as InventoryType, Item } from '../../../backend/src/DataTypes'
+import { ItemType } from '../../../backend/src/types'
 import styles from './Inventory.module.css'
 
 interface InventoryProps {
@@ -27,6 +28,10 @@ export function Inventory({ isOpen }: InventoryProps) {
 		EventBus.emit(Event.Inventory.Drop, { itemId })
 	}
 
+	const handleConsumeItem = (itemId: string) => {
+		EventBus.emit(Event.Inventory.Consume, { itemId })
+	}
+
 	if (!isOpen) return null
 
 	return (
@@ -39,13 +44,24 @@ export function Inventory({ isOpen }: InventoryProps) {
 					{inventory.items.map(item => (
 						<li key={item.id} className={styles.item}>
 							<span>{item.name}</span>
-							<button 
-								className={styles.dropButton}
-								onClick={() => handleDropItem(item.id)}
-								title="Drop item"
-							>
-								🗑️
-							</button>
+							<div className={styles.buttons}>
+								{item.type === ItemType.Consumable && (
+									<button 
+										className={styles.consumeButton}
+										onClick={() => handleConsumeItem(item.id)}
+										title="Consume item"
+									>
+										🍽️
+									</button>
+								)}
+								<button 
+									className={styles.dropButton}
+									onClick={() => handleDropItem(item.id)}
+									title="Drop item"
+								>
+									🗑️
+								</button>
+							</div>
 						</li>
 					))}
 				</ul>
