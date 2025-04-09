@@ -65,7 +65,6 @@ export class MultiplayerService {
 
 		this.socket.on('disconnect', () => {
 			console.log('Disconnected from multiplayer server')
-            alert('Disconnected from multiplayer server')
 			// Clean up resources or notify the application about the disconnection
 			EventBus.emit(Event.Player.Disconnected)
 			this.stopPingInterval()

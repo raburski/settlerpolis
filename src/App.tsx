@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { IRefPhaserGame, PhaserGame } from './game/PhaserGame';
 import { Chat } from './game/components/Chat';
+import { DisconnectModal } from './game/components/DisconnectModal';
 
 function App()
 {
@@ -34,6 +35,7 @@ function App()
         <div id="app">
             <PhaserGame ref={phaserRef} currentActiveScene={handleSceneChange} />
             {currentScene && <Chat scene={currentScene} />}
+            <DisconnectModal />
             {/* <div>
                 <div>
                     <button className="button" onClick={addSprite}>Add New Sprite</button>
