@@ -48,7 +48,7 @@ export abstract class MapScene extends Scene {
 	}
 	
 	protected initializeScene() {
-        console.log('INIT SCENE', this.mapKey)
+		console.log('INIT SCENE', this.mapKey)
 		// Create the map
 		const map = this.make.tilemap({ key: this.mapKey })
 		
@@ -151,9 +151,26 @@ export abstract class MapScene extends Scene {
 			}
 		})
 
-		// Set up camera to follow player
+		// Set up camera to follow player and center the map if smaller than the window
 		this.cameras.main.startFollow(this.player.getSprite())
-		this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels)
+		
+		// Calculate the offset to center the map if it's smaller than the window
+		const windowWidth = this.scale.width
+		const windowHeight = this.scale.height
+		const mapWidth = map.widthInPixels
+		const mapHeight = map.heightInPixels
+		
+		// Only center if map is smaller than window
+		if (mapWidth < windowWidth || mapHeight < windowHeight) {
+			const boundsX = Math.max(0, (windowWidth - mapWidth) / 2)
+			const boundsY = Math.max(0, (windowHeight - mapHeight) / 2)
+			
+			// Set camera bounds with offset
+			this.cameras.main.setBounds(-boundsX, -boundsY, mapWidth + boundsX * 2, mapHeight + boundsY * 2)
+		} else {
+			// Normal bounds for larger maps
+			this.cameras.main.setBounds(0, 0, mapWidth, mapHeight)
+		}
 		
 		// If this is a transition, fade in the camera
 		if (sceneData?.isTransition) {

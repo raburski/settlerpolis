@@ -26,6 +26,7 @@ export class BasePlayer {
 	protected clothes: GameObjects.Sprite
 	protected hands: GameObjects.Sprite
 	protected messageText: GameObjects.Text | null = null
+	protected systemMessageText: GameObjects.Text | null = null
 	protected appearance: PlayerAppearance
 	protected direction: Direction = Direction.Down
 	protected horizontalDirection: HorizontalDirection = HorizontalDirection.Right
@@ -187,6 +188,8 @@ export class BasePlayer {
 			this.messageText.destroy()
 		}
 
+        if (!message) return
+
 		// Create text as a child of the container so it moves with the player
 		this.messageText = this.scene.add.text(0, -50, message, {
 			fontSize: '18px',
@@ -208,6 +211,29 @@ export class BasePlayer {
 		})
 	}
 
+	public displaySystemMessage(message: string | null) {
+		if (this.systemMessageText) {
+			this.systemMessageText.destroy()
+		}
+
+		if (!message) {
+			this.systemMessageText = null
+			return
+		}
+
+		// Create text as a child of the container so it moves with the player
+		this.systemMessageText = this.scene.add.text(0, 44, message, {
+			fontSize: '13px',
+			color: '#ffeb3b', // yellow color for system messages
+			backgroundColor: 'rgba(0, 0, 0, 0.5)',
+			padding: { x: 5, y: 3 },
+			align: 'center'
+		}).setOrigin(0.5)
+
+		// Add the text to the container
+		this.container.add(this.systemMessageText)
+	}
+
 	public getSprite(): GameObjects.Container {
 		return this.container
 	}
@@ -223,6 +249,12 @@ export class BasePlayer {
 	}
 
 	public destroy(): void {
+		if (this.messageText) {
+			this.messageText.destroy()
+		}
+		if (this.systemMessageText) {
+			this.systemMessageText.destroy()
+		}
 		this.container.destroy()
 	}
 

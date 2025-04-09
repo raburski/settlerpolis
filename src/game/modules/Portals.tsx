@@ -14,6 +14,7 @@ export class PortalManager {
 	private portalRects: Phaser.GameObjects.Rectangle[] = []
 	private portalKey: Phaser.Input.Keyboard.Key | null = null
 	private portalActivatedCallback: ((portalData: PortalData) => void) | null = null
+	private currentPortalMessage: string | null = null
 
 	constructor(scene: Scene, player: Player) {
 		this.scene = scene
@@ -32,7 +33,46 @@ export class PortalManager {
 	 * Update the portal manager
 	 */
 	public update(): void {
+		this.checkPortalOverlap()
 		this.checkPortalActivation()
+	}
+
+	/**
+	 * Check if player is overlapping with a portal and show/hide message
+	 */
+	private checkPortalOverlap(): void {
+		let isOverlappingAny = false
+
+		// Check if the player is overlapping with any portal zone
+		for (const zone of this.portalZones) {
+			const portalData = zone.getData('portalData') as PortalData
+			if (!portalData) continue
+
+			const playerSprite = this.player.getSprite()
+			if (!playerSprite) continue
+
+			const playerBounds = playerSprite.getBounds()
+			const zoneBounds = zone.getBounds()
+
+			if (Phaser.Geom.Rectangle.Overlaps(playerBounds, zoneBounds)) {
+				isOverlappingAny = true
+				const portalName = zone.getData('portalName') as string
+				const message = `Press E to enter ${portalName}`
+				
+				// Only show message if it's different from current
+				if (this.currentPortalMessage !== message) {
+					this.currentPortalMessage = message
+					this.player.displaySystemMessage(message)
+				}
+				break
+			}
+		}
+
+		// Clear message if not overlapping any portal
+		if (!isOverlappingAny && this.currentPortalMessage) {
+			this.currentPortalMessage = null
+			this.player.displaySystemMessage(null)
+		}
 	}
 
 	/**
@@ -103,6 +143,10 @@ export class PortalManager {
 				}
 				zone.setData('portalData', portalData)
 
+				// Store portal name (use target scene name if no specific name provided)
+				const portalName = obj.name || portalData.target
+				zone.setData('portalName', portalName)
+
                 const sceneData = this.scene.scene.settings.data
                 const fromScene = sceneData?.fromScene
         
@@ -114,8 +158,10 @@ export class PortalManager {
         
                 // If a matching portal is found, position the player at that portal's location
                 if (matchingPortal) {
-                    // Use the player's sprite container to set position
-                    this.player.getSprite().setPosition(matchingPortal.x, matchingPortal.y)
+                    // Center the player in the portal
+                    const centerX = matchingPortal.x + (matchingPortal.width / 2)
+                    const centerY = matchingPortal.y + (matchingPortal.height / 2)
+                    this.player.getSprite().setPosition(centerX, centerY)
                 }
 
 			} catch (error) {
@@ -147,6 +193,12 @@ export class PortalManager {
 		if (this.portalKey) {
 			this.scene.input.keyboard.removeKey(this.portalKey)
 			this.portalKey = null
+		}
+
+		// Clear any remaining portal message
+		if (this.currentPortalMessage) {
+			this.currentPortalMessage = null
+			this.player.displaySystemMessage(null)
 		}
 	}
 
