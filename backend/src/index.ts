@@ -65,19 +65,14 @@ const lastMessageTimestamps = new Map<string, number>()
  * @param scene The scene to broadcast to
  * @param event The event name to emit
  * @param data The data to send
+ * @param sourcePlayerId The ID of the player sending the message
  */
-function broadcastToScene(scene: string, event: string, data: any) {
-	// Get all players in the specified scene
-	const playersInScene = Array.from(players.values()).filter(player => player.scene === scene)
+function broadcastToScene(scene: string, event: string, data: any, sourcePlayerId?: string) {
+	const scenePlayers = Array.from(players.values()).filter(p => p.scene === scene)
 	
-	// Get the socket IDs for these players
-	const socketIds = playersInScene.map(player => player.id)
-	
-	// Broadcast to all sockets in the scene
-	socketIds.forEach(socketId => {
-		const socket = io.sockets.sockets.get(socketId)
-		if (socket) {
-			socket.emit(event, data)
+	scenePlayers.forEach(player => {
+		if (player.id !== sourcePlayerId) {
+			io.to(player.id).emit(event, data)
 		}
 	})
 }
@@ -90,43 +85,41 @@ io.on('connection', (socket) => {
 	lastMessageTimestamps.set(socket.id, Date.now())
 
 	// Handle player joining a scene
-	socket.on(Event.Player.Join, (data: { x: number, y: number, scene: string, appearance: PlayerData['appearance'] }) => {
-		// Add or update player in the list
-		players.set(socket.id, {
-			id: socket.id,
-			x: data.x,
-			y: data.y,
+	socket.on(Event.Player.Join, (data: { position: Position, scene: string, appearance: PlayerAppearance }) => {
+		const playerId = socket.id
+		players.set(playerId, {
+			id: playerId,
+			position: data.position,
 			scene: data.scene,
 			appearance: data.appearance
 		})
-		
-		lastMessageTimestamps.set(socket.id, Date.now())
-		
-		// Send list of players to the new player
+
+		// Send the complete list of players to the new player
 		socket.emit(Event.Players.List, Array.from(players.values()))
-		
-		// Broadcast new player to all other players in the same scene
-		broadcastToScene(data.scene, Event.Player.Joined, players.get(socket.id))
+
+		// Broadcast the new player to all other players in the scene
+		broadcastToScene(data.scene, Event.Player.Joined, players.get(playerId), playerId)
 	})
 
 	// Handle player movement
-	socket.on(Event.Player.Moved, (data: { x: number, y: number, scene: string }) => {
+	socket.on(Event.Player.Moved, (data: { position: Position, scene: string }) => {
 		const player = players.get(socket.id)
 		if (player) {
-			player.x = data.x
-			player.y = data.y
+			player.position = data.position
 			player.scene = data.scene
-			lastMessageTimestamps.set(socket.id, Date.now())
-			// Broadcast only x, y, and player id to players in the same scene
-			broadcastToScene(data.scene, Event.Player.Moved, { id: player.id, x: player.x, y: player.y })
+			broadcastToScene(data.scene, Event.Player.Moved, player, socket.id)
 		}
 	})
 
 	// Handle chat messages
-	socket.on(Event.Chat.Message, (message: ChatMessage) => {
-		lastMessageTimestamps.set(socket.id, Date.now())
-		// Broadcast the message to all players in the same scene
-		broadcastToScene(message.scene, Event.Chat.Message, message)
+	socket.on(Event.Chat.Message, (message: string) => {
+		const player = players.get(socket.id)
+		if (player) {
+			broadcastToScene(player.scene, Event.Chat.Message, {
+				playerId: socket.id,
+				message
+			}, socket.id)
+		}
 	})
 
 	// Handle system ping
