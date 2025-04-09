@@ -9,6 +9,11 @@ export interface PlayerJoinData extends PlayerSourcedData {
     scene: string
 }
 
+export interface PlayerTransitionData extends PlayerSourcedData {
+	position: Position
+	scene: string
+}
+
 export interface PlayerMovedData extends PlayerSourcedData {
     x: number
     y: number

@@ -150,6 +150,19 @@ export class MultiplayerService {
 		this.send(Event.Player.Moved, { x, y })
 	}
 
+	transitionToScene(x: number, y: number, scene: string) {
+		if (!this.socket) return
+
+		// Send transition event
+		this.send(Event.Player.TransitionTo, {
+			position: { x, y },
+			scene
+		})
+
+		// Update current scene
+		this.currentScene = scene
+	}
+
 	getPlayers(): PlayerData[] {
 		return Array.from(this.players.values())
 	}

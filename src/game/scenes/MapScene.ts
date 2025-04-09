@@ -378,6 +378,9 @@ export abstract class MapScene extends Scene {
 		// Store the player's current position for the new scene
 		const playerX = this.player.getSprite().x
 		const playerY = this.player.getSprite().y
+
+		// Send transition event to server
+		this.multiplayerService.transitionToScene(targetX, targetY, targetScene)
 		
 		// Clean up resources before transitioning
 		this.cleanupScene()

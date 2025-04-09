@@ -4,7 +4,8 @@ export const Event = {
 		Joined: 'player:joined',
 		Left: 'player:left',
 		Moved: 'player:moved',
-		Disconnected: 'player:disconnected'
+		Disconnected: 'player:disconnected',
+		TransitionTo: 'player:transition-to'
 	},
 	Players: {
 		List: 'players:list'

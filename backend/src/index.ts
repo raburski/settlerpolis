@@ -4,7 +4,7 @@ import { Server, Socket } from 'socket.io'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import { Event } from './Event'
-import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData } from './DataTypes'
+import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, PlayerTransitionData } from './DataTypes'
 import { Position } from './types'
 
 dotenv.config()
@@ -90,6 +90,35 @@ io.on('connection', (socket: Socket) => {
 		socket.emit(Event.Players.List, Array.from(players.values()))
 
 		broadcastFromPlayerToScene<PlayerJoinData>(data.scene, Event.Player.Joined, data, playerId)
+	})
+
+	// Handle scene transition
+	socket.on(Event.Player.TransitionTo, (data: PlayerTransitionData) => {
+		const playerId = socket.id
+		const player = players.get(playerId)
+
+		if (player) {
+			// First, notify players in the current scene that this player is leaving
+			broadcastFromPlayerToScene<PlayerSourcedData>(player.scene, Event.Player.Left, {}, playerId)
+
+			// Update player data with new scene and position
+			player.scene = data.scene
+			player.position = data.position
+
+			// Update player connection health
+			playerConnectionHealthUpdate(playerId)
+
+			// Notify players in the new scene that this player has joined
+			broadcastFromPlayerToScene<PlayerJoinData>(
+				data.scene,
+				Event.Player.Joined,
+				{
+					scene: data.scene,
+					position: data.position
+				},
+				playerId
+			)
+		}
 	})
 
 	// Handle player movement
