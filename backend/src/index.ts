@@ -12,6 +12,9 @@ const DEFAULT_INVENTORY_ITEM = {
 	name: 'Butelka mózgotrzepa'
 }
 
+const DROPPED_ITEM_LIFESPAN = 5 * 60 * 1000 // 5 minutes in milliseconds
+const ITEM_CLEANUP_INTERVAL = 30 * 1000 // Check every 30 seconds
+
 dotenv.config()
 
 const app = express()
@@ -93,6 +96,37 @@ function playerConnectionHealthUpdate(playerId: string) {
 	lastMessageTimestamps.set(playerId, Date.now())
 }
 
+// Function to remove expired items from a scene
+function removeExpiredItems(scene: string, expiredItemIds: string[]) {
+	if (expiredItemIds.length === 0) return
+
+	const sceneItems = droppedItems.get(scene)
+	if (sceneItems) {
+		// Remove expired items
+		droppedItems.set(
+			scene,
+			sceneItems.filter(item => !expiredItemIds.includes(item.id))
+		)
+
+		// Notify all players in the scene about removed items
+		broadcastFromSystemToScene(scene, Event.Scene.RemoveItems, { itemIds: expiredItemIds })
+	}
+}
+
+// Periodic check for expired items
+setInterval(() => {
+	const now = Date.now()
+	droppedItems.forEach((items, scene) => {
+		const expiredItemIds = items
+			.filter(item => now - item.droppedAt > DROPPED_ITEM_LIFESPAN)
+			.map(item => item.id)
+
+		if (expiredItemIds.length > 0) {
+			removeExpiredItems(scene, expiredItemIds)
+		}
+	})
+}, ITEM_CLEANUP_INTERVAL)
+
 // Socket.IO connection handling
 io.on('connection', (socket: Socket) => {
 	console.log('Player connected:', socket.id)
@@ -127,6 +161,12 @@ io.on('connection', (socket: Socket) => {
 
 		// Send only players from the same scene
 		sendCurrentPlayersList(data.scene)
+
+		// Send existing dropped items in this scene to the joining player
+		const sceneDroppedItems = droppedItems.get(data.scene) || []
+		if (sceneDroppedItems.length > 0) {
+			socket.emit(Event.Scene.AddItems, { items: sceneDroppedItems })
+		}
 
 		broadcastFromPlayerToScene<PlayerJoinData>(data.scene, Event.Player.Joined, data, playerId)
 	})
@@ -209,7 +249,8 @@ io.on('connection', (socket: Socket) => {
 				const newDroppedItem: DroppedItem = {
 					...droppedItem,
 					position: player.position,
-					scene: player.scene
+					scene: player.scene,
+					droppedAt: Date.now()
 				}
 
 				// Add to scene's dropped items

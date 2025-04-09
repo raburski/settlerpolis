@@ -12,6 +12,7 @@ export interface Item {
 export interface DroppedItem extends Item {
 	position: Position
 	scene: string
+	droppedAt: number
 }
 
 export interface Inventory {
