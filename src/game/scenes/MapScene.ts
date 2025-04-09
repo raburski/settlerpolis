@@ -1,4 +1,4 @@
-import { Scene } from 'phaser'
+import { Scene, GameObjects, Input, Physics } from 'phaser'
 import { EventBus } from '../EventBus'
 import { Player } from '../entities/Player'
 import { MultiplayerService, PlayerData, ChatMessage } from '../services/MultiplayerService'
@@ -6,6 +6,7 @@ import { MultiplayerPlayer } from '../entities/MultiplayerPlayer'
 import { BasePlayer } from '../entities/BasePlayer'
 import { Event } from '../../../backend/src/Event'
 import { ChatMessageData, PlayerJoinData, PlayerMovedData, PlayerSourcedData } from "../../../backend/src/DataTypes"
+import { PortalManager } from '../modules/Portals'
 
 interface TilesetInfo {
 	name: string
@@ -16,21 +17,19 @@ interface TilesetInfo {
 }
 
 export abstract class MapScene extends Scene {
-	protected player: Player
+	protected player: Player | null = null
 	protected tilesetObjects: Map<number, TilesetInfo> = new Map()
 	protected assetsLoaded: boolean = false
 	protected assetsLoadedPromise: Promise<void> | null = null
 	protected mapKey: string
 	protected mapPath: string
-	protected multiplayerPlayers: Map<string, MultiplayerPlayer> = new Map()
+	protected multiplayerPlayers: Map<string, Player> = new Map()
 	protected multiplayerService: MultiplayerService
 	protected lastPositionUpdate: { x: number, y: number } | null = null
 	protected lastPositionUpdateTime: number = 0
 	protected readonly POSITION_UPDATE_THROTTLE = 100 // 100ms
 	protected transitioning: boolean = false
-	protected portalZones: Phaser.GameObjects.Zone[] = []
-	protected portalRects: Phaser.GameObjects.Rectangle[] = []
-	protected portalKey: Phaser.Input.Keyboard.Key | null = null
+	protected portalManager: PortalManager | null = null
 
 	constructor(key: string, mapKey: string, mapPath: string) {
 		super(key)
@@ -117,9 +116,6 @@ export abstract class MapScene extends Scene {
 		console.log('CREATE')
 		
         this.transitioning = false
-		// Create the portal activation key
-		this.portalKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E)
-		console.log('Portal key initialized:', this.portalKey)
 		
 		// Check if assets are already loaded
 		if (this.assetsLoadedPromise != null) {
@@ -251,8 +247,16 @@ export abstract class MapScene extends Scene {
 		// Set up multiplayer
 		this.setupMultiplayer()
 
-        // Process portals from the portals layer
-		this.processPortals(map)
+        // Initialize the portal manager
+		this.portalManager = new PortalManager(this, this.player)
+		
+		// Set the portal activated callback
+		this.portalManager.setPortalActivatedCallback((portalData) => {
+			this.transitionToScene(portalData.target, portalData.targetX, portalData.targetY)
+		})
+		
+		// Process portals
+		this.portalManager.processPortals(map)
 
 		EventBus.emit('current-scene-ready', this)
 
@@ -335,11 +339,6 @@ export abstract class MapScene extends Scene {
 				player.update()
 			})
 
-			// Check for portal activation with E key
-			if (this.portalKey && this.portalKey.isDown) {
-				this.checkPortalActivation()
-			}
-
 			// Update player position in multiplayer service
 			const playerSprite = this.player.getSprite()
 			const currentPosition = { x: playerSprite.x, y: playerSprite.y }
@@ -362,108 +361,11 @@ export abstract class MapScene extends Scene {
 				this.lastPositionUpdate = currentPosition
 				this.lastPositionUpdateTime = now
 			}
-		}
-	}
-	
-	/**
-	 * Check if the player is overlapping with any portal and activate it if the E key is pressed
-	 */
-	private checkPortalActivation(): void {
-		if (!this.player) return
-		
-		const playerSprite = this.player.getSprite()
-		const playerBounds = playerSprite.getBounds()
-		
-		// Check each portal zone for overlap with the player
-		for (const portalZone of this.portalZones) {
-			const portalBounds = portalZone.getBounds()
-			
-			// If the player is overlapping with this portal
-			if (Phaser.Geom.Rectangle.Overlaps(playerBounds, portalBounds)) {
-				// Get the portal data
-				const portalData = portalZone.getData('portalData')
-				
-				// If the portal has a target scene, transition to it
-				if (portalData && portalData.target) {
-					console.log('Portal activated, transitioning to:', portalData.target)
-					this.transitionToScene(portalData.target, portalData.targetX, portalData.targetY)
-					return // Exit after finding the first overlapping portal
-				}
+
+			// Update the portal manager
+			if (this.portalManager) {
+				this.portalManager.update()
 			}
-		}
-	}
-
-	// Process portals from the map
-	private processPortals(map: Phaser.Tilemaps.Tilemap) {
-		try {
-			const portalsLayer = map.getObjectLayer('portals')
-			if (!portalsLayer) return
-
-			// Get the fromScene from the scene data
-			const sceneData = this.scene.settings.data
-			const fromScene = sceneData?.fromScene
-
-			// Find a portal that matches the previous scene name
-			const matchingPortal = fromScene ? portalsLayer.objects.find(obj => {
-				const portalData = obj.properties?.find(prop => prop.name === 'target')
-				return portalData?.value === fromScene
-			}) : null
-
-			// If a matching portal is found, position the player at that portal's location
-			if (matchingPortal) {
-				// Use the player's sprite container to set position
-				this.player.getSprite().setPosition(matchingPortal.x, matchingPortal.y)
-			}
-
-			portalsLayer.objects.forEach(obj => {
-				// Create a white semi-transparent rectangle for the portal
-				const portalRect = this.add.rectangle(
-					obj.x + obj.width/2, 
-					obj.y + obj.height/2, 
-					obj.width, 
-					obj.height,
-					0xffffff,
-					0.1
-				)
-				
-				// Store the portal rectangle for cleanup
-				this.portalRects.push(portalRect)
-				
-				// Create a zone for the portal
-				const portalZone = this.add.zone(obj.x, obj.y, obj.width, obj.height)
-				this.physics.add.existing(portalZone, true)
-				
-				// Store the portal zone for cleanup
-				this.portalZones.push(portalZone)
-
-				const portalData = {
-					target: obj.properties?.find(prop => prop.name === 'target')?.value,
-					targetX: obj.properties?.find(prop => prop.name === 'targetX')?.value || obj.x,
-					targetY: obj.properties?.find(prop => prop.name === 'targetY')?.value || obj.y
-				}
-
-				// Store the portal data on the zone
-				portalZone.setData('portalData', portalData)
-				
-				// Add a text hint above the portal
-				const hintText = this.add.text(
-					obj.x + obj.width/2,
-					obj.y - 20,
-					"Press E to enter",
-					{ 
-						fontSize: '14px', 
-						color: '#ffffff',
-						backgroundColor: '#000000',
-						padding: { x: 5, y: 5 }
-					}
-				)
-				hintText.setOrigin(0.5, 0.5)
-				
-				// Store the hint text for cleanup
-				this.portalRects.push(hintText)
-			})
-		} catch (error) {
-			console.error('Error processing portals:', error)
 		}
 	}
 
@@ -478,7 +380,7 @@ export abstract class MapScene extends Scene {
 		const playerY = this.player.getSprite().y
 		
 		// Clean up resources before transitioning
-		// this.cleanupScene()
+		this.cleanupScene()
 		
 		// Create a fade out effect
 		this.cameras.main.fade(500, 0, 0, 0)
@@ -519,22 +421,14 @@ export abstract class MapScene extends Scene {
 			// Clean up the player
 			if (this.player) {
 				this.player.destroy()
+				this.player = null
 			}
 			
-			// Clean up portal zones and rectangles
-			this.portalZones.forEach(zone => {
-				// Remove physics body
-				if (zone.body) {
-					this.physics.world.disableBody(zone.body)
-				}
-				zone.destroy()
-			})
-			this.portalZones = []
-			
-			this.portalRects.forEach(rect => {
-				rect.destroy()
-			})
-			this.portalRects = []
+			// Clean up portal manager
+			if (this.portalManager) {
+				this.portalManager.cleanup()
+				this.portalManager = null
+			}
 			
 			// Clean up any other game objects that might be created in child classes
 			this.cleanupAdditionalResources()
