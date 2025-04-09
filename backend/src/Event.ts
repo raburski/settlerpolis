@@ -17,6 +17,7 @@ export const Event = {
 		Ping: 'system:ping'
 	},
 	Inventory: {
-		Loaded: 'inventory:loaded'
+		Loaded: 'inventory:loaded',
+		Drop: 'inventory:drop'
 	}
 } as const 

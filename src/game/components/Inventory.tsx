@@ -23,6 +23,10 @@ export function Inventory({ isOpen }: InventoryProps) {
 		}
 	}, [])
 
+	const handleDropItem = (itemId: string) => {
+		EventBus.emit(Event.Inventory.Drop, { itemId })
+	}
+
 	if (!isOpen) return null
 
 	return (
@@ -34,7 +38,14 @@ export function Inventory({ isOpen }: InventoryProps) {
 				<ul className={styles.itemsList}>
 					{inventory.items.map(item => (
 						<li key={item.id} className={styles.item}>
-							{item.name}
+							<span>{item.name}</span>
+							<button 
+								className={styles.dropButton}
+								onClick={() => handleDropItem(item.id)}
+								title="Drop item"
+							>
+								🗑️
+							</button>
 						</li>
 					))}
 				</ul>

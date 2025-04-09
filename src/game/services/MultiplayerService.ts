@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client'
 import { EventBus } from '../EventBus'
 import { Event } from '../../../backend/src/Event'
-import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, InventoryData } from '../../../backend/src/DataTypes'
+import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, InventoryData, DropItemData } from '../../../backend/src/DataTypes'
 
 export enum Gender {
 	Male = 'Male',
@@ -37,6 +37,8 @@ export class MultiplayerService {
 	private constructor() {
 		// Listen for player:sendMessage events
 		EventBus.on('player:sendMessage', this.handleSendMessage, this)
+		// Listen for inventory drop events
+		EventBus.on(Event.Inventory.Drop, this.handleDropItem, this)
 	}
 
 	static getInstance(): MultiplayerService {
@@ -189,9 +191,14 @@ export class MultiplayerService {
 		this.sendChatMessage(message)
 	}
 
+	private handleDropItem = (data: DropItemData) => {
+		this.send(Event.Inventory.Drop, data)
+	}
+
 	public destroy(): void {
 		// Remove event listeners
 		EventBus.off('player:sendMessage', this.handleSendMessage, this)
+		EventBus.off(Event.Inventory.Drop, this.handleDropItem, this)
 		
 		// Stop ping interval
 		this.stopPingInterval()

@@ -4,7 +4,7 @@ import { Server, Socket } from 'socket.io'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import { Event } from './Event'
-import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, PlayerTransitionData, InventoryData, Item, Inventory } from './DataTypes'
+import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, PlayerTransitionData, InventoryData, Item, Inventory, DroppedItem, DropItemData } from './DataTypes'
 import { Position } from './types'
 
 const DEFAULT_INVENTORY_ITEM = {
@@ -50,6 +50,9 @@ const players = new Map<string, PlayerData>()
 
 // Store player inventories
 const inventories = new Map<string, Inventory>()
+
+// Store dropped items per scene
+const droppedItems = new Map<string, DroppedItem[]>()
 
 // Track last message timestamp for each player
 const lastMessageTimestamps = new Map<string, number>()
@@ -173,6 +176,37 @@ io.on('connection', (socket: Socket) => {
 		playerConnectionHealthUpdate(socket.id)
 		
 		socket.emit(Event.System.Ping)
+	})
+
+	// Handle item drop
+	socket.on(Event.Inventory.Drop, (data: DropItemData) => {
+		const player = players.get(socket.id)
+		const inventory = inventories.get(socket.id)
+
+		if (player && inventory) {
+			// Find the item in player's inventory
+			const itemIndex = inventory.items.findIndex(item => item.id === data.itemId)
+			
+			if (itemIndex !== -1) {
+				// Remove item from inventory
+				const [droppedItem] = inventory.items.splice(itemIndex, 1)
+				
+				// Create dropped item with position and scene
+				const newDroppedItem: DroppedItem = {
+					...droppedItem,
+					position: player.position,
+					scene: player.scene
+				}
+
+				// Add to scene's dropped items
+				const sceneDroppedItems = droppedItems.get(player.scene) || []
+				sceneDroppedItems.push(newDroppedItem)
+				droppedItems.set(player.scene, sceneDroppedItems)
+
+				// Update player's inventory
+				socket.emit(Event.Inventory.Loaded, { inventory })
+			}
+		}
 	})
 
 	// Handle disconnection

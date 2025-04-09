@@ -17,4 +17,21 @@
 
 .item {
 	margin-bottom: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.dropButton {
+	background: none;
+	border: none;
+	color: #ff4444;
+	cursor: pointer;
+	padding: 4px;
+	opacity: 0.7;
+	transition: opacity 0.2s;
+}
+
+.dropButton:hover {
+	opacity: 1;
 } 

@@ -9,12 +9,21 @@ export interface Item {
 	name: string
 }
 
+export interface DroppedItem extends Item {
+	position: Position
+	scene: string
+}
+
 export interface Inventory {
 	items: Item[]
 }
 
 export interface InventoryData extends PlayerSourcedData {
 	inventory: Inventory
+}
+
+export interface DropItemData extends PlayerSourcedData {
+	itemId: string
 }
 
 export interface PlayerJoinData extends PlayerSourcedData {
