@@ -13,6 +13,7 @@ export class BasePlayer {
 	protected direction: 'down' | 'up' | 'left' | 'right' = 'down'
 	protected horizontalDirection: 'left' | 'right' = 'right'
 	protected isMoving: boolean = false
+	protected currentAnimationKey: string = ''
 
 	constructor(scene: Scene, x: number, y: number, appearance: PlayerAppearance) {
 		this.scene = scene
@@ -134,20 +135,30 @@ export class BasePlayer {
 	protected playAnimation(state: 'idle' | 'walk'): void {
 		const animationKey = `${state}-${this.direction}`
 		
+		// If the animation key hasn't changed, don't restart the animation
+		if (this.currentAnimationKey === animationKey) {
+			return
+		}
+
+        console.log('PLAY ANIM', animationKey)
+		
 		// Set flipX based on horizontal direction
 		const flipX = this.horizontalDirection === 'right'
 		
 		// Play animations on all body parts
 		this.body.play(`player-body-${animationKey}`, true)
-		this.hair.play(`player-hair-${animationKey}`, true)
-		this.clothes.play(`player-clothes-${animationKey}`, true)
-		this.hands.play(`player-hands-${animationKey}`, true)
+		// this.hair.play(`player-hair-${animationKey}`, true)
+		// this.clothes.play(`player-clothes-${animationKey}`, true)
+		// this.hands.play(`player-hands-${animationKey}`, true)
 		
 		// Apply flipping
 		this.body.setFlipX(flipX)
 		this.hair.setFlipX(flipX)
 		this.clothes.setFlipX(flipX)
 		this.hands.setFlipX(flipX)
+		
+		// Update the current animation key
+		this.currentAnimationKey = animationKey
 	}
 
 	public displayMessage(message: string) {

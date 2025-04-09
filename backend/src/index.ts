@@ -106,7 +106,8 @@ io.on('connection', (socket) => {
 			player.y = data.y
 			player.scene = data.scene
 			lastMessageTimestamps.set(socket.id, Date.now())
-			socket.broadcast.emit('player:moved', player)
+			// Broadcast only x, y, and player id
+			socket.broadcast.emit('player:moved', { id: player.id, x: player.x, y: player.y })
 		}
 	})
 

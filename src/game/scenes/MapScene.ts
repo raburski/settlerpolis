@@ -3,6 +3,7 @@ import { EventBus } from '../EventBus'
 import { Player } from '../entities/Player'
 import { MultiplayerService, PlayerData, ChatMessage } from '../services/MultiplayerService'
 import { MultiplayerPlayer } from '../entities/MultiplayerPlayer'
+import { BasePlayer } from '../entities/BasePlayer'
 
 interface TilesetInfo {
 	name: string
@@ -31,6 +32,7 @@ export abstract class MapScene extends Scene {
 
 	preload() {
 		// Load player assets
+		BasePlayer.preload(this)
 		Player.preload(this)
 		
 		// Load the map first to get tileset information
