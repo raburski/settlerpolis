@@ -275,7 +275,11 @@ export abstract class MapScene extends Scene {
 		data.items.forEach(item => {
 			// Create a sprite for the dropped item
 			const sprite = this.add.sprite(item.position.x, item.position.y, 'item-placeholder')
-			sprite.setScale(0.5) // Adjust scale as needed
+			
+			// Set initial state for animation
+			sprite.setScale(0)
+			sprite.setAlpha(0)
+			sprite.y += 40 // Start below final position
 			
 			// Create text for item name (initially hidden)
 			const nameText = this.add.text(sprite.x, sprite.y - 20, item.name, {
@@ -327,6 +331,26 @@ export abstract class MapScene extends Scene {
 			
 			// Store the name text reference to clean it up later
 			sprite.setData('nameText', nameText)
+			
+			// First tween: throw up and fade in
+			this.tweens.add({
+				targets: sprite,
+				y: item.position.y - 30, // Throw up high
+				scaleX: 0.5,
+				scaleY: 0.5,
+				alpha: 1,
+				duration: 300,
+				ease: 'Quad.out',
+				onComplete: () => {
+					// Second tween: fall down with bounce
+					this.tweens.add({
+						targets: sprite,
+						y: item.position.y,
+						duration: 400,
+						ease: 'Bounce.out',
+					})
+				}
+			})
 		})
 	}
 
