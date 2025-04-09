@@ -19,5 +19,9 @@ export const Event = {
 	Inventory: {
 		Loaded: 'inventory:loaded',
 		Drop: 'inventory:drop'
+	},
+	Scene: {
+		AddItems: 'scene:add-items',
+		RemoveItems: 'scene:remove-items'
 	}
 } as const 

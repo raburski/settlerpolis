@@ -74,6 +74,20 @@ function broadcastFromPlayerToScene<T extends PlayerSourcedData>(scene: string, 
 	})
 }
 
+/**
+ * Broadcasts a message from the system to all players in a specific scene
+ * @param scene The scene to broadcast to
+ * @param event The event name to emit
+ * @param data The data to send
+ */
+function broadcastFromSystemToScene<T>(scene: string, event: string, data: T) {
+	const scenePlayers = Array.from(players.values()).filter(p => p.scene === scene)
+	
+	scenePlayers.forEach(player => {
+		io.to(player.id).emit(event, data)
+	})
+}
+
 // Function to update player connection health
 function playerConnectionHealthUpdate(playerId: string) {
 	lastMessageTimestamps.set(playerId, Date.now())
@@ -205,6 +219,9 @@ io.on('connection', (socket: Socket) => {
 
 				// Update player's inventory
 				socket.emit(Event.Inventory.Loaded, { inventory })
+
+				// Broadcast to all players in the scene that an item was dropped
+				broadcastFromSystemToScene(player.scene, Event.Scene.AddItems, { items: [newDroppedItem] })
 			}
 		}
 	})

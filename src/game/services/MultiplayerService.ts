@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client'
 import { EventBus } from '../EventBus'
 import { Event } from '../../../backend/src/Event'
-import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, InventoryData, DropItemData } from '../../../backend/src/DataTypes'
+import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, InventoryData, DropItemData, DroppedItem } from '../../../backend/src/DataTypes'
 
 export enum Gender {
 	Male = 'Male',
@@ -108,6 +108,15 @@ export class MultiplayerService {
 		// Handle inventory loaded event
 		this.socket.on(Event.Inventory.Loaded, (data: InventoryData) => {
 			EventBus.emit(Event.Inventory.Loaded, data)
+		})
+
+		// Handle scene items events
+		this.socket.on(Event.Scene.AddItems, (data: { items: DroppedItem[] }) => {
+			EventBus.emit(Event.Scene.AddItems, data)
+		})
+
+		this.socket.on(Event.Scene.RemoveItems, (data: { itemIds: string[] }) => {
+			EventBus.emit(Event.Scene.RemoveItems, data)
 		})
 	}
 

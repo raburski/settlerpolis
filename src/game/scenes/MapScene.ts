@@ -5,7 +5,7 @@ import { MultiplayerService, PlayerData, ChatMessage } from '../services/Multipl
 import { MultiplayerPlayer } from '../entities/MultiplayerPlayer'
 import { BasePlayer } from '../entities/BasePlayer'
 import { Event } from '../../../backend/src/Event'
-import { ChatMessageData, PlayerJoinData, PlayerMovedData, PlayerSourcedData } from "../../../backend/src/DataTypes"
+import { ChatMessageData, PlayerJoinData, PlayerMovedData, PlayerSourcedData, DroppedItem } from "../../../backend/src/DataTypes"
 import { PortalManager } from '../modules/Portals'
 import { AssetManager, TilesetInfo } from '../modules/Assets'
 
@@ -22,6 +22,7 @@ export abstract class MapScene extends Scene {
 	protected transitioning: boolean = false
 	protected portalManager: PortalManager | null = null
 	protected assetManager: AssetManager
+	protected droppedItems: Map<string, GameObjects.Sprite> = new Map()
 
 	constructor(key: string, mapKey: string, mapPath: string) {
 		super(key)
@@ -36,6 +37,9 @@ export abstract class MapScene extends Scene {
 		// Load player assets
 		BasePlayer.preload(this)
 		Player.preload(this)
+		
+		// Load item placeholder
+		this.load.image('item-placeholder', 'assets/items/placeholder.png')
 		
 		// Load map and other assets
 		this.assetManager.preload()
@@ -195,6 +199,10 @@ export abstract class MapScene extends Scene {
 
 		// Listen for chat messages
 		EventBus.on(Event.Chat.Message, this.handleChatMessage, this)
+
+		// Set up scene event listeners
+		EventBus.on(Event.Scene.AddItems, this.handleAddItems, this)
+		EventBus.on(Event.Scene.RemoveItems, this.handleRemoveItems, this)
 	}
 
 	private setupMultiplayer() {
@@ -260,6 +268,27 @@ export abstract class MapScene extends Scene {
 				multiplayerPlayer.displayMessage(data.message)
 			}
 		}
+	}
+
+	private handleAddItems = (data: { items: DroppedItem[] }) => {
+		data.items.forEach(item => {
+			// Create a sprite for the dropped item
+			const sprite = this.add.sprite(item.position.x, item.position.y, 'item-placeholder')
+			sprite.setScale(0.5) // Adjust scale as needed
+			
+			// Add to our tracked items
+			this.droppedItems.set(item.id, sprite)
+		})
+	}
+
+	private handleRemoveItems = (data: { itemIds: string[] }) => {
+		data.itemIds.forEach(itemId => {
+			const sprite = this.droppedItems.get(itemId)
+			if (sprite) {
+				sprite.destroy()
+				this.droppedItems.delete(itemId)
+			}
+		})
 	}
 
 	update() {
@@ -346,6 +375,8 @@ export abstract class MapScene extends Scene {
 			EventBus.off(Event.Player.Moved, this.handlePlayerMoved, this)
 			EventBus.off(Event.Player.Left, this.handlePlayerLeft, this)
 			EventBus.off(Event.Player.Disconnected, this.handlePlayerDisconnected, this)
+			EventBus.off(Event.Scene.AddItems, this.handleAddItems, this)
+			EventBus.off(Event.Scene.RemoveItems, this.handleRemoveItems, this)
 			
 			// Clean up multiplayer players
 			this.multiplayerPlayers.forEach(player => {
@@ -365,6 +396,10 @@ export abstract class MapScene extends Scene {
 				this.portalManager = null
 			}
 			
+			// Clean up dropped items
+			this.droppedItems.forEach(sprite => sprite.destroy())
+			this.droppedItems.clear()
+			
 			// Clean up any other game objects that might be created in child classes
 			this.cleanupAdditionalResources()
 			
@@ -380,5 +415,17 @@ export abstract class MapScene extends Scene {
 	protected cleanupAdditionalResources(): void {
 		// Default implementation does nothing
 		// Child classes should override this method to clean up their specific resources
+	}
+
+	public destroy(): void {
+		// Remove event listeners
+		EventBus.off(Event.Scene.AddItems, this.handleAddItems, this)
+		EventBus.off(Event.Scene.RemoveItems, this.handleRemoveItems, this)
+		
+		// Clean up dropped items
+		this.droppedItems.forEach(sprite => sprite.destroy())
+		this.droppedItems.clear()
+
+		// ... rest of destroy code ...
 	}
 } 
