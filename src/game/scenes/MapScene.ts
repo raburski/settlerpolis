@@ -30,6 +30,7 @@ export abstract class MapScene extends Scene {
 	protected transitioning: boolean = false
 	protected portalZones: Phaser.GameObjects.Zone[] = []
 	protected portalRects: Phaser.GameObjects.Rectangle[] = []
+	protected portalKey: Phaser.Input.Keyboard.Key | null = null
 
 	constructor(key: string, mapKey: string, mapPath: string) {
 		super(key)
@@ -114,6 +115,11 @@ export abstract class MapScene extends Scene {
 
 	create() {
 		console.log('CREATE')
+		
+        this.transitioning = false
+		// Create the portal activation key
+		this.portalKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E)
+		console.log('Portal key initialized:', this.portalKey)
 		
 		// Check if assets are already loaded
 		if (this.assetsLoadedPromise != null) {
@@ -329,6 +335,11 @@ export abstract class MapScene extends Scene {
 				player.update()
 			})
 
+			// Check for portal activation with E key
+			if (this.portalKey && this.portalKey.isDown) {
+				this.checkPortalActivation()
+			}
+
 			// Update player position in multiplayer service
 			const playerSprite = this.player.getSprite()
 			const currentPosition = { x: playerSprite.x, y: playerSprite.y }
@@ -350,6 +361,34 @@ export abstract class MapScene extends Scene {
 				)
 				this.lastPositionUpdate = currentPosition
 				this.lastPositionUpdateTime = now
+			}
+		}
+	}
+	
+	/**
+	 * Check if the player is overlapping with any portal and activate it if the E key is pressed
+	 */
+	private checkPortalActivation(): void {
+		if (!this.player) return
+		
+		const playerSprite = this.player.getSprite()
+		const playerBounds = playerSprite.getBounds()
+		
+		// Check each portal zone for overlap with the player
+		for (const portalZone of this.portalZones) {
+			const portalBounds = portalZone.getBounds()
+			
+			// If the player is overlapping with this portal
+			if (Phaser.Geom.Rectangle.Overlaps(playerBounds, portalBounds)) {
+				// Get the portal data
+				const portalData = portalZone.getData('portalData')
+				
+				// If the portal has a target scene, transition to it
+				if (portalData && portalData.target) {
+					console.log('Portal activated, transitioning to:', portalData.target)
+					this.transitionToScene(portalData.target, portalData.targetX, portalData.targetY)
+					return // Exit after finding the first overlapping portal
+				}
 			}
 		}
 	}
@@ -375,7 +414,7 @@ export abstract class MapScene extends Scene {
 				// Use the player's sprite container to set position
 				this.player.getSprite().setPosition(matchingPortal.x, matchingPortal.y)
 			}
-            console.log('portalsLayer.objects', portalsLayer.objects)
+
 			portalsLayer.objects.forEach(obj => {
 				// Create a white semi-transparent rectangle for the portal
 				const portalRect = this.add.rectangle(
@@ -403,12 +442,25 @@ export abstract class MapScene extends Scene {
 					targetY: obj.properties?.find(prop => prop.name === 'targetY')?.value || obj.y
 				}
 
-				this.physics.add.overlap(this.player.getSprite(), portalZone, () => {
-					// If the portal has a target scene, transition to it
-					if (portalData.target) {
-						this.transitionToScene(portalData.target, portalData.targetX, portalData.targetY)
+				// Store the portal data on the zone
+				portalZone.setData('portalData', portalData)
+				
+				// Add a text hint above the portal
+				const hintText = this.add.text(
+					obj.x + obj.width/2,
+					obj.y - 20,
+					"Press E to enter",
+					{ 
+						fontSize: '14px', 
+						color: '#ffffff',
+						backgroundColor: '#000000',
+						padding: { x: 5, y: 5 }
 					}
-				})
+				)
+				hintText.setOrigin(0.5, 0.5)
+				
+				// Store the hint text for cleanup
+				this.portalRects.push(hintText)
 			})
 		} catch (error) {
 			console.error('Error processing portals:', error)
@@ -426,7 +478,7 @@ export abstract class MapScene extends Scene {
 		const playerY = this.player.getSprite().y
 		
 		// Clean up resources before transitioning
-		this.cleanupScene()
+		// this.cleanupScene()
 		
 		// Create a fade out effect
 		this.cameras.main.fade(500, 0, 0, 0)
@@ -451,7 +503,6 @@ export abstract class MapScene extends Scene {
 	 */
 	protected cleanupScene(): void {
 		try {
-            debugger;
 			// Remove event listeners
 			EventBus.off(Event.Chat.Message, this.handleChatMessage, this)
 			EventBus.off(Event.Player.Joined, this.handlePlayerJoined, this)
@@ -460,15 +511,15 @@ export abstract class MapScene extends Scene {
 			EventBus.off(Event.Player.Disconnected, this.handlePlayerDisconnected, this)
 			
 			// Clean up multiplayer players
-			// this.multiplayerPlayers.forEach(player => {
-			// 	player.destroy()
-			// })
-			// this.multiplayerPlayers.clear()
+			this.multiplayerPlayers.forEach(player => {
+				player.destroy()
+			})
+			this.multiplayerPlayers.clear()
 			
-			// // Clean up the player
-			// if (this.player) {
-			// 	this.player.destroy()
-			// }
+			// Clean up the player
+			if (this.player) {
+				this.player.destroy()
+			}
 			
 			// Clean up portal zones and rectangles
 			this.portalZones.forEach(zone => {
