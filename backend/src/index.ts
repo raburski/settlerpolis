@@ -75,6 +75,12 @@ io.on('connection', (socket: Socket) => {
 	// Initialize last message timestamp
 	lastMessageTimestamps.set(socket.id, Date.now())
 
+	// Function to send current players list filtered by scene
+	function sendCurrentPlayersList(scene: string) {
+		const scenePlayers = Array.from(players.values()).filter(p => p.scene === scene)
+		socket.emit(Event.Players.List, scenePlayers)
+	}
+
 	// Handle player joining a scene
 	socket.on(Event.Player.Join, (data: PlayerJoinData) => {
 		const playerId = socket.id
@@ -86,8 +92,8 @@ io.on('connection', (socket: Socket) => {
 		// Update player connection health
 		playerConnectionHealthUpdate(playerId)
 
-		// Send the complete list of players to the new player
-		socket.emit(Event.Players.List, Array.from(players.values()))
+		// Send only players from the same scene
+		sendCurrentPlayersList(data.scene)
 
 		broadcastFromPlayerToScene<PlayerJoinData>(data.scene, Event.Player.Joined, data, playerId)
 	})
@@ -107,6 +113,9 @@ io.on('connection', (socket: Socket) => {
 
 			// Update player connection health
 			playerConnectionHealthUpdate(playerId)
+
+			// Send the current players list for the new scene
+			sendCurrentPlayersList(data.scene)
 
 			// Notify players in the new scene that this player has joined
 			broadcastFromPlayerToScene<PlayerJoinData>(
