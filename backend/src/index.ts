@@ -83,6 +83,11 @@ function broadcastToScene(scene: string, event: string, data: any, sourcePlayerI
 	})
 }
 
+// Function to update player connection health
+function playerConnectionHealthUpdate(playerId: string) {
+	lastMessageTimestamps.set(playerId, Date.now())
+}
+
 // Socket.IO connection handling
 io.on('connection', (socket: Socket) => {
 	console.log('Player connected:', socket.id)
@@ -100,6 +105,9 @@ io.on('connection', (socket: Socket) => {
 			appearance: data.appearance
 		})
 
+		// Update player connection health
+		playerConnectionHealthUpdate(playerId)
+
 		// Send the complete list of players to the new player
 		socket.emit(Event.Players.List, Array.from(players.values()))
 
@@ -113,6 +121,10 @@ io.on('connection', (socket: Socket) => {
 		if (player) {
 			player.position = data.position
 			player.scene = data.scene
+			
+			// Update player connection health
+			playerConnectionHealthUpdate(socket.id)
+			
 			broadcastToScene(data.scene, Event.Player.Moved, player, socket.id)
 		}
 	})
@@ -121,6 +133,9 @@ io.on('connection', (socket: Socket) => {
 	socket.on(Event.Chat.Message, (message: string) => {
 		const player = players.get(socket.id)
 		if (player) {
+			// Update player connection health
+			playerConnectionHealthUpdate(socket.id)
+			
 			broadcastToScene(player.scene, Event.Chat.Message, {
 				playerId: socket.id,
 				message
@@ -130,7 +145,10 @@ io.on('connection', (socket: Socket) => {
 
 	// Handle system ping
 	socket.on(Event.System.Ping, () => {
-		lastMessageTimestamps.set(socket.id, Date.now())
+		// Update player connection health
+		playerConnectionHealthUpdate(socket.id)
+		
+		socket.emit(Event.System.Ping)
 	})
 
 	// Handle disconnection
