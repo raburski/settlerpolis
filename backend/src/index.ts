@@ -77,7 +77,8 @@ io.on('connection', (socket: Socket) => {
 
 	// Function to send current players list filtered by scene
 	function sendCurrentPlayersList(scene: string) {
-		const scenePlayers = Array.from(players.values()).filter(p => p.scene === scene)
+		const scenePlayers = Array.from(players.values())
+			.filter(p => p.scene === scene && p.id !== socket.id)
 		socket.emit(Event.Players.List, scenePlayers)
 	}
 
