@@ -8,7 +8,7 @@ import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, Pl
 import { Position } from './types'
 
 const DEFAULT_INVENTORY_ITEM = {
-	id: 1,
+	id: '1',
 	name: 'Butelka mózgotrzepa'
 }
 
