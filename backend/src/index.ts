@@ -127,10 +127,13 @@ io.on('connection', (socket: Socket) => {
 	// Handle disconnection
 	socket.on('disconnect', () => {
 		console.log('Player disconnected:', socket.id)
+		const player = players.get(socket.id)
 		players.delete(socket.id)
 		lastMessageTimestamps.delete(socket.id)
-		// Broadcast player left to all players in the same scene
-		broadcastFromPlayerToScene<PlayerSourcedData>(player.scene, Event.Player.Left, {}, socket.id)
+		if (player) {
+			// Broadcast player left to all players in the same scene
+			broadcastFromPlayerToScene<PlayerSourcedData>(player.scene, Event.Player.Left, {}, socket.id)
+		}
 	})
 })
 

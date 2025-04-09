@@ -35,6 +35,9 @@ export class Player extends BasePlayer {
 
 		// Listen for chat input visibility changes
 		EventBus.on('chat:inputVisible', this.handleChatInputVisible, this)
+		
+		// Listen for send message events
+		EventBus.on('player:sendMessage', this.handleSendMessage, this)
 	}
 
 	private handleChatInputVisible(isVisible: boolean) {
@@ -42,22 +45,16 @@ export class Player extends BasePlayer {
 	}
 
 	private toggleWASDKeys(enable: boolean) {
-		const input = this.scene.input.keyboard
+		this.scene.input.keyboard.enabled = enable
 		if (enable) {
-			this.wasdKeys = input.addKeys({
-				W: Phaser.Input.Keyboard.KeyCodes.W,
-				A: Phaser.Input.Keyboard.KeyCodes.A,
-				S: Phaser.Input.Keyboard.KeyCodes.S,
-				D: Phaser.Input.Keyboard.KeyCodes.D
-			}) as {
-				W: Phaser.Input.Keyboard.Key
-				A: Phaser.Input.Keyboard.Key
-				S: Phaser.Input.Keyboard.Key
-				D: Phaser.Input.Keyboard.Key
-			}
+			this.scene.input.keyboard.enableGlobalCapture()
 		} else {
-			Object.values(this.wasdKeys).forEach(key => input.removeKey(key))
+			this.scene.input.keyboard.disableGlobalCapture()
 		}
+	}
+
+	private handleSendMessage(message: string) {
+		this.displayMessage(message)
 	}
 
 	update(): void {
@@ -105,5 +102,14 @@ export class Player extends BasePlayer {
 
 	setCollisionWith(layer: Phaser.Tilemaps.TilemapLayer): void {
 		this.scene.physics.add.collider(this.container, layer)
+	}
+
+	public destroy(): void {
+		// Remove event listeners
+		EventBus.off('chat:inputVisible', this.handleChatInputVisible, this)
+		EventBus.off('player:sendMessage', this.handleSendMessage, this)
+		
+		// Call parent destroy method
+		super.destroy()
 	}
 } 

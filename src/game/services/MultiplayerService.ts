@@ -34,7 +34,10 @@ export class MultiplayerService {
 	private pingInterval: number | null = null
 	private readonly PING_INTERVAL = 3000 // 3 seconds
 
-	private constructor() {}
+	private constructor() {
+		// Listen for player:sendMessage events
+		EventBus.on('player:sendMessage', this.handleSendMessage, this)
+	}
 
 	static getInstance(): MultiplayerService {
 		if (!MultiplayerService.instance) {
@@ -169,5 +172,23 @@ export class MultiplayerService {
 		}
 
 		this.send(Event.Chat.Message, chatMessage)
+	}
+
+	private handleSendMessage(message: string) {
+		this.sendChatMessage(message)
+	}
+
+	public destroy(): void {
+		// Remove event listeners
+		EventBus.off('player:sendMessage', this.handleSendMessage, this)
+		
+		// Stop ping interval
+		this.stopPingInterval()
+		
+		// Disconnect socket
+		if (this.socket) {
+			this.socket.disconnect()
+			this.socket = null
+		}
 	}
 } 

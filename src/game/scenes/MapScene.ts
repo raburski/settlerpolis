@@ -293,14 +293,14 @@ export abstract class MapScene extends Scene {
 	}
 
 	private handleChatMessage(data: ChatMessageData) {
-        // if (message.sourcePlayerId === this.multiplayerService.socket?.id) {
-        //     this.player.displayMessage(message.message)
-        // } else {
-            const multiplayerPlayer = this.multiplayerPlayers.get(data.sourcePlayerId)
-            if (multiplayerPlayer) {
-                multiplayerPlayer.displayMessage(data.message)
-            }
-        // }
+		if (data.sourcePlayerId === this.multiplayerService.socket?.id) {
+			this.player.displayMessage(data.message)
+		} else {
+			const multiplayerPlayer = this.multiplayerPlayers.get(data.sourcePlayerId)
+			if (multiplayerPlayer) {
+				multiplayerPlayer.displayMessage(data.message)
+			}
+		}
 	}
 
 	update() {

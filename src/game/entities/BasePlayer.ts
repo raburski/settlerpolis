@@ -182,18 +182,24 @@ export class BasePlayer {
 			this.messageText.destroy()
 		}
 
-		this.messageText = this.scene.add.text(this.container.x, this.container.y - 50, message, {
-			fontSize: '14px',
+		// Create text as a child of the container so it moves with the player
+		this.messageText = this.scene.add.text(0, -50, message, {
+			fontSize: '18px',
 			color: '#ffffff',
 			backgroundColor: 'rgba(0, 0, 0, 0.7)',
 			padding: { x: 5, y: 3 },
 			align: 'center'
 		}).setOrigin(0.5)
 
-		// Remove the message after 5 seconds
-		this.scene.time.delayedCall(5000, () => {
-			this.messageText?.destroy()
-			this.messageText = null
+		// Add the text to the container
+		this.container.add(this.messageText)
+
+		// Remove the message after 10 seconds
+		this.scene.time.delayedCall(10000, () => {
+			if (this.messageText) {
+				this.messageText.destroy()
+				this.messageText = null
+			}
 		})
 	}
 

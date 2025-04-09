@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { EventBus } from '../EventBus'
-import { MultiplayerService, ChatMessage } from '../services/MultiplayerService'
 import styles from './Chat.module.css'
 
 interface ChatProps {
@@ -8,49 +7,54 @@ interface ChatProps {
 }
 
 export const Chat: React.FC<ChatProps> = ({ scene }) => {
-	const [messages, setMessages] = useState<ChatMessage[]>([])
 	const [isInputVisible, setIsInputVisible] = useState(false)
 	const inputRef = useRef<HTMLInputElement>(null)
-	const multiplayerService = MultiplayerService.getInstance()
+
+	// Focus input when it becomes visible
+	useEffect(() => {
+		if (isInputVisible && inputRef.current) {
+			console.log('Input is visible, focusing it')
+			inputRef.current.focus()
+		}
+	}, [isInputVisible])
 
 	useEffect(() => {
-		const handleChatMessage = (message: ChatMessage) => {
-			if (message.scene === scene) {
-				setMessages(prev => [...prev, message])
-				
-				// Remove message after 5 seconds
-				setTimeout(() => {
-					setMessages(prev => prev.filter(m => m.timestamp !== message.timestamp))
-				}, 5000)
-			}
-		}
-
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (e.key === 'Enter' && !isInputVisible) {
 				setIsInputVisible(true)
 				EventBus.emit('chat:inputVisible', true)
-				setTimeout(() => {
-					inputRef.current?.focus()
-				}, 0)
 			}
 		}
 
-		EventBus.on('chat:message', handleChatMessage)
 		window.addEventListener('keydown', handleKeyDown)
 
 		return () => {
-			EventBus.off('chat:message', handleChatMessage)
 			window.removeEventListener('keydown', handleKeyDown)
 		}
-	}, [scene, isInputVisible])
+	}, [isInputVisible])
 
 	const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+		console.log('Input key pressed:', e.key)
+		
 		if (e.key === 'Enter' && inputRef.current?.value.trim()) {
-			multiplayerService.sendChatMessage(inputRef.current.value.trim())
+			console.log('Enter pressed with message:', inputRef.current.value.trim())
+			e.preventDefault()
+			e.stopPropagation()
+			
+			const message = inputRef.current.value.trim()
+			
+			// Emit event to send message (will be handled by MultiplayerService and Player)
+			EventBus.emit('player:sendMessage', message)
+			
 			inputRef.current.value = ''
+			console.log('Setting isInputVisible to false')
 			setIsInputVisible(false)
 			EventBus.emit('chat:inputVisible', false)
 		} else if (e.key === 'Escape') {
+			console.log('Escape pressed, closing input')
+			e.preventDefault()
+			e.stopPropagation()
+			
 			setIsInputVisible(false)
 			EventBus.emit('chat:inputVisible', false)
 		}
@@ -58,18 +62,6 @@ export const Chat: React.FC<ChatProps> = ({ scene }) => {
 
 	return (
 		<div className={styles.chatContainer}>
-			{messages.map(message => (
-				<div 
-					key={message.timestamp} 
-					className={styles.message}
-					style={{
-						opacity: 1 - (Date.now() - message.timestamp) / 5000
-					}}
-				>
-					<span className={styles.playerName}>{message.playerName || 'Player'}:</span> {message.message}
-				</div>
-			))}
-			
 			{isInputVisible && (
 				<div className={styles.inputContainer}>
 					<input
