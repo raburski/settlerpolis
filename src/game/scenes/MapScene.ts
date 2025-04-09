@@ -351,10 +351,20 @@ export abstract class MapScene extends Scene {
 			console.log('Found portals:', portals)
 
 			portals.forEach(portal => {
+				// Create a white semi-transparent rectangle for the portal
+				const portalRect = this.add.rectangle(
+					portal.x + portal.width/2, 
+					portal.y + portal.height/2, 
+					portal.width, 
+					portal.height,
+					0xffffff,
+					0.1,
+				)
+				
 				// Create a zone for the portal
 				const portalZone = this.add.zone(
 					portal.x + portal.width/2, 
-					portal.y - portal.height/2, 
+					portal.y + portal.height/2, 
 					portal.width, 
 					portal.height
 				)
