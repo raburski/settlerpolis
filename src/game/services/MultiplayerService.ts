@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client'
 import { EventBus } from '../EventBus'
+import { Event } from '../../../shared/events/Event'
 
 export enum Gender {
 	Male = 'Male',
@@ -68,38 +69,40 @@ export class MultiplayerService {
 
 		this.socket.on('disconnect', () => {
 			console.log('Disconnected from multiplayer server')
+            alert('Disconnected from multiplayer server')
 			// Clean up resources or notify the application about the disconnection
-			EventBus.emit('player:disconnected')
+			EventBus.emit(Event.Player.Disconnected)
 			this.stopPingInterval()
 		})
 
-		this.socket.on('players:list', (players: PlayerData[]) => {
+		this.socket.on(Event.Players.List, (players: PlayerData[]) => {
 			players.forEach(player => {
 				if (player.id !== this.socket?.id) {
 					this.players.set(player.id, player)
-					EventBus.emit('player:joined', player)
+					EventBus.emit(Event.Player.Joined, player)
 				}
 			})
 		})
 
-		this.socket.on('player:joined', (player: PlayerData) => {
+		this.socket.on(Event.Player.Joined, (player: PlayerData) => {
 			this.players.set(player.id, player)
-			EventBus.emit('player:joined', player)
+			EventBus.emit(Event.Player.Joined, player)
 		})
 
-		this.socket.on('player:moved', (player: PlayerData) => {
+		this.socket.on(Event.Player.Moved, (player: PlayerData) => {
+            console.log('on player:moved', player)
 			this.players.set(player.id, player)
-			EventBus.emit('player:moved', player)
+			EventBus.emit(Event.Player.Moved, player)
 		})
 
-		this.socket.on('player:left', (playerId: string) => {
+		this.socket.on(Event.Player.Left, (playerId: string) => {
 			this.players.delete(playerId)
-			EventBus.emit('player:left', playerId)
+			EventBus.emit(Event.Player.Left, playerId)
 		})
 
 		// Chat events
-		this.socket.on('chat:message', (message: ChatMessage) => {
-			EventBus.emit('chat:message', message)
+		this.socket.on(Event.Chat.Message, (message: ChatMessage) => {
+			EventBus.emit(Event.Chat.Message, message)
 		})
 	}
 
@@ -108,7 +111,7 @@ export class MultiplayerService {
 		this.pingInterval = window.setInterval(() => {
 			const now = Date.now()
 			if (now - this.lastMessageTime >= this.PING_INTERVAL) {
-				this.sendPing()
+				this.send(Event.System.Ping)
 			}
 		}, 1000) // Check every second
 	}
@@ -120,15 +123,9 @@ export class MultiplayerService {
 		}
 	}
 
-	private sendPing() {
-		if (this.socket) {
-			this.socket.emit('system:ping')
-			this.lastMessageTime = Date.now()
-		}
-	}
-
 	private send(event: string, data: any) {
 		if (this.socket) {
+            console.log('send', event)
 			this.socket.emit(event, data)
 			this.lastMessageTime = Date.now()
 		}
@@ -138,14 +135,20 @@ export class MultiplayerService {
 		if (!this.socket) return
 
 		this.currentScene = scene
-		this.send('player:join', { x, y, scene, appearance })
+		console.log(`Joining game in scene: ${scene}`)
+		this.send(Event.Player.Join, { x, y, scene, appearance })
 	}
 
 	updatePosition(x: number, y: number, scene: string) {
 		if (!this.socket || !this.currentScene) return
 
-		this.currentScene = scene
-		this.send('player:move', { x, y, scene })
+		// Update current scene if it has changed
+		if (this.currentScene !== scene) {
+			console.log(`Scene changed from ${this.currentScene} to ${scene}`)
+			this.currentScene = scene
+		}
+		
+		this.send(Event.Player.Moved, { x, y, scene })
 	}
 
 	getPlayers(): PlayerData[] {
@@ -173,6 +176,6 @@ export class MultiplayerService {
 			timestamp: Date.now()
 		}
 
-		this.send('chat:message', chatMessage)
+		this.send(Event.Chat.Message, chatMessage)
 	}
 } 

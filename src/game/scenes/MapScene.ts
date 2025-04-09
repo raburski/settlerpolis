@@ -4,6 +4,7 @@ import { Player } from '../entities/Player'
 import { MultiplayerService, PlayerData, ChatMessage } from '../services/MultiplayerService'
 import { MultiplayerPlayer } from '../entities/MultiplayerPlayer'
 import { BasePlayer } from '../entities/BasePlayer'
+import { Event } from '../../../shared/events/Event'
 
 interface TilesetInfo {
 	name: string
@@ -230,7 +231,7 @@ export abstract class MapScene extends Scene {
 		EventBus.emit('current-scene-ready', this)
 
 		// Listen for chat messages
-		EventBus.on('chat:message', this.handleChatMessage, this)
+		EventBus.on(Event.Chat.Message, this.handleChatMessage, this)
 	}
 
 	private setupMultiplayer() {
@@ -247,31 +248,27 @@ export abstract class MapScene extends Scene {
 		)
 
 		// Set up multiplayer event listeners
-		EventBus.on('player:joined', this.handlePlayerJoined, this)
-		EventBus.on('player:moved', this.handlePlayerMoved, this)
-		EventBus.on('player:left', this.handlePlayerLeft, this)
-		EventBus.on('player:disconnected', this.handlePlayerDisconnected, this)
+		EventBus.on(Event.Player.Joined, this.handlePlayerJoined, this)
+		EventBus.on(Event.Player.Moved, this.handlePlayerMoved, this)
+		EventBus.on(Event.Player.Left, this.handlePlayerLeft, this)
+		EventBus.on(Event.Player.Disconnected, this.handlePlayerDisconnected, this)
 	}
 
 	private handlePlayerJoined(playerData: PlayerData) {
-		if (playerData.scene === this.scene.key) {
-			const multiplayerPlayer = new MultiplayerPlayer(
-				this,
-				playerData.x,
-				playerData.y,
-				playerData.id,
-				playerData.appearance
-			)
-			this.multiplayerPlayers.set(playerData.id, multiplayerPlayer)
-		}
+		const multiplayerPlayer = new MultiplayerPlayer(
+			this,
+			playerData.x,
+			playerData.y,
+			playerData.id,
+			playerData.appearance
+		)
+		this.multiplayerPlayers.set(playerData.id, multiplayerPlayer)
 	}
 
 	private handlePlayerMoved(playerData: PlayerData) {
-		if (playerData.scene === this.scene.key) {
-			const multiplayerPlayer = this.multiplayerPlayers.get(playerData.id)
-			if (multiplayerPlayer) {
-				multiplayerPlayer.updatePositionFromServer(playerData)
-			}
+		const multiplayerPlayer = this.multiplayerPlayers.get(playerData.id)
+		if (multiplayerPlayer) {
+			multiplayerPlayer.updatePositionFromServer(playerData)
 		}
 	}
 
@@ -325,6 +322,7 @@ export abstract class MapScene extends Scene {
 			const timeSinceLastUpdate = now - this.lastPositionUpdateTime
 
 			if (hasMoved && timeSinceLastUpdate >= this.POSITION_UPDATE_THROTTLE) {
+				// Always send the current scene key with position updates
 				this.multiplayerService.updatePosition(
 					currentPosition.x,
 					currentPosition.y,

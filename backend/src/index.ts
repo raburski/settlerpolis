@@ -3,6 +3,7 @@ import { createServer } from 'http'
 import { Server } from 'socket.io'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import { Event } from '../../shared/events/Event'
 
 dotenv.config()
 
@@ -59,6 +60,28 @@ interface ChatMessage {
 // Track last message timestamp for each player
 const lastMessageTimestamps = new Map<string, number>()
 
+/**
+ * Broadcasts a message to all players in a specific scene
+ * @param scene The scene to broadcast to
+ * @param event The event name to emit
+ * @param data The data to send
+ */
+function broadcastToScene(scene: string, event: string, data: any) {
+	// Get all players in the specified scene
+	const playersInScene = Array.from(players.values()).filter(player => player.scene === scene)
+	
+	// Get the socket IDs for these players
+	const socketIds = playersInScene.map(player => player.id)
+	
+	// Broadcast to all sockets in the scene
+	socketIds.forEach(socketId => {
+		const socket = io.sockets.sockets.get(socketId)
+		if (socket) {
+			socket.emit(event, data)
+		}
+	})
+}
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
 	console.log('Player connected:', socket.id)
@@ -67,7 +90,7 @@ io.on('connection', (socket) => {
 	lastMessageTimestamps.set(socket.id, Date.now())
 
 	// Handle player joining a scene
-	socket.on('player:join', (data: { x: number, y: number, scene: string, appearance: PlayerData['appearance'] }) => {
+	socket.on(Event.Player.Join, (data: { x: number, y: number, scene: string, appearance: PlayerData['appearance'] }) => {
 		// Add or update player in the list
 		players.set(socket.id, {
 			id: socket.id,
@@ -80,43 +103,47 @@ io.on('connection', (socket) => {
 		lastMessageTimestamps.set(socket.id, Date.now())
 		
 		// Send list of players to the new player
-		socket.emit('players:list', Array.from(players.values()))
+		socket.emit(Event.Players.List, Array.from(players.values()))
 		
-		// Broadcast new player to all other players
-		socket.broadcast.emit('player:joined', players.get(socket.id))
+		// Broadcast new player to all other players in the same scene
+		broadcastToScene(data.scene, Event.Player.Joined, players.get(socket.id))
 	})
 
 	// Handle player movement
-	socket.on('player:move', (data: { x: number, y: number, scene: string }) => {
+	socket.on(Event.Player.Moved, (data: { x: number, y: number, scene: string }) => {
 		const player = players.get(socket.id)
 		if (player) {
 			player.x = data.x
 			player.y = data.y
 			player.scene = data.scene
 			lastMessageTimestamps.set(socket.id, Date.now())
-			// Broadcast only x, y, and player id
-			socket.broadcast.emit('player:moved', { id: player.id, x: player.x, y: player.y })
+			// Broadcast only x, y, and player id to players in the same scene
+			broadcastToScene(data.scene, Event.Player.Moved, { id: player.id, x: player.x, y: player.y })
 		}
 	})
 
 	// Handle chat messages
-	socket.on('chat:message', (message: ChatMessage) => {
+	socket.on(Event.Chat.Message, (message: ChatMessage) => {
 		lastMessageTimestamps.set(socket.id, Date.now())
 		// Broadcast the message to all players in the same scene
-		socket.broadcast.emit('chat:message', message)
+		broadcastToScene(message.scene, Event.Chat.Message, message)
 	})
 
 	// Handle system ping
-	socket.on('system:ping', () => {
+	socket.on(Event.System.Ping, () => {
 		lastMessageTimestamps.set(socket.id, Date.now())
 	})
 
 	// Handle disconnection
 	socket.on('disconnect', () => {
 		console.log('Player disconnected:', socket.id)
+		const player = players.get(socket.id)
+		if (player) {
+			// Broadcast player left to all players in the same scene
+			broadcastToScene(player.scene, Event.Player.Left, socket.id)
+		}
 		players.delete(socket.id)
 		lastMessageTimestamps.delete(socket.id)
-		socket.broadcast.emit('player:left', socket.id)
 	})
 })
 
@@ -129,9 +156,13 @@ setInterval(() => {
 	for (const [playerId, lastMessageTime] of lastMessageTimestamps.entries()) {
 		if (now - lastMessageTime > MAX_INACTIVE_TIME) {
 			const socket = io.sockets.sockets.get(playerId)
+			const player = players.get(playerId)
 			if (socket) {
+				if (player) {
+					// Broadcast player left to all players in the same scene
+					broadcastToScene(player.scene, Event.Player.Left, playerId)
+				}
 				socket.disconnect()
-				io.emit('player:left', playerId)
 			}
 			lastMessageTimestamps.delete(playerId)
 		}
