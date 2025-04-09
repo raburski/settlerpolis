@@ -267,7 +267,7 @@ export abstract class MapScene extends Scene {
             {},
 			// playerData.appearance
 		)
-		this.multiplayerPlayers.set(playerData.id, multiplayerPlayer)
+		this.multiplayerPlayers.set(data.sourcePlayerId, multiplayerPlayer)
 	}
 
 	private handlePlayerMoved(data: PlayerMovedData) {

@@ -72,20 +72,23 @@ export class MultiplayerService {
 			players.forEach(player => {
 				if (player.id !== this.socket?.id) {
 					this.players.set(player.id, player)
-					EventBus.emit(Event.Player.Joined, player)
+					EventBus.emit(Event.Player.Joined, { ...player, sourcePlayerId: player.id } as PlayerJoinData)
 				}
 			})
 		})
 
-		this.socket.on(Event.Player.Joined, (player: PlayerData) => {
-			this.players.set(player.id, player)
+		this.socket.on(Event.Player.Joined, (player: PlayerJoinData) => {
+			this.players.set(player.sourcePlayerId, player)
 			EventBus.emit(Event.Player.Joined, player)
 		})
 
-		this.socket.on(Event.Player.Moved, (player: PlayerData) => {
-            console.log('on player:moved', player)
-			this.players.set(player.id, player)
-			EventBus.emit(Event.Player.Moved, player)
+		this.socket.on(Event.Player.Moved, (data: PlayerMovedData) => {
+			const player = this.players.get(data.sourcePlayerId)
+            if (player) {
+                player.x = data.x
+                player.y = data.y
+            }
+			EventBus.emit(Event.Player.Moved, data)
 		})
 
 		this.socket.on(Event.Player.Left, (playerId: string) => {
