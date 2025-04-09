@@ -1,6 +1,6 @@
-import express from 'express'
+import express, { Request, Response } from 'express'
 import { createServer } from 'http'
-import { Server } from 'socket.io'
+import { Server, Socket } from 'socket.io'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import { Event } from './Event'
@@ -27,7 +27,7 @@ const io = new Server(httpServer, {
 const apiRouter = express.Router()
 
 // Health check endpoint
-apiRouter.get('/health', (req, res) => {
+apiRouter.get('/health', (req: Request, res: Response) => {
 	res.json({ status: 'ok' })
 })
 
@@ -37,16 +37,22 @@ app.use('/api', apiRouter)
 // Store connected players
 const players = new Map<string, PlayerData>()
 
-interface PlayerData {
-	id: string
+interface Position {
 	x: number
 	y: number
+}
+
+interface PlayerAppearance {
+	bodyColor: string
+	hairStyle: string
+	clothingStyle: string
+}
+
+interface PlayerData {
+	id: string
+	position: Position
 	scene: string
-	appearance: {
-		bodyColor: string
-		hairStyle: string
-		clothingStyle: string
-	}
+	appearance: PlayerAppearance
 }
 
 interface ChatMessage {
@@ -78,7 +84,7 @@ function broadcastToScene(scene: string, event: string, data: any, sourcePlayerI
 }
 
 // Socket.IO connection handling
-io.on('connection', (socket) => {
+io.on('connection', (socket: Socket) => {
 	console.log('Player connected:', socket.id)
 
 	// Initialize last message timestamp
