@@ -7,10 +7,16 @@ import { Event } from './Event'
 import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, PlayerTransitionData, InventoryData, Item, Inventory, DroppedItem, DropItemData, PickUpItemData } from './DataTypes'
 import { Position } from './types'
 import { PICKUP_RANGE } from './consts'
+import { v4 as uuidv4 } from 'uuid'
 
-const DEFAULT_INVENTORY_ITEM = {
-	id: '1',
-	name: 'Butelka mózgotrzepa'
+const DEFAULT_INVENTORY_ITEM_NAME = 'Butelka mózgotrzepa'
+
+// Function to create a new item with a random ID
+function createItemWithRandomId(name: string): Item {
+	return {
+		id: uuidv4(),
+		name
+	}
 }
 
 const DROPPED_ITEM_LIFESPAN = 5 * 60 * 1000 // 5 minutes in milliseconds
@@ -135,8 +141,10 @@ io.on('connection', (socket: Socket) => {
 	// Initialize last message timestamp
 	lastMessageTimestamps.set(socket.id, Date.now())
 	
-	// Initialize empty inventory for new player
-	const newInventory: Inventory = { items: [DEFAULT_INVENTORY_ITEM] }
+	// Initialize empty inventory for new player with a random ID for the default item
+	const newInventory: Inventory = { 
+		items: [createItemWithRandomId(DEFAULT_INVENTORY_ITEM_NAME)] 
+	}
 	inventories.set(socket.id, newInventory)
 	
 	// Send initial inventory data

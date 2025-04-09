@@ -277,16 +277,29 @@ export abstract class MapScene extends Scene {
 			const sprite = this.add.sprite(item.position.x, item.position.y, 'item-placeholder')
 			sprite.setScale(0.5) // Adjust scale as needed
 			
+			// Create text for item name (initially hidden)
+			const nameText = this.add.text(sprite.x, sprite.y - 20, item.name, {
+				fontSize: '14px',
+				color: '#ffffff',
+				backgroundColor: '#000000',
+				padding: { x: 4, y: 2 },
+				align: 'center'
+			})
+			nameText.setOrigin(0.5)
+			nameText.setVisible(false)
+			
 			// Make item interactive
 			sprite.setInteractive({ useHandCursor: true })
 			
 			// Add hover effect
 			sprite.on('pointerover', () => {
 				sprite.setTint(0xffff00) // Yellow tint on hover
+				nameText.setVisible(true)
 			})
 			
 			sprite.on('pointerout', () => {
 				sprite.clearTint()
+				nameText.setVisible(false)
 			})
 			
 			// Add click handler for pickup
@@ -309,8 +322,11 @@ export abstract class MapScene extends Scene {
 				}
 			})
 			
-			// Add to our tracked items
+			// Store both sprite and text in our tracked items
 			this.droppedItems.set(item.id, sprite)
+			
+			// Store the name text reference to clean it up later
+			sprite.setData('nameText', nameText)
 		})
 	}
 
@@ -318,6 +334,11 @@ export abstract class MapScene extends Scene {
 		data.itemIds.forEach(itemId => {
 			const sprite = this.droppedItems.get(itemId)
 			if (sprite) {
+				// Clean up the name text
+				const nameText = sprite.getData('nameText') as Phaser.GameObjects.Text
+				if (nameText) {
+					nameText.destroy()
+				}
 				sprite.destroy()
 				this.droppedItems.delete(itemId)
 			}

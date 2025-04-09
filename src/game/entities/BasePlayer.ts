@@ -234,6 +234,14 @@ export class BasePlayer {
 
 		// Add the text to the container
 		this.container.add(this.systemMessageText)
+
+        // Remove the message after 2 seconds
+		this.scene.time.delayedCall(2000, () => {
+			if (this.systemMessageText) {
+				this.systemMessageText.destroy()
+				this.systemMessageText = null
+			}
+		})
 	}
 
 	public getSprite(): GameObjects.Container {
