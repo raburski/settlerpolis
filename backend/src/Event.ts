@@ -1,18 +1,18 @@
-export enum Event {
-	Player = {
+export const Event = {
+	Player: {
 		Join: 'player:join',
 		Joined: 'player:joined',
 		Left: 'player:left',
 		Moved: 'player:moved',
 		Disconnected: 'player:disconnected'
 	},
-	Players = {
+	Players: {
 		List: 'players:list'
 	},
-	Chat = {
+	Chat: {
 		Message: 'chat:message'
 	},
-	System = {
+	System: {
 		Ping: 'system:ping'
 	}
-} 
+} as const 
