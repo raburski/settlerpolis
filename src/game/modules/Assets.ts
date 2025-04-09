@@ -14,103 +14,136 @@ export class AssetManager {
 	private mapPath: string
 	private tilesetObjects: Map<number, TilesetInfo>
 	private assetsLoadedPromise: Promise<void> | null
-	private additionalAssetsLoader: () => void
-	private initCallback: (() => void) | null
+	private initCallback: () => void
 	private isLoading: boolean
 
-	constructor(scene: Scene, mapKey: string, mapPath: string, additionalAssetsLoader: () => void) {
+	constructor(scene: Scene, mapKey: string, mapPath: string, initCallback: () => void) {
 		this.scene = scene
 		this.mapKey = mapKey
 		this.mapPath = mapPath
 		this.tilesetObjects = new Map()
 		this.assetsLoadedPromise = null
-		this.additionalAssetsLoader = additionalAssetsLoader
-		this.initCallback = null
+		this.initCallback = initCallback
 		this.isLoading = false
+		console.log(`[AssetManager] Initialized with map: ${mapKey}`)
 	}
 
-	preload(onInitialize: () => void): void {
-		this.initCallback = onInitialize
-
-		// Load the map first to get tileset information
-		this.scene.load.tilemapTiledJSON(this.mapKey, this.mapPath)
-		
-		// We'll load other assets after the tilemap is loaded
-		this.scene.load.once('complete', this.onPreloadComplete.bind(this))
-	}
-
-	create(): void {
-		// If assets are already loaded, initialize immediately
-		if (!this.isLoading && this.initCallback) {
-			this.initCallback()
+	private resolveTilesetPath(relativePath: string): string {
+		if (relativePath.startsWith('../')) {
+			relativePath = relativePath.substring(3)
 		}
-		// Otherwise initialization will happen when assets finish loading
+		return relativePath
 	}
 
-	private onPreloadComplete(): void {
-		if (this.isLoading) return
-
+	preload(): void {
 		this.isLoading = true
-		console.log('Starting asset preload')
-
-		// Get the tilemap data
-		const mapData = this.scene.cache.tilemap.get(this.mapKey).data
 		
-		// Create a promise to track when all assets are loaded
-		this.assetsLoadedPromise = new Promise<void>((resolve) => {
-			// Load all tilesets referenced in the map
-			if (mapData && mapData.tilesets) {
-				mapData.tilesets.forEach(tileset => {
-					// Extract the image path from the tileset
-					const imagePath = tileset.image?.replace('../', '')
-					if (!imagePath) return
-					const imageKey = imagePath.split('/').pop().split('.')[0]
-					
-					// Load the tileset image
-					this.scene.load.image(imageKey, `assets/${imagePath}`)
-					console.log(`Loading tileset: ${imageKey} from assets/${imagePath}`)
-				})
-			}
-			
-			// Load any other required assets
-			this.additionalAssetsLoader()
-			
-			// Set up a one-time event listener for when all assets are loaded
-			this.scene.load.once('complete', () => {
-				console.log('All assets loaded')
-				this.isLoading = false
-				this.assetsLoadedPromise = null
+		this.scene.load.tilemapTiledJSON(this.mapKey, this.mapPath)
+
+		this.scene.load.once('complete', () => {
+			this.assetsLoadedPromise = this.preloadTilesets()
+		})
+	}
+
+	private preloadTilesets(): Promise<void> {
+		return new Promise((resolve) => {
+			const mapData = this.scene.cache.tilemap.get(this.mapKey)
+			if (!mapData) {
+				console.error(`[AssetManager] No map data found for key: ${this.mapKey}`)
 				resolve()
-				
-				// Call the initialization callback if provided
-				if (this.initCallback) {
-					this.initCallback()
+				return
+			}
+
+			const tilesets = mapData.data.tilesets
+			if (!tilesets) {
+				console.error(`[AssetManager] No tilesets found in map data`)
+				resolve()
+				return
+			}
+
+			let hasAssetsToLoad = false
+
+			// Queue all assets first
+			tilesets.forEach(tileset => {
+				if (tileset.image) {
+					hasAssetsToLoad = true
+					const imageKey = tileset.image.split('/').pop().split('.')[0]
+					const imagePath = this.resolveTilesetPath(tileset.image)
+					this.scene.load.image(imageKey, `/assets/${imagePath}`)
+				} else if (tileset.tiles) {
+					tileset.tiles.forEach(tile => {
+						if (tile.image) {
+							hasAssetsToLoad = true
+							const imagePath = this.resolveTilesetPath(tile.image)
+							const imageKey = `${tileset.name}_${tile.id}`
+							this.scene.load.image(imageKey, `/assets/${imagePath}`)
+						}
+					})
 				}
 			})
-			
-			// Start loading the assets
+
+			if (!hasAssetsToLoad) {
+				this.isLoading = false
+				resolve()
+				return
+			}
+
+			// Listen for completion of all queued assets
+			this.scene.load.once('complete', () => {
+				this.isLoading = false
+				resolve()
+			})
+
 			this.scene.load.start()
 		})
 	}
 
+	create(): void {
+		console.log('ASST MNGR CREATE', this.assetsLoadedPromise)
+		const map = this.scene.add.tilemap(this.mapKey)
+		this.loadTilesetObjects(map)
+
+		if (this.assetsLoadedPromise) {
+			this.assetsLoadedPromise.then(() => {
+				console.log('CREATE ASSET via promise')
+				this.initCallback()
+			})
+		} else {
+			console.log('CREATE ASSET via normal')
+			this.initCallback()
+		}
+	}
+
 	loadTilesetObjects(map: Phaser.Tilemaps.Tilemap): void {
-		const tilesets = map.tilesets
+		const mapData = this.scene.cache.tilemap.get(this.mapKey)
+		if (!mapData) {
+			console.error(`[AssetManager] No map data found for tileset objects`)
+			return
+		}
+
+		const tilesets = mapData.data.tilesets
+		if (!tilesets) {
+			console.error(`[AssetManager] No tilesets found for tileset objects`)
+			return
+		}
 		
 		tilesets.forEach(tileset => {
-			const imageName = tileset.name?.split('/').pop()?.split('.')[0]
-			// Only handle tilesets that have tiles property (object tilesets)
-			if (imageName) {
-				const gid = tileset.firstgid
-				
-				// Load the individual tile image
-				this.scene.load.image(imageName, `assets/objects/${imageName}.png`)
-				
-				// Store the GID mapping
-				this.tilesetObjects.set(gid, {
-					name: imageName,
-					gid: gid,
-					width: tileset.tilewidth,
-					height: tileset.tileheight
+			if (tileset.tiles) {
+				tileset.tiles.forEach(tile => {
+					const gid = tileset.firstgid + tile.id
+					const imageKey = tile.image ? 
+						`${tileset.name}_${tile.id}` : 
+						tileset.image?.split('/').pop().split('.')[0]
+
+					if (imageKey) {
+						this.tilesetObjects.set(gid, {
+							name: imageKey,
+							image: tile.image || tileset.image || '',
+							gid: gid,
+							width: tile.imagewidth || tileset.tilewidth,
+							height: tile.imageheight || tileset.tileheight
+						})
+					}
 				})
 			}
 		})

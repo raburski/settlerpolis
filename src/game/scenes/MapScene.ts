@@ -29,7 +29,7 @@ export abstract class MapScene extends Scene {
 		this.mapKey = mapKey
 		this.mapPath = mapPath
 		this.multiplayerService = MultiplayerService.getInstance()
-		this.assetManager = new AssetManager(this, mapKey, mapPath, this.loadAdditionalAssets.bind(this))
+		this.assetManager = new AssetManager(this, mapKey, mapPath, this.initializeScene.bind(this))
 	}
 
 	preload() {
@@ -37,17 +37,18 @@ export abstract class MapScene extends Scene {
 		BasePlayer.preload(this)
 		Player.preload(this)
 		
-		// Load map and other assets with initialization callback
-		this.assetManager.preload(this.initializeScene.bind(this))
+		// Load map and other assets
+		this.assetManager.preload()
 	}
 
 	create() {
-		console.log('CREATE')
+		console.log('CREATE', this.mapKey, this.assetManager)
 		this.transitioning = false
 		this.assetManager.create()
 	}
 	
 	protected initializeScene() {
+        console.log('INIT SCENE', this.mapKey)
 		// Create the map
 		const map = this.make.tilemap({ key: this.mapKey })
 		
@@ -363,7 +364,4 @@ export abstract class MapScene extends Scene {
 		// Default implementation does nothing
 		// Child classes should override this method to clean up their specific resources
 	}
-
-	// Abstract method to be implemented by child classes for loading additional assets
-	protected abstract loadAdditionalAssets(): void
 } 
