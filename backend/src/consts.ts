@@ -1,0 +1,1 @@
+export const PICKUP_RANGE = 50 // Distance in pixels within which a player can pick up an item 

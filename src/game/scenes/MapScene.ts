@@ -6,6 +6,7 @@ import { MultiplayerPlayer } from '../entities/MultiplayerPlayer'
 import { BasePlayer } from '../entities/BasePlayer'
 import { Event } from '../../../backend/src/Event'
 import { ChatMessageData, PlayerJoinData, PlayerMovedData, PlayerSourcedData, DroppedItem } from "../../../backend/src/DataTypes"
+import { PICKUP_RANGE } from '../../../backend/src/consts'
 import { PortalManager } from '../modules/Portals'
 import { AssetManager, TilesetInfo } from '../modules/Assets'
 
@@ -275,6 +276,38 @@ export abstract class MapScene extends Scene {
 			// Create a sprite for the dropped item
 			const sprite = this.add.sprite(item.position.x, item.position.y, 'item-placeholder')
 			sprite.setScale(0.5) // Adjust scale as needed
+			
+			// Make item interactive
+			sprite.setInteractive({ useHandCursor: true })
+			
+			// Add hover effect
+			sprite.on('pointerover', () => {
+				sprite.setTint(0xffff00) // Yellow tint on hover
+			})
+			
+			sprite.on('pointerout', () => {
+				sprite.clearTint()
+			})
+			
+			// Add click handler for pickup
+			sprite.on('pointerdown', () => {
+				// Check if player is close enough to pick up
+				if (this.player) {
+					const distance = Phaser.Math.Distance.Between(
+						this.player.getSprite().x,
+						this.player.getSprite().y,
+						sprite.x,
+						sprite.y
+					)
+					
+					if (distance <= PICKUP_RANGE) {
+						EventBus.emit(Event.Inventory.PickUp, { itemId: item.id })
+					} else {
+						// Optional: Show "too far" message
+						this.player.displaySystemMessage("Too far to pick up")
+					}
+				}
+			})
 			
 			// Add to our tracked items
 			this.droppedItems.set(item.id, sprite)

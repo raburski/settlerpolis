@@ -27,6 +27,10 @@ export interface DropItemData extends PlayerSourcedData {
 	itemId: string
 }
 
+export interface PickUpItemData extends PlayerSourcedData {
+	itemId: string
+}
+
 export interface PlayerJoinData extends PlayerSourcedData {
     position: Position
     scene: string

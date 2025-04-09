@@ -4,8 +4,9 @@ import { Server, Socket } from 'socket.io'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import { Event } from './Event'
-import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, PlayerTransitionData, InventoryData, Item, Inventory, DroppedItem, DropItemData } from './DataTypes'
+import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, PlayerTransitionData, InventoryData, Item, Inventory, DroppedItem, DropItemData, PickUpItemData } from './DataTypes'
 import { Position } from './types'
+import { PICKUP_RANGE } from './consts'
 
 const DEFAULT_INVENTORY_ITEM = {
 	id: '1',
@@ -263,6 +264,49 @@ io.on('connection', (socket: Socket) => {
 
 				// Broadcast to all players in the scene that an item was dropped
 				broadcastFromSystemToScene(player.scene, Event.Scene.AddItems, { items: [newDroppedItem] })
+			}
+		}
+	})
+
+	// Handle item pickup
+	socket.on(Event.Inventory.PickUp, (data: PickUpItemData) => {
+		const player = players.get(socket.id)
+		const inventory = inventories.get(socket.id)
+
+		if (player && inventory) {
+			const sceneDroppedItems = droppedItems.get(player.scene) || []
+			const itemIndex = sceneDroppedItems.findIndex(item => item.id === data.itemId)
+
+			if (itemIndex !== -1) {
+				const item = sceneDroppedItems[itemIndex]
+				
+				// Calculate distance between player and item
+				const distance = Math.sqrt(
+					Math.pow(player.position.x - item.position.x, 2) + 
+					Math.pow(player.position.y - item.position.y, 2)
+				)
+
+				// Check if player is within pickup range
+				if (distance > PICKUP_RANGE) {
+					return // Player is too far to pick up the item
+				}
+
+				// Remove item from dropped items
+				const [pickedItem] = sceneDroppedItems.splice(itemIndex, 1)
+				droppedItems.set(player.scene, sceneDroppedItems)
+
+				// Add item to player's inventory
+				const inventoryItem: Item = {
+					id: pickedItem.id,
+					name: pickedItem.name
+				}
+				inventory.items.push(inventoryItem)
+
+				// Update player's inventory
+				socket.emit(Event.Inventory.Loaded, { inventory })
+
+				// Broadcast to all players in the scene that an item was picked up
+				broadcastFromSystemToScene(player.scene, Event.Scene.RemoveItems, { itemIds: [data.itemId] })
 			}
 		}
 	})
