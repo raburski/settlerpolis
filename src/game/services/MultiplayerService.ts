@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client'
 import { EventBus } from '../EventBus'
 import { Event } from '../../../backend/src/Event'
+import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData } from '../../../backend/src/DataTypes'
 
 export enum Gender {
 	Male = 'Male',
@@ -11,20 +12,12 @@ export interface PlayerAppearance {
 	gender: Gender
 }
 
-export interface PlayerData {
+export interface PlayerData extends PlayerSourcedData {
 	id: string
 	x: number
 	y: number
 	scene: string
 	appearance: PlayerAppearance
-}
-
-export interface ChatMessage {
-	playerId: string
-	playerName?: string
-	message: string
-	scene: string
-	timestamp: number
 }
 
 const DEFAULT_APPEARANCE: PlayerAppearance = {
@@ -101,7 +94,7 @@ export class MultiplayerService {
 		})
 
 		// Chat events
-		this.socket.on(Event.Chat.Message, (message: ChatMessage) => {
+		this.socket.on(Event.Chat.Message, (message: ChatMessageData) => {
 			EventBus.emit(Event.Chat.Message, message)
 		})
 	}
@@ -136,7 +129,7 @@ export class MultiplayerService {
 
 		this.currentScene = scene
 		console.log(`Joining game in scene: ${scene}`)
-		this.send(Event.Player.Join, { x, y, scene, appearance })
+		this.send(Event.Player.Join, { position: { x, y }, scene, appearance })
 	}
 
 	updatePosition(x: number, y: number, scene: string) {
@@ -148,7 +141,7 @@ export class MultiplayerService {
 			this.currentScene = scene
 		}
 		
-		this.send(Event.Player.Moved, { x, y, scene })
+		this.send(Event.Player.Moved, { x, y })
 	}
 
 	getPlayers(): PlayerData[] {
@@ -168,12 +161,8 @@ export class MultiplayerService {
 	sendChatMessage(message: string) {
 		if (!this.socket || !this.currentScene) return
 
-		const chatMessage: ChatMessage = {
-			playerId: this.socket.id,
-			playerName: this.playerName,
-			message,
-			scene: this.currentScene,
-			timestamp: Date.now()
+		const chatMessage: ChatMessageData = {
+			message
 		}
 
 		this.send(Event.Chat.Message, chatMessage)

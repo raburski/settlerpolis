@@ -5,6 +5,7 @@ import { MultiplayerService, PlayerData, ChatMessage } from '../services/Multipl
 import { MultiplayerPlayer } from '../entities/MultiplayerPlayer'
 import { BasePlayer } from '../entities/BasePlayer'
 import { Event } from '../../../backend/src/Event'
+import { ChatMessageData, PlayerJoinData, PlayerMovedData, PlayerSourcedData } from "../../../backend/src/DataTypes"
 
 interface TilesetInfo {
 	name: string
@@ -228,6 +229,9 @@ export abstract class MapScene extends Scene {
 		// Set up multiplayer
 		this.setupMultiplayer()
 
+        // Process portals from the portals layer
+		this.processPortals(map)
+
 		EventBus.emit('current-scene-ready', this)
 
 		// Listen for chat messages
@@ -254,25 +258,27 @@ export abstract class MapScene extends Scene {
 		EventBus.on(Event.Player.Disconnected, this.handlePlayerDisconnected, this)
 	}
 
-	private handlePlayerJoined(playerData: PlayerData) {
+	private handlePlayerJoined(data: PlayerJoinData) {
 		const multiplayerPlayer = new MultiplayerPlayer(
 			this,
-			playerData.x,
-			playerData.y,
-			playerData.id,
-			playerData.appearance
+			data.position.x,
+			data.position.y,
+			data.sourcePlayerId,
+            {},
+			// playerData.appearance
 		)
 		this.multiplayerPlayers.set(playerData.id, multiplayerPlayer)
 	}
 
-	private handlePlayerMoved(playerData: PlayerData) {
-		const multiplayerPlayer = this.multiplayerPlayers.get(playerData.id)
+	private handlePlayerMoved(data: PlayerMovedData) {
+		const multiplayerPlayer = this.multiplayerPlayers.get(data.sourcePlayerId)
 		if (multiplayerPlayer) {
-			multiplayerPlayer.updatePositionFromServer(playerData)
+			multiplayerPlayer.updatePositionFromServer(data)
 		}
 	}
 
-	private handlePlayerLeft(playerId: string) {
+	private handlePlayerLeft(data: PlayerSourcedData) {
+        const playerId = data.sourcePlayerId
 		const multiplayerPlayer = this.multiplayerPlayers.get(playerId)
 		if (multiplayerPlayer) {
 			multiplayerPlayer.destroy()
@@ -286,17 +292,15 @@ export abstract class MapScene extends Scene {
 		// You can add UI notifications or other cleanup logic here
 	}
 
-	private handleChatMessage(message: ChatMessage) {
-		if (message.scene === this.scene.key) {
-			if (message.playerId === this.multiplayerService.socket?.id) {
-				this.player.displayMessage(message.message)
-			} else {
-				const multiplayerPlayer = this.multiplayerPlayers.get(message.playerId)
-				if (multiplayerPlayer) {
-					multiplayerPlayer.displayMessage(message.message)
-				}
-			}
-		}
+	private handleChatMessage(data: ChatMessageData) {
+        // if (message.sourcePlayerId === this.multiplayerService.socket?.id) {
+        //     this.player.displayMessage(message.message)
+        // } else {
+            const multiplayerPlayer = this.multiplayerPlayers.get(data.sourcePlayerId)
+            if (multiplayerPlayer) {
+                multiplayerPlayer.displayMessage(data.message)
+            }
+        // }
 	}
 
 	update() {
@@ -331,6 +335,58 @@ export abstract class MapScene extends Scene {
 				this.lastPositionUpdate = currentPosition
 				this.lastPositionUpdateTime = now
 			}
+		}
+	}
+
+	// Process portals from the map
+	private processPortals(map: Phaser.Tilemaps.Tilemap) {
+		try {
+			const portalsLayer = map.getObjectLayer('portals')
+			if (!portalsLayer) {
+				console.log('No portals layer found in the map')
+				return
+			}
+
+			const portals = portalsLayer.objects
+			console.log('Found portals:', portals)
+
+			portals.forEach(portal => {
+				// Create a zone for the portal
+				const portalZone = this.add.zone(
+					portal.x + portal.width/2, 
+					portal.y - portal.height/2, 
+					portal.width, 
+					portal.height
+				)
+				
+				// Add physics to the zone
+				this.physics.add.existing(portalZone, true)
+				
+				// Store portal data
+				const portalData = {
+					name: portal.name || 'Unnamed Portal',
+					targetScene: portal.properties?.find(p => p.name === 'targetScene')?.value || '',
+					targetX: portal.properties?.find(p => p.name === 'targetX')?.value || 100,
+					targetY: portal.properties?.find(p => p.name === 'targetY')?.value || 100
+				}
+				
+				// Add the portal data to the zone
+				portalZone.setData('portalData', portalData)
+				
+				// Add overlap detection between player and portal
+				this.physics.add.overlap(
+					this.player.getSprite(), 
+					portalZone, 
+					(player, zone) => {
+						const portalData = zone.getData('portalData')
+						console.log(`Player entered portal: ${portalData.name}`)
+						// Here you can implement the actual scene transition
+						// this.scene.start(portalData.targetScene, { x: portalData.targetX, y: portalData.targetY })
+					}
+				)
+			})
+		} catch (error) {
+			console.error('Error processing portals:', error)
 		}
 	}
 

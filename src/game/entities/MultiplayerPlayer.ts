@@ -1,6 +1,7 @@
 import { Scene } from 'phaser'
-import { PlayerData, Gender, PlayerAppearance } from '../services/MultiplayerService'
+import { PlayerAppearance } from '../services/MultiplayerService'
 import { BasePlayer, Direction, PlayerState } from './BasePlayer'
+import { PlayerMovedData, PlayerSourcedData } from '../../../backend/src/DataTypes'
 
 export class MultiplayerPlayer extends BasePlayer {
 	private playerId: string
@@ -24,9 +25,10 @@ export class MultiplayerPlayer extends BasePlayer {
 		// Logic to update the player's appearance
 	}
 
-	updatePositionFromServer(data: { id: string, x: number, y: number }): void {
+	updatePositionFromServer(data: PlayerMovedData): void {
 		const now = Date.now()
 		const elapsed = now - this.lastUpdateTime
+        console.log('updatePositionFromServer')
 
 		// Calculate movement direction based on position change
 		if (elapsed > 0) {
