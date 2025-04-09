@@ -59,6 +59,13 @@ export class Player extends BasePlayer {
 
 	update(): void {
 		const body = this.container.body as Physics.Arcade.Body
+		
+		// Add a null check to prevent errors if the body is null
+		if (!body) {
+			console.error('Player physics body is null in update method. This might happen during scene transitions.')
+			return
+		}
+		
 		body.setVelocity(0)
 
 		// Check for left movement (arrow keys or A)

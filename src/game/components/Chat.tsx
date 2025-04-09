@@ -34,10 +34,8 @@ export const Chat: React.FC<ChatProps> = ({ scene }) => {
 	}, [isInputVisible])
 
 	const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-		console.log('Input key pressed:', e.key)
 		
 		if (e.key === 'Enter' && inputRef.current?.value.trim()) {
-			console.log('Enter pressed with message:', inputRef.current.value.trim())
 			e.preventDefault()
 			e.stopPropagation()
 			
@@ -47,11 +45,9 @@ export const Chat: React.FC<ChatProps> = ({ scene }) => {
 			EventBus.emit('player:sendMessage', message)
 			
 			inputRef.current.value = ''
-			console.log('Setting isInputVisible to false')
 			setIsInputVisible(false)
 			EventBus.emit('chat:inputVisible', false)
 		} else if (e.key === 'Escape') {
-			console.log('Escape pressed, closing input')
 			e.preventDefault()
 			e.stopPropagation()
 			

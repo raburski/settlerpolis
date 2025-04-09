@@ -53,11 +53,16 @@ export class BasePlayer {
 		scene.physics.add.existing(this.container)
 		const body = this.container.body as Physics.Arcade.Body
 		
-		// Set a collision box for the bottom half of the character
-		// This creates a more 3D-like effect where the character appears to walk behind objects
-		// The character sprite is 80x64 pixels
-		body.setSize(40, 8) // Width: half of the sprite width, Height: half of the sprite height
-		body.setOffset(-20, 22) // Center horizontally, align to bottom
+		// Add a null check to prevent errors if the body is null
+		if (body) {
+			// Set a collision box for the bottom half of the character
+			// This creates a more 3D-like effect where the character appears to walk behind objects
+			// The character sprite is 80x64 pixels
+			body.setSize(40, 8) // Width: half of the sprite width, Height: half of the sprite height
+			body.setOffset(-20, 22) // Center horizontally, align to bottom
+		} else {
+			console.error('Player physics body is null. This might happen during scene transitions.')
+		}
 		
 		// Make sure the player can't go out of bounds
 		body.setCollideWorldBounds(true)
@@ -208,6 +213,12 @@ export class BasePlayer {
 	}
 
 	public setCollisionWith(layer: Phaser.Tilemaps.TilemapLayer): void {
+		// Add a null check to prevent errors if the container is null
+		if (!this.container) {
+			console.error('Player container is null in setCollisionWith method. This might happen during scene transitions.')
+			return
+		}
+		
 		this.scene.physics.add.collider(this.container, layer)
 	}
 

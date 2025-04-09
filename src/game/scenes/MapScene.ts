@@ -28,6 +28,8 @@ export abstract class MapScene extends Scene {
 	protected lastPositionUpdateTime: number = 0
 	protected readonly POSITION_UPDATE_THROTTLE = 100 // 100ms
 	protected transitioning: boolean = false
+	protected portalZones: Phaser.GameObjects.Zone[] = []
+	protected portalRects: Phaser.GameObjects.Rectangle[] = []
 
 	constructor(key: string, mapKey: string, mapPath: string) {
 		super(key)
@@ -36,10 +38,6 @@ export abstract class MapScene extends Scene {
 		this.mapPath = mapPath
 		this.multiplayerService = MultiplayerService.getInstance()
 	}
-
-    initialize(config) {
-        console.log('mapscene init', config)
-    }
 
 	preload() {
 		// Load player assets
@@ -360,61 +358,57 @@ export abstract class MapScene extends Scene {
 	private processPortals(map: Phaser.Tilemaps.Tilemap) {
 		try {
 			const portalsLayer = map.getObjectLayer('portals')
-			if (!portalsLayer) {
-				console.log('No portals layer found in the map')
-				return
+			if (!portalsLayer) return
+
+			// Get the fromScene from the scene data
+			const sceneData = this.scene.settings.data
+			const fromScene = sceneData?.fromScene
+
+			// Find a portal that matches the previous scene name
+			const matchingPortal = fromScene ? portalsLayer.objects.find(obj => {
+				const portalData = obj.properties?.find(prop => prop.name === 'target')
+				return portalData?.value === fromScene
+			}) : null
+
+			// If a matching portal is found, position the player at that portal's location
+			if (matchingPortal) {
+				// Use the player's sprite container to set position
+				this.player.getSprite().setPosition(matchingPortal.x, matchingPortal.y)
 			}
-
-			const portals = portalsLayer.objects
-			console.log('Found portals:', portals)
-
-			portals.forEach(portal => {
+            console.log('portalsLayer.objects', portalsLayer.objects)
+			portalsLayer.objects.forEach(obj => {
 				// Create a white semi-transparent rectangle for the portal
 				const portalRect = this.add.rectangle(
-					portal.x + portal.width/2, 
-					portal.y + portal.height/2, 
-					portal.width, 
-					portal.height,
+					obj.x + obj.width/2, 
+					obj.y + obj.height/2, 
+					obj.width, 
+					obj.height,
 					0xffffff,
-					0.1,
+					0.1
 				)
+				
+				// Store the portal rectangle for cleanup
+				this.portalRects.push(portalRect)
 				
 				// Create a zone for the portal
-				const portalZone = this.add.zone(
-					portal.x + portal.width/2, 
-					portal.y + portal.height/2, 
-					portal.width, 
-					portal.height
-				)
-				
-				// Add physics to the zone
+				const portalZone = this.add.zone(obj.x, obj.y, obj.width, obj.height)
 				this.physics.add.existing(portalZone, true)
 				
-				// Store portal data
+				// Store the portal zone for cleanup
+				this.portalZones.push(portalZone)
+
 				const portalData = {
-					name: portal.name || 'Unnamed Portal',
-					target: portal.properties?.find(p => p.name === 'target')?.value || '',
-					targetX: portal.properties?.find(p => p.name === 'targetX')?.value || 100,
-					targetY: portal.properties?.find(p => p.name === 'targetY')?.value || 100
+					target: obj.properties?.find(prop => prop.name === 'target')?.value,
+					targetX: obj.properties?.find(prop => prop.name === 'targetX')?.value || obj.x,
+					targetY: obj.properties?.find(prop => prop.name === 'targetY')?.value || obj.y
 				}
-				
-				// Add the portal data to the zone
-				portalZone.setData('portalData', portalData)
-				
-				// Add overlap detection between player and portal
-				this.physics.add.overlap(
-					this.player.getSprite(), 
-					portalZone, 
-					(player, zone) => {
-						const portalData = zone.getData('portalData')
-						console.log(`Player entered portal: ${portalData.name}`, portalData)
-						
-						// If the portal has a target scene, transition to it
-						if (portalData.target) {
-							this.transitionToScene(portalData.target, portalData.targetX, portalData.targetY)
-						}
+
+				this.physics.add.overlap(this.player.getSprite(), portalZone, () => {
+					// If the portal has a target scene, transition to it
+					if (portalData.target) {
+						this.transitionToScene(portalData.target, portalData.targetX, portalData.targetY)
 					}
-				)
+				})
 			})
 		} catch (error) {
 			console.error('Error processing portals:', error)
@@ -431,20 +425,81 @@ export abstract class MapScene extends Scene {
 		const playerX = this.player.getSprite().x
 		const playerY = this.player.getSprite().y
 		
+		// Clean up resources before transitioning
+		this.cleanupScene()
+		
 		// Create a fade out effect
 		this.cameras.main.fade(500, 0, 0, 0)
 		
 		// Wait for the fade to complete before transitioning
 		this.cameras.main.once('camerafadeoutcomplete', () => {
-			// Start the new scene with the player's position
+			// Start the new scene with the player's position and the current scene name
 			this.scene.start(targetScene, { 
 				x: targetX, 
 				y: targetY,
 				playerX: playerX,
 				playerY: playerY,
-				isTransition: true
+				isTransition: true,
+				fromScene: this.scene.key // Pass the current scene name
 			})
 		})
+	}
+
+	/**
+	 * Clean up resources before transitioning to a new scene
+	 * This helps prevent memory leaks and ensures a smooth transition
+	 */
+	protected cleanupScene(): void {
+		try {
+            debugger;
+			// Remove event listeners
+			EventBus.off(Event.Chat.Message, this.handleChatMessage, this)
+			EventBus.off(Event.Player.Joined, this.handlePlayerJoined, this)
+			EventBus.off(Event.Player.Moved, this.handlePlayerMoved, this)
+			EventBus.off(Event.Player.Left, this.handlePlayerLeft, this)
+			EventBus.off(Event.Player.Disconnected, this.handlePlayerDisconnected, this)
+			
+			// Clean up multiplayer players
+			// this.multiplayerPlayers.forEach(player => {
+			// 	player.destroy()
+			// })
+			// this.multiplayerPlayers.clear()
+			
+			// // Clean up the player
+			// if (this.player) {
+			// 	this.player.destroy()
+			// }
+			
+			// Clean up portal zones and rectangles
+			this.portalZones.forEach(zone => {
+				// Remove physics body
+				if (zone.body) {
+					this.physics.world.disableBody(zone.body)
+				}
+				zone.destroy()
+			})
+			this.portalZones = []
+			
+			this.portalRects.forEach(rect => {
+				rect.destroy()
+			})
+			this.portalRects = []
+			
+			// Clean up any other game objects that might be created in child classes
+			this.cleanupAdditionalResources()
+			
+			console.log(`Scene ${this.scene.key} cleaned up successfully`)
+		} catch (error) {
+			console.error(`Error cleaning up scene ${this.scene.key}:`, error)
+		}
+	}
+	
+	/**
+	 * Override this method in child classes to clean up additional resources
+	 */
+	protected cleanupAdditionalResources(): void {
+		// Default implementation does nothing
+		// Child classes should override this method to clean up their specific resources
 	}
 
 	// Abstract method to be implemented by child classes for loading additional assets
