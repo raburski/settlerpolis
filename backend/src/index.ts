@@ -4,6 +4,8 @@ import { Server, Socket } from 'socket.io'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import { Event } from './Event'
+import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData } from './DataTypes'
+import { Position } from './types'
 
 dotenv.config()
 
@@ -34,51 +36,29 @@ apiRouter.get('/health', (req: Request, res: Response) => {
 // Use the API router with /api prefix
 app.use('/api', apiRouter)
 
+interface PlayerData extends PlayerJoinData {
+	id: string
+}
+
 // Store connected players
 const players = new Map<string, PlayerData>()
-
-interface Position {
-	x: number
-	y: number
-}
-
-interface PlayerAppearance {
-	bodyColor: string
-	hairStyle: string
-	clothingStyle: string
-}
-
-interface PlayerData {
-	id: string
-	position: Position
-	scene: string
-	appearance: PlayerAppearance
-}
-
-interface ChatMessage {
-	playerId: string
-	playerName?: string
-	message: string
-	scene: string
-	timestamp: number
-}
 
 // Track last message timestamp for each player
 const lastMessageTimestamps = new Map<string, number>()
 
 /**
- * Broadcasts a message to all players in a specific scene
+ * Broadcasts a message from a player to all other players in a specific scene
  * @param scene The scene to broadcast to
  * @param event The event name to emit
  * @param data The data to send
  * @param sourcePlayerId The ID of the player sending the message
  */
-function broadcastToScene(scene: string, event: string, data: any, sourcePlayerId?: string) {
+function broadcastFromPlayerToScene<T extends PlayerSourcedData>(scene: string, event: string, data: T, sourcePlayerId: string) {
 	const scenePlayers = Array.from(players.values()).filter(p => p.scene === scene)
 	
 	scenePlayers.forEach(player => {
 		if (player.id !== sourcePlayerId) {
-			io.to(player.id).emit(event, data)
+			io.to(player.id).emit(event, { ...data, sourcePlayerId })
 		}
 	})
 }
@@ -96,13 +76,11 @@ io.on('connection', (socket: Socket) => {
 	lastMessageTimestamps.set(socket.id, Date.now())
 
 	// Handle player joining a scene
-	socket.on(Event.Player.Join, (data: { position: Position, scene: string, appearance: PlayerAppearance }) => {
+	socket.on(Event.Player.Join, (data: PlayerJoinData) => {
 		const playerId = socket.id
 		players.set(playerId, {
 			id: playerId,
-			position: data.position,
-			scene: data.scene,
-			appearance: data.appearance
+			...data,
 		})
 
 		// Update player connection health
@@ -111,35 +89,30 @@ io.on('connection', (socket: Socket) => {
 		// Send the complete list of players to the new player
 		socket.emit(Event.Players.List, Array.from(players.values()))
 
-		// Broadcast the new player to all other players in the scene
-		broadcastToScene(data.scene, Event.Player.Joined, players.get(playerId), playerId)
+		broadcastFromPlayerToScene<PlayerJoinData>(data.scene, Event.Player.Joined, data, playerId)
 	})
 
 	// Handle player movement
-	socket.on(Event.Player.Moved, (data: { position: Position, scene: string }) => {
+	socket.on(Event.Player.Moved, (data: PlayerMovedData) => {
 		const player = players.get(socket.id)
 		if (player) {
-			player.position = data.position
-			player.scene = data.scene
+			player.position = data
 			
 			// Update player connection health
 			playerConnectionHealthUpdate(socket.id)
 			
-			broadcastToScene(data.scene, Event.Player.Moved, player, socket.id)
+			broadcastFromPlayerToScene<PlayerMovedData>(player.scene, Event.Player.Moved, data, socket.id)
 		}
 	})
 
 	// Handle chat messages
-	socket.on(Event.Chat.Message, (message: string) => {
+	socket.on(Event.Chat.Message, (data: ChatMessageData) => {
 		const player = players.get(socket.id)
 		if (player) {
 			// Update player connection health
 			playerConnectionHealthUpdate(socket.id)
 			
-			broadcastToScene(player.scene, Event.Chat.Message, {
-				playerId: socket.id,
-				message
-			}, socket.id)
+			broadcastFromPlayerToScene<ChatMessageData>(player.scene, Event.Chat.Message, data, socket.id)
 		}
 	})
 
@@ -157,7 +130,7 @@ io.on('connection', (socket: Socket) => {
 		const player = players.get(socket.id)
 		if (player) {
 			// Broadcast player left to all players in the same scene
-			broadcastToScene(player.scene, Event.Player.Left, socket.id)
+			broadcastFromPlayerToScene<PlayerSourcedData>(player.scene, Event.Player.Left, {}, socket.id)
 		}
 		players.delete(socket.id)
 		lastMessageTimestamps.delete(socket.id)
@@ -177,7 +150,7 @@ setInterval(() => {
 			if (socket) {
 				if (player) {
 					// Broadcast player left to all players in the same scene
-					broadcastToScene(player.scene, Event.Player.Left, playerId)
+					broadcastFromPlayerToScene<PlayerSourcedData>(player.scene, Event.Player.Left, {}, playerId)
 				}
 				socket.disconnect()
 			}
