@@ -4,8 +4,13 @@ import { Server, Socket } from 'socket.io'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import { Event } from './Event'
-import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, PlayerTransitionData } from './DataTypes'
+import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, PlayerTransitionData, InventoryData, Item, Inventory } from './DataTypes'
 import { Position } from './types'
+
+const DEFAULT_INVENTORY_ITEM = {
+	id: 1,
+	name: 'Butelka mózgotrzepa'
+}
 
 dotenv.config()
 
@@ -43,6 +48,9 @@ interface PlayerData extends PlayerJoinData {
 // Store connected players
 const players = new Map<string, PlayerData>()
 
+// Store player inventories
+const inventories = new Map<string, Inventory>()
+
 // Track last message timestamp for each player
 const lastMessageTimestamps = new Map<string, number>()
 
@@ -74,6 +82,13 @@ io.on('connection', (socket: Socket) => {
 
 	// Initialize last message timestamp
 	lastMessageTimestamps.set(socket.id, Date.now())
+	
+	// Initialize empty inventory for new player
+	const newInventory: Inventory = { items: [DEFAULT_INVENTORY_ITEM] }
+	inventories.set(socket.id, newInventory)
+	
+	// Send initial inventory data
+	socket.emit(Event.Inventory.Loaded, { inventory: newInventory })
 
 	// Function to send current players list filtered by scene
 	function sendCurrentPlayersList(scene: string) {
@@ -165,6 +180,7 @@ io.on('connection', (socket: Socket) => {
 		console.log('Player disconnected:', socket.id)
 		const player = players.get(socket.id)
 		players.delete(socket.id)
+		inventories.delete(socket.id)
 		lastMessageTimestamps.delete(socket.id)
 		if (player) {
 			// Broadcast player left to all players in the same scene

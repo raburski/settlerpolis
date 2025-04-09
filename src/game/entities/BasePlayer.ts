@@ -1,5 +1,6 @@
 import { Scene, GameObjects, Physics } from 'phaser'
 import { PlayerAppearance } from '../services/MultiplayerService'
+import { Inventory } from '../../../backend/src/DataTypes'
 
 export enum Direction {
 	Down = 'down',
@@ -33,6 +34,7 @@ export class BasePlayer {
 	protected currentState: PlayerState = PlayerState.Idle
 	protected currentAnimationKey: string = ''
 	protected speed: number = 160 // Default speed in pixels per second
+	protected inventory: Inventory = { items: [] }
 
 	constructor(scene: Scene, x: number, y: number, appearance: PlayerAppearance) {
 		this.scene = scene
@@ -310,5 +312,13 @@ export class BasePlayer {
 			frameWidth,
 			frameHeight
 		})
+	}
+
+	public setInventory(inventory: Inventory): void {
+		this.inventory = inventory
+	}
+
+	public getInventory(): Inventory {
+		return this.inventory
 	}
 } 

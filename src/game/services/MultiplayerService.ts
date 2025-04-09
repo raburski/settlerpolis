@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client'
 import { EventBus } from '../EventBus'
 import { Event } from '../../../backend/src/Event'
-import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData } from '../../../backend/src/DataTypes'
+import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, InventoryData } from '../../../backend/src/DataTypes'
 
 export enum Gender {
 	Male = 'Male',
@@ -101,6 +101,11 @@ export class MultiplayerService {
 		// Chat events
 		this.socket.on(Event.Chat.Message, (message: ChatMessageData) => {
 			EventBus.emit(Event.Chat.Message, message)
+		})
+
+		// Handle inventory loaded event
+		this.socket.on(Event.Inventory.Loaded, (data: InventoryData) => {
+			EventBus.emit(Event.Inventory.Loaded, data)
 		})
 	}
 

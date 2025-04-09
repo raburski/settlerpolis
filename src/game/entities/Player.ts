@@ -1,7 +1,9 @@
-import { Scene, GameObjects, Physics } from 'phaser'
+import { Scene, GameObjects, Physics, Input } from 'phaser'
 import { EventBus } from '../EventBus'
 import { Gender, PlayerAppearance } from '../services/MultiplayerService'
 import { BasePlayer, Direction, PlayerState } from './BasePlayer'
+import { Event } from '../../../backend/src/Event'
+import { InventoryData } from '../../../backend/src/DataTypes'
 
 export const DEFAULT_APPEARANCE: PlayerAppearance = {
 	gender: Gender.Male
@@ -15,6 +17,7 @@ export class Player extends BasePlayer {
 		S: Phaser.Input.Keyboard.Key
 		D: Phaser.Input.Keyboard.Key
 	}
+	private inventoryKey: Phaser.Input.Keyboard.Key
 
 	constructor(scene: Scene, x: number, y: number) {
 		super(scene, x, y, DEFAULT_APPEARANCE)
@@ -33,11 +36,21 @@ export class Player extends BasePlayer {
 			D: Phaser.Input.Keyboard.Key
 		}
 
+		// Add inventory key
+		this.inventoryKey = scene.input.keyboard.addKey(Input.Keyboard.KeyCodes.I)
+
 		// Listen for chat input visibility changes
 		EventBus.on('chat:inputVisible', this.handleChatInputVisible, this)
 		
 		// Listen for send message events
 		EventBus.on('player:sendMessage', this.handleSendMessage, this)
+
+		// Listen for inventory events
+		EventBus.on(Event.Inventory.Loaded, this.handleInventoryLoaded, this)
+	}
+
+	private handleInventoryLoaded = (data: InventoryData) => {
+		this.setInventory(data.inventory)
 	}
 
 	private handleChatInputVisible(isVisible: boolean) {
@@ -67,6 +80,11 @@ export class Player extends BasePlayer {
 		}
 		
 		body.setVelocity(0)
+
+		// Check for inventory key press
+		if (Phaser.Input.Keyboard.JustDown(this.inventoryKey)) {
+			EventBus.emit('inventory:toggle')
+		}
 
 		// Check for left movement (arrow keys or A)
 		if (this.cursors.left.isDown || this.wasdKeys.A.isDown) {
@@ -115,6 +133,7 @@ export class Player extends BasePlayer {
 		// Remove event listeners
 		EventBus.off('chat:inputVisible', this.handleChatInputVisible, this)
 		EventBus.off('player:sendMessage', this.handleSendMessage, this)
+		EventBus.off(Event.Inventory.Loaded, this.handleInventoryLoaded, this)
 		
 		// Call parent destroy method
 		super.destroy()

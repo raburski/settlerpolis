@@ -15,5 +15,8 @@ export const Event = {
 	},
 	System: {
 		Ping: 'system:ping'
+	},
+	Inventory: {
+		Loaded: 'inventory:loaded'
 	}
 } as const 

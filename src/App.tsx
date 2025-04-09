@@ -1,13 +1,16 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { IRefPhaserGame, PhaserGame } from './game/PhaserGame';
 import { Chat } from './game/components/Chat';
 import { DisconnectModal } from './game/components/DisconnectModal';
+import { Inventory } from './game/components/Inventory';
+import { EventBus } from './game/EventBus';
 
 function App()
 {
     //  References to the PhaserGame component (game and scene are exposed)
     const phaserRef = useRef<IRefPhaserGame | null>(null);
-    const [currentScene, setCurrentScene] = useState<string | null>(null);
+    const [currentScene, setCurrentScene] = useState<Phaser.Scene | null>(null);
+    const [isInventoryOpen, setIsInventoryOpen] = useState(false);
 
     const handleSceneChange = (scene: any) => {
         setCurrentScene(scene.scene.key);
@@ -31,11 +34,24 @@ function App()
         }
     }
 
+    useEffect(() => {
+        function handleInventoryToggle() {
+            setIsInventoryOpen(prev => !prev);
+        }
+
+        EventBus.on('inventory:toggle', handleInventoryToggle);
+
+        return () => {
+            EventBus.removeListener('inventory:toggle');
+        };
+    }, []);
+
     return (
         <div id="app">
             <PhaserGame ref={phaserRef} currentActiveScene={handleSceneChange} />
             {currentScene && <Chat scene={currentScene} />}
             <DisconnectModal />
+            <Inventory isOpen={isInventoryOpen} />
             {/* <div>
                 <div>
                     <button className="button" onClick={addSprite}>Add New Sprite</button>
