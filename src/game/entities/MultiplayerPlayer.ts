@@ -1,14 +1,22 @@
 import { Scene } from 'phaser'
-import { PlayerData, Gender } from '../services/MultiplayerService'
-import { BasePlayer } from './BasePlayer'
+import { PlayerData, Gender, PlayerAppearance } from '../services/MultiplayerService'
+import { BasePlayer, Direction, PlayerState } from './BasePlayer'
 
 export class MultiplayerPlayer extends BasePlayer {
 	private playerId: string
+	private lastUpdateTime: number = 0
+	private targetX: number = 0
+	private targetY: number = 0
+	private readonly EXTRAPOLATION_TIME = 300 // 0.3 seconds in milliseconds
+	private readonly MIN_POSITION_THRESHOLD = 0.1 // Minimum distance to consider positions different
 	private messageText: Phaser.GameObjects.Text | null = null
 
 	constructor(scene: Scene, x: number, y: number, playerId: string, appearance: PlayerAppearance) {
 		super(scene, x, y, appearance)
 		this.playerId = playerId
+		this.targetX = x
+		this.targetY = y
+		this.lastUpdateTime = Date.now()
 	}
 
 	updateAppearance(newAppearance: PlayerAppearance): void {
@@ -16,8 +24,89 @@ export class MultiplayerPlayer extends BasePlayer {
 		// Logic to update the player's appearance
 	}
 
-	updatePosition(x: number, y: number): void {
-		this.container.setPosition(x, y)
+	updatePositionFromServer(data: { id: string, x: number, y: number }): void {
+		const now = Date.now()
+		const elapsed = now - this.lastUpdateTime
+
+		// Calculate movement direction based on position change
+		if (elapsed > 0) {
+			const dx = data.x - this.container.x
+			const dy = data.y - this.container.y
+			
+			// Only update direction if the movement is significant
+			if (Math.abs(dx) > this.MIN_POSITION_THRESHOLD || Math.abs(dy) > this.MIN_POSITION_THRESHOLD) {
+				// Determine primary direction of movement
+				if (Math.abs(dx) > Math.abs(dy)) {
+					// Horizontal movement is dominant
+					if (dx > 0) {
+						this.updateDirection(Direction.Right)
+					} else {
+						this.updateDirection(Direction.Left)
+					}
+				} else {
+					// Vertical movement is dominant
+					if (dy > 0) {
+						this.updateDirection(Direction.Down)
+					} else {
+						this.updateDirection(Direction.Up)
+					}
+				}
+			}
+		}
+		
+		// Set target position to the server position
+		this.targetX = data.x
+		this.targetY = data.y
+		this.lastUpdateTime = now
+	}
+
+	updatePosition(): void {
+		const now = Date.now()
+		const elapsed = now - this.lastUpdateTime
+		
+		// Check if we're already at the target position
+		const isAtTarget = Math.abs(this.container.x - this.targetX) < this.MIN_POSITION_THRESHOLD && 
+						  Math.abs(this.container.y - this.targetY) < this.MIN_POSITION_THRESHOLD
+		
+		// If we've exceeded the extrapolation time or we're at the target position, just move to the target position
+		if (elapsed > this.EXTRAPOLATION_TIME || isAtTarget) {
+			// If we're already at the target position, no need to update
+			if (isAtTarget) {
+				this.updateState(PlayerState.Idle)
+				return
+			}
+			
+			// Move to target position
+			super.updatePosition(this.targetX, this.targetY)
+			this.updateState(PlayerState.Idle)
+			return
+		}
+		
+		// Calculate extrapolated position based on direction and speed
+		let predictedX = this.targetX
+		let predictedY = this.targetY
+		
+		// Apply movement based on current direction
+		switch (this.direction) {
+			case Direction.Right:
+				predictedX += (this.speed * elapsed / 1000)
+				break
+			case Direction.Left:
+				predictedX -= (this.speed * elapsed / 1000)
+				break
+			case Direction.Down:
+				predictedY += (this.speed * elapsed / 1000)
+				break
+			case Direction.Up:
+				predictedY -= (this.speed * elapsed / 1000)
+				break
+		}
+		
+		// Apply the predicted position
+		super.updatePosition(predictedX, predictedY)
+		
+		// Update state based on movement
+		this.updateState(PlayerState.Walking)
 	}
 
 	getPlayerId(): string {
@@ -45,28 +134,11 @@ export class MultiplayerPlayer extends BasePlayer {
 		})
 	}
 
-	update(data: { id: string, x: number, y: number }): void {
-		// Update direction based on movement
-		if (data.x > this.container.x) {
-			this.updateDirection('right')
-			this.updateMovement(true)
-		} else if (data.x < this.container.x) {
-			this.updateDirection('left')
-			this.updateMovement(true)
-		} else if (data.y > this.container.y) {
-			this.updateDirection('down')
-			this.updateMovement(true)
-		} else if (data.y < this.container.y) {
-			this.updateDirection('up')
-			this.updateMovement(true)
-		} else {
-			this.updateMovement(false)
-		}
-
-        this.updatePosition(data.x, data.y)
-	}
-
 	destroy(): void {
 		this.container.destroy()
+	}
+
+	update(): void {
+		this.updatePosition()
 	}
 } 

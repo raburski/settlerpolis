@@ -22,6 +22,9 @@ export abstract class MapScene extends Scene {
 	protected mapPath: string
 	protected multiplayerPlayers: Map<string, MultiplayerPlayer> = new Map()
 	protected multiplayerService: MultiplayerService
+	protected lastPositionUpdate: { x: number, y: number } | null = null
+	protected lastPositionUpdateTime: number = 0
+	protected readonly POSITION_UPDATE_THROTTLE = 100 // 100ms
 
 	constructor(key: string, mapKey: string, mapPath: string) {
 		super(key)
@@ -252,7 +255,13 @@ export abstract class MapScene extends Scene {
 
 	private handlePlayerJoined(playerData: PlayerData) {
 		if (playerData.scene === this.scene.key) {
-			const multiplayerPlayer = new MultiplayerPlayer(this, playerData)
+			const multiplayerPlayer = new MultiplayerPlayer(
+				this,
+				playerData.x,
+				playerData.y,
+				playerData.id,
+				playerData.appearance
+			)
 			this.multiplayerPlayers.set(playerData.id, multiplayerPlayer)
 		}
 	}
@@ -261,7 +270,7 @@ export abstract class MapScene extends Scene {
 		if (playerData.scene === this.scene.key) {
 			const multiplayerPlayer = this.multiplayerPlayers.get(playerData.id)
 			if (multiplayerPlayer) {
-				multiplayerPlayer.update(playerData)
+				multiplayerPlayer.updatePositionFromServer(playerData)
 			}
 		}
 	}
@@ -295,15 +304,35 @@ export abstract class MapScene extends Scene {
 
 	update() {
 		if (this.player) {
+			// Update player
 			this.player.update()
 
-			// Update multiplayer position
+			// Update multiplayer players
+			this.multiplayerPlayers.forEach(player => {
+				player.update()
+			})
+
+			// Update player position in multiplayer service
 			const playerSprite = this.player.getSprite()
-			this.multiplayerService.updatePosition(
-				playerSprite.x,
-				playerSprite.y,
-				this.scene.key
-			)
+			const currentPosition = { x: playerSprite.x, y: playerSprite.y }
+			const now = Date.now()
+
+			// Check if the player has moved and enough time has passed since the last update
+			const hasMoved = !this.lastPositionUpdate || 
+				(currentPosition.x !== this.lastPositionUpdate.x || 
+				currentPosition.y !== this.lastPositionUpdate.y)
+			
+			const timeSinceLastUpdate = now - this.lastPositionUpdateTime
+
+			if (hasMoved && timeSinceLastUpdate >= this.POSITION_UPDATE_THROTTLE) {
+				this.multiplayerService.updatePosition(
+					currentPosition.x,
+					currentPosition.y,
+					this.scene.key
+				)
+				this.lastPositionUpdate = currentPosition
+				this.lastPositionUpdateTime = now
+			}
 		}
 	}
 

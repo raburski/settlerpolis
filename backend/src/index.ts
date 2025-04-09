@@ -63,39 +63,27 @@ const lastMessageTimestamps = new Map<string, number>()
 io.on('connection', (socket) => {
 	console.log('Player connected:', socket.id)
 
-	// Add player to the list
-	players.set(socket.id, {
-		id: socket.id,
-		x: 0,
-		y: 0,
-		scene: '',
-		appearance: {
-			bodyColor: '',
-			hairStyle: '',
-			clothingStyle: ''
-		}
-	})
-
 	// Initialize last message timestamp
 	lastMessageTimestamps.set(socket.id, Date.now())
 
-	// Send list of players to the new player
-	socket.emit('players:list', Array.from(players.values()))
-
-	// Broadcast new player to all other players
-	socket.broadcast.emit('player:joined', players.get(socket.id))
-
 	// Handle player joining a scene
 	socket.on('player:join', (data: { x: number, y: number, scene: string, appearance: PlayerData['appearance'] }) => {
-		const player = players.get(socket.id)
-		if (player) {
-			player.x = data.x
-			player.y = data.y
-			player.scene = data.scene
-			player.appearance = data.appearance
-			lastMessageTimestamps.set(socket.id, Date.now())
-			socket.broadcast.emit('player:joined', player)
-		}
+		// Add or update player in the list
+		players.set(socket.id, {
+			id: socket.id,
+			x: data.x,
+			y: data.y,
+			scene: data.scene,
+			appearance: data.appearance
+		})
+		
+		lastMessageTimestamps.set(socket.id, Date.now())
+		
+		// Send list of players to the new player
+		socket.emit('players:list', Array.from(players.values()))
+		
+		// Broadcast new player to all other players
+		socket.broadcast.emit('player:joined', players.get(socket.id))
 	})
 
 	// Handle player movement

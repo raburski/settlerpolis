@@ -1,7 +1,7 @@
 import { Scene, GameObjects, Physics } from 'phaser'
 import { EventBus } from '../EventBus'
 import { Gender, PlayerAppearance } from '../services/MultiplayerService'
-import { BasePlayer } from './BasePlayer'
+import { BasePlayer, Direction, PlayerState } from './BasePlayer'
 
 export const DEFAULT_APPEARANCE: PlayerAppearance = {
 	gender: Gender.Male
@@ -15,7 +15,6 @@ export class Player extends BasePlayer {
 		S: Phaser.Input.Keyboard.Key
 		D: Phaser.Input.Keyboard.Key
 	}
-	private speed: number = 160
 
 	constructor(scene: Scene, x: number, y: number) {
 		super(scene, x, y, DEFAULT_APPEARANCE)
@@ -68,35 +67,35 @@ export class Player extends BasePlayer {
 		// Check for left movement (arrow keys or A)
 		if (this.cursors.left.isDown || this.wasdKeys.A.isDown) {
 			body.setVelocityX(-this.speed)
-			this.updateDirection('left')
-			this.updateMovement(true)
+			this.updateDirection(Direction.Left)
+			this.updateState(PlayerState.Walking)
 		} 
 		// Check for right movement (arrow keys or D)
 		else if (this.cursors.right.isDown || this.wasdKeys.D.isDown) {
 			body.setVelocityX(this.speed)
-			this.updateDirection('right')
-			this.updateMovement(true)
+			this.updateDirection(Direction.Right)
+			this.updateState(PlayerState.Walking)
 		}
 
 		// Check for up movement (arrow keys or W)
 		if (this.cursors.up.isDown || this.wasdKeys.W.isDown) {
 			body.setVelocityY(-this.speed)
-			this.updateDirection('up')
-			this.updateMovement(true)
+			this.updateDirection(Direction.Up)
+			this.updateState(PlayerState.Walking)
 		} 
 		// Check for down movement (arrow keys or S)
 		else if (this.cursors.down.isDown || this.wasdKeys.S.isDown) {
 			body.setVelocityY(this.speed)
-			this.updateDirection('down')
-			this.updateMovement(true)
+			this.updateDirection(Direction.Down)
+			this.updateState(PlayerState.Walking)
 		}
 
-		// If no movement keys are pressed, set isMoving to false
+		// If no movement keys are pressed, set state to idle
 		if (!this.cursors.left.isDown && !this.cursors.right.isDown && 
 			!this.cursors.up.isDown && !this.cursors.down.isDown && 
 			!this.wasdKeys.A.isDown && !this.wasdKeys.D.isDown && 
 			!this.wasdKeys.W.isDown && !this.wasdKeys.S.isDown) {
-			this.updateMovement(false)
+			this.updateState(PlayerState.Idle)
 		}
 	}
 

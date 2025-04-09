@@ -1,6 +1,23 @@
 import { Scene, GameObjects, Physics } from 'phaser'
 import { PlayerAppearance } from '../services/MultiplayerService'
 
+export enum Direction {
+	Down = 'down',
+	Up = 'up',
+	Left = 'left',
+	Right = 'right'
+}
+
+export enum HorizontalDirection {
+	Left = 'left',
+	Right = 'right'
+}
+
+export enum PlayerState {
+	Idle = 'idle',
+	Walking = 'walking'
+}
+
 export class BasePlayer {
 	protected scene: Scene
 	protected container: GameObjects.Container
@@ -10,10 +27,11 @@ export class BasePlayer {
 	protected hands: GameObjects.Sprite
 	protected messageText: GameObjects.Text | null = null
 	protected appearance: PlayerAppearance
-	protected direction: 'down' | 'up' | 'left' | 'right' = 'down'
-	protected horizontalDirection: 'left' | 'right' = 'right'
-	protected isMoving: boolean = false
+	protected direction: Direction = Direction.Down
+	protected horizontalDirection: HorizontalDirection = HorizontalDirection.Right
+	protected currentState: PlayerState = PlayerState.Idle
 	protected currentAnimationKey: string = ''
+	protected speed: number = 160 // Default speed in pixels per second
 
 	constructor(scene: Scene, x: number, y: number, appearance: PlayerAppearance) {
 		this.scene = scene
@@ -132,18 +150,16 @@ export class BasePlayer {
 		createSpriteAnimations('player-hands', this.hands)
 	}
 
-	protected playAnimation(state: 'idle' | 'walk'): void {
-		const animationKey = `${state}-${this.direction}`
+	protected playAnimation(state: PlayerState): void {
+		const animationKey = `${state === PlayerState.Walking ? 'walk' : 'idle'}-${this.direction}`
 		
 		// If the animation key hasn't changed, don't restart the animation
 		if (this.currentAnimationKey === animationKey) {
 			return
 		}
-
-        console.log('PLAY ANIM', animationKey)
 		
 		// Set flipX based on horizontal direction
-		const flipX = this.horizontalDirection === 'right'
+		const flipX = this.horizontalDirection === HorizontalDirection.Right
 		
 		// Play animations on all body parts
 		this.body.play(`player-body-${animationKey}`, true)
@@ -194,19 +210,20 @@ export class BasePlayer {
 	}
 
 	public updatePosition(x: number, y: number): void {
-		this.container.setPosition(x, y)
+		this.container.x = x
+		this.container.y = y
 	}
 
-	public updateDirection(direction: 'down' | 'up' | 'left' | 'right'): void {
+	public updateDirection(direction: Direction): void {
 		this.direction = direction
-		if (direction === 'left' || direction === 'right') {
-			this.horizontalDirection = direction
+		if (direction === Direction.Left || direction === Direction.Right) {
+			this.horizontalDirection = direction === Direction.Right ? HorizontalDirection.Right : HorizontalDirection.Left
 		}
 	}
 
-	public updateMovement(isMoving: boolean): void {
-		this.isMoving = isMoving
-		this.playAnimation(this.isMoving ? 'walk' : 'idle')
+	public updateState(state: PlayerState): void {
+		this.currentState = state
+		this.playAnimation(state)
 	}
 
 	public static preload(scene: Scene): void {
