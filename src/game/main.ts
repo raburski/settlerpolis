@@ -1,4 +1,5 @@
 import { FarmScene } from './scenes/FarmScene'
+import { FountainScene } from './scenes/FountainScene'
 import { AUTO, Game, Types, Scale, Physics } from 'phaser'
 
 //  Find out more information about the Game Config at:
@@ -23,7 +24,8 @@ const config: Types.Core.GameConfig = {
 	pixelArt: true,
 	roundPixels: true,
 	scene: [
-		FarmScene
+		FarmScene,
+		FountainScene
 	]
 }
 

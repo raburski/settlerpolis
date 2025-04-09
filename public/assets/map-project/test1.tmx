@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="60" height="40" tilewidth="32" tileheight="32" infinite="0" nextlayerid="6" nextobjectid="2">
+<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="60" height="40" tilewidth="32" tileheight="32" infinite="0" nextlayerid="7" nextobjectid="4">
  <editorsettings>
   <export target="../maps/test1.json" format="json"/>
  </editorsettings>
@@ -116,6 +116,13 @@
   <object id="1" gid="833" x="735.946" y="1054.86" width="320" height="480">
    <properties>
     <property name="text" value="** buzzzzzz **"/>
+   </properties>
+  </object>
+ </objectgroup>
+ <objectgroup id="6" name="portals">
+  <object id="2" name="portal" x="0.649556" y="320.478" width="31.3671" height="62.6562">
+   <properties>
+    <property name="target" value="FountainScene"/>
    </properties>
   </object>
  </objectgroup>

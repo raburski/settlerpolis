@@ -27,13 +27,19 @@ export abstract class MapScene extends Scene {
 	protected lastPositionUpdate: { x: number, y: number } | null = null
 	protected lastPositionUpdateTime: number = 0
 	protected readonly POSITION_UPDATE_THROTTLE = 100 // 100ms
+	protected transitioning: boolean = false
 
 	constructor(key: string, mapKey: string, mapPath: string) {
 		super(key)
+        
 		this.mapKey = mapKey
 		this.mapPath = mapPath
 		this.multiplayerService = MultiplayerService.getInstance()
 	}
+
+    initialize(config) {
+        console.log('mapscene init', config)
+    }
 
 	preload() {
 		// Load player assets
@@ -178,33 +184,45 @@ export abstract class MapScene extends Scene {
 				}
 			})
 		}
-		
-		// Create static objects from the object layer
-		const staticObjects = map.getObjectLayer('static-objects').objects
-		const staticObjectSprites: Phaser.GameObjects.Image[] = []
-		
-		staticObjects.forEach(obj => {
-            console.log('staticObjects', obj)
-			const tilesetInfo = this.tilesetObjects.get(obj.gid)
-            console.log('tilesetInfo', tilesetInfo)
-			if (tilesetInfo) {
-				const image = this.add.image(obj.x + obj.width/2, obj.y - obj.height/2, tilesetInfo.name)
-				image.setDisplaySize(obj.width, obj.height)
-				
-				// Add physics body to the static object
-				this.physics.add.existing(image, true) // true makes it static
-				
-				// Store the sprite for later collision setup
-				staticObjectSprites.push(image)
-			}
-		})
 
 		// Set world bounds to match the map size
 		this.physics.world.bounds.width = map.widthInPixels
 		this.physics.world.bounds.height = map.heightInPixels
 
-		// Create player
-		this.player = new Player(this, 100, 300)
+		// Get scene data passed during transition
+		const sceneData = this.scene.settings.data
+		const playerX = sceneData?.playerX || 100
+		const playerY = sceneData?.playerY || 300
+		
+		// Create player at the specified position
+		this.player = new Player(this, playerX, playerY)
+
+        // Create static objects from the object layer
+		const staticObjects = map.getObjectLayer('static-objects')?.objects
+        if (staticObjects) {
+            const staticObjectSprites: Phaser.GameObjects.Image[] = []
+            
+            staticObjects.forEach(obj => {
+                console.log('staticObjects', obj)
+                const tilesetInfo = this.tilesetObjects.get(obj.gid)
+                console.log('tilesetInfo', tilesetInfo)
+                if (tilesetInfo) {
+                    const image = this.add.image(obj.x + obj.width/2, obj.y - obj.height/2, tilesetInfo.name)
+                    image.setDisplaySize(obj.width, obj.height)
+                    
+                    // Add physics body to the static object
+                    this.physics.add.existing(image, true) // true makes it static
+                    
+                    // Store the sprite for later collision setup
+                    staticObjectSprites.push(image)
+                }
+            })
+
+            // Set up collision between player and static objects
+            staticObjectSprites.forEach(sprite => {
+                this.physics.add.collider(this.player.getSprite(), sprite)
+            })
+        }
 		
 		// Set up collision between player and layers that have collision enabled
 		layers.forEach((layer, layerName) => {
@@ -216,15 +234,15 @@ export abstract class MapScene extends Scene {
 				this.player.setCollisionWith(layer)
 			}
 		})
-		
-		// Set up collision between player and static objects
-		staticObjectSprites.forEach(sprite => {
-			this.physics.add.collider(this.player.getSprite(), sprite)
-		})
 
 		// Set up camera to follow player
 		this.cameras.main.startFollow(this.player.getSprite())
 		this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels)
+		
+		// If this is a transition, fade in the camera
+		if (sceneData?.isTransition) {
+			this.cameras.main.fadeIn(500)
+		}
 
 		// Set up multiplayer
 		this.setupMultiplayer()
@@ -375,7 +393,7 @@ export abstract class MapScene extends Scene {
 				// Store portal data
 				const portalData = {
 					name: portal.name || 'Unnamed Portal',
-					targetScene: portal.properties?.find(p => p.name === 'targetScene')?.value || '',
+					target: portal.properties?.find(p => p.name === 'target')?.value || '',
 					targetX: portal.properties?.find(p => p.name === 'targetX')?.value || 100,
 					targetY: portal.properties?.find(p => p.name === 'targetY')?.value || 100
 				}
@@ -389,15 +407,44 @@ export abstract class MapScene extends Scene {
 					portalZone, 
 					(player, zone) => {
 						const portalData = zone.getData('portalData')
-						console.log(`Player entered portal: ${portalData.name}`)
-						// Here you can implement the actual scene transition
-						// this.scene.start(portalData.targetScene, { x: portalData.targetX, y: portalData.targetY })
+						console.log(`Player entered portal: ${portalData.name}`, portalData)
+						
+						// If the portal has a target scene, transition to it
+						if (portalData.target) {
+							this.transitionToScene(portalData.target, portalData.targetX, portalData.targetY)
+						}
 					}
 				)
 			})
 		} catch (error) {
 			console.error('Error processing portals:', error)
 		}
+	}
+
+	// Transition to a new scene with a fade effect
+	protected transitionToScene(targetScene: string, targetX: number = 0, targetY: number = 0) {
+		// Prevent multiple transitions
+		if (this.transitioning) return
+		this.transitioning = true
+		
+		// Store the player's current position for the new scene
+		const playerX = this.player.getSprite().x
+		const playerY = this.player.getSprite().y
+		
+		// Create a fade out effect
+		this.cameras.main.fade(500, 0, 0, 0)
+		
+		// Wait for the fade to complete before transitioning
+		this.cameras.main.once('camerafadeoutcomplete', () => {
+			// Start the new scene with the player's position
+			this.scene.start(targetScene, { 
+				x: targetX, 
+				y: targetY,
+				playerX: playerX,
+				playerY: playerY,
+				isTransition: true
+			})
+		})
 	}
 
 	// Abstract method to be implemented by child classes for loading additional assets
