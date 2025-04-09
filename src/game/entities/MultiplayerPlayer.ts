@@ -28,7 +28,6 @@ export class MultiplayerPlayer extends BasePlayer {
 	updatePositionFromServer(data: PlayerMovedData): void {
 		const now = Date.now()
 		const elapsed = now - this.lastUpdateTime
-        console.log('updatePositionFromServer')
 
 		// Calculate movement direction based on position change
 		if (elapsed > 0) {
@@ -69,46 +68,11 @@ export class MultiplayerPlayer extends BasePlayer {
 		// Check if we're already at the target position
 		const isAtTarget = Math.abs(this.container.x - this.targetX) < this.MIN_POSITION_THRESHOLD && 
 						  Math.abs(this.container.y - this.targetY) < this.MIN_POSITION_THRESHOLD
-		
-		// If we've exceeded the extrapolation time or we're at the target position, just move to the target position
-		if (elapsed > this.EXTRAPOLATION_TIME || isAtTarget) {
-			// If we're already at the target position, no need to update
-			if (isAtTarget) {
-				this.updateState(PlayerState.Idle)
-				return
-			}
-			
-			// Move to target position
+
+		if (!isAtTarget) {
 			super.updatePosition(this.targetX, this.targetY)
-			this.updateState(PlayerState.Idle)
-			return
+			// 	this.updateState(PlayerState.Idle)
 		}
-		
-		// Calculate extrapolated position based on direction and speed
-		let predictedX = this.targetX
-		let predictedY = this.targetY
-		
-		// Apply movement based on current direction
-		switch (this.direction) {
-			case Direction.Right:
-				predictedX += (this.speed * elapsed / 1000)
-				break
-			case Direction.Left:
-				predictedX -= (this.speed * elapsed / 1000)
-				break
-			case Direction.Down:
-				predictedY += (this.speed * elapsed / 1000)
-				break
-			case Direction.Up:
-				predictedY -= (this.speed * elapsed / 1000)
-				break
-		}
-		
-		// Apply the predicted position
-		super.updatePosition(predictedX, predictedY)
-		
-		// Update state based on movement
-		this.updateState(PlayerState.Walking)
 	}
 
 	getPlayerId(): string {

@@ -91,9 +91,9 @@ export class MultiplayerService {
 			EventBus.emit(Event.Player.Moved, data)
 		})
 
-		this.socket.on(Event.Player.Left, (playerId: string) => {
-			this.players.delete(playerId)
-			EventBus.emit(Event.Player.Left, playerId)
+		this.socket.on(Event.Player.Left, (data: PlayerSourcedData) => {
+			this.players.delete(data.sourcePlayerId)
+			EventBus.emit(Event.Player.Left, data)
 		})
 
 		// Chat events

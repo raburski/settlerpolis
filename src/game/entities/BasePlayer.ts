@@ -215,9 +215,12 @@ export class BasePlayer {
 	}
 
 	public updateDirection(direction: Direction): void {
+        if (this.direction === direction) return
+
 		this.direction = direction
 		if (direction === Direction.Left || direction === Direction.Right) {
 			this.horizontalDirection = direction === Direction.Right ? HorizontalDirection.Right : HorizontalDirection.Left
+            this.updateState(this.currentState) // to make sure animation is updated
 		}
 	}
 
