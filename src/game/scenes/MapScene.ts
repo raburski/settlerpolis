@@ -245,6 +245,7 @@ export abstract class MapScene extends Scene {
 		EventBus.on('player:joined', this.handlePlayerJoined, this)
 		EventBus.on('player:moved', this.handlePlayerMoved, this)
 		EventBus.on('player:left', this.handlePlayerLeft, this)
+		EventBus.on('player:disconnected', this.handlePlayerDisconnected, this)
 	}
 
 	private handlePlayerJoined(playerData: PlayerData) {
@@ -269,6 +270,12 @@ export abstract class MapScene extends Scene {
 			multiplayerPlayer.destroy()
 			this.multiplayerPlayers.delete(playerId)
 		}
+	}
+
+	private handlePlayerDisconnected() {
+		// Clean up resources or notify the user about the disconnection
+		console.log('Player disconnected from the server')
+		// You can add UI notifications or other cleanup logic here
 	}
 
 	private handleChatMessage(message: ChatMessage) {

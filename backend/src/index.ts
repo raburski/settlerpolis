@@ -56,6 +56,9 @@ interface ChatMessage {
 	timestamp: number
 }
 
+// Track last message timestamp for each player
+const lastMessageTimestamps = new Map<string, number>()
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
 	console.log('Player connected:', socket.id)
@@ -73,6 +76,9 @@ io.on('connection', (socket) => {
 		}
 	})
 
+	// Initialize last message timestamp
+	lastMessageTimestamps.set(socket.id, Date.now())
+
 	// Send list of players to the new player
 	socket.emit('players:list', Array.from(players.values()))
 
@@ -87,6 +93,7 @@ io.on('connection', (socket) => {
 			player.y = data.y
 			player.scene = data.scene
 			player.appearance = data.appearance
+			lastMessageTimestamps.set(socket.id, Date.now())
 			socket.broadcast.emit('player:joined', player)
 		}
 	})
@@ -98,12 +105,14 @@ io.on('connection', (socket) => {
 			player.x = data.x
 			player.y = data.y
 			player.scene = data.scene
+			lastMessageTimestamps.set(socket.id, Date.now())
 			socket.broadcast.emit('player:moved', player)
 		}
 	})
 
 	// Handle chat messages
 	socket.on('chat:message', (message: ChatMessage) => {
+		lastMessageTimestamps.set(socket.id, Date.now())
 		// Broadcast the message to all players in the same scene
 		socket.broadcast.emit('chat:message', message)
 	})
@@ -112,9 +121,28 @@ io.on('connection', (socket) => {
 	socket.on('disconnect', () => {
 		console.log('Player disconnected:', socket.id)
 		players.delete(socket.id)
+		lastMessageTimestamps.delete(socket.id)
 		socket.broadcast.emit('player:left', socket.id)
 	})
 })
+
+const TIMEOUT_CHECK_INTERVAL = 5000 // 5 seconds
+const MAX_INACTIVE_TIME = 6000 // 6 seconds
+
+// Periodic check for inactive players
+setInterval(() => {
+	const now = Date.now()
+	for (const [playerId, lastMessageTime] of lastMessageTimestamps.entries()) {
+		if (now - lastMessageTime > MAX_INACTIVE_TIME) {
+			const socket = io.sockets.sockets.get(playerId)
+			if (socket) {
+				socket.disconnect()
+				io.emit('player:left', playerId)
+			}
+			lastMessageTimestamps.delete(playerId)
+		}
+	}
+}, TIMEOUT_CHECK_INTERVAL)
 
 const PORT = process.env.PORT || 3000
 

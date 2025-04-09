@@ -61,6 +61,12 @@ export class MultiplayerService {
 			console.log('Connected to multiplayer server')
 		})
 
+		this.socket.on('disconnect', () => {
+			console.log('Disconnected from multiplayer server')
+			// Clean up resources or notify the application about the disconnection
+			EventBus.emit('player:disconnected')
+		})
+
 		this.socket.on('players:list', (players: PlayerData[]) => {
 			players.forEach(player => {
 				if (player.id !== this.socket?.id) {
