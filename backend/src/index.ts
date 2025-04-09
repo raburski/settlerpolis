@@ -122,10 +122,7 @@ io.on('connection', (socket: Socket) => {
 			broadcastFromPlayerToScene<PlayerJoinData>(
 				data.scene,
 				Event.Player.Joined,
-				{
-					scene: data.scene,
-					position: data.position
-				},
+				data,
 				playerId
 			)
 		}

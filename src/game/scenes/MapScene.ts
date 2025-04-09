@@ -355,8 +355,7 @@ export abstract class MapScene extends Scene {
 				// Always send the current scene key with position updates
 				this.multiplayerService.updatePosition(
 					currentPosition.x,
-					currentPosition.y,
-					this.scene.key
+					currentPosition.y
 				)
 				this.lastPositionUpdate = currentPosition
 				this.lastPositionUpdateTime = now

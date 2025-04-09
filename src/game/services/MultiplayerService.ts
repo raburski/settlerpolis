@@ -138,14 +138,8 @@ export class MultiplayerService {
 		this.send(Event.Player.Join, { position: { x, y }, scene, appearance })
 	}
 
-	updatePosition(x: number, y: number, scene: string) {
+	updatePosition(x: number, y: number) {
 		if (!this.socket || !this.currentScene) return
-
-		// Update current scene if it has changed
-		if (this.currentScene !== scene) {
-			console.log(`Scene changed from ${this.currentScene} to ${scene}`)
-			this.currentScene = scene
-		}
 		
 		this.send(Event.Player.Moved, { x, y })
 	}
