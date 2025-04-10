@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express'
 import { createServer } from 'http'
-import { Server, Socket } from 'socket.io'
+import { Server } from 'socket.io'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import { Event } from './Event'
@@ -9,6 +9,8 @@ import { Position } from './types'
 import { PICKUP_RANGE } from './consts'
 import { v4 as uuidv4 } from 'uuid'
 import { ItemType } from './types'
+import { NetworkManager } from './NetworkManager'
+import { Receiver } from './Receiver'
 
 const DEFAULT_INVENTORY_ITEM_NAME = 'Butelka mózgotrzepa'
 
@@ -42,6 +44,9 @@ const io = new Server(httpServer, {
 	path: '/api/socket.io' // Add path prefix for WebSocket
 })
 
+// Create network manager instance
+const network = new NetworkManager(io)
+
 // Add base path for API routes
 const apiRouter = express.Router()
 
@@ -69,37 +74,6 @@ const droppedItems = new Map<string, DroppedItem[]>()
 // Track last message timestamp for each player
 const lastMessageTimestamps = new Map<string, number>()
 
-/**
- * Broadcasts a message from a player to all other players in a specific scene
- * @param scene The scene to broadcast to
- * @param event The event name to emit
- * @param data The data to send
- * @param sourcePlayerId The ID of the player sending the message
- */
-function broadcastFromPlayerToScene<T extends PlayerSourcedData>(scene: string, event: string, data: T, sourcePlayerId: string) {
-	const scenePlayers = Array.from(players.values()).filter(p => p.scene === scene)
-	
-	scenePlayers.forEach(player => {
-		if (player.id !== sourcePlayerId) {
-			io.to(player.id).emit(event, { ...data, sourcePlayerId })
-		}
-	})
-}
-
-/**
- * Broadcasts a message from the system to all players in a specific scene
- * @param scene The scene to broadcast to
- * @param event The event name to emit
- * @param data The data to send
- */
-function broadcastFromSystemToScene<T>(scene: string, event: string, data: T) {
-	const scenePlayers = Array.from(players.values()).filter(p => p.scene === scene)
-	
-	scenePlayers.forEach(player => {
-		io.to(player.id).emit(event, data)
-	})
-}
-
 // Function to update player connection health
 function playerConnectionHealthUpdate(playerId: string) {
 	lastMessageTimestamps.set(playerId, Date.now())
@@ -117,8 +91,14 @@ function removeExpiredItems(scene: string, expiredItemIds: string[]) {
 			sceneItems.filter(item => !expiredItemIds.includes(item.id))
 		)
 
-		// Notify all players in the scene about removed items
-		broadcastFromSystemToScene(scene, Event.Scene.RemoveItems, { itemIds: expiredItemIds })
+		// Get any client from the scene to broadcast the message
+		const sceneClient = Array.from(io.sockets.sockets.values())
+			.find(socket => network.getClientsInGroup(scene).includes(socket.id))
+		
+		if (sceneClient) {
+			const client = network.createNetworkClient(sceneClient)
+			client.emit(Receiver.Group, Event.Scene.RemoveItems, { itemIds: expiredItemIds })
+		}
 	}
 }
 
@@ -136,227 +116,208 @@ setInterval(() => {
 	})
 }, ITEM_CLEANUP_INTERVAL)
 
-// Socket.IO connection handling
-io.on('connection', (socket: Socket) => {
-	console.log('Player connected:', socket.id)
+// Example of using NetworkManager with NetworkClient
+network.on<PlayerJoinData>(Event.Player.Join, (data, client) => {
+	const playerId = client.id
+	players.set(playerId, {
+		id: playerId,
+		...data,
+	})
 
-	// Initialize last message timestamp
-	lastMessageTimestamps.set(socket.id, Date.now())
-	
-	// Initialize empty inventory for new player with a random ID for the default item
-	const newInventory: Inventory = { 
-		items: [createItemWithRandomId(DEFAULT_INVENTORY_ITEM_NAME)] 
+	// Update player connection health
+	playerConnectionHealthUpdate(playerId)
+
+	// Set player's scene as their group
+	network.setClientGroup(playerId, data.scene)
+
+	// Send only players from the same scene
+	const scenePlayers = Array.from(players.values())
+		.filter(p => p.scene === data.scene && p.id !== client.id)
+	client.emit(Receiver.Sender, Event.Players.List, scenePlayers)
+
+	// Send existing dropped items in this scene to the joining player
+	const sceneDroppedItems = droppedItems.get(data.scene) || []
+	if (sceneDroppedItems.length > 0) {
+		client.emit(Receiver.Sender, Event.Scene.AddItems, { items: sceneDroppedItems })
 	}
-	inventories.set(socket.id, newInventory)
-	
-	// Send initial inventory data
-	socket.emit(Event.Inventory.Loaded, { inventory: newInventory })
 
-	// Function to send current players list filtered by scene
-	function sendCurrentPlayersList(scene: string) {
-		const scenePlayers = Array.from(players.values())
-			.filter(p => p.scene === scene && p.id !== socket.id)
-		socket.emit(Event.Players.List, scenePlayers)
-	}
+	client.emit(Receiver.NoSenderGroup, Event.Player.Joined, data)
+})
 
-	// Handle player joining a scene
-	socket.on(Event.Player.Join, (data: PlayerJoinData) => {
-		const playerId = socket.id
-		players.set(playerId, {
-			id: playerId,
-			...data,
-		})
+// Handle scene transition
+network.on<PlayerTransitionData>(Event.Player.TransitionTo, (data, client) => {
+	const playerId = client.id
+	const player = players.get(playerId)
+
+	if (player) {
+		// First, notify players in the current scene that this player is leaving
+		client.emit(Receiver.NoSenderGroup, Event.Player.Left, {})
+
+		// Update player data with new scene and position
+		player.scene = data.scene
+		player.position = data.position
+
+		// Update player's group to new scene
+		network.setClientGroup(playerId, data.scene)
 
 		// Update player connection health
 		playerConnectionHealthUpdate(playerId)
 
-		// Send only players from the same scene
-		sendCurrentPlayersList(data.scene)
+		// Send the current players list for the new scene
+		const scenePlayers = Array.from(players.values())
+			.filter(p => p.scene === data.scene && p.id !== client.id)
+		client.emit(Receiver.Sender, Event.Players.List, scenePlayers)
 
-		// Send existing dropped items in this scene to the joining player
-		const sceneDroppedItems = droppedItems.get(data.scene) || []
-		if (sceneDroppedItems.length > 0) {
-			socket.emit(Event.Scene.AddItems, { items: sceneDroppedItems })
-		}
+		// Notify players in the new scene that this player has joined
+		client.emit(Receiver.NoSenderGroup, Event.Player.Joined, data)
+	}
+})
 
-		broadcastFromPlayerToScene<PlayerJoinData>(data.scene, Event.Player.Joined, data, playerId)
-	})
-
-	// Handle scene transition
-	socket.on(Event.Player.TransitionTo, (data: PlayerTransitionData) => {
-		const playerId = socket.id
-		const player = players.get(playerId)
-
-		if (player) {
-			// First, notify players in the current scene that this player is leaving
-			broadcastFromPlayerToScene<PlayerSourcedData>(player.scene, Event.Player.Left, {}, playerId)
-
-			// Update player data with new scene and position
-			player.scene = data.scene
-			player.position = data.position
-
-			// Update player connection health
-			playerConnectionHealthUpdate(playerId)
-
-			// Send the current players list for the new scene
-			sendCurrentPlayersList(data.scene)
-
-			// Notify players in the new scene that this player has joined
-			broadcastFromPlayerToScene<PlayerJoinData>(
-				data.scene,
-				Event.Player.Joined,
-				data,
-				playerId
-			)
-		}
-	})
-
-	// Handle player movement
-	socket.on(Event.Player.Moved, (data: PlayerMovedData) => {
-		const player = players.get(socket.id)
-		if (player) {
-			player.position = data
-			
-			// Update player connection health
-			playerConnectionHealthUpdate(socket.id)
-			
-			broadcastFromPlayerToScene<PlayerMovedData>(player.scene, Event.Player.Moved, data, socket.id)
-		}
-	})
-
-	// Handle chat messages
-	socket.on(Event.Chat.Message, (data: ChatMessageData) => {
-		const player = players.get(socket.id)
-		if (player) {
-			// Update player connection health
-			playerConnectionHealthUpdate(socket.id)
-			
-			broadcastFromPlayerToScene<ChatMessageData>(player.scene, Event.Chat.Message, data, socket.id)
-		}
-	})
-
-	// Handle system ping
-	socket.on(Event.System.Ping, () => {
-		// Update player connection health
-		playerConnectionHealthUpdate(socket.id)
+// Handle player movement
+network.on<PlayerMovedData>(Event.Player.Moved, (data, client) => {
+	const player = players.get(client.id)
+	if (player) {
+		player.position = data
 		
-		socket.emit(Event.System.Ping)
-	})
+		// Update player connection health
+		playerConnectionHealthUpdate(client.id)
+		
+		client.emit(Receiver.NoSenderGroup, Event.Player.Moved, data)
+	}
+})
 
-	// Handle item drop
-	socket.on(Event.Inventory.Drop, (data: DropItemData) => {
-		const player = players.get(socket.id)
-		const inventory = inventories.get(socket.id)
+// Handle chat messages
+network.on<ChatMessageData>(Event.Chat.Message, (data, client) => {
+	const player = players.get(client.id)
+	if (player) {
+		// Update player connection health
+		playerConnectionHealthUpdate(client.id)
+		
+		client.emit(Receiver.NoSenderGroup, Event.Chat.Message, data)
+	}
+})
 
-		if (player && inventory) {
-			// Find the item in player's inventory
-			const itemIndex = inventory.items.findIndex(item => item.id === data.itemId)
+// Handle system ping
+network.on(Event.System.Ping, (_, client) => {
+	// Update player connection health
+	playerConnectionHealthUpdate(client.id)
+	
+	client.emit(Receiver.Sender, Event.System.Ping, {})
+})
+
+// Handle item drop
+network.on<DropItemData>(Event.Inventory.Drop, (data, client) => {
+	const player = players.get(client.id)
+	const inventory = inventories.get(client.id)
+
+	if (player && inventory) {
+		// Find the item in player's inventory
+		const itemIndex = inventory.items.findIndex(item => item.id === data.itemId)
+		
+		if (itemIndex !== -1) {
+			// Remove item from inventory
+			const [droppedItem] = inventory.items.splice(itemIndex, 1)
 			
-			if (itemIndex !== -1) {
-				// Remove item from inventory
-				const [droppedItem] = inventory.items.splice(itemIndex, 1)
-				
-				// Create dropped item with position and scene
-				const newDroppedItem: DroppedItem = {
-					...droppedItem,
-					position: player.position,
-					scene: player.scene,
-					droppedAt: Date.now()
-				}
-
-				// Add to scene's dropped items
-				const sceneDroppedItems = droppedItems.get(player.scene) || []
-				sceneDroppedItems.push(newDroppedItem)
-				droppedItems.set(player.scene, sceneDroppedItems)
-
-				// Update player's inventory
-				socket.emit(Event.Inventory.Loaded, { inventory })
-
-				// Broadcast to all players in the scene that an item was dropped
-				broadcastFromSystemToScene(player.scene, Event.Scene.AddItems, { items: [newDroppedItem] })
+			// Create dropped item with position and scene
+			const newDroppedItem: DroppedItem = {
+				...droppedItem,
+				position: player.position,
+				scene: player.scene,
+				droppedAt: Date.now()
 			}
-		}
-	})
 
-	// Handle item pickup
-	socket.on(Event.Inventory.PickUp, (data: PickUpItemData) => {
-		const player = players.get(socket.id)
-		const inventory = inventories.get(socket.id)
-
-		if (player && inventory) {
+			// Add to scene's dropped items
 			const sceneDroppedItems = droppedItems.get(player.scene) || []
-			const itemIndex = sceneDroppedItems.findIndex(item => item.id === data.itemId)
+			sceneDroppedItems.push(newDroppedItem)
+			droppedItems.set(player.scene, sceneDroppedItems)
 
-			if (itemIndex !== -1) {
-				const item = sceneDroppedItems[itemIndex]
-				
-				// Calculate distance between player and item
-				const distance = Math.sqrt(
-					Math.pow(player.position.x - item.position.x, 2) + 
-					Math.pow(player.position.y - item.position.y, 2)
-				)
+			// Update player's inventory
+			client.emit(Receiver.Sender, Event.Inventory.Loaded, { inventory })
 
-				// Check if player is within pickup range
-				if (distance > PICKUP_RANGE) {
-					return // Player is too far to pick up the item
-				}
+			// Broadcast to all players in the scene that an item was dropped
+			client.emit(Receiver.Group, Event.Scene.AddItems, { items: [newDroppedItem] })
+		}
+	}
+})
 
-				// Remove item from dropped items
-				const [pickedItem] = sceneDroppedItems.splice(itemIndex, 1)
-				droppedItems.set(player.scene, sceneDroppedItems)
+// Handle item pickup
+network.on<PickUpItemData>(Event.Inventory.PickUp, (data, client) => {
+	const player = players.get(client.id)
+	const inventory = inventories.get(client.id)
 
-				// Add item to player's inventory
-				const inventoryItem: Item = {
-					id: pickedItem.id,
-					name: pickedItem.name,
-					type: pickedItem.type
-				}
-				inventory.items.push(inventoryItem)
+	if (player && inventory) {
+		const sceneDroppedItems = droppedItems.get(player.scene) || []
+		const itemIndex = sceneDroppedItems.findIndex(item => item.id === data.itemId)
 
-				// Update player's inventory
-				socket.emit(Event.Inventory.Loaded, { inventory })
+		if (itemIndex !== -1) {
+			const item = sceneDroppedItems[itemIndex]
+			
+			// Calculate distance between player and item
+			const distance = Math.sqrt(
+				Math.pow(player.position.x - item.position.x, 2) + 
+				Math.pow(player.position.y - item.position.y, 2)
+			)
 
-				// Broadcast to all players in the scene that an item was picked up
-				broadcastFromSystemToScene(player.scene, Event.Scene.RemoveItems, { itemIds: [data.itemId] })
+			// Check if player is within pickup range
+			if (distance > PICKUP_RANGE) {
+				return // Player is too far to pick up the item
 			}
-		}
-	})
 
-	// Handle item consume
-	socket.on(Event.Inventory.Consume, (data: ConsumeItemData) => {
-		const inventory = inventories.get(socket.id)
+			// Remove item from dropped items
+			const [pickedItem] = sceneDroppedItems.splice(itemIndex, 1)
+			droppedItems.set(player.scene, sceneDroppedItems)
 
-		if (inventory) {
-			const itemIndex = inventory.items.findIndex(item => item.id === data.itemId)
-
-			if (itemIndex !== -1) {
-				// Check if item is consumable
-				const item = inventory.items[itemIndex]
-				if (item.type !== ItemType.Consumable) {
-					return // Item is not consumable
-				}
-
-				// Remove item from inventory
-				inventory.items.splice(itemIndex, 1)
-
-				// Update player's inventory
-				socket.emit(Event.Inventory.Loaded, { inventory })
+			// Add item to player's inventory
+			const inventoryItem: Item = {
+				id: pickedItem.id,
+				name: pickedItem.name,
+				type: pickedItem.type
 			}
-		}
-	})
+			inventory.items.push(inventoryItem)
 
-	// Handle disconnection
-	socket.on('disconnect', () => {
-		console.log('Player disconnected:', socket.id)
-		const player = players.get(socket.id)
-		players.delete(socket.id)
-		inventories.delete(socket.id)
-		lastMessageTimestamps.delete(socket.id)
-		if (player) {
-			// Broadcast player left to all players in the same scene
-			broadcastFromPlayerToScene<PlayerSourcedData>(player.scene, Event.Player.Left, {}, socket.id)
+			// Update player's inventory
+			client.emit(Receiver.Sender, Event.Inventory.Loaded, { inventory })
+
+			// Broadcast to all players in the scene that an item was picked up
+			client.emit(Receiver.Group, Event.Scene.RemoveItems, { itemIds: [data.itemId] })
 		}
-	})
+	}
+})
+
+// Handle item consume
+network.on<ConsumeItemData>(Event.Inventory.Consume, (data, client) => {
+	const inventory = inventories.get(client.id)
+
+	if (inventory) {
+		const itemIndex = inventory.items.findIndex(item => item.id === data.itemId)
+
+		if (itemIndex !== -1) {
+			// Check if item is consumable
+			const item = inventory.items[itemIndex]
+			if (item.type !== ItemType.Consumable) {
+				return // Item is not consumable
+			}
+
+			// Remove item from inventory
+			inventory.items.splice(itemIndex, 1)
+
+			// Update player's inventory
+			client.emit(Receiver.Sender, Event.Inventory.Loaded, { inventory })
+		}
+	}
+})
+
+// Handle disconnection
+network.on('disconnect', (_, client) => {
+	console.log('Player disconnected:', client.id)
+	const player = players.get(client.id)
+	players.delete(client.id)
+	inventories.delete(client.id)
+	lastMessageTimestamps.delete(client.id)
+	if (player) {
+		// Broadcast player left to all players in the same scene
+		client.emit(Receiver.NoSenderGroup, Event.Player.Left, {})
+	}
 })
 
 const TIMEOUT_CHECK_INTERVAL = 5000 // 5 seconds
@@ -371,8 +332,10 @@ setInterval(() => {
 			const player = players.get(playerId)
 			if (socket) {
 				if (player) {
+					// Create a client instance for the disconnecting player
+					const client = network.createNetworkClient(socket)
 					// Broadcast player left to all players in the same scene
-					broadcastFromPlayerToScene<PlayerSourcedData>(player.scene, Event.Player.Left, {}, playerId)
+					client.emit(Receiver.NoSenderGroup, Event.Player.Left, {})
 				}
 				socket.disconnect()
 			}
