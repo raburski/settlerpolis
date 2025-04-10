@@ -1,5 +1,5 @@
 import { Server, Socket } from 'socket.io'
-import { EventClient, EventManager, EventCallback, TimeoutCallback } from './Event'
+import { EventClient, EventManager, EventCallback, LifecycleCallback } from './Event'
 import { Receiver } from './Receiver'
 
 export class NetworkManager implements EventManager {
@@ -7,8 +7,9 @@ export class NetworkManager implements EventManager {
 	private eventHandlers: Map<string, EventCallback[]>
 	private groupClients: Map<string, Set<string>>
 	private clientGroups: Map<string, string>
+	private joinedCallbacks: Set<LifecycleCallback>
+	private leftCallbacks: Set<LifecycleCallback>
 	private lastMessageTimestamps: Map<string, number>
-	private timeoutCallbacks: Set<TimeoutCallback>
 	private readonly TIMEOUT_CHECK_INTERVAL = 5000 // 5 seconds
 	private readonly MAX_INACTIVE_TIME = 6000 // 6 seconds
 
@@ -17,8 +18,9 @@ export class NetworkManager implements EventManager {
 		this.eventHandlers = new Map()
 		this.groupClients = new Map()
 		this.clientGroups = new Map()
+		this.joinedCallbacks = new Set()
+		this.leftCallbacks = new Set()
 		this.lastMessageTimestamps = new Map()
-		this.timeoutCallbacks = new Set()
 
 		// Set up connection handler
 		this.io.on('connection', this.handleConnection.bind(this))
@@ -31,12 +33,13 @@ export class NetworkManager implements EventManager {
 		const now = Date.now()
 		for (const [clientId, lastMessageTime] of this.lastMessageTimestamps.entries()) {
 			if (now - lastMessageTime > this.MAX_INACTIVE_TIME) {
-				// Notify all timeout callbacks
-				this.timeoutCallbacks.forEach(callback => callback(clientId))
-				// Clean up
-				this.lastMessageTimestamps.delete(clientId)
 				const socket = this.io.sockets.sockets.get(clientId)
 				if (socket) {
+					const client = this.createNetworkClient(socket)
+					// Notify left callbacks about the timeout
+					this.leftCallbacks.forEach(callback => callback(client))
+					// Clean up
+					this.lastMessageTimestamps.delete(clientId)
 					socket.disconnect()
 				}
 			}
@@ -59,7 +62,7 @@ export class NetworkManager implements EventManager {
 	}
 
 	createNetworkClient(socket: Socket): EventClient {
-		const self = this // Store reference to NetworkManager instance
+		const self = this
 		return {
 			id: socket.id,
 			get currentGroup() {
@@ -134,6 +137,9 @@ export class NetworkManager implements EventManager {
 		// Initialize timestamp for new connection
 		this.updateClientTimestamp(socket.id)
 
+		// Notify joined callbacks
+		this.joinedCallbacks.forEach(callback => callback(client))
+
 		// When a socket connects, set up all the event handlers for it
 		this.eventHandlers.forEach((callbacks, event) => {
 			socket.on(event, (data: any) => {
@@ -154,6 +160,9 @@ export class NetworkManager implements EventManager {
 			// Clean up timestamp
 			this.lastMessageTimestamps.delete(socket.id)
 			
+			// Notify left callbacks
+			this.leftCallbacks.forEach(callback => callback(client))
+			
 			const handlers = this.eventHandlers.get('disconnect')
 			if (handlers) {
 				handlers.forEach(callback => callback(undefined, client))
@@ -161,8 +170,12 @@ export class NetworkManager implements EventManager {
 		})
 	}
 
-	onClientTimeout(callback: TimeoutCallback): void {
-		this.timeoutCallbacks.add(callback)
+	onJoined(callback: LifecycleCallback): void {
+		this.joinedCallbacks.add(callback)
+	}
+
+	onLeft(callback: LifecycleCallback): void {
+		this.leftCallbacks.add(callback)
 	}
 
 	on<T>(event: string, callback: EventCallback<T>): void {
@@ -175,8 +188,6 @@ export class NetworkManager implements EventManager {
 		this.io.sockets.sockets.forEach(socket => {
 			const client = this.createNetworkClient(socket)
 			socket.on(event, (data: T) => {
-				// Update timestamp when client sends any event
-				this.updateClientTimestamp(socket.id)
 				callback(data, client)
 			})
 		})
@@ -209,7 +220,7 @@ export class NetworkManager implements EventManager {
 				break
 			
 			case Receiver.Client:
-				if (!groupName) { // in this case groupName is used as targetClientId
+				if (!groupName) {
 					throw new Error('Target client ID must be provided when using Receiver.Client')
 				}
 				this.io.to(groupName).emit(event, data)

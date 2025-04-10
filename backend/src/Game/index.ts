@@ -10,6 +10,17 @@ interface PlayerData extends PlayerJoinData {
 	id: string
 }
 
+const DEFAULT_INVENTORY_ITEM_NAME = 'Butelka mózgotrzepa'
+
+// Function to create a new item with a random ID
+function createItemWithRandomId(name: string, type: ItemType = ItemType.Consumable): Item {
+	return {
+		id: uuidv4(),
+		name,
+		type
+	}
+}
+
 export class GameManager {
 	private players = new Map<string, PlayerData>()
 	private inventories = new Map<string, Inventory>()
@@ -23,6 +34,26 @@ export class GameManager {
 	}
 
 	private setupEventHandlers() {
+		// Handle client lifecycle
+		this.event.onJoined((client) => {
+			// Create initial inventory with default item
+			const initialInventory: Inventory = {
+				items: [createItemWithRandomId(DEFAULT_INVENTORY_ITEM_NAME)]
+			}
+			this.inventories.set(client.id, initialInventory)
+		})
+
+		this.event.onLeft((client) => {
+			console.log('Player left:', client.id)
+			const player = this.players.get(client.id)
+			this.players.delete(client.id)
+			this.inventories.delete(client.id)
+			if (player) {
+				// Broadcast player left to all players in the same scene
+				client.emit(Receiver.NoSenderGroup, Event.Player.Left, {})
+			}
+		})
+
 		// Handle player join
 		this.event.on<PlayerJoinData>(Event.Player.Join, (data, client) => {
 			const playerId = client.id
@@ -43,6 +74,12 @@ export class GameManager {
 			const sceneDroppedItems = this.droppedItems.get(data.scene) || []
 			if (sceneDroppedItems.length > 0) {
 				client.emit(Receiver.Sender, Event.Scene.AddItems, { items: sceneDroppedItems })
+			}
+
+			// Send initial inventory to the player
+			const inventory = this.inventories.get(client.id)
+			if (inventory) {
+				client.emit(Receiver.Sender, Event.Inventory.Loaded, { inventory })
 			}
 
 			client.emit(Receiver.NoSenderGroup, Event.Player.Joined, data)
@@ -196,26 +233,6 @@ export class GameManager {
 					client.emit(Receiver.Sender, Event.Inventory.Loaded, { inventory })
 				}
 			}
-		})
-
-		// Handle disconnection
-		this.event.on('disconnect', (_, client) => {
-			console.log('Player disconnected:', client.id)
-			const player = this.players.get(client.id)
-			this.players.delete(client.id)
-			this.inventories.delete(client.id)
-			if (player) {
-				// Broadcast player left to all players in the same scene
-				client.emit(Receiver.NoSenderGroup, Event.Player.Left, {})
-			}
-		})
-
-		// Handle client timeout
-		this.event.onClientTimeout((clientId) => {
-			console.log('Client timed out:', clientId)
-			const player = this.players.get(clientId)
-			this.players.delete(clientId)
-			this.inventories.delete(clientId)
 		})
 	}
 
