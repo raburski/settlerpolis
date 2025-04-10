@@ -1,10 +1,12 @@
 import { EventManager, Event, EventClient } from '../Event'
-import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerTransitionData, InventoryData, Item, Inventory, DroppedItem, DropItemData, PickUpItemData, ConsumeItemData } from '../DataTypes'
+import { PlayerJoinData, PlayerMovedData, PlayerTransitionData, InventoryData, Item, Inventory, DroppedItem, DropItemData, PickUpItemData, ConsumeItemData } from '../DataTypes'
 import { Position } from '../types'
 import { PICKUP_RANGE } from '../consts'
 import { v4 as uuidv4 } from 'uuid'
 import { ItemType } from '../types'
 import { Receiver } from '../Receiver'
+import { ChatManager } from './Chat'
+import { SystemManager } from './System'
 
 interface PlayerData extends PlayerJoinData {
 	id: string
@@ -27,8 +29,12 @@ export class GameManager {
 	private droppedItems = new Map<string, DroppedItem[]>()
 	private readonly DROPPED_ITEM_LIFESPAN = 5 * 60 * 1000 // 5 minutes in milliseconds
 	private readonly ITEM_CLEANUP_INTERVAL = 30 * 1000 // Check every 30 seconds
+	private chatManager: ChatManager
+	private systemManager: SystemManager
 
 	constructor(private event: EventManager) {
+		this.chatManager = new ChatManager(event)
+		this.systemManager = new SystemManager(event)
 		this.setupEventHandlers()
 		this.startItemCleanupInterval()
 	}
@@ -118,19 +124,6 @@ export class GameManager {
 				player.position = data
 				client.emit(Receiver.NoSenderGroup, Event.Player.Moved, data)
 			}
-		})
-
-		// Handle chat messages
-		this.event.on<ChatMessageData>(Event.Chat.Message, (data, client) => {
-			const player = this.players.get(client.id)
-			if (player) {
-				client.emit(Receiver.NoSenderGroup, Event.Chat.Message, data)
-			}
-		})
-
-		// Handle system ping
-		this.event.on(Event.System.Ping, (_, client) => {
-			client.emit(Receiver.Sender, Event.System.Ping, {})
 		})
 
 		// Handle item drop
