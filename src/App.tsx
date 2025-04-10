@@ -3,6 +3,7 @@ import { IRefPhaserGame, PhaserGame } from './game/PhaserGame';
 import { Chat } from './game/components/Chat';
 import { DisconnectModal } from './game/components/DisconnectModal';
 import { Inventory } from './game/components/Inventory';
+import { ChatLog } from './game/components/ChatLog';
 import { EventBus } from './game/EventBus';
 
 function App()
@@ -52,6 +53,7 @@ function App()
             {currentScene && <Chat scene={currentScene} />}
             <DisconnectModal />
             <Inventory isOpen={isInventoryOpen} />
+            <ChatLog />
             {/* <div>
                 <div>
                     <button className="button" onClick={addSprite}>Add New Sprite</button>
