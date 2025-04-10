@@ -71,14 +71,6 @@ const inventories = new Map<string, Inventory>()
 // Store dropped items per scene
 const droppedItems = new Map<string, DroppedItem[]>()
 
-// Track last message timestamp for each player
-const lastMessageTimestamps = new Map<string, number>()
-
-// Function to update player connection health
-function playerConnectionHealthUpdate(playerId: string) {
-	lastMessageTimestamps.set(playerId, Date.now())
-}
-
 // Function to remove expired items from a scene
 function removeExpiredItems(scene: string, expiredItemIds: string[]) {
 	if (expiredItemIds.length === 0) return
@@ -116,6 +108,23 @@ setInterval(() => {
 	})
 }, ITEM_CLEANUP_INTERVAL)
 
+// Register timeout handler
+network.onClientTimeout((clientId) => {
+	console.log('Client timed out:', clientId)
+	const player = players.get(clientId)
+	players.delete(clientId)
+	inventories.delete(clientId)
+
+	if (player) {
+		// Get the socket to create a client instance for the final message
+		const socket = io.sockets.sockets.get(clientId)
+		if (socket) {
+			const client = network.createNetworkClient(socket)
+			client.emit(Receiver.NoSenderGroup, Event.Player.Left, {})
+		}
+	}
+})
+
 // Example of using NetworkManager with NetworkClient
 network.on<PlayerJoinData>(Event.Player.Join, (data, client) => {
 	const playerId = client.id
@@ -124,11 +133,8 @@ network.on<PlayerJoinData>(Event.Player.Join, (data, client) => {
 		...data,
 	})
 
-	// Update player connection health
-	playerConnectionHealthUpdate(playerId)
-
 	// Set player's scene as their group
-	network.setClientGroup(playerId, data.scene)
+	client.setGroup(data.scene)
 
 	// Send only players from the same scene
 	const scenePlayers = Array.from(players.values())
@@ -158,10 +164,7 @@ network.on<PlayerTransitionData>(Event.Player.TransitionTo, (data, client) => {
 		player.position = data.position
 
 		// Update player's group to new scene
-		network.setClientGroup(playerId, data.scene)
-
-		// Update player connection health
-		playerConnectionHealthUpdate(playerId)
+		client.setGroup(data.scene)
 
 		// Send the current players list for the new scene
 		const scenePlayers = Array.from(players.values())
@@ -179,9 +182,6 @@ network.on<PlayerMovedData>(Event.Player.Moved, (data, client) => {
 	if (player) {
 		player.position = data
 		
-		// Update player connection health
-		playerConnectionHealthUpdate(client.id)
-		
 		client.emit(Receiver.NoSenderGroup, Event.Player.Moved, data)
 	}
 })
@@ -190,18 +190,12 @@ network.on<PlayerMovedData>(Event.Player.Moved, (data, client) => {
 network.on<ChatMessageData>(Event.Chat.Message, (data, client) => {
 	const player = players.get(client.id)
 	if (player) {
-		// Update player connection health
-		playerConnectionHealthUpdate(client.id)
-		
 		client.emit(Receiver.NoSenderGroup, Event.Chat.Message, data)
 	}
 })
 
 // Handle system ping
 network.on(Event.System.Ping, (_, client) => {
-	// Update player connection health
-	playerConnectionHealthUpdate(client.id)
-	
 	client.emit(Receiver.Sender, Event.System.Ping, {})
 })
 
@@ -313,36 +307,11 @@ network.on('disconnect', (_, client) => {
 	const player = players.get(client.id)
 	players.delete(client.id)
 	inventories.delete(client.id)
-	lastMessageTimestamps.delete(client.id)
 	if (player) {
 		// Broadcast player left to all players in the same scene
 		client.emit(Receiver.NoSenderGroup, Event.Player.Left, {})
 	}
 })
-
-const TIMEOUT_CHECK_INTERVAL = 5000 // 5 seconds
-const MAX_INACTIVE_TIME = 6000 // 6 seconds
-
-// Periodic check for inactive players
-setInterval(() => {
-	const now = Date.now()
-	for (const [playerId, lastMessageTime] of lastMessageTimestamps.entries()) {
-		if (now - lastMessageTime > MAX_INACTIVE_TIME) {
-			const socket = io.sockets.sockets.get(playerId)
-			const player = players.get(playerId)
-			if (socket) {
-				if (player) {
-					// Create a client instance for the disconnecting player
-					const client = network.createNetworkClient(socket)
-					// Broadcast player left to all players in the same scene
-					client.emit(Receiver.NoSenderGroup, Event.Player.Left, {})
-				}
-				socket.disconnect()
-			}
-			lastMessageTimestamps.delete(playerId)
-		}
-	}
-}, TIMEOUT_CHECK_INTERVAL)
 
 const PORT = process.env.PORT || 3000
 
