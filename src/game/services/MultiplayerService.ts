@@ -2,6 +2,7 @@ import { EventBus } from '../EventBus'
 import { Event, EventManager } from '../../../backend/src/Event'
 import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, InventoryData, DropItemData, DroppedItem, PickUpItemData, ConsumeItemData } from '../../../backend/src/DataTypes'
 import { NetworkManager } from '../network/NetworkManager'
+import { PlayerData } from '../types'
 
 export enum Gender {
 	Male = 'Male',
@@ -25,13 +26,12 @@ const DEFAULT_APPEARANCE: PlayerAppearance = {
 }
 
 export class MultiplayerService {
-	private static instance: MultiplayerService
-	private event: EventManager | null = null
+	private static instance: MultiplayerService | null = null
 	private players: Map<string, PlayerData> = new Map()
 	private currentScene: string | null = null
 	private playerName: string = 'Player'
 
-	private constructor() {
+	private constructor(private event: EventManager) {
 		// Listen for player:sendMessage events
 		EventBus.on('player:sendMessage', this.handleSendMessage, this)
 		// Listen for inventory drop events
@@ -44,7 +44,8 @@ export class MultiplayerService {
 
 	static getInstance(): MultiplayerService {
 		if (!MultiplayerService.instance) {
-			MultiplayerService.instance = new MultiplayerService()
+			const networkManager = new NetworkManager('https://hearty-rejoicing-production.up.railway.app')
+			MultiplayerService.instance = new MultiplayerService(networkManager)
 		}
 		return MultiplayerService.instance
 	}
@@ -54,11 +55,7 @@ export class MultiplayerService {
 	}
 
 	connect(serverUrl: string = 'https://hearty-rejoicing-production.up.railway.app') {
-		if (this.event) return
-
-		// Create network manager
-		const networkManager = new NetworkManager(serverUrl)
-		this.event = networkManager
+		if (!this.event) return
 
 		// Set up event handlers
 		this.event.on(Event.Players.List, (players: PlayerData[], client) => {
@@ -107,9 +104,6 @@ export class MultiplayerService {
 		this.event.on(Event.Scene.RemoveItems, (data: { itemIds: string[] }) => {
 			EventBus.emit(Event.Scene.RemoveItems, data)
 		})
-
-		// Connect to server
-		networkManager.connect()
 	}
 
 	joinGame(x: number, y: number, scene: string, appearance: PlayerAppearance = DEFAULT_APPEARANCE) {

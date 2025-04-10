@@ -32,7 +32,7 @@ export class NetworkManager implements EventManager {
 
 	constructor(private readonly serverUrl: string) {}
 
-	connect() {
+	private ensureSocket() {
 		if (this.socket) return
 
 		this.socket = io(this.serverUrl, {
@@ -76,6 +76,8 @@ export class NetworkManager implements EventManager {
 	}
 
 	emit(event: string, data: any) {
+		this.ensureSocket()
+
 		if (!this.socket) return
 
 		this.socket.emit(event, data)
