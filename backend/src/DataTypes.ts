@@ -55,12 +55,23 @@ export interface ChatMessageData extends PlayerSourcedData {
     message: string
 }
 
+export interface NPCMessageCondition {
+	check: () => boolean
+	message: string
+}
+
+export interface NPCMessages {
+	default: string
+	conditions?: NPCMessageCondition[]
+}
+
 export interface NPC {
 	id: string
 	name: string
 	position: Position
 	scene: string
 	dialog: NPCDialog[]
+	messages?: NPCMessages
 }
 
 export interface NPCDialog {

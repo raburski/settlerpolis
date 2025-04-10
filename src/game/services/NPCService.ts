@@ -30,6 +30,11 @@ export class NPCService {
 			// Forward the dialog to any UI components
 			this.eventBus.emit(Event.NPC.DialogUpdate, data)
 		})
+
+		// Listen for NPC messages
+		this.eventBus.on(Event.NPC.Message, (data: { npcId: string, message: string }) => {
+			this.eventBus.emit('npc:displayMessage', data)
+		})
 	}
 
 	public async interact(npc: NPC) {

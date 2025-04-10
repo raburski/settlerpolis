@@ -52,6 +52,7 @@ export const Event = {
 		List: 'npc:list',
 		Interact: 'npc:interact',
 		Dialog: 'npc:dialog',
-		CloseDialog: 'npc:close-dialog'
+		CloseDialog: 'npc:close-dialog',
+		Message: 'npc:message'
 	}
 } as const 

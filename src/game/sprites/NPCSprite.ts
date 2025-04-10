@@ -1,10 +1,12 @@
 import { Scene } from 'phaser'
 import { NPC } from '../../../backend/src/DataTypes'
 import { NPCService } from '../services/NPCService'
+import { EventBus } from '../EventBus'
 
 export class NPCSprite extends Phaser.GameObjects.Sprite {
 	private interactionZone: Phaser.GameObjects.Zone
 	private nameText: Phaser.GameObjects.Text
+	private messageText: Phaser.GameObjects.Text | null = null
 	private isInteractable = false
 
 	constructor(
@@ -66,6 +68,13 @@ export class NPCSprite extends Phaser.GameObjects.Sprite {
 				this.interact()
 			}
 		})
+
+		// Listen for message events
+		EventBus.on('npc:displayMessage', (data: { npcId: string, message: string }) => {
+			if (data.npcId === this.npc.id) {
+				this.displayMessage(data.message)
+			}
+		})
 	}
 
 	preUpdate() {
@@ -73,11 +82,44 @@ export class NPCSprite extends Phaser.GameObjects.Sprite {
 		this.setDepth(this.y)
 	}
 
+	public displayMessage(message: string) {
+		if (this.messageText) {
+			this.messageText.destroy()
+		}
+
+		if (!message) return
+
+		// Create text above the NPC (above the name text)
+		this.messageText = this.scene.add.text(this.x, this.y - 70, message, {
+			fontSize: '18px',
+			color: '#ffffff',
+			backgroundColor: 'rgba(0, 0, 0, 0.7)',
+			padding: { x: 5, y: 3 },
+			align: 'center'
+		})
+		.setOrigin(0.5)
+		.setDepth(10000) // Always keep message text on top
+
+		// Remove the message after 3 seconds
+		this.scene.time.delayedCall(3000, () => {
+			if (this.messageText) {
+				this.messageText.destroy()
+				this.messageText = null
+			}
+		})
+	}
+
 	private interact() {
 		this.npcService.interact(this.npc)
 	}
 
 	destroy() {
+		// Clean up event listener
+		EventBus.off('npc:displayMessage')
+		
+		if (this.messageText) {
+			this.messageText.destroy()
+		}
 		this.interactionZone.destroy()
 		this.nameText.destroy()
 		super.destroy()

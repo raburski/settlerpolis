@@ -61,12 +61,33 @@ const EXAMPLE_NPC: NPC = {
 	]
 }
 
+const GUARD_NPC: NPC = {
+	id: 'guard',
+	name: 'Guard',
+	position: { x: 300, y: 400 },
+	scene: 'FarmScene',
+	dialog: [], // Empty dialog array indicates this NPC only has messages
+	messages: {
+		default: "Move along, citizen. Nothing to see here.",
+		conditions: [
+			{
+				check: () => {
+					const hour = new Date().getHours()
+					return hour >= 20 || hour < 6
+				},
+				message: "It's dangerous to wander around at night. Be careful!"
+			}
+		]
+	}
+}
+
 export class NPCManager {
 	private npcs: Map<string, NPC> = new Map()
 
 	constructor(private event: EventManager) {
-		// Add example NPC
+		// Add example NPCs
 		this.npcs.set(EXAMPLE_NPC.id, EXAMPLE_NPC)
+		this.npcs.set(GUARD_NPC.id, GUARD_NPC)
 		this.setupEventHandlers()
 	}
 
@@ -91,12 +112,37 @@ export class NPCManager {
 			const npc = this.npcs.get(data.npcId)
 			if (!npc) return
 
-			// Start with the first dialog
-			const initialDialog = npc.dialog[0]
-			client.emit(Receiver.Sender, Event.NPC.Dialog, {
-				npcId: npc.id,
-				dialog: initialDialog
-			})
+			// Message-based NPC
+			if (npc.messages) {
+				let message = npc.messages.default
+				
+				// Check conditions in order
+				if (npc.messages.conditions) {
+					for (const condition of npc.messages.conditions) {
+						if (condition.check()) {
+							message = condition.message
+							break
+						}
+					}
+				}
+				
+				client.emit(Receiver.Sender, Event.NPC.Message, {
+					npcId: npc.id,
+					message
+				})
+				return
+			}
+
+			// Dialog-based NPC
+			if (npc.dialog && npc.dialog.length > 0) {
+
+				// Start dialog
+				const initialDialog = npc.dialog[0]
+				client.emit(Receiver.Sender, Event.NPC.Dialog, {
+					npcId: npc.id,
+					dialog: initialDialog
+				})
+			}
 		})
 
 		// Handle dialog responses
