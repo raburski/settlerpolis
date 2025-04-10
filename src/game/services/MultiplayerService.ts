@@ -71,23 +71,15 @@ export class MultiplayerService {
 			this.event.on(eventName, (data, client) => {
 				// For events that need sourcePlayerId, add it from the client
                 data = { ...data, sourcePlayerId: client.id }
+                console.log('[MULTIPLAYER SERVICE] Feed into the EventBUS', eventName)
 				EventBus.emit(eventName, data)
 			})
-		})
-
-		// Also handle lifecycle events
-		this.event.onJoined(client => {
-			EventBus.emit(Event.Player.Joined, { sourcePlayerId: client.id })
-		})
-
-		this.event.onLeft(client => {
-			EventBus.emit(Event.Player.Left, { sourcePlayerId: client.id })
 		})
 	}
 
 	static getInstance(): MultiplayerService {
 		if (!MultiplayerService.instance) {
-			const IS_REMOTE_GAME = false
+			const IS_REMOTE_GAME = true
 			if (IS_REMOTE_GAME) {
 				const networkManager = new NetworkManager('https://hearty-rejoicing-production.up.railway.app')
 				MultiplayerService.instance = new MultiplayerService(networkManager)
@@ -120,7 +112,7 @@ export class MultiplayerService {
 	updatePosition(x: number, y: number) {
 		if (!this.event || !this.currentScene) return
 		
-		this.event.emit(Receiver.NoSenderGroup, Event.Player.Moved, { x, y })
+		this.event.emit(Receiver.All, Event.Player.Moved, { x, y })
 	}
 
 	transitionToScene(x: number, y: number, scene: string) {
@@ -176,6 +168,25 @@ export class MultiplayerService {
 	private handleConsumeItem = (data: ConsumeItemData) => {
 		if (!this.event) return
 		this.event.emit(Receiver.All, Event.Inventory.Consume, data)
+	}
+
+	public async interactWithNPC(npcId: string) {
+		if (!this.event) return
+		this.event.emit(Receiver.All, Event.NPC.Interact, { npcId })
+	}
+
+	public async selectNPCResponse(npcId: string, dialogId: string, responseId: string) {
+		if (!this.event) return
+		this.event.emit(Receiver.All, Event.NPC.Dialog, { 
+			npcId,
+			dialogId,
+			responseId
+		})
+	}
+
+	public async closeNPCDialog(npcId: string) {
+		if (!this.event) return
+		this.event.emit(Receiver.All, Event.NPC.CloseDialog, { npcId })
 	}
 
 	public destroy(): void {

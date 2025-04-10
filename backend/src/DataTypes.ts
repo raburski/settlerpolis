@@ -54,3 +54,34 @@ export interface PlayerMovedData extends PlayerSourcedData {
 export interface ChatMessageData extends PlayerSourcedData {
     message: string
 }
+
+export interface NPC {
+	id: string
+	name: string
+	position: Position
+	scene: string
+	dialog: NPCDialog[]
+}
+
+export interface NPCDialog {
+	id: string
+	text: string
+	responses?: NPCResponse[]
+}
+
+export interface NPCResponse {
+	id: string
+	text: string
+	nextDialogId?: string
+	action?: string
+}
+
+export interface NPCInteractData extends PlayerSourcedData {
+	npcId: string
+}
+
+export interface NPCDialogData extends PlayerSourcedData {
+	npcId: string
+	dialogId: string
+	responseId?: string
+}

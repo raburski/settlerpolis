@@ -7,6 +7,7 @@ import { SystemManager } from './System'
 import { InventoryManager } from './Inventory'
 import { PlayersManager } from './Players'
 import { LootManager } from './Loot'
+import { NPCManager } from './NPC'
 
 export class GameManager {
 	private chatManager: ChatManager
@@ -14,6 +15,7 @@ export class GameManager {
 	private inventoryManager: InventoryManager
 	private playersManager: PlayersManager
 	private lootManager: LootManager
+	private npcManager: NPCManager
 
 	constructor(private event: EventManager) {
 		this.chatManager = new ChatManager(event)
@@ -21,6 +23,7 @@ export class GameManager {
 		this.inventoryManager = new InventoryManager(event)
 		this.playersManager = new PlayersManager(event)
 		this.lootManager = new LootManager(event)
+		this.npcManager = new NPCManager(event)
 		this.setupEventHandlers()
 	}
 

@@ -47,5 +47,11 @@ export const Event = {
 	Scene: {
 		AddItems: 'scene:add-items',
 		RemoveItems: 'scene:remove-items'
+	},
+	NPC: {
+		List: 'npc:list',
+		Interact: 'npc:interact',
+		Dialog: 'npc:dialog',
+		CloseDialog: 'npc:close-dialog'
 	}
 } as const 

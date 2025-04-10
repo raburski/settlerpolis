@@ -60,6 +60,9 @@ class LocalEventManager implements EventManager {
 	}
 
 	handleIncomingMessage(to: Receiver, event: string, data: any) {
+        if (to === Receiver.NoSenderGroup) return
+
+        console.log(`[EVENT] to ${this.client.id}:`, event, data)
 		// If this is the first message received, trigger joined callbacks
 		if (!this.hasReceivedMessage) {
 			this.hasReceivedMessage = true

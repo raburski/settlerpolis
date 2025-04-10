@@ -5,10 +5,12 @@ import { MultiplayerService, PlayerData, ChatMessage } from '../services/Multipl
 import { MultiplayerPlayer } from '../entities/MultiplayerPlayer'
 import { BasePlayer } from '../entities/BasePlayer'
 import { Event } from '../../../backend/src/Event'
-import { ChatMessageData, PlayerJoinData, PlayerMovedData, PlayerSourcedData, DroppedItem } from "../../../backend/src/DataTypes"
+import { ChatMessageData, PlayerJoinData, PlayerMovedData, PlayerSourcedData, DroppedItem, NPC } from "../../../backend/src/DataTypes"
 import { PICKUP_RANGE } from '../../../backend/src/consts'
 import { PortalManager } from '../modules/Portals'
 import { AssetManager, TilesetInfo } from '../modules/Assets'
+import { NPCSprite } from '../sprites/NPCSprite'
+import { NPCService } from '../services/NPCService'
 
 export abstract class MapScene extends Scene {
 	protected player: Player | null = null
@@ -24,6 +26,8 @@ export abstract class MapScene extends Scene {
 	protected portalManager: PortalManager | null = null
 	protected assetManager: AssetManager
 	protected droppedItems: Map<string, GameObjects.Sprite> = new Map()
+	protected npcs: Map<string, NPCSprite> = new Map()
+	protected npcService: NPCService
 
 	constructor(key: string, mapKey: string, mapPath: string) {
 		super(key)
@@ -31,6 +35,7 @@ export abstract class MapScene extends Scene {
 		this.mapKey = mapKey
 		this.mapPath = mapPath
 		this.multiplayerService = MultiplayerService.getInstance()
+		this.npcService = new NPCService(EventBus, this.multiplayerService)
 		this.assetManager = new AssetManager(this, mapKey, mapPath, this.initializeScene.bind(this))
 	}
 
@@ -41,6 +46,9 @@ export abstract class MapScene extends Scene {
 		
 		// Load item placeholder
 		this.load.image('mozgotrzep', 'assets/items/mozgotrzep.png')
+		
+		// Load NPC assets
+		this.load.image('npc', 'assets/characters/npc/innkeeper.png')
 		
 		// Load map and other assets
 		this.assetManager.preload()
@@ -198,15 +206,25 @@ export abstract class MapScene extends Scene {
 
 		EventBus.emit('current-scene-ready', this)
 
-		// Listen for chat messages
+
+	}
+
+	private setupMultiplayer() {
+        // Set up multiplayer event listeners
+		EventBus.on(Event.Player.Joined, this.handlePlayerJoined, this)
+		EventBus.on(Event.Player.Moved, this.handlePlayerMoved, this)
+		EventBus.on(Event.Player.Left, this.handlePlayerLeft, this)
+		EventBus.on(Event.Player.Disconnected, this.handlePlayerDisconnected, this)
+
+        // Listen for chat messages
 		EventBus.on(Event.Chat.Message, this.handleChatMessage, this)
 
 		// Set up scene event listeners
 		EventBus.on(Event.Scene.AddItems, this.handleAddItems, this)
 		EventBus.on(Event.Scene.RemoveItems, this.handleRemoveItems, this)
-	}
+		EventBus.on(Event.NPC.List, this.handleNPCList, this)
 
-	private setupMultiplayer() {
+
 		// Connect to multiplayer server
 		this.multiplayerService.connect()
 
@@ -219,14 +237,11 @@ export abstract class MapScene extends Scene {
 			this.player.appearance
 		)
 
-		// Set up multiplayer event listeners
-		EventBus.on(Event.Player.Joined, this.handlePlayerJoined, this)
-		EventBus.on(Event.Player.Moved, this.handlePlayerMoved, this)
-		EventBus.on(Event.Player.Left, this.handlePlayerLeft, this)
-		EventBus.on(Event.Player.Disconnected, this.handlePlayerDisconnected, this)
+
 	}
 
 	private handlePlayerJoined(data: PlayerJoinData) {
+        console.log('handlePlayerJoined', data)
 		const multiplayerPlayer = new MultiplayerPlayer(
 			this,
 			data.position.x,
@@ -369,6 +384,24 @@ export abstract class MapScene extends Scene {
 		})
 	}
 
+	private handleNPCList = (data: { npcs: NPC[] }) => {
+		// Clear existing NPCs first
+		this.npcs.forEach(npc => npc.destroy())
+		this.npcs.clear()
+        
+
+		// Create new NPCs
+		data.npcs.forEach(npcData => {
+			const npc = new NPCSprite(this, npcData, this.npcService)
+			this.npcs.set(npcData.id, npc)
+
+			// If we have a player, set up collision with NPCs
+			if (this.player) {
+				this.physics.add.collider(this.player.getSprite(), npc)
+			}
+		})
+	}
+
 	update() {
 		if (this.player) {
 			// Update player
@@ -455,6 +488,7 @@ export abstract class MapScene extends Scene {
 			EventBus.off(Event.Player.Disconnected, this.handlePlayerDisconnected, this)
 			EventBus.off(Event.Scene.AddItems, this.handleAddItems, this)
 			EventBus.off(Event.Scene.RemoveItems, this.handleRemoveItems, this)
+			EventBus.off(Event.NPC.List, this.handleNPCList, this)
 			
 			// Clean up multiplayer players
 			this.multiplayerPlayers.forEach(player => {
@@ -478,6 +512,10 @@ export abstract class MapScene extends Scene {
 			this.droppedItems.forEach(sprite => sprite.destroy())
 			this.droppedItems.clear()
 			
+			// Clean up NPCs
+			this.npcs.forEach(npc => npc.destroy())
+			this.npcs.clear()
+			
 			// Clean up any other game objects that might be created in child classes
 			this.cleanupAdditionalResources()
 			
@@ -499,10 +537,15 @@ export abstract class MapScene extends Scene {
 		// Remove event listeners
 		EventBus.off(Event.Scene.AddItems, this.handleAddItems, this)
 		EventBus.off(Event.Scene.RemoveItems, this.handleRemoveItems, this)
+		EventBus.off(Event.NPC.List, this.handleNPCList, this)
 		
 		// Clean up dropped items
 		this.droppedItems.forEach(sprite => sprite.destroy())
 		this.droppedItems.clear()
+
+		// Clean up NPCs
+		this.npcs.forEach(npc => npc.destroy())
+		this.npcs.clear()
 
 		// ... rest of destroy code ...
 	}
