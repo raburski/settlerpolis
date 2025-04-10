@@ -195,11 +195,6 @@ export class NetworkManager implements EventManager {
 		})
 	}
 
-	getClientsInGroup(group: string): string[] {
-		const clients = this.groupClients.get(group)
-		return clients ? Array.from(clients) : []
-	}
-
 	emit(to: Receiver, event: string, data: any, groupName?: string): void {
 		if (to === Receiver.Sender || to === Receiver.NoSenderGroup) {
 			throw new Error(`Cannot use ${to} with global emit. These receivers are only available for client-specific emissions.`)

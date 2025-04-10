@@ -17,7 +17,6 @@ export interface EventManager {
 	on<T>(event: string, callback: EventCallback<T>): void
 	onJoined(callback: LifecycleCallback): void
 	onLeft(callback: LifecycleCallback): void
-	getClientsInGroup(group: string): string[]
 	emit(to: Receiver, event: string, data: any, groupName?: string): void
 }
 
