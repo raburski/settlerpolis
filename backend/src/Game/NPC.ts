@@ -114,6 +114,8 @@ export class NPCManager {
 
 			// Handle response action if any
 			if (response.action === 'give_drink') {
+                // TODO: update local inventory!
+
 				// Emit inventory event to give the player a drink
 				client.emit(Receiver.Sender, Event.Inventory.Loaded, {
 					inventory: {
