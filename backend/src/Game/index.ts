@@ -1,107 +1,49 @@
 import { EventManager, Event, EventClient } from '../Event'
-import { PlayerJoinData, PlayerMovedData, PlayerTransitionData, Item, DroppedItem, DropItemData, PickUpItemData } from '../DataTypes'
-import { Position } from '../types'
+import { Item, DroppedItem, DropItemData, PickUpItemData, PlayerJoinData, PlayerTransitionData } from '../DataTypes'
 import { PICKUP_RANGE } from '../consts'
 import { Receiver } from '../Receiver'
 import { ChatManager } from './Chat'
 import { SystemManager } from './System'
 import { InventoryManager } from './Inventory'
-
-interface PlayerData extends PlayerJoinData {
-	id: string
-}
+import { PlayersManager } from './Players'
 
 export class GameManager {
-	private players = new Map<string, PlayerData>()
 	private droppedItems = new Map<string, DroppedItem[]>()
 	private readonly DROPPED_ITEM_LIFESPAN = 5 * 60 * 1000 // 5 minutes in milliseconds
 	private readonly ITEM_CLEANUP_INTERVAL = 30 * 1000 // Check every 30 seconds
 	private chatManager: ChatManager
 	private systemManager: SystemManager
 	private inventoryManager: InventoryManager
+	private playersManager: PlayersManager
 
 	constructor(private event: EventManager) {
 		this.chatManager = new ChatManager(event)
 		this.systemManager = new SystemManager(event)
 		this.inventoryManager = new InventoryManager(event)
+		this.playersManager = new PlayersManager(event)
 		this.setupEventHandlers()
 		this.startItemCleanupInterval()
 	}
 
 	private setupEventHandlers() {
-		this.event.onLeft((client) => {
-			console.log('Player left:', client.id)
-			const player = this.players.get(client.id)
-			this.players.delete(client.id)
-			if (player) {
-				// Broadcast player left to all players in the same scene
-				client.emit(Receiver.NoSenderGroup, Event.Player.Left, {})
-			}
-		})
-
-		// Handle player join
+		// Handle player join and scene transition to send items
 		this.event.on<PlayerJoinData>(Event.Player.Join, (data, client) => {
-			const playerId = client.id
-			this.players.set(playerId, {
-				id: playerId,
-				...data,
-			})
-
-			// Set player's scene as their group
-			client.setGroup(data.scene)
-
-			// Send only players from the same scene
-			const scenePlayers = Array.from(this.players.values())
-				.filter(p => p.scene === data.scene && p.id !== client.id)
-			client.emit(Receiver.Sender, Event.Players.List, scenePlayers)
-
-			// Send existing dropped items in this scene to the joining player
 			const sceneDroppedItems = this.droppedItems.get(data.scene) || []
 			if (sceneDroppedItems.length > 0) {
 				client.emit(Receiver.Sender, Event.Scene.AddItems, { items: sceneDroppedItems })
 			}
-
-			client.emit(Receiver.NoSenderGroup, Event.Player.Joined, data)
 		})
 
-		// Handle scene transition
 		this.event.on<PlayerTransitionData>(Event.Player.TransitionTo, (data, client) => {
-			const playerId = client.id
-			const player = this.players.get(playerId)
-
-			if (player) {
-				// First, notify players in the current scene that this player is leaving
-				client.emit(Receiver.NoSenderGroup, Event.Player.Left, {})
-
-				// Update player data with new scene and position
-				player.scene = data.scene
-				player.position = data.position
-
-				// Update player's group to new scene
-				client.setGroup(data.scene)
-
-				// Send the current players list for the new scene
-				const scenePlayers = Array.from(this.players.values())
-					.filter(p => p.scene === data.scene && p.id !== client.id)
-				client.emit(Receiver.Sender, Event.Players.List, scenePlayers)
-
-				// Notify players in the new scene that this player has joined
-				client.emit(Receiver.NoSenderGroup, Event.Player.Joined, data)
-			}
-		})
-
-		// Handle player movement
-		this.event.on<PlayerMovedData>(Event.Player.Moved, (data, client) => {
-			const player = this.players.get(client.id)
-			if (player) {
-				player.position = data
-				client.emit(Receiver.NoSenderGroup, Event.Player.Moved, data)
+			const sceneDroppedItems = this.droppedItems.get(data.scene) || []
+			if (sceneDroppedItems.length > 0) {
+				client.emit(Receiver.Sender, Event.Scene.AddItems, { items: sceneDroppedItems })
 			}
 		})
 
 		// Handle item drop
 		this.event.on<DropItemData>(Event.Inventory.Drop, (data, client) => {
-			const player = this.players.get(client.id)
+			const player = this.playersManager.getPlayer(client.id)
 			if (!player) return
 
 			const removedItem = this.inventoryManager.removeItem(client, data.itemId)
@@ -126,7 +68,7 @@ export class GameManager {
 
 		// Handle item pickup
 		this.event.on<PickUpItemData>(Event.Inventory.PickUp, (data, client) => {
-			const player = this.players.get(client.id)
+			const player = this.playersManager.getPlayer(client.id)
 			if (!player) return
 
 			const sceneDroppedItems = this.droppedItems.get(player.scene) || []
