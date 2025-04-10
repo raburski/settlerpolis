@@ -112,6 +112,9 @@ export class Player extends BasePlayer {
 			!this.wasdKeys.W.isDown && !this.wasdKeys.S.isDown) {
 			this.updateState(PlayerState.Idle)
 		}
+
+		// Update depth
+		this.preUpdate()
 	}
 
 	getSprite(): GameObjects.Container {

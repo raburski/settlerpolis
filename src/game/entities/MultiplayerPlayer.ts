@@ -85,5 +85,7 @@ export class MultiplayerPlayer extends BasePlayer {
 
 	update(): void {
 		this.updatePosition()
+		// Update depth
+		this.preUpdate()
 	}
 } 

@@ -18,6 +18,12 @@ export class NPCSprite extends Phaser.GameObjects.Sprite {
 		this.setOrigin(0.5)
 		this.setScale(2)
 		this.setInteractive({ useHandCursor: true })
+		
+		// Set initial depth based on y position
+		this.setDepth(this.y)
+
+		// Add to scene first
+		scene.add.existing(this)
 
 		// Create interaction zone
 		this.interactionZone = scene.add.zone(npc.position.x, npc.position.y)
@@ -30,7 +36,9 @@ export class NPCSprite extends Phaser.GameObjects.Sprite {
 			color: '#ffffff',
 			stroke: '#000000',
 			strokeThickness: 4
-		}).setOrigin(0.5)
+		})
+		.setOrigin(0.5)
+		.setDepth(10000) // Always keep name text on top
 
 		// Set up interaction handling
 		this.interactionZone.on('pointerover', () => {
@@ -52,15 +60,17 @@ export class NPCSprite extends Phaser.GameObjects.Sprite {
 			this.interact()
 		})
 
-		// Add to scene
-		scene.add.existing(this)
-
 		// Set up keyboard interaction
 		scene.input.keyboard.on('keydown-E', () => {
 			if (this.isInteractable) {
 				this.interact()
 			}
 		})
+	}
+
+	preUpdate() {
+		// Update depth based on y position
+		this.setDepth(this.y)
 	}
 
 	private interact() {

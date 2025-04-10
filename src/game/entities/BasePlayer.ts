@@ -273,6 +273,11 @@ export class BasePlayer {
 		this.container.y = y
 	}
 
+	public preUpdate(): void {
+		// Update depth based on y position
+		this.container.setDepth(this.container.y)
+	}
+
 	public updateDirection(direction: Direction): void {
         if (this.direction === direction) return
 
