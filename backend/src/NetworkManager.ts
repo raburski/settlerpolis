@@ -1,27 +1,8 @@
 import { Server, Socket } from 'socket.io'
-import { Event } from './Event'
+import { EventClient, EventManager, EventCallback, TimeoutCallback } from './Event'
 import { Receiver } from './Receiver'
 
-// Interface for client operations
-export interface NetworkClient {
-	id: string
-	currentGroup?: string
-	emit(to: Receiver, event: string, data: any, targetClientId?: string): void
-	setGroup(group: string): void
-}
-
-// Type for event callback functions
-type EventCallback<T = any> = (data: T, client: NetworkClient) => void
-type TimeoutCallback = (clientId: string) => void
-
-// Interface that NetworkManager implements
-export interface INetworkManager {
-	on<T>(event: string, callback: EventCallback<T>): void
-	onClientTimeout(callback: TimeoutCallback): void
-	getClientsInGroup(group: string): string[]
-}
-
-export class NetworkManager implements INetworkManager {
+export class NetworkManager implements EventManager {
 	private io: Server
 	private eventHandlers: Map<string, EventCallback[]>
 	private groupClients: Map<string, Set<string>>
@@ -77,7 +58,7 @@ export class NetworkManager implements INetworkManager {
 		this.clientGroups.delete(clientId)
 	}
 
-	createNetworkClient(socket: Socket): NetworkClient {
+	createNetworkClient(socket: Socket): EventClient {
 		const self = this // Store reference to NetworkManager instance
 		return {
 			id: socket.id,
@@ -204,5 +185,35 @@ export class NetworkManager implements INetworkManager {
 	getClientsInGroup(group: string): string[] {
 		const clients = this.groupClients.get(group)
 		return clients ? Array.from(clients) : []
+	}
+
+	emit(to: Receiver, event: string, data: any, groupName?: string): void {
+		if (to === Receiver.Sender || to === Receiver.NoSenderGroup) {
+			throw new Error(`Cannot use ${to} with global emit. These receivers are only available for client-specific emissions.`)
+		}
+
+		switch (to) {
+			case Receiver.Group: {
+				if (!groupName) {
+					throw new Error('Group name must be provided when using Receiver.Group')
+				}
+				const clients = this.groupClients.get(groupName)
+				clients?.forEach(clientId => {
+					this.io.to(clientId).emit(event, data)
+				})
+				break
+			}
+			
+			case Receiver.All:
+				this.io.emit(event, data)
+				break
+			
+			case Receiver.Client:
+				if (!groupName) { // in this case groupName is used as targetClientId
+					throw new Error('Target client ID must be provided when using Receiver.Client')
+				}
+				this.io.to(groupName).emit(event, data)
+				break
+		}
 	}
 } 
