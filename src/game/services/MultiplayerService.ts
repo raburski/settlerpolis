@@ -45,17 +45,57 @@ export class MultiplayerService {
 		EventBus.on(Event.Inventory.Consume, this.handleConsumeItem, this)
 	}
 
+	private getAllNetworkEvents(): string[] {
+		const events: string[] = []
+		const addEvents = (obj: any) => {
+			Object.values(obj).forEach(value => {
+				if (typeof value === 'string') {
+					events.push(value)
+				} else if (typeof value === 'object') {
+					addEvents(value)
+				}
+			})
+		}
+		addEvents(Event)
+		return events
+	}
+
+	private setupNetworkEventForwarding() {
+		if (!this.event) return
+
+		// Get all possible events
+		const events = this.getAllNetworkEvents()
+
+		// Subscribe to each event and forward to EventBus
+		events.forEach(eventName => {
+			this.event.on(eventName, (data, client) => {
+				// For events that need sourcePlayerId, add it from the client
+                data = { ...data, sourcePlayerId: client.id }
+				EventBus.emit(eventName, data)
+			})
+		})
+
+		// Also handle lifecycle events
+		this.event.onJoined(client => {
+			EventBus.emit(Event.Player.Joined, { sourcePlayerId: client.id })
+		})
+
+		this.event.onLeft(client => {
+			EventBus.emit(Event.Player.Left, { sourcePlayerId: client.id })
+		})
+	}
+
 	static getInstance(): MultiplayerService {
 		if (!MultiplayerService.instance) {
-            const IS_REMOTE_GAME = true
-            if (IS_REMOTE_GAME) {
-                const networkManager = new NetworkManager('https://hearty-rejoicing-production.up.railway.app')
-                MultiplayerService.instance = new MultiplayerService(networkManager)
-            } else {
-                const localManager = new LocalManager()
-                const gameManager = new GameManager(localManager.server)
-                MultiplayerService.instance = new MultiplayerService(localManager.client)
-            }
+			const IS_REMOTE_GAME = false
+			if (IS_REMOTE_GAME) {
+				const networkManager = new NetworkManager('https://hearty-rejoicing-production.up.railway.app')
+				MultiplayerService.instance = new MultiplayerService(networkManager)
+			} else {
+				const localManager = new LocalManager()
+				const gameManager = new GameManager(localManager.server)
+				MultiplayerService.instance = new MultiplayerService(localManager.client)
+			}
 		}
 		return MultiplayerService.instance
 	}
@@ -66,54 +106,7 @@ export class MultiplayerService {
 
 	connect() {
 		if (!this.event) return
-
-		// Set up event handlers
-		this.event.on(Event.Players.List, (players: PlayerData[], client) => {
-			players.forEach(player => {
-				if (player.id !== client.id) {
-					this.players.set(player.id, player)
-					EventBus.emit(Event.Player.Joined, { ...player, sourcePlayerId: player.id } as PlayerJoinData)
-				}
-			})
-		})
-
-		this.event.on(Event.Player.Joined, (player: PlayerJoinData) => {
-			this.players.set(player.sourcePlayerId, player)
-			EventBus.emit(Event.Player.Joined, player)
-		})
-
-		this.event.on(Event.Player.Moved, (data: PlayerMovedData) => {
-			const player = this.players.get(data.sourcePlayerId)
-			if (player) {
-				player.x = data.x
-				player.y = data.y
-			}
-			EventBus.emit(Event.Player.Moved, data)
-		})
-
-		this.event.on(Event.Player.Left, (data: PlayerSourcedData) => {
-			this.players.delete(data.sourcePlayerId)
-			EventBus.emit(Event.Player.Left, data)
-		})
-
-		// Chat events
-		this.event.on(Event.Chat.Message, (message: ChatMessageData) => {
-			EventBus.emit(Event.Chat.Message, message)
-		})
-
-		// Handle inventory loaded event
-		this.event.on(Event.Inventory.Loaded, (data: InventoryData) => {
-			EventBus.emit(Event.Inventory.Loaded, data)
-		})
-
-		// Handle scene items events
-		this.event.on(Event.Scene.AddItems, (data: { items: DroppedItem[] }) => {
-			EventBus.emit(Event.Scene.AddItems, data)
-		})
-
-		this.event.on(Event.Scene.RemoveItems, (data: { itemIds: string[] }) => {
-			EventBus.emit(Event.Scene.RemoveItems, data)
-		})
+		this.setupNetworkEventForwarding()
 	}
 
 	joinGame(x: number, y: number, scene: string, appearance: PlayerAppearance = DEFAULT_APPEARANCE) {
