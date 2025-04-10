@@ -1,5 +1,6 @@
-import { EventManager, Event, EventClient, Receiver } from '../../../backend/src/Event'
+import { EventManager, Event, EventClient, EventCallback, LifecycleCallback } from '../../../backend/src/Event'
 import { Socket, io } from 'socket.io-client'
+import { Receiver } from '../../../backend/src/Receiver'
 
 export class NetworkClient implements EventClient {
 	private _currentGroup: string = 'GLOBAL'
@@ -13,11 +14,11 @@ export class NetworkClient implements EventClient {
 		return this._currentGroup
 	}
 
-	setCurrentGroup(group: string) {
+	setGroup(group: string) {
 		this._currentGroup = group
 	}
 
-	emit(receiver: Receiver, event: string, data: any) {
+	emit(to: Receiver, event: string, data: any, targetClientId?: string) {
 		this.socket.emit(event, data)
 	}
 }
@@ -28,7 +29,9 @@ export class NetworkManager implements EventManager {
 	private lastMessageTime: number = 0
 	private pingInterval: number | null = null
 	private readonly PING_INTERVAL = 3000 // 3 seconds
-	private handlers: Map<string, Array<(data: any, client: EventClient) => void>> = new Map()
+	private handlers: Map<string, EventCallback[]> = new Map()
+	private joinedCallbacks = new Set<LifecycleCallback>()
+	private leftCallbacks = new Set<LifecycleCallback>()
 
 	constructor(private readonly serverUrl: string) {}
 
@@ -45,10 +48,18 @@ export class NetworkManager implements EventManager {
 			this.lastMessageTime = Date.now()
 			this.startPingInterval()
 			this.setupSocketHandlers()
+			// Trigger joined callbacks when connected
+			if (this.client) {
+				this.joinedCallbacks.forEach(callback => callback(this.client))
+			}
 		})
 
 		this.socket.on('disconnect', () => {
 			console.log('Disconnected from multiplayer server')
+			// Trigger left callbacks before clearing client
+			if (this.client) {
+				this.leftCallbacks.forEach(callback => callback(this.client))
+			}
 			this.client = null
 			this.stopPingInterval()
 		})
@@ -63,11 +74,11 @@ export class NetworkManager implements EventManager {
 		this.client = null
 	}
 
-	on<T>(event: string, handler: (data: T, client: EventClient) => void) {
+	on<T>(event: string, callback: EventCallback<T>): void {
 		if (!this.handlers.has(event)) {
 			this.handlers.set(event, [])
 		}
-		this.handlers.get(event).push(handler)
+		this.handlers.get(event).push(callback as EventCallback)
 
 		// If socket already exists, set up the handler immediately
 		if (this.socket) {
@@ -75,9 +86,20 @@ export class NetworkManager implements EventManager {
 		}
 	}
 
-	emit(event: string, data: any) {
-		this.ensureSocket()
+	onJoined(callback: LifecycleCallback): void {
+		this.joinedCallbacks.add(callback)
+		// Call immediately if we already have a client
+		if (this.client) {
+			callback(this.client)
+		}
+	}
 
+	onLeft(callback: LifecycleCallback): void {
+		this.leftCallbacks.add(callback)
+	}
+
+	emit(to: Receiver, event: string, data: any, groupName?: string): void {
+		this.ensureSocket()
 		if (!this.socket) return
 
 		this.socket.emit(event, data)
@@ -102,7 +124,7 @@ export class NetworkManager implements EventManager {
 				if (event === Event.Player.Join || event === Event.Player.TransitionTo) {
 					const sceneData = data as any
 					if (sceneData.scene) {
-						this.client.setCurrentGroup(sceneData.scene)
+						this.client.setGroup(sceneData.scene)
 					}
 				}
 
@@ -118,7 +140,7 @@ export class NetworkManager implements EventManager {
 		this.pingInterval = window.setInterval(() => {
 			const now = Date.now()
 			if (now - this.lastMessageTime >= this.PING_INTERVAL) {
-				this.emit(Event.System.Ping, null)
+				this.emit(Receiver.All, Event.System.Ping, null)
 			}
 		}, 1000) // Check every second
 	}

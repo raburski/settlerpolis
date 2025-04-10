@@ -2,7 +2,10 @@ import { EventBus } from '../EventBus'
 import { Event, EventManager } from '../../../backend/src/Event'
 import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, InventoryData, DropItemData, DroppedItem, PickUpItemData, ConsumeItemData } from '../../../backend/src/DataTypes'
 import { NetworkManager } from '../network/NetworkManager'
+import { LocalManager } from '../network/LocalManager'
+import { GameManager } from '../../../backend/src/Game'
 import { PlayerData } from '../types'
+import { Receiver } from '../../../backend/src/Receiver'
 
 export enum Gender {
 	Male = 'Male',
@@ -44,8 +47,15 @@ export class MultiplayerService {
 
 	static getInstance(): MultiplayerService {
 		if (!MultiplayerService.instance) {
-			const networkManager = new NetworkManager('https://hearty-rejoicing-production.up.railway.app')
-			MultiplayerService.instance = new MultiplayerService(networkManager)
+            const IS_REMOTE_GAME = true
+            if (IS_REMOTE_GAME) {
+                const networkManager = new NetworkManager('https://hearty-rejoicing-production.up.railway.app')
+                MultiplayerService.instance = new MultiplayerService(networkManager)
+            } else {
+                const localManager = new LocalManager()
+                const gameManager = new GameManager(localManager.server)
+                MultiplayerService.instance = new MultiplayerService(localManager.client)
+            }
 		}
 		return MultiplayerService.instance
 	}
@@ -54,7 +64,7 @@ export class MultiplayerService {
 		this.playerName = name
 	}
 
-	connect(serverUrl: string = 'https://hearty-rejoicing-production.up.railway.app') {
+	connect() {
 		if (!this.event) return
 
 		// Set up event handlers
@@ -111,20 +121,20 @@ export class MultiplayerService {
 
 		this.currentScene = scene
 		console.log(`Joining game in scene: ${scene}`)
-		this.event.emit(Event.Player.Join, { position: { x, y }, scene, appearance })
+		this.event.emit(Receiver.All, Event.Player.Join, { position: { x, y }, scene, appearance })
 	}
 
 	updatePosition(x: number, y: number) {
 		if (!this.event || !this.currentScene) return
 		
-		this.event.emit(Event.Player.Moved, { x, y })
+		this.event.emit(Receiver.NoSenderGroup, Event.Player.Moved, { x, y })
 	}
 
 	transitionToScene(x: number, y: number, scene: string) {
 		if (!this.event) return
 
 		// Send transition event
-		this.event.emit(Event.Player.TransitionTo, {
+		this.event.emit(Receiver.All, Event.Player.TransitionTo, {
 			position: { x, y },
 			scene
 		})
@@ -153,7 +163,7 @@ export class MultiplayerService {
 			message
 		}
 
-		this.event.emit(Event.Chat.Message, chatMessage)
+		this.event.emit(Receiver.NoSenderGroup, Event.Chat.Message, chatMessage)
 	}
 
 	private handleSendMessage = (message: string) => {
@@ -162,17 +172,17 @@ export class MultiplayerService {
 
 	private handleDropItem = (data: DropItemData) => {
 		if (!this.event) return
-		this.event.emit(Event.Inventory.Drop, data)
+		this.event.emit(Receiver.All, Event.Inventory.Drop, data)
 	}
 
 	private handlePickUpItem = (data: PickUpItemData) => {
 		if (!this.event) return
-		this.event.emit(Event.Inventory.PickUp, data)
+		this.event.emit(Receiver.All, Event.Inventory.PickUp, data)
 	}
 
 	private handleConsumeItem = (data: ConsumeItemData) => {
 		if (!this.event) return
-		this.event.emit(Event.Inventory.Consume, data)
+		this.event.emit(Receiver.All, Event.Inventory.Consume, data)
 	}
 
 	public destroy(): void {

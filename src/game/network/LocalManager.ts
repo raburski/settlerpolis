@@ -1,49 +1,71 @@
-import { EventManager, Event, EventClient, Receiver } from '../../../backend/src/Event'
+import { EventManager, Event, EventClient, EventCallback, LifecycleCallback } from '../../../backend/src/Event'
+import { Receiver } from '../../../backend/src/Receiver'
 
 class LocalEventClient implements EventClient {
 	private _currentGroup: string = 'GLOBAL'
 
 	constructor(
 		public readonly id: string,
-		private onEmit: (event: string, data: any) => void
+		private onEmit: (to: Receiver, event: string, data: any, targetClientId?: string) => void
 	) {}
 
 	get currentGroup(): string {
 		return this._currentGroup
 	}
 
-	setCurrentGroup(group: string) {
+	setGroup(group: string) {
 		this._currentGroup = group
 	}
 
-	emit(receiver: Receiver, event: string, data: any) {
-		this.onEmit(event, data)
+	emit(to: Receiver, event: string, data: any, targetClientId?: string) {
+		this.onEmit(to, event, data, targetClientId)
 	}
 }
 
 class LocalEventManager implements EventManager {
-	private handlers: Map<string, Array<(data: any, client: EventClient) => void>> = new Map()
+	private handlers: Map<string, EventCallback[]> = new Map()
 	private client: LocalEventClient
+	private joinedCallbacks = new Set<LifecycleCallback>()
+	private leftCallbacks = new Set<LifecycleCallback>()
+	private hasReceivedMessage = false
 
 	constructor(
 		clientId: string,
-		private onEmit: (event: string, data: any) => void
+		private onEmit: (to: Receiver, event: string, data: any, groupName?: string) => void
 	) {
 		this.client = new LocalEventClient(clientId, onEmit)
 	}
 
-	on<T>(event: string, handler: (data: T, client: EventClient) => void) {
+	on<T>(event: string, callback: EventCallback<T>): void {
 		if (!this.handlers.has(event)) {
 			this.handlers.set(event, [])
 		}
-		this.handlers.get(event).push(handler)
+		this.handlers.get(event).push(callback as EventCallback)
 	}
 
-	emit(event: string, data: any) {
-		this.onEmit(event, data)
+	onJoined(callback: LifecycleCallback): void {
+		this.joinedCallbacks.add(callback)
+		// Call immediately if we've already received a message
+		if (this.hasReceivedMessage) {
+			callback(this.client)
+		}
 	}
 
-	handleIncomingMessage(event: string, data: any) {
+	onLeft(callback: LifecycleCallback): void {
+		this.leftCallbacks.add(callback)
+	}
+
+	emit(to: Receiver, event: string, data: any, groupName?: string): void {
+		this.onEmit(to, event, data, groupName)
+	}
+
+	handleIncomingMessage(to: Receiver, event: string, data: any) {
+		// If this is the first message received, trigger joined callbacks
+		if (!this.hasReceivedMessage) {
+			this.hasReceivedMessage = true
+			this.joinedCallbacks.forEach(callback => callback(this.client))
+		}
+
 		if (!this.handlers.has(event)) return
 
 		const handlers = this.handlers.get(event)
@@ -57,14 +79,14 @@ export class LocalManager {
 
 	constructor() {
 		// Create two event managers with different client IDs
-		this.client = new LocalEventManager('client', (event, data) => {
+		this.client = new LocalEventManager('client', (to, event, data, groupName) => {
 			// When client emits, forward to server
-			(this.server as LocalEventManager).handleIncomingMessage(event, data)
+			(this.server as LocalEventManager).handleIncomingMessage(to, event, data)
 		})
 
-		this.server = new LocalEventManager('server', (event, data) => {
+		this.server = new LocalEventManager('server', (to, event, data, groupName) => {
 			// When server emits, forward to client
-			(this.client as LocalEventManager).handleIncomingMessage(event, data)
+			(this.client as LocalEventManager).handleIncomingMessage(to, event, data)
 		})
 	}
 } 

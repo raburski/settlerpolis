@@ -10,7 +10,7 @@ export class ChatManager {
 	private setupEventHandlers() {
 		// Handle chat messages
 		this.event.on<ChatMessageData>(Event.Chat.Message, (data, client) => {
-			client.emit(Receiver.NoSenderGroup, Event.Chat.Message, data)
+			client.emit(Receiver.Group, Event.Chat.Message, data)
 		})
 	}
 } 

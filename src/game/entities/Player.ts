@@ -42,9 +42,6 @@ export class Player extends BasePlayer {
 		// Listen for chat input visibility changes
 		EventBus.on('chat:inputVisible', this.handleChatInputVisible, this)
 		
-		// Listen for send message events
-		EventBus.on('player:sendMessage', this.handleSendMessage, this)
-
 		// Listen for inventory events
 		EventBus.on(Event.Inventory.Loaded, this.handleInventoryLoaded, this)
 	}
@@ -64,10 +61,6 @@ export class Player extends BasePlayer {
 		} else {
 			this.scene.input.keyboard.disableGlobalCapture()
 		}
-	}
-
-	private handleSendMessage(message: string) {
-		this.displayMessage(message)
 	}
 
 	update(): void {
