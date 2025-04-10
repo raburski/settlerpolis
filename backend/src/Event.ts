@@ -3,7 +3,7 @@ import { Receiver } from './Receiver'
 // Interface for client operations
 export interface EventClient {
 	id: string
-	currentGroup?: string
+	currentGroup: string
 	emit(to: Receiver, event: string, data: any, targetClientId?: string): void
 	setGroup(group: string): void
 }

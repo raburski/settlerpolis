@@ -2,6 +2,8 @@ import { Server, Socket } from 'socket.io'
 import { EventClient, EventManager, EventCallback, LifecycleCallback } from './Event'
 import { Receiver } from './Receiver'
 
+const DEFAULT_GROUP = 'GLOBAL'
+
 export class NetworkManager implements EventManager {
 	private io: Server
 	private eventHandlers: Map<string, EventCallback[]>
@@ -66,7 +68,7 @@ export class NetworkManager implements EventManager {
 		return {
 			id: socket.id,
 			get currentGroup() {
-				return self.clientGroups.get(socket.id)
+				return self.clientGroups.get(socket.id) || DEFAULT_GROUP
 			},
 			setGroup(group: string) {
 				// Remove from previous group if exists
