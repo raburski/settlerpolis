@@ -7,6 +7,7 @@ import { dialogues } from './dialogues'
 export class DialogueManager {
 	private dialogues = new Map<string, DialogueTree>()
 	private activeDialogues = new Map<string, string>() // clientId -> dialogueId
+	private currentNodes = new Map<string, string>() // clientId -> nodeId
 
 	constructor(private event: EventManager) {
 		this.setupEventHandlers()
@@ -31,7 +32,7 @@ export class DialogueManager {
 			if (!dialogueId || dialogueId !== data.dialogueId) return
 
 			const dialogue = this.dialogues.get(dialogueId)
-			if (!dialogue) return
+			if (!dialogue) return 
 
 			const currentNode = this.getCurrentNode(client.id)
 			if (!currentNode?.next) {
@@ -45,6 +46,7 @@ export class DialogueManager {
 				return
 			}
 
+			this.currentNodes.set(client.id, currentNode.next)
 			client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
 				dialogueId,
 				node: nextNode
@@ -74,6 +76,7 @@ export class DialogueManager {
 				return
 			}
 
+			this.currentNodes.set(client.id, selectedOption.next)
 			client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
 				dialogueId,
 				node: nextNode
@@ -94,6 +97,7 @@ export class DialogueManager {
 		if (!startNode) return
 
 		this.activeDialogues.set(client.id, dialogueId)
+		this.currentNodes.set(client.id, dialogue.startNode)
 		client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
 			dialogueId,
 			node: startNode
@@ -107,7 +111,10 @@ export class DialogueManager {
 		const dialogue = this.dialogues.get(dialogueId)
 		if (!dialogue) return
 
-		return dialogue.nodes[dialogue.startNode]
+		const currentNodeId = this.currentNodes.get(clientId)
+		if (!currentNodeId) return dialogue.nodes[dialogue.startNode]
+
+		return dialogue.nodes[currentNodeId]
 	}
 
 	private endDialogue(client: EventClient) {
@@ -115,6 +122,7 @@ export class DialogueManager {
 		if (!dialogueId) return
 
 		this.activeDialogues.delete(client.id)
+		this.currentNodes.delete(client.id)
 		client.emit(Receiver.Sender, DialogueEvents.SC.End, { dialogueId })
 	}
 } 

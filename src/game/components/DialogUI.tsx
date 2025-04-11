@@ -2,14 +2,15 @@ import React, { useEffect, useState } from 'react'
 import { DialogueNode } from '@backend/Game/Dialogue/types'
 import styles from './DialogUI.module.css'
 import { EventBus } from '../EventBus'
+import { DialogueEvents } from '@backend/Game/Dialogue/events'
 
 export function DialogUI() {
 	const [activeNode, setActiveNode] = useState<DialogueNode | null>(null)
 	const [dialogueId, setDialogueId] = useState<string | null>(null)
 
 	useEffect(() => {
-		const handleDialogueUpdate = (data: { dialogueId: string, node: DialogueNode }) => {
-			console.log('Dialogue update:', data)
+		const handleDialogueTrigger = (data: { dialogueId: string, node: DialogueNode }) => {
+			console.log('Dialogue trigger:', data)
 			setDialogueId(data.dialogueId)
 			setActiveNode(data.node)
 		}
@@ -20,13 +21,13 @@ export function DialogUI() {
 			setActiveNode(null)
 		}
 
-		// Listen for both local and server events
-		EventBus.on('dialogue:update', handleDialogueUpdate)
-		EventBus.on('dialogue:end', handleDialogueEnd)
+		// Listen for dialogue events
+		EventBus.on(DialogueEvents.SC.Trigger, handleDialogueTrigger)
+		EventBus.on(DialogueEvents.SC.End, handleDialogueEnd)
 
 		return () => {
-			EventBus.off('dialogue:update', handleDialogueUpdate)
-			EventBus.off('dialogue:end', handleDialogueEnd)
+			EventBus.off(DialogueEvents.SC.Trigger, handleDialogueTrigger)
+			EventBus.off(DialogueEvents.SC.End, handleDialogueEnd)
 		}
 	}, [])
 
@@ -35,25 +36,40 @@ export function DialogUI() {
 	}
 
 	const handleContinue = () => {
-		console.log('Continuing dialogue')
-
+		if (dialogueId && activeNode.next) {
+			EventBus.emit(DialogueEvents.CS.Continue, { 
+				dialogueId,
+				nodeId: activeNode.next 
+			})
+		}
 	}
 
 	const handleOptionSelect = (optionId: string) => {
-		console.log('Selected option:', optionId)
-
+		if (dialogueId) {
+			EventBus.emit(DialogueEvents.CS.Choice, {
+				dialogueId,
+				choiceId: optionId
+			})
+		}
 	}
 
 	const handleClose = () => {
-		console.log('Closing dialogue:', dialogueId)
 		if (dialogueId) {
-			EventBus.emit('dialogue:end', { dialogueId })
+			EventBus.emit(DialogueEvents.SC.End, { dialogueId })
 		}
 	}
 
 	return (
 		<div className={styles.dialogContainer}>
 			<div className={styles.dialogContent}>
+				<button 
+					className={styles.closeIcon}
+					onClick={handleClose}
+					aria-label="Close dialog"
+				>
+					×
+				</button>
+
 				<div className={styles.speakerName}>
 					{activeNode.speaker}
 				</div>
