@@ -28,7 +28,7 @@ export interface EventManager {
 	emit(to: Receiver, event: string, data: any, groupName?: string): void
 }
 
-export enum Event {
+export const Event = {
 	Players: PlayersEvents,
 	Chat: ChatEvents,
 	System: SystemEvents,
@@ -37,4 +37,4 @@ export enum Event {
 	Items: ItemsEvents,
 	Loot: LootEvents,
 	Dialogue: DialogueEvents
-} as const 
+}

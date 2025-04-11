@@ -1,4 +1,4 @@
-import { EventManager, Event } from '../../events'
+import { EventManager, Event, EventClient } from '../../events'
 import { Receiver } from '../../Receiver'
 import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData } from './types'
 import { DialogueEvents } from './events'

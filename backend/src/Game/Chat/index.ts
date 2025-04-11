@@ -1,6 +1,6 @@
 import { EventManager, Event } from '../../events'
-import { ChatMessageData, ChatSystemMessageData, ChatMessageType } from '../DataTypes'
-import { Receiver } from '../Receiver'
+import { ChatMessageData, ChatSystemMessageData, ChatMessageType } from '../../types'
+import { Receiver } from '../../Receiver'
 
 export class ChatManager {
 	constructor(private event: EventManager) {

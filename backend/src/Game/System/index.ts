@@ -1,5 +1,5 @@
 import { EventManager, Event } from '../../events'
-import { Receiver } from '../Receiver'
+import { Receiver } from '../../Receiver'
 
 export class SystemManager {
 	constructor(private event: EventManager) {

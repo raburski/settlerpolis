@@ -1,6 +1,6 @@
 import { EventManager, Event, EventClient } from '../../events'
-import { Inventory, Item, InventoryData, DropItemData, PickUpItemData, ConsumeItemData, PlayerJoinData } from '../DataTypes'
-import { ItemType } from '../types'
+import { Inventory, Item, InventoryData, DropItemData, PickUpItemData, ConsumeItemData, PlayerJoinData } from '../../types'
+import { ItemType } from '../../types'
 import { Receiver } from '../../Receiver'
 import { v4 as uuidv4 } from 'uuid'
 

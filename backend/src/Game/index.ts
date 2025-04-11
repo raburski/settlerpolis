@@ -6,6 +6,7 @@ import { LootManager } from './Loot'
 import { NPCManager } from './NPC'
 import { SystemManager } from './System'
 import { ItemsManager } from './Items'
+import { DialogueManager } from './Dialogue'
 import { Receiver } from '../Receiver'
 
 export class GameManager {
@@ -16,6 +17,7 @@ export class GameManager {
 	private npcManager: NPCManager
 	private systemManager: SystemManager
 	private itemsManager: ItemsManager
+	private dialogueManager: DialogueManager
 
 	constructor(private event: EventManager) {
 		// Initialize managers in dependency order
@@ -24,7 +26,8 @@ export class GameManager {
 		this.itemsManager = new ItemsManager(event)
 		this.inventoryManager = new InventoryManager(event)
 		this.lootManager = new LootManager(event)
-		this.npcManager = new NPCManager(event)
+		this.dialogueManager = new DialogueManager(event)
+		this.npcManager = new NPCManager(event, this.dialogueManager)
 		
 		// Initialize PlayersManager last since it depends on other managers
 		this.playersManager = new PlayersManager(event, this.inventoryManager, this.lootManager)

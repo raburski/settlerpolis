@@ -1,5 +1,5 @@
 import { EventManager, Event, EventClient } from '../../events'
-import { DroppedItem, PlayerJoinData, PlayerTransitionData } from '../DataTypes'
+import { DroppedItem, PlayerJoinData, PlayerTransitionData } from '../../types'
 import { Receiver } from '../../Receiver'
 
 export class LootManager {

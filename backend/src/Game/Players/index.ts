@@ -1,5 +1,5 @@
-import { EventManager, Event, EventClient } from '../../events'
-import { Player, PlayerJoinData, PlayerMovedData, PlayerTransitionData } from '../DataTypes'
+import { EventManager, Event } from '../../events'
+import { Player, PlayerJoinData, PlayerMoveData, PlayerTransitionData } from '../../types'
 import { Receiver } from '../../Receiver'
 import { InventoryManager } from '../Inventory'
 import { LootManager } from '../Loot'
@@ -58,11 +58,11 @@ export class PlayersManager {
 		})
 
 		// Handle player movement
-		this.event.on<PlayerMovedData>(Event.Players.CS.Moved, (data, client) => {
+		this.event.on<PlayerMoveData>(Event.Players.CS.Move, (data, client) => {
 			const player = this.players.get(client.id)
 			if (player) {
 				player.position = data
-				client.emit(Receiver.NoSenderGroup, Event.Players.CS.Moved, data)
+				client.emit(Receiver.NoSenderGroup, Event.Players.CS.Move, data)
 			}
 		})
 
@@ -100,7 +100,8 @@ export class PlayersManager {
 			const droppedItem = {
 				...removedItem,
 				position: player.position,
-				droppedAt: Date.now()
+				droppedAt: Date.now(),
+				scene: player.scene
 			}
 
 			// Add item to scene's dropped items

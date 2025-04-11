@@ -1,6 +1,6 @@
-import { EventManager, Event } from '../Event'
-import { ItemMetadata, ItemMetaRequest, ItemMetaResponse, ItemType } from '../DataTypes'
-import { Receiver } from '../Receiver'
+import { EventManager, Event, EventClient } from '../../events'
+import { ItemMetadata, ItemMetaRequest, ItemMetaResponse, ItemType } from '../../types'
+import { Receiver } from '../../Receiver'
 
 const ITEMS_METADATA: Record<string, ItemMetadata> = {
 	'mozgotrzep': {
@@ -36,7 +36,7 @@ export class ItemsManager {
 
 	private setupEventHandlers() {
 		// Handle metadata requests
-		this.event.on<ItemMetaRequest>(Event.Items.CS.GetMeta, (data, client) => {
+		this.event.on<ItemMetaRequest>(Event.Items.CS.GetMeta, (data: ItemMetaRequest, client: EventClient) => {
 			const metadata = ITEMS_METADATA[data.itemId] || null
 			
 			const response: ItemMetaResponse = {

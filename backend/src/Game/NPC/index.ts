@@ -1,8 +1,9 @@
-import { EventManager } from '../../events'
+import { EventManager, Event, EventClient } from '../../events'
 import { NPC, NPCInteractData } from './types'
-import { Event } from './events'
+import { NPCEvents } from './events'
 import { Receiver } from '../../Receiver'
 import { DialogueManager } from '../Dialogue'
+import { PlayerJoinData, PlayerTransitionData } from '../../types'
 
 // Example NPC data
 const EXAMPLE_NPC: NPC = {
@@ -47,17 +48,17 @@ export class NPCManager {
 
 	private setupEventHandlers() {
 		// Send NPCs list when player joins or transitions to a scene
-		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
+		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data: PlayerJoinData, client: EventClient) => {
 			const sceneNPCs = this.getSceneNPCs(data.scene)
 			if (sceneNPCs.length > 0) {
-				client.emit(Receiver.Sender, Event.NPC.SC.List, { npcs: sceneNPCs })
+				client.emit(Receiver.Sender, NPCEvents.SC.List, { npcs: sceneNPCs })
 			}
 		})
 
-		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
+		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data: PlayerTransitionData, client: EventClient) => {
 			const sceneNPCs = this.getSceneNPCs(data.scene)
 			if (sceneNPCs.length > 0) {
-				client.emit(Receiver.Sender, Event.NPC.SC.List, { npcs: sceneNPCs })
+				client.emit(Receiver.Sender, NPCEvents.SC.List, { npcs: sceneNPCs })
 			}
 		})
 
