@@ -44,11 +44,6 @@ export class PlayerController {
 		
 		body.setVelocity(0)
 
-		// Check for inventory key press
-		// if (this.keyboard.isInventoryPressed()) {
-		// 	EventBus.emit('inventory:toggle')
-		// }
-
 		// Check for left movement
 		if (this.keyboard.isMovingLeft()) {
 			body.setVelocityX(-this.view.speed)
@@ -79,7 +74,6 @@ export class PlayerController {
 		if (!this.keyboard.isAnyMovementKeyPressed()) {
 			this.view.updateState(PlayerState.Idle)
 		}
-
     }
 
     updateServerPosition() {
@@ -110,6 +104,8 @@ export class PlayerController {
 
 	public destroy(): void {
 		EventBus.off(Event.Chat.SC.Receive, this.handleChatMessage, this)
-		this.keyboard.destroy()
+		if (this.keyboard) {
+			this.keyboard.destroy()
+		}
 	}
 }

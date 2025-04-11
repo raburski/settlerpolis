@@ -1,16 +1,25 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { EventBus } from '../EventBus'
 import { Event } from '@backend/events'
 import { Inventory as InventoryType, Item } from '@backend/DataTypes'
 import { ItemType } from '@backend/types'
 import styles from './Inventory.module.css'
 
-interface InventoryProps {
-	isOpen: boolean
-}
-
-export function Inventory({ isOpen }: InventoryProps) {
+export function Inventory() {
+	const [isVisible, setIsVisible] = useState(false)
 	const [inventory, setInventory] = useState<InventoryType>({ items: [] })
+
+	useEffect(() => {
+		const handleToggle = () => {
+			setIsVisible(prev => !prev)
+		}
+
+		EventBus.on('ui:inventory:toggle', handleToggle)
+
+		return () => {
+			EventBus.off('ui:inventory:toggle', handleToggle)
+		}
+	}, [])
 
 	useEffect(() => {
 		const handleInventoryLoaded = (data: { inventory: InventoryType }) => {
@@ -25,7 +34,7 @@ export function Inventory({ isOpen }: InventoryProps) {
 	}, [])
 
 	const handleDropItem = (itemId: string) => {
-        console.log('drop item')
+		console.log('drop item')
 		EventBus.emit(Event.Players.CS.DropItem, { itemId })
 	}
 
@@ -33,40 +42,51 @@ export function Inventory({ isOpen }: InventoryProps) {
 		EventBus.emit(Event.Inventory.CS.Consume, { itemId })
 	}
 
-	if (!isOpen) return null
+	if (!isVisible) {
+		return null
+	}
 
 	return (
-		<div className={styles.container}>
-			<h2>Inventory</h2>
-			{inventory.items.length === 0 ? (
-				<p>Your inventory is empty</p>
-			) : (
-				<ul className={styles.itemsList}>
-					{inventory.items.map(item => (
-						<li key={item.id} className={styles.item}>
-							<span>{item.name}</span>
-							<div className={styles.buttons}>
-								{item.type === ItemType.Consumable && (
+		<div className={styles.inventoryContainer}>
+			<div className={styles.inventoryContent}>
+				<button 
+					className={styles.closeIcon}
+					onClick={() => setIsVisible(false)}
+					aria-label="Close inventory"
+				>
+					×
+				</button>
+				<h2 className={styles.title}>Inventory</h2>
+				<div className={styles.grid}>
+					{inventory.items.length === 0 ? (
+						<p>Your inventory is empty</p>
+					) : (
+						inventory.items.map(item => (
+							<div key={item.id} className={styles.slot}>
+								<span>{item.name}</span>
+								<div className={styles.buttons}>
+									{item.type === ItemType.Consumable && (
+										<button 
+											className={styles.consumeButton}
+											onClick={() => handleConsumeItem(item.id)}
+											title="Consume item"
+										>
+											🍽️
+										</button>
+									)}
 									<button 
-										className={styles.consumeButton}
-										onClick={() => handleConsumeItem(item.id)}
-										title="Consume item"
+										className={styles.dropButton}
+										onClick={() => handleDropItem(item.id)}
+										title="Drop item"
 									>
-										🍽️
+										🗑️
 									</button>
-								)}
-								<button 
-									className={styles.dropButton}
-									onClick={() => handleDropItem(item.id)}
-									title="Drop item"
-								>
-									🗑️
-								</button>
+								</div>
 							</div>
-						</li>
-					))}
-				</ul>
-			)}
+						))
+					)}
+				</div>
+			</div>
 		</div>
 	)
 } 

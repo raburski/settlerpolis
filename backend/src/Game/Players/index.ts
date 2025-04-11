@@ -113,7 +113,7 @@ export class PlayersManager {
 			const player = this.players.get(client.id)
 			if (!player) return
 
-			const sceneItems = this.lootManager.getSceneItems(player.scene)
+			const sceneItems = this.lootManager.getSceneItems(client.currentGroup)
 			const item = sceneItems.find(item => item.id === data.itemId)
 			if (!item) return
 

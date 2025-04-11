@@ -12,7 +12,6 @@ function App()
     //  References to the PhaserGame component (game and scene are exposed)
     const phaserRef = useRef<IRefPhaserGame | null>(null);
     const [currentScene, setCurrentScene] = useState<Phaser.Scene | null>(null);
-    const [isInventoryOpen, setIsInventoryOpen] = useState(false);
 
     const handleSceneChange = (scene: any) => {
         setCurrentScene(scene.scene.key);
@@ -42,7 +41,7 @@ function App()
             <PhaserGame ref={phaserRef} currentActiveScene={handleSceneChange} />
             {currentScene && <Chat scene={currentScene} />}
             <DisconnectModal />
-            <Inventory isOpen={isInventoryOpen} />
+            <Inventory />
             <ChatLog />
             <DialogUI />
             {/* <div>

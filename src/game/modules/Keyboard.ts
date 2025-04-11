@@ -11,6 +11,7 @@ export class Keyboard {
 	}
 	private inventoryKey: Phaser.Input.Keyboard.Key
 	private enabled: boolean = true
+	private wasInventoryPressed: boolean = false
 
 	constructor(private scene: Scene) {
 		this.cursors = scene.input.keyboard.createCursorKeys()
@@ -33,6 +34,13 @@ export class Keyboard {
 
 		// Listen for chat input visibility changes
 		EventBus.on('chat:inputVisible', this.handleChatInputVisible, this)
+	}
+
+	public update() {
+		if (this.enabled && this.inventoryKey.isDown && !this.wasInventoryPressed) {
+			EventBus.emit('ui:inventory:toggle')
+		}
+		this.wasInventoryPressed = this.inventoryKey.isDown
 	}
 
 	private handleChatInputVisible = (isVisible: boolean) => {
