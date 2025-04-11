@@ -31,7 +31,7 @@ export class PlayerView extends GameObjects.Container {
 	protected currentAnimationKey: string = ''
 	protected speed: number = 160 // Default speed in pixels per second
 
-	constructor(scene: Scene, x: number = 0, y: number = 0, appearance: PlayerAppearance = {}) {
+	constructor(scene: Scene, x: number = 0, y: number = 0, appearance: PlayerAppearance = {}, isNPC: boolean = false) {
 		super(scene, x, y)
 		scene.add.existing(this)
 		this.appearance = appearance
@@ -58,6 +58,11 @@ export class PlayerView extends GameObjects.Container {
 			physicsBody.setOffset(-20, 22) // Center horizontally, align to bottom
 			// Make sure the player can't go out of bounds
 			physicsBody.setCollideWorldBounds(true)
+
+			// If this is an NPC, make it immovable
+			if (isNPC) {
+				physicsBody.setImmovable(true)
+			}
 		} else {
 			console.error('Player physics body is null. This might happen during scene transitions.')
 		}
@@ -250,12 +255,12 @@ export class PlayerView extends GameObjects.Container {
 	}
 
 	public updateDirection(direction: Direction): void {
-        if (this.direction === direction) return
+		if (this.direction === direction) return
 
 		this.direction = direction
 		if (direction === Direction.Left || direction === Direction.Right) {
 			this.horizontalDirection = direction === Direction.Right ? HorizontalDirection.Right : HorizontalDirection.Left
-            this.updateState(this.currentState) // to make sure animation is updated
+			this.updateState(this.currentState) // to make sure animation is updated
 		}
 	}
 
@@ -297,4 +302,4 @@ export class PlayerView extends GameObjects.Container {
 			frameHeight
 		})
 	}
-} 
+}
