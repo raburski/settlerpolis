@@ -29,7 +29,7 @@ export class GameManager {
 
 	private setupEventHandlers() {
 		// Handle item drop
-		this.event.on<DropItemData>(Event.Inventory.Drop, (data, client) => {
+		this.event.on<DropItemData>(Event.Inventory.CS.Drop, (data, client) => {
 			const player = this.playersManager.getPlayer(client.id)
 			if (!player) return
 
@@ -49,7 +49,7 @@ export class GameManager {
 		})
 
 		// Handle item pickup
-		this.event.on<PickUpItemData>(Event.Inventory.PickUp, (data, client) => {
+		this.event.on<PickUpItemData>(Event.Inventory.CS.PickUp, (data, client) => {
 			const player = this.playersManager.getPlayer(client.id)
 			if (!player) return
 

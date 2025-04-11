@@ -26,7 +26,7 @@ export class InventoryManager {
 		if (!inventory) return
 
 		inventory.items.push(item)
-		client.emit(Receiver.Sender, Event.Inventory.Loaded, { inventory })
+		client.emit(Receiver.Sender, Event.Inventory.SC.Loaded, { inventory })
 	}
 
 	removeItem(client: EventClient, itemId: string): Item | undefined {
@@ -37,7 +37,7 @@ export class InventoryManager {
 		if (itemIndex === -1) return
 
 		const [removedItem] = inventory.items.splice(itemIndex, 1)
-		client.emit(Receiver.Sender, Event.Inventory.Loaded, { inventory })
+		client.emit(Receiver.Sender, Event.Inventory.SC.Loaded, { inventory })
 		return removedItem
 	}
 
@@ -56,15 +56,15 @@ export class InventoryManager {
 		})
 
 		// Handle player join to send initial inventory
-		this.event.on<PlayerJoinData>(Event.Player.Join, (_, client) => {
+		this.event.on<PlayerJoinData>(Event.Player.CS.Join, (_, client) => {
 			const inventory = this.inventories.get(client.id)
 			if (inventory) {
-				client.emit(Receiver.Sender, Event.Inventory.Loaded, { inventory })
+				client.emit(Receiver.Sender, Event.Inventory.SC.Loaded, { inventory })
 			}
 		})
 
 		// Handle item consume
-		this.event.on<ConsumeItemData>(Event.Inventory.Consume, (data, client) => {
+		this.event.on<ConsumeItemData>(Event.Inventory.CS.Consume, (data, client) => {
 			const inventory = this.inventories.get(client.id)
 			if (!inventory) return
 
@@ -77,7 +77,7 @@ export class InventoryManager {
 
 			// Remove item from inventory
 			inventory.items.splice(itemIndex, 1)
-			client.emit(Receiver.Sender, Event.Inventory.Loaded, { inventory })
+			client.emit(Receiver.Sender, Event.Inventory.SC.Loaded, { inventory })
 		})
 	}
 } 

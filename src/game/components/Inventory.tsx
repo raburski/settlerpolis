@@ -13,27 +13,30 @@ export function Inventory({ isOpen }: InventoryProps) {
 	const [inventory, setInventory] = useState<InventoryType>({ items: [] })
 
 	useEffect(() => {
-		function handleInventoryLoaded(data: { inventory: InventoryType }) {
+        console.log('INV EFFECT')
+		const handleInventoryLoaded = (data: { inventory: InventoryType }) => {
+            console.log('setInventory', data)
 			setInventory(data.inventory)
 		}
 
-		EventBus.on(Event.Inventory.Loaded, handleInventoryLoaded)
+		EventBus.on(Event.Inventory.SC.Loaded, handleInventoryLoaded)
 
 		return () => {
-			EventBus.off(Event.Inventory.Loaded, handleInventoryLoaded)
+			EventBus.off(Event.Inventory.SC.Loaded, handleInventoryLoaded)
 		}
 	}, [])
 
 	const handleDropItem = (itemId: string) => {
-		EventBus.emit(Event.Inventory.Drop, { itemId })
+        console.log('drop item')
+		EventBus.emit(Event.Inventory.CS.Drop, { itemId })
 	}
 
 	const handleConsumeItem = (itemId: string) => {
-		EventBus.emit(Event.Inventory.Consume, { itemId })
+		EventBus.emit(Event.Inventory.CS.Consume, { itemId })
 	}
 
 	if (!isOpen) return null
-
+    console.log('render inventory', inventory.items)
 	return (
 		<div className={styles.container}>
 			<h2>Inventory</h2>

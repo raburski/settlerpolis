@@ -14,17 +14,17 @@ export class LootManager {
 
 	private setupEventHandlers() {
 		// Handle player join and scene transition to send items
-		this.event.on<PlayerJoinData>(Event.Player.Join, (data, client) => {
-			const sceneDroppedItems = this.droppedItems.get(client.currentGroup) || []
+		this.event.on<PlayerJoinData>(Event.Player.CS.Join, (data, client) => {
+			const sceneDroppedItems = this.droppedItems.get(data.scene) || []
 			if (sceneDroppedItems.length > 0) {
-				client.emit(Receiver.Sender, Event.Scene.AddItems, { items: sceneDroppedItems })
+				client.emit(Receiver.Sender, Event.Scene.SC.AddItems, { items: sceneDroppedItems })
 			}
 		})
 
-		this.event.on<PlayerTransitionData>(Event.Player.TransitionTo, (data, client) => {
-			const sceneDroppedItems = this.droppedItems.get(client.currentGroup) || []
+		this.event.on<PlayerTransitionData>(Event.Player.CS.TransitionTo, (data, client) => {
+			const sceneDroppedItems = this.droppedItems.get(data.scene) || []
 			if (sceneDroppedItems.length > 0) {
-				client.emit(Receiver.Sender, Event.Scene.AddItems, { items: sceneDroppedItems })
+				client.emit(Receiver.Sender, Event.Scene.SC.AddItems, { items: sceneDroppedItems })
 			}
 		})
 	}
@@ -35,7 +35,7 @@ export class LootManager {
 		this.droppedItems.set(client.currentGroup, sceneDroppedItems)
 
 		// Broadcast to all players in the scene that an item was dropped
-		client.emit(Receiver.Group, Event.Scene.AddItems, { items: [item] })
+		client.emit(Receiver.Group, Event.Scene.SC.AddItems, { items: [item] })
 	}
 
 	pickItem(itemId: string, client: EventClient): DroppedItem | undefined {
@@ -48,7 +48,7 @@ export class LootManager {
 		this.droppedItems.set(client.currentGroup, sceneItems)
 
 		// Broadcast to all players in the scene that an item was picked up
-		client.emit(Receiver.Group, Event.Scene.RemoveItems, { itemIds: [itemId] })
+		client.emit(Receiver.Group, Event.Scene.SC.RemoveItems, { itemIds: [itemId] })
 
 		return removedItem
 	}
@@ -83,7 +83,7 @@ export class LootManager {
 				sceneItems.filter(item => !expiredItemIds.includes(item.id))
 			)
 
-			this.event.emit(Receiver.Group, Event.Scene.RemoveItems, { itemIds: expiredItemIds }, scene)
+			this.event.emit(Receiver.Group, Event.Scene.SC.RemoveItems, { itemIds: expiredItemIds }, scene)
 		}
 	}
 } 

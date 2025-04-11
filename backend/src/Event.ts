@@ -22,37 +22,62 @@ export interface EventManager {
 
 export const Event = {
 	Player: {
-		Join: 'player:join',
-		Joined: 'player:joined',
-		Left: 'player:left',
-		Moved: 'player:moved',
-		Disconnected: 'player:disconnected',
-		TransitionTo: 'player:transition-to'
+		CS: {
+			Join: 'cs:player:join',
+			Moved: 'cs:player:moved',
+			TransitionTo: 'cs:player:transition-to'
+		},
+		SC: {
+			Joined: 'sc:player:joined',
+			Left: 'sc:player:left',
+			Disconnected: 'sc:player:disconnected'
+		}
 	},
 	Players: {
-		List: 'players:list'
+		SC: {
+			List: 'sc:players:list'
+		}
 	},
 	Chat: {
-		Message: 'chat:message'
+		CS: {
+			Send: 'cs:chat:send'
+		},
+		SC: {
+			Receive: 'sc:chat:receive',
+			SystemMessage: 'sc:chat:system_message'
+		}
 	},
 	System: {
-		Ping: 'system:ping'
+		CS: {
+			Ping: 'cs:system:ping'
+		}
 	},
 	Inventory: {
-		Loaded: 'inventory:loaded',
-		Drop: 'inventory:drop',
-		PickUp: 'inventory:pickup',
-		Consume: 'inventory:consume'
+		CS: {
+			Drop: 'cs:inventory:drop',
+			PickUp: 'cs:inventory:pickup',
+			Consume: 'cs:inventory:consume'
+		},
+		SC: {
+			Loaded: 'sc:inventory:loaded'
+		}
 	},
 	Scene: {
-		AddItems: 'scene:add-items',
-		RemoveItems: 'scene:remove-items'
+		SC: {
+			AddItems: 'sc:scene:add-items',
+			RemoveItems: 'sc:scene:remove-items'
+		}
 	},
 	NPC: {
-		List: 'npc:list',
-		Interact: 'npc:interact',
-		Dialog: 'npc:dialog',
-		CloseDialog: 'npc:close-dialog',
-		Message: 'npc:message'
+		CS: {
+			Interact: 'cs:npc:interact',
+			Dialog: 'cs:npc:dialog',
+			CloseDialog: 'cs:npc:close-dialog'
+		},
+		SC: {
+			List: 'sc:npc:list',
+			Message: 'sc:npc:message',
+			Dialog: 'sc:npc:dialog'
+		}
 	}
 } as const 

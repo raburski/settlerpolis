@@ -211,18 +211,18 @@ export abstract class MapScene extends Scene {
 
 	private setupMultiplayer() {
         // Set up multiplayer event listeners
-		EventBus.on(Event.Player.Joined, this.handlePlayerJoined, this)
-		EventBus.on(Event.Player.Moved, this.handlePlayerMoved, this)
-		EventBus.on(Event.Player.Left, this.handlePlayerLeft, this)
-		EventBus.on(Event.Player.Disconnected, this.handlePlayerDisconnected, this)
+		EventBus.on(Event.Player.SC.Joined, this.handlePlayerJoined, this)
+		EventBus.on(Event.Player.CS.Moved, this.handlePlayerMoved, this)
+		EventBus.on(Event.Player.SC.Left, this.handlePlayerLeft, this)
+		EventBus.on(Event.Player.SC.Disconnected, this.handlePlayerDisconnected, this)
 
         // Listen for chat messages
-		EventBus.on(Event.Chat.Message, this.handleChatMessage, this)
+		EventBus.on(Event.Chat.CS.Message, this.handleChatMessage, this)
 
 		// Set up scene event listeners
-		EventBus.on(Event.Scene.AddItems, this.handleAddItems, this)
-		EventBus.on(Event.Scene.RemoveItems, this.handleRemoveItems, this)
-		EventBus.on(Event.NPC.List, this.handleNPCList, this)
+		EventBus.on(Event.Scene.SC.AddItems, this.handleAddItems, this)
+		EventBus.on(Event.Scene.SC.RemoveItems, this.handleRemoveItems, this)
+		EventBus.on(Event.NPC.SC.List, this.handleNPCList, this)
 
 
 		// Connect to multiplayer server
@@ -333,7 +333,7 @@ export abstract class MapScene extends Scene {
 					)
 					
 					if (distance <= PICKUP_RANGE) {
-						EventBus.emit(Event.Inventory.PickUp, { itemId: item.id })
+						EventBus.emit(Event.Inventory.CS.PickUp, { itemId: item.id })
 					} else {
 						// Optional: Show "too far" message
 						this.player.displaySystemMessage("Too far to pick up")
@@ -481,14 +481,14 @@ export abstract class MapScene extends Scene {
 	protected cleanupScene(): void {
 		try {
 			// Remove event listeners
-			EventBus.off(Event.Chat.Message, this.handleChatMessage, this)
-			EventBus.off(Event.Player.Joined, this.handlePlayerJoined, this)
-			EventBus.off(Event.Player.Moved, this.handlePlayerMoved, this)
-			EventBus.off(Event.Player.Left, this.handlePlayerLeft, this)
-			EventBus.off(Event.Player.Disconnected, this.handlePlayerDisconnected, this)
-			EventBus.off(Event.Scene.AddItems, this.handleAddItems, this)
-			EventBus.off(Event.Scene.RemoveItems, this.handleRemoveItems, this)
-			EventBus.off(Event.NPC.List, this.handleNPCList, this)
+			EventBus.off(Event.Chat.CS.Message, this.handleChatMessage, this)
+			EventBus.off(Event.Player.SC.Joined, this.handlePlayerJoined, this)
+			EventBus.off(Event.Player.CS.Moved, this.handlePlayerMoved, this)
+			EventBus.off(Event.Player.SC.Left, this.handlePlayerLeft, this)
+			EventBus.off(Event.Player.SC.Disconnected, this.handlePlayerDisconnected, this)
+			EventBus.off(Event.Scene.SC.AddItems, this.handleAddItems, this)
+			EventBus.off(Event.Scene.SC.RemoveItems, this.handleRemoveItems, this)
+			EventBus.off(Event.NPC.SC.List, this.handleNPCList, this)
 			
 			// Clean up multiplayer players
 			this.multiplayerPlayers.forEach(player => {
@@ -535,9 +535,9 @@ export abstract class MapScene extends Scene {
 
 	public destroy(): void {
 		// Remove event listeners
-		EventBus.off(Event.Scene.AddItems, this.handleAddItems, this)
-		EventBus.off(Event.Scene.RemoveItems, this.handleRemoveItems, this)
-		EventBus.off(Event.NPC.List, this.handleNPCList, this)
+		EventBus.off(Event.Scene.SC.AddItems, this.handleAddItems, this)
+		EventBus.off(Event.Scene.SC.RemoveItems, this.handleRemoveItems, this)
+		EventBus.off(Event.NPC.SC.List, this.handleNPCList, this)
 		
 		// Clean up dropped items
 		this.droppedItems.forEach(sprite => sprite.destroy())

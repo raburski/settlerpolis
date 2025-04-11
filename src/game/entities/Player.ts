@@ -43,7 +43,7 @@ export class Player extends BasePlayer {
 		EventBus.on('chat:inputVisible', this.handleChatInputVisible, this)
 		
 		// Listen for inventory events
-		EventBus.on(Event.Inventory.Loaded, this.handleInventoryLoaded, this)
+		EventBus.on(Event.Inventory.SC.Loaded, this.handleInventoryLoaded, this)
 	}
 
 	private handleInventoryLoaded = (data: InventoryData) => {
@@ -129,7 +129,7 @@ export class Player extends BasePlayer {
 		// Remove event listeners
 		EventBus.off('chat:inputVisible', this.handleChatInputVisible, this)
 		EventBus.off('player:sendMessage', this.handleSendMessage, this)
-		EventBus.off(Event.Inventory.Loaded, this.handleInventoryLoaded, this)
+		EventBus.off(Event.Inventory.SC.Loaded, this.handleInventoryLoaded, this)
 		
 		// Call parent destroy method
 		super.destroy()

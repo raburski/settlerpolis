@@ -80,6 +80,14 @@ export class NPCSprite extends Phaser.GameObjects.Sprite {
 	preUpdate() {
 		// Update depth based on y position
 		this.setDepth(this.y)
+
+		// Update text positions to follow NPC
+		if (this.nameText) {
+			this.nameText.setPosition(Math.round(this.x), Math.round(this.y - 40))
+		}
+		if (this.messageText) {
+			this.messageText.setPosition(Math.round(this.x), Math.round(this.y - 70))
+		}
 	}
 
 	public displayMessage(message: string) {
@@ -90,15 +98,22 @@ export class NPCSprite extends Phaser.GameObjects.Sprite {
 		if (!message) return
 
 		// Create text above the NPC (above the name text)
-		this.messageText = this.scene.add.text(this.x, this.y - 70, message, {
-			fontSize: '18px',
+		this.messageText = this.scene.add.text(this.x, this.y - 80, message, {
+			fontSize: '14px',
 			color: '#ffffff',
-			backgroundColor: 'rgba(0, 0, 0, 0.7)',
-			padding: { x: 5, y: 3 },
-			align: 'center'
+			backgroundColor: '#000000a',
+			padding: { x: 8, y: 6 },
+			align: 'center',
+			wordWrap: { width: 150, useAdvancedWrap: true },
+			fixedWidth: 150,
+			lineSpacing: 4,
+			style: {
+				boxShadow: '2px 2px 4px rgba(0,0,0,0.3)'
+			}
 		})
 		.setOrigin(0.5)
 		.setDepth(10000) // Always keep message text on top
+		.setAlpha(0.85)
 
 		// Remove the message after 3 seconds
 		this.scene.time.delayedCall(3000, () => {

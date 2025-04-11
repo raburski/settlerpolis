@@ -38,11 +38,11 @@ export class MultiplayerService {
 		// Listen for player:sendMessage events
 		EventBus.on('player:sendMessage', this.handleSendMessage, this)
 		// Listen for inventory drop events
-		EventBus.on(Event.Inventory.Drop, this.handleDropItem, this)
+		EventBus.on(Event.Inventory.CS.Drop, this.handleDropItem, this)
 		// Listen for inventory pickup events
-		EventBus.on(Event.Inventory.PickUp, this.handlePickUpItem, this)
+		EventBus.on(Event.Inventory.CS.PickUp, this.handlePickUpItem, this)
 		// Listen for inventory consume events
-		EventBus.on(Event.Inventory.Consume, this.handleConsumeItem, this)
+		EventBus.on(Event.Inventory.CS.Consume, this.handleConsumeItem, this)
 	}
 
 	private getAllNetworkEvents(): string[] {
@@ -79,7 +79,7 @@ export class MultiplayerService {
 
 	static getInstance(): MultiplayerService {
 		if (!MultiplayerService.instance) {
-			const IS_REMOTE_GAME = true
+			const IS_REMOTE_GAME = false
 			if (IS_REMOTE_GAME) {
 				const networkManager = new NetworkManager('https://hearty-rejoicing-production.up.railway.app')
 				MultiplayerService.instance = new MultiplayerService(networkManager)
@@ -106,20 +106,20 @@ export class MultiplayerService {
 
 		this.currentScene = scene
 		console.log(`Joining game in scene: ${scene}`)
-		this.event.emit(Receiver.All, Event.Player.Join, { position: { x, y }, scene, appearance })
+		this.event.emit(Receiver.All, Event.Player.CS.Join, { position: { x, y }, scene, appearance })
 	}
 
 	updatePosition(x: number, y: number) {
 		if (!this.event || !this.currentScene) return
 		
-		this.event.emit(Receiver.All, Event.Player.Moved, { x, y })
+		this.event.emit(Receiver.All, Event.Player.CS.Moved, { x, y })
 	}
 
 	transitionToScene(x: number, y: number, scene: string) {
 		if (!this.event) return
 
 		// Send transition event
-		this.event.emit(Receiver.All, Event.Player.TransitionTo, {
+		this.event.emit(Receiver.All, Event.Player.CS.TransitionTo, {
 			position: { x, y },
 			scene
 		})
@@ -148,7 +148,7 @@ export class MultiplayerService {
 			message
 		}
 
-		this.event.emit(Receiver.NoSenderGroup, Event.Chat.Message, chatMessage)
+		this.event.emit(Receiver.NoSenderGroup, Event.Chat.CS.Message, chatMessage)
 	}
 
 	private handleSendMessage = (message: string) => {
@@ -157,27 +157,27 @@ export class MultiplayerService {
 
 	private handleDropItem = (data: DropItemData) => {
 		if (!this.event) return
-		this.event.emit(Receiver.All, Event.Inventory.Drop, data)
+		this.event.emit(Receiver.All, Event.Inventory.CS.Drop, data)
 	}
 
 	private handlePickUpItem = (data: PickUpItemData) => {
 		if (!this.event) return
-		this.event.emit(Receiver.All, Event.Inventory.PickUp, data)
+		this.event.emit(Receiver.All, Event.Inventory.CS.PickUp, data)
 	}
 
 	private handleConsumeItem = (data: ConsumeItemData) => {
 		if (!this.event) return
-		this.event.emit(Receiver.All, Event.Inventory.Consume, data)
+		this.event.emit(Receiver.All, Event.Inventory.CS.Consume, data)
 	}
 
 	public async interactWithNPC(npcId: string) {
 		if (!this.event) return
-		this.event.emit(Receiver.All, Event.NPC.Interact, { npcId })
+		this.event.emit(Receiver.All, Event.NPC.CS.Interact, { npcId })
 	}
 
 	public async selectNPCResponse(npcId: string, dialogId: string, responseId: string) {
 		if (!this.event) return
-		this.event.emit(Receiver.All, Event.NPC.Dialog, { 
+		this.event.emit(Receiver.All, Event.NPC.CS.Dialog, { 
 			npcId,
 			dialogId,
 			responseId
@@ -186,14 +186,14 @@ export class MultiplayerService {
 
 	public async closeNPCDialog(npcId: string) {
 		if (!this.event) return
-		this.event.emit(Receiver.All, Event.NPC.CloseDialog, { npcId })
+		this.event.emit(Receiver.All, Event.NPC.CS.CloseDialog, { npcId })
 	}
 
 	public destroy(): void {
 		this.disconnect()
 		EventBus.off('player:sendMessage', this.handleSendMessage)
-		EventBus.off(Event.Inventory.Drop, this.handleDropItem)
-		EventBus.off(Event.Inventory.PickUp, this.handlePickUpItem)
-		EventBus.off(Event.Inventory.Consume, this.handleConsumeItem)
+		EventBus.off(Event.Inventory.CS.Drop, this.handleDropItem)
+		EventBus.off(Event.Inventory.CS.PickUp, this.handlePickUpItem)
+		EventBus.off(Event.Inventory.CS.Consume, this.handleConsumeItem)
 	}
 } 

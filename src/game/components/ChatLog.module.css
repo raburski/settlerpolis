@@ -1,32 +1,54 @@
 .container {
-	position: fixed;
-	left: 20px;
+	position: absolute;
 	bottom: 20px;
-	width: 300px;
-	max-height: 300px;
-	background-color: rgba(0, 0, 0, 0.8);
-	color: white;
-	padding: 10px;
-	border-radius: 8px;
+	left: 20px;
+	width: 400px;
+	max-height: 200px;
 	overflow-y: auto;
+	background-color: rgba(0, 0, 0, 0.7);
+	border-radius: 8px;
+	padding: 10px;
+	color: white;
 	font-size: 14px;
-	z-index: 1000;
 }
 
 .message {
 	margin-bottom: 4px;
 	line-height: 1.4;
-	word-wrap: break-word;
 }
 
 .timestamp {
-	color: #888;
+	color: #999;
 	margin-right: 8px;
 	font-size: 12px;
 }
 
-.text {
+/* Message types */
+.local {
 	color: #fff;
+}
+
+.system {
+	color: #ffd700;
+	font-style: italic;
+}
+
+.warning {
+	color: #ffa500;
+	font-weight: bold;
+}
+
+.error {
+	color: #ff4444;
+	font-weight: bold;
+}
+
+.success {
+	color: #00ff00;
+}
+
+.info {
+	color: #87ceeb;
 }
 
 /* Custom scrollbar styles */

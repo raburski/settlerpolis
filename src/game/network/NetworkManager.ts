@@ -121,7 +121,7 @@ export class NetworkManager implements EventManager {
 		this.socket.on(event, (data: any) => {
 			if (this.client) {
 				// Update client's current group based on scene events
-				if (event === Event.Player.Join || event === Event.Player.TransitionTo) {
+				if (event === Event.Player.CS.Join || event === Event.Player.CS.TransitionTo) {
 					const sceneData = data as any
 					if (sceneData.scene) {
 						this.client.setGroup(sceneData.scene)
@@ -140,7 +140,7 @@ export class NetworkManager implements EventManager {
 		this.pingInterval = window.setInterval(() => {
 			const now = Date.now()
 			if (now - this.lastMessageTime >= this.PING_INTERVAL) {
-				this.emit(Receiver.All, Event.System.Ping, null)
+				this.emit(Receiver.All, Event.System.CS.Ping, null)
 			}
 		}, 1000) // Check every second
 	}

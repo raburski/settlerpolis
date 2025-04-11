@@ -23,62 +23,51 @@ export class PlayersManager {
 			const player = this.players.get(client.id)
 			this.players.delete(client.id)
 			if (player) {
-				// Broadcast player left to all players in the same scene
-				client.emit(Receiver.NoSenderGroup, Event.Player.Left, {})
+				client.emit(Receiver.NoSenderGroup, Event.Player.SC.Left, {})
 			}
 		})
 
-		// Handle player join
-		this.event.on<PlayerJoinData>(Event.Player.Join, (data, client) => {
+		this.event.on<PlayerJoinData>(Event.Player.CS.Join, (data, client) => {
 			const playerId = client.id
 			this.players.set(playerId, {
 				id: playerId,
 				...data,
 			})
 
-			// Set player's scene as their group
 			client.setGroup(data.scene)
 
-			// Send only players from the same scene
 			const scenePlayers = Array.from(this.players.values())
 				.filter(p => p.scene === data.scene && p.id !== client.id)
-			client.emit(Receiver.Sender, Event.Players.List, scenePlayers)
+			client.emit(Receiver.Sender, Event.Players.SC.List, scenePlayers)
 
-			client.emit(Receiver.NoSenderGroup, Event.Player.Joined, data)
+			client.emit(Receiver.NoSenderGroup, Event.Player.SC.Joined, data)
 		})
 
-		// Handle scene transition
-		this.event.on<PlayerTransitionData>(Event.Player.TransitionTo, (data, client) => {
+		this.event.on<PlayerTransitionData>(Event.Player.CS.TransitionTo, (data, client) => {
 			const playerId = client.id
 			const player = this.players.get(playerId)
 
 			if (player) {
-				// First, notify players in the current scene that this player is leaving
-				client.emit(Receiver.NoSenderGroup, Event.Player.Left, {})
+				client.emit(Receiver.NoSenderGroup, Event.Player.SC.Left, {})
 
-				// Update player data with new scene and position
 				player.scene = data.scene
 				player.position = data.position
 
-				// Update player's group to new scene
 				client.setGroup(data.scene)
 
-				// Send the current players list for the new scene
 				const scenePlayers = Array.from(this.players.values())
 					.filter(p => p.scene === data.scene && p.id !== client.id)
-				client.emit(Receiver.Sender, Event.Players.List, scenePlayers)
+				client.emit(Receiver.Sender, Event.Players.SC.List, scenePlayers)
 
-				// Notify players in the new scene that this player has joined
-				client.emit(Receiver.NoSenderGroup, Event.Player.Joined, data)
+				client.emit(Receiver.NoSenderGroup, Event.Player.SC.Joined, data)
 			}
 		})
 
-		// Handle player movement
-		this.event.on<PlayerMovedData>(Event.Player.Moved, (data, client) => {
+		this.event.on<PlayerMovedData>(Event.Player.CS.Moved, (data, client) => {
 			const player = this.players.get(client.id)
 			if (player) {
 				player.position = data
-				client.emit(Receiver.NoSenderGroup, Event.Player.Moved, data)
+				client.emit(Receiver.NoSenderGroup, Event.Player.CS.Moved, data)
 			}
 		})
 	}

@@ -93,22 +93,22 @@ export class NPCManager {
 
 	private setupEventHandlers() {
 		// Send NPCs list when player joins or transitions to a scene
-		this.event.on<PlayerJoinData>(Event.Player.Join, (data, client) => {
+		this.event.on<PlayerJoinData>(Event.Player.CS.Join, (data, client) => {
 			const sceneNPCs = this.getSceneNPCs(data.scene)
 			if (sceneNPCs.length > 0) {
-				client.emit(Receiver.Sender, Event.NPC.List, { npcs: sceneNPCs })
+				client.emit(Receiver.Sender, Event.NPC.SC.List, { npcs: sceneNPCs })
 			}
 		})
 
-		this.event.on<PlayerTransitionData>(Event.Player.TransitionTo, (data, client) => {
+		this.event.on<PlayerTransitionData>(Event.Player.CS.TransitionTo, (data, client) => {
 			const sceneNPCs = this.getSceneNPCs(data.scene)
 			if (sceneNPCs.length > 0) {
-				client.emit(Receiver.Sender, Event.NPC.List, { npcs: sceneNPCs })
+				client.emit(Receiver.Sender, Event.NPC.SC.List, { npcs: sceneNPCs })
 			}
 		})
 
 		// Handle NPC interactions
-		this.event.on<NPCInteractData>(Event.NPC.Interact, (data, client) => {
+		this.event.on<NPCInteractData>(Event.NPC.CS.Interact, (data, client) => {
 			const npc = this.npcs.get(data.npcId)
 			if (!npc) return
 
@@ -126,7 +126,7 @@ export class NPCManager {
 					}
 				}
 				
-				client.emit(Receiver.Sender, Event.NPC.Message, {
+				client.emit(Receiver.Sender, Event.NPC.SC.Message, {
 					npcId: npc.id,
 					message
 				})
@@ -138,7 +138,7 @@ export class NPCManager {
 
 				// Start dialog
 				const initialDialog = npc.dialog[0]
-				client.emit(Receiver.Sender, Event.NPC.Dialog, {
+				client.emit(Receiver.Sender, Event.NPC.SC.Dialog, {
 					npcId: npc.id,
 					dialog: initialDialog
 				})
@@ -146,7 +146,7 @@ export class NPCManager {
 		})
 
 		// Handle dialog responses
-		this.event.on<NPCDialogData>(Event.NPC.Dialog, (data, client) => {
+		this.event.on<NPCDialogData>(Event.NPC.CS.Dialog, (data, client) => {
 			const npc = this.npcs.get(data.npcId)
 			if (!npc || !data.responseId) return
 
@@ -163,7 +163,7 @@ export class NPCManager {
                 // TODO: update local inventory!
 
 				// Emit inventory event to give the player a drink
-				client.emit(Receiver.Sender, Event.Inventory.Loaded, {
+				client.emit(Receiver.Sender, Event.Inventory.SC.Loaded, {
 					inventory: {
 						items: [{
 							id: uuidv4(),
@@ -178,7 +178,7 @@ export class NPCManager {
 			if (response.nextDialogId) {
 				const nextDialog = npc.dialog.find(d => d.id === response.nextDialogId)
 				if (nextDialog) {
-					client.emit(Receiver.Sender, Event.NPC.Dialog, {
+					client.emit(Receiver.Sender, Event.NPC.SC.Dialog, {
 						npcId: npc.id,
 						dialog: nextDialog
 					})
@@ -187,9 +187,9 @@ export class NPCManager {
 		})
 
 		// Handle dialog closing
-		this.event.on(Event.NPC.CloseDialog, (data: { npcId: string }, client) => {
+		this.event.on(Event.NPC.CS.CloseDialog, (data: { npcId: string }, client) => {
 			// Send null dialog to indicate dialog is closed
-			client.emit(Receiver.Sender, Event.NPC.Dialog, {
+			client.emit(Receiver.Sender, Event.NPC.SC.Dialog, {
 				npcId: data.npcId,
 				dialog: null
 			})

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { EventBus } from '../EventBus'
 import { Event } from '../../../backend/src/Event'
-import { ChatMessageData } from '../../../backend/src/DataTypes'
+import { ChatMessageData, ChatSystemMessageData, ChatMessageType } from '../../../backend/src/DataTypes'
 import styles from './ChatLog.module.css'
 
 interface Message {
@@ -9,6 +9,7 @@ interface Message {
 	text: string
 	timestamp: Date
 	sourcePlayerId?: string
+	type: ChatMessageType | 'warning' | 'info' | 'success' | 'error'
 }
 
 export function ChatLog() {
@@ -25,17 +26,36 @@ export function ChatLog() {
 						id: messageCounter.current++,
 						text: data.message,
 						timestamp: new Date(),
-						sourcePlayerId: data.sourcePlayerId
+						sourcePlayerId: data.sourcePlayerId,
+						type: data.type
 					}
-				].slice(-20) // Keep only last 20 messages
+				].slice(-50) // Keep last 50 messages
 				return newMessages
 			})
 		}
 
-		EventBus.on(Event.Chat.Message, handleChatMessage)
+		function handleSystemMessage(data: ChatSystemMessageData) {
+			setMessages(prev => {
+				const newMessages = [
+					...prev,
+					{
+						id: messageCounter.current++,
+						text: data.message,
+						timestamp: new Date(),
+						type: data.type
+					}
+				].slice(-50)
+				return newMessages
+			})
+		}
+
+		// Listen for both regular chat messages and system messages
+		EventBus.on(Event.Chat.SC.Receive, handleChatMessage)
+		EventBus.on(Event.Chat.SC.SystemMessage, handleSystemMessage)
 
 		return () => {
-			EventBus.off(Event.Chat.Message, handleChatMessage)
+			EventBus.off(Event.Chat.SC.Receive, handleChatMessage)
+			EventBus.off(Event.Chat.SC.SystemMessage, handleSystemMessage)
 		}
 	}, [])
 
@@ -49,7 +69,10 @@ export function ChatLog() {
 	return (
 		<div className={styles.container} ref={containerRef}>
 			{messages.map(message => (
-				<div key={message.id} className={styles.message}>
+				<div 
+					key={message.id} 
+					className={`${styles.message} ${styles[message.type]}`}
+				>
 					<span className={styles.timestamp}>
 						{message.timestamp.toLocaleTimeString()}
 					</span>
