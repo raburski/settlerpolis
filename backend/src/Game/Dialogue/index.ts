@@ -2,8 +2,7 @@ import { EventManager, Event, EventClient } from '../../events'
 import { Receiver } from '../../Receiver'
 import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData } from './types'
 import { DialogueEvents } from './events'
-import * as fs from 'fs'
-import * as path from 'path'
+import { dialogues } from './dialogues'
 
 export class DialogueManager {
 	private dialogues = new Map<string, DialogueTree>()
@@ -15,17 +14,11 @@ export class DialogueManager {
 	}
 
 	private loadDialogues() {
-		const contentPath = path.join(__dirname, 'content')
 		try {
-			const files = fs.readdirSync(contentPath)
-			for (const file of files) {
-				if (path.extname(file) === '.json') {
-					const filePath = path.join(contentPath, file)
-					const content = fs.readFileSync(filePath, 'utf-8')
-					const dialogue = JSON.parse(content) as DialogueTree
-					this.registerDialogue(dialogue)
-				}
-			}
+			// Load dialogues from the shared TypeScript file
+			Object.values(dialogues).forEach(dialogue => {
+				this.registerDialogue(dialogue)
+			})
 		} catch (error) {
 			console.error('Error loading dialogues:', error)
 		}
