@@ -50,7 +50,6 @@ export const dialogue: DialogueTree = {
 							itemId: "mozgotrzep_drink",
 							name: "Mozgotrzep",
 							type: "consumable",
-							description: "A strong local drink. Use with caution!"
 						}
 					}
 				}

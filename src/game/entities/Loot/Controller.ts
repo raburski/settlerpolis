@@ -1,7 +1,7 @@
 import { Scene } from 'phaser'
 import { LootView } from './View'
 import { EventBus } from '../../EventBus'
-import { Event } from '@backend/events'
+import { Event } from '../../../../backend/src/events'
 
 const PICKUP_RANGE = 100 // Define pickup range in pixels
 

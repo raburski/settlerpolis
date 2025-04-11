@@ -89,7 +89,6 @@ export class InventoryManager {
 				id: data.itemId,
 				name: data.name,
 				type: data.type as ItemType,
-				description: data.description
 			}
 
 			inventory.items.push(item)

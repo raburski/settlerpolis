@@ -1,7 +1,7 @@
 import { Scene, GameObjects, Input, Physics } from 'phaser'
 import { EventBus } from '../../EventBus'
 import { PlayerView } from '../../entities/Player/View'
-import { Event } from '@backend/events'
+import { Event } from '../../../../backend/src/events'
 import { PICKUP_RANGE } from '@backend/consts'
 import { PortalManager } from '../../modules/Portals'
 import { AssetManager, TilesetInfo } from '../../modules/Assets'

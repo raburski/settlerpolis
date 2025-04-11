@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { EventBus } from '../EventBus'
-import { Event } from '@backend/events'
+import { Event } from '../../../backend/src/events'
 import { Inventory as InventoryType, Item } from '@backend/DataTypes'
 import { ItemType } from '@backend/types'
 import styles from './Inventory.module.css'

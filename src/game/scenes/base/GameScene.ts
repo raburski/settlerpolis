@@ -1,6 +1,6 @@
 import { EventBus } from "../../EventBus";
 import { MapScene } from "./MapScene";
-import { Event } from '@backend/events'
+import { Event } from '../../../../backend/src/events'
 import { createPlayer } from '../../entities/Player'
 import { PlayerView } from '../../entities/Player/View'
 import { PlayerController } from '../../entities/Player/Controller'
