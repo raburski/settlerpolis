@@ -93,18 +93,18 @@ export class DialogueManager {
 		console.log(`Registered dialogue: ${dialogue.id}`)
 	}
 
-	public triggerDialogue(clientId: string, dialogueId: string) {
+	public triggerDialogue(client: EventClient, dialogueId: string) {
 		const dialogue = this.dialogues.get(dialogueId)
 		if (!dialogue) return
 
 		const startNode = dialogue.nodes[dialogue.startNode]
 		if (!startNode) return
 
-		this.activeDialogues.set(clientId, dialogueId)
-		this.event.emit(Receiver.Client, DialogueEvents.SC.Trigger, {
+		this.activeDialogues.set(client.id, dialogueId)
+		client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
 			dialogueId,
 			node: startNode
-		}, clientId)
+		})
 	}
 
 	private getCurrentNode(clientId: string): DialogueNode | undefined {

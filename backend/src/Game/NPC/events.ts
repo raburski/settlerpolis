@@ -1,13 +1,11 @@
-export const NPCEvents = {
-	CS: {
-		Interact: 'cs:npc:interact',
-		Dialog: 'cs:npc:dialog',
-		CloseDialog: 'cs:npc:dialog:close'
-	},
-	SC: {
-		Dialog: 'sc:npc:dialog',
-		Message: 'sc:npc:message',
-		List: 'sc:npc:list'
-	},
-	DialogUpdate: 'npc:dialog:update'
-} 
+export const Event = {
+	NPC: {
+		CS: {
+			Interact: 'cs:npc:interact'
+		},
+		SC: {
+			List: 'sc:npc:list',
+			Message: 'sc:npc:message'
+		}
+	}
+} as const 
