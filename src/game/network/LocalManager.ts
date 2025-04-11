@@ -62,6 +62,11 @@ class LocalEventManager implements EventManager {
 	handleIncomingMessage(to: Receiver, event: string, data: any) {
 		if (to === Receiver.NoSenderGroup) return
 
+		if (!event) {
+			console.log('[LocalManager] Event with no name?', to, event, data)
+			return
+		}
+
 		// If this is a server-side event and we're the client, route it back to server
 		if (event.startsWith('ss:') && this.clientId === 'client') {
 			console.log(`[EVENT] Routing SS event back to server:`, event, data)

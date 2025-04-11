@@ -14,6 +14,14 @@ interface PickupItemData {
 	itemId: string
 }
 
+const INITIAL_POSITION = {
+	scene: 'FarmScene',  // Initial scene
+	position: {
+		x: 100,  // Initial x position
+		y: 300   // Initial y position
+	}
+}
+
 export class PlayersManager {
 	private players = new Map<string, Player>()
 
@@ -33,13 +41,7 @@ export class PlayersManager {
 		// Handle initial connection
 		this.event.on(Event.Players.CS.Connect, (_, client) => {
 			// Send initial scene and position data
-			client.emit(Receiver.Sender, Event.Players.SC.Connected, {
-				scene: 'FarmScene',  // Initial scene
-				position: {
-					x: 100,  // Initial x position
-					y: 300   // Initial y position
-				}
-			})
+			client.emit(Receiver.Sender, Event.Players.SC.Connected, INITIAL_POSITION)
 		})
 
 		// Handle client lifecycle
