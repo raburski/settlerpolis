@@ -3,12 +3,19 @@ export interface DialogueNode {
 	text: string
 	options?: DialogueOption[]
 	next?: string
+	event?: DialogueEvent
 }
 
 export interface DialogueOption {
 	id: string
 	text: string
 	next: string
+	event?: DialogueEvent
+}
+
+export interface DialogueEvent {
+	type: string
+	payload: Record<string, any>
 }
 
 export interface DialogueTree {

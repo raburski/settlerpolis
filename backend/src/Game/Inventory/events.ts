@@ -4,5 +4,8 @@ export const InventoryEvents = {
 	},
 	SC: {
 		Update: 'sc:inventory:update'
+	},
+	SS: {
+		Add: 'ss:inventory:add'
 	}
 } as const 

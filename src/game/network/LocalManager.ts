@@ -30,7 +30,7 @@ class LocalEventManager implements EventManager {
 	private hasReceivedMessage = false
 
 	constructor(
-		clientId: string,
+		private clientId: string,
 		private onEmit: (to: Receiver, event: string, data: any, groupName?: string) => void
 	) {
 		this.client = new LocalEventClient(clientId, onEmit)
@@ -60,9 +60,16 @@ class LocalEventManager implements EventManager {
 	}
 
 	handleIncomingMessage(to: Receiver, event: string, data: any) {
-        if (to === Receiver.NoSenderGroup) return
+		if (to === Receiver.NoSenderGroup) return
 
-        console.log(`[EVENT] to ${this.client.id}:`, event, data)
+		// If this is a server-side event and we're the client, route it back to server
+		if (event.startsWith('ss:') && this.clientId === 'client') {
+			console.log(`[EVENT] Routing SS event back to server:`, event, data)
+			;(this.onEmit as any)(to, event, data)
+			return
+		}
+
+		console.log(`[EVENT] to ${this.client.id}:`, event, data)
 		// If this is the first message received, trigger joined callbacks
 		if (!this.hasReceivedMessage) {
 			this.hasReceivedMessage = true

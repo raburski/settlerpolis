@@ -79,5 +79,21 @@ export class InventoryManager {
 			inventory.items.splice(itemIndex, 1)
 			client.emit(Receiver.Sender, Event.Inventory.SC.Update, { inventory })
 		})
+
+		// Handle item add from dialogue or other server events
+		this.event.on(Event.Inventory.SS.Add, (data: { itemId: string, name: string, type: string, description?: string }, client) => {
+			const inventory = this.inventories.get(client.id)
+			if (!inventory) return
+
+			const item: Item = {
+				id: data.itemId,
+				name: data.name,
+				type: data.type as ItemType,
+				description: data.description
+			}
+
+			inventory.items.push(item)
+			client.emit(Receiver.Sender, Event.Inventory.SC.Update, { inventory })
+		})
 	}
 } 

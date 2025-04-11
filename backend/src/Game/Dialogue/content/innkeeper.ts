@@ -1,4 +1,5 @@
 import { DialogueTree } from '../types'
+import { Event } from '../../../events'
 
 export const dialogue: DialogueTree = {
 	id: "innkeeper_greeting",
@@ -42,9 +43,22 @@ export const dialogue: DialogueTree = {
 				{
 					id: "accept_drink",
 					text: "Thanks!",
-					next: "goodbye_response"
+					next: "drink_accepted",
+					event: {
+						type: Event.Inventory.SS.Add,
+						payload: {
+							itemId: "mozgotrzep_drink",
+							name: "Mozgotrzep",
+							type: "consumable",
+							description: "A strong local drink. Use with caution!"
+						}
+					}
 				}
 			]
+		},
+		drink_accepted: {
+			speaker: "Innkeeper",
+			text: "Enjoy! But be careful, it's quite strong!",
 		},
 		goodbye_response: {
 			speaker: "Innkeeper",

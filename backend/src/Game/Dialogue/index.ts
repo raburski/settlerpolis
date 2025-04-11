@@ -1,6 +1,6 @@
 import { EventManager, Event, EventClient } from '../../events'
 import { Receiver } from '../../Receiver'
-import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData } from './types'
+import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData, DialogueEvent } from './types'
 import { DialogueEvents } from './events'
 import { dialogues } from './dialogues'
 
@@ -25,6 +25,13 @@ export class DialogueManager {
 		}
 	}
 
+	private handleDialogueEvent(event: DialogueEvent, client: EventClient) {
+		if (!event) return
+
+		// Emit the event through the event manager
+		client.emit(Receiver.Sender, event.type, event.payload)
+	}
+
 	private setupEventHandlers() {
 		// Handle dialogue continue
 		this.event.on<DialogueContinueData>(DialogueEvents.CS.Continue, (data, client) => {
@@ -44,6 +51,11 @@ export class DialogueManager {
 			if (!nextNode) {
 				this.endDialogue(client)
 				return
+			}
+
+			// Handle node event if present
+			if (currentNode.event) {
+				this.handleDialogueEvent(currentNode.event, client)
 			}
 
 			this.currentNodes.set(client.id, currentNode.next)
@@ -74,6 +86,11 @@ export class DialogueManager {
 			if (!nextNode) {
 				this.endDialogue(client)
 				return
+			}
+
+			// Handle option event if present
+			if (selectedOption.event) {
+				this.handleDialogueEvent(selectedOption.event, client)
 			}
 
 			this.currentNodes.set(client.id, selectedOption.next)
