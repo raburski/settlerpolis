@@ -15,7 +15,6 @@ export function Inventory({ isOpen }: InventoryProps) {
 	useEffect(() => {
         console.log('INV EFFECT')
 		const handleInventoryLoaded = (data: { inventory: InventoryType }) => {
-            console.log('setInventory', data)
 			setInventory(data.inventory)
 		}
 
@@ -36,7 +35,7 @@ export function Inventory({ isOpen }: InventoryProps) {
 	}
 
 	if (!isOpen) return null
-    console.log('render inventory', inventory.items)
+
 	return (
 		<div className={styles.container}>
 			<h2>Inventory</h2>

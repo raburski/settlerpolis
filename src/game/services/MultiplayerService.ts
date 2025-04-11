@@ -33,8 +33,17 @@ export class MultiplayerService {
 	private players: Map<string, PlayerData> = new Map()
 	private currentScene: string | null = null
 	private playerName: string = 'Player'
+	private handleCSEvent = (eventName: string, data: any) => {
+		if (eventName && eventName.startsWith('cs:') && this.event) {
+			console.log('[MULTIPLAYER SERVICE] Forwarding CS event:', eventName, data)
+			this.event.emit(Receiver.All, eventName, data)
+		}
+	}
 
 	private constructor(private event: EventManager) {
+		// Set up automatic CS event forwarding
+		EventBus.onAny(this.handleCSEvent)
+
 		// Listen for player:sendMessage events
 		EventBus.on('player:sendMessage', this.handleSendMessage, this)
 		// Listen for inventory drop events
@@ -112,7 +121,7 @@ export class MultiplayerService {
 	updatePosition(x: number, y: number) {
 		if (!this.event || !this.currentScene) return
 		
-		this.event.emit(Receiver.All, Event.Players.CS.Moved, { x, y })
+		this.event.emit(Receiver.All, Event.Players.CS.Move, { x, y })
 	}
 
 	transitionToScene(x: number, y: number, scene: string) {
@@ -191,6 +200,7 @@ export class MultiplayerService {
 
 	public destroy(): void {
 		this.disconnect()
+		EventBus.offAny(this.handleCSEvent)
 		EventBus.off('player:sendMessage', this.handleSendMessage)
 		EventBus.off(Event.Inventory.CS.Drop, this.handleDropItem)
 		EventBus.off(Event.Inventory.CS.PickUp, this.handlePickUpItem)
