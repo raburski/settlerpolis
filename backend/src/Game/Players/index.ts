@@ -1,4 +1,4 @@
-import { EventManager, Event, EventClient } from '../Event'
+import { EventManager, Event, EventClient } from '../../events'
 import { PlayerJoinData, PlayerMovedData, PlayerTransitionData } from '../DataTypes'
 import { Receiver } from '../Receiver'
 
@@ -38,7 +38,7 @@ export class PlayersManager {
 
 			const scenePlayers = Array.from(this.players.values())
 				.filter(p => p.scene === data.scene && p.id !== client.id)
-			client.emit(Receiver.Sender, Event.Players.SC.List, scenePlayers)
+			client.emit(Receiver.Sender, Event.Player.SC.List, scenePlayers)
 
 			client.emit(Receiver.NoSenderGroup, Event.Player.SC.Joined, data)
 		})

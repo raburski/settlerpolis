@@ -1,5 +1,7 @@
 import { Position, ItemType } from "./types"
 
+export { ItemType }
+
 export interface PlayerSourcedData {
     sourcePlayerId?: string
 }
@@ -107,4 +109,34 @@ export interface NPCDialogData extends PlayerSourcedData {
 	npcId: string
 	dialogId: string
 	responseId?: string
+}
+
+export interface ItemMetadata {
+	id: string
+	name: string
+	description: string
+	type: ItemType
+	rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
+	stackable: boolean
+	maxStackSize?: number
+	consumable: boolean
+	effects?: {
+		type: string
+		value: number
+		duration?: number
+	}[]
+	requirements?: {
+		level?: number
+		quest?: string
+	}
+	value: number
+	icon?: string
+}
+
+export interface ItemMetaRequest {
+	itemId: string
+}
+
+export interface ItemMetaResponse {
+	metadata: ItemMetadata | null
 }

@@ -1,5 +1,5 @@
 import { Server, Socket } from 'socket.io'
-import { EventClient, EventManager, EventCallback, LifecycleCallback } from './Event'
+import { EventClient, EventManager, EventCallback, LifecycleCallback } from './events'
 import { Receiver } from './Receiver'
 
 const DEFAULT_GROUP = 'GLOBAL'

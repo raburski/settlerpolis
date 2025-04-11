@@ -1,29 +1,32 @@
-import { EventManager, Event, EventClient } from '../Event'
+import { EventManager, Event } from '../events'
+import { ChatManager } from './Chat'
+import { PlayersManager } from './Players'
+import { InventoryManager } from './Inventory'
+import { LootManager } from './Loot'
+import { NPCManager } from './NPC'
+import { SystemManager } from './System'
+import { ItemsManager } from './Items'
 import { Item, DroppedItem, DropItemData, PickUpItemData } from '../DataTypes'
 import { PICKUP_RANGE } from '../consts'
 import { Receiver } from '../Receiver'
-import { ChatManager } from './Chat'
-import { SystemManager } from './System'
-import { InventoryManager } from './Inventory'
-import { PlayersManager } from './Players'
-import { LootManager } from './Loot'
-import { NPCManager } from './NPC'
 
 export class GameManager {
 	private chatManager: ChatManager
-	private systemManager: SystemManager
-	private inventoryManager: InventoryManager
 	private playersManager: PlayersManager
+	private inventoryManager: InventoryManager
 	private lootManager: LootManager
 	private npcManager: NPCManager
+	private systemManager: SystemManager
+	private itemsManager: ItemsManager
 
 	constructor(private event: EventManager) {
 		this.chatManager = new ChatManager(event)
-		this.systemManager = new SystemManager(event)
-		this.inventoryManager = new InventoryManager(event)
 		this.playersManager = new PlayersManager(event)
+		this.inventoryManager = new InventoryManager(event)
 		this.lootManager = new LootManager(event)
 		this.npcManager = new NPCManager(event)
+		this.systemManager = new SystemManager(event)
+		this.itemsManager = new ItemsManager(event)
 		this.setupEventHandlers()
 	}
 

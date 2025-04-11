@@ -1,4 +1,4 @@
-import { EventManager, Event } from '../Event'
+import { EventManager, Event } from '../../events'
 import { Receiver } from '../Receiver'
 
 export class SystemManager {

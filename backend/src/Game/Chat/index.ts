@@ -1,4 +1,4 @@
-import { EventManager, Event } from '../Event'
+import { EventManager, Event } from '../../events'
 import { ChatMessageData, ChatSystemMessageData, ChatMessageType } from '../DataTypes'
 import { Receiver } from '../Receiver'
 

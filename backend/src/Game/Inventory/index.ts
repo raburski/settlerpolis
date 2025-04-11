@@ -1,4 +1,4 @@
-import { EventManager, Event, EventClient } from '../Event'
+import { EventManager, Event, EventClient } from '../../events'
 import { Inventory, Item, InventoryData, DropItemData, PickUpItemData, ConsumeItemData, PlayerJoinData } from '../DataTypes'
 import { ItemType } from '../types'
 import { Receiver } from '../Receiver'

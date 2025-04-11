@@ -1,4 +1,4 @@
-import { EventManager, Event } from '../Event'
+import { EventManager, Event } from '../../events'
 import { NPC, NPCInteractData, NPCDialogData, PlayerJoinData, PlayerTransitionData } from '../DataTypes'
 import { Receiver } from '../Receiver'
 import { v4 as uuidv4 } from 'uuid'
