@@ -29,10 +29,7 @@ const DEFAULT_APPEARANCE: PlayerAppearance = {
 }
 
 export class MultiplayerService {
-	private static instance: MultiplayerService | null = null
-	private players: Map<string, PlayerData> = new Map()
-	private currentScene: string | null = null
-	private playerName: string = 'Player'
+    private events: string[]
 	private handleCSEvent = (eventName: string, data: any) => {
 		if (eventName && eventName.startsWith('cs:') && this.event) {
 			console.log('[MULTIPLAYER SERVICE] Forwarding CS event:', eventName, data)
@@ -40,18 +37,10 @@ export class MultiplayerService {
 		}
 	}
 
-	private constructor(private event: EventManager) {
-		// Set up automatic CS event forwarding
+	constructor(private event: EventManager) {
+		this.events = this.getAllNetworkEvents()
 		EventBus.onAny(this.handleCSEvent)
-
-		// Listen for player:sendMessage events
-		EventBus.on('player:sendMessage', this.handleSendMessage, this)
-		// Listen for inventory drop events
-		EventBus.on(Event.Inventory.CS.Drop, this.handleDropItem, this)
-		// Listen for inventory pickup events
-		EventBus.on(Event.Inventory.CS.PickUp, this.handlePickUpItem, this)
-		// Listen for inventory consume events
-		EventBus.on(Event.Inventory.CS.Consume, this.handleConsumeItem, this)
+        this.setupNetworkEventForwarding()
 	}
 
 	private getAllNetworkEvents(): string[] {
@@ -72,11 +61,8 @@ export class MultiplayerService {
 	private setupNetworkEventForwarding() {
 		if (!this.event) return
 
-		// Get all possible events
-		const events = this.getAllNetworkEvents()
-
 		// Subscribe to each event and forward to EventBus
-		events.forEach(eventName => {
+		this.events.forEach(eventName => {
 			this.event.on(eventName, (data, client) => {
 				// For events that need sourcePlayerId, add it from the client
                 data = { ...data, sourcePlayerId: client.id }
@@ -86,124 +72,11 @@ export class MultiplayerService {
 		})
 	}
 
-	static getInstance(): MultiplayerService {
-		if (!MultiplayerService.instance) {
-			const IS_REMOTE_GAME = false
-			if (IS_REMOTE_GAME) {
-				const networkManager = new NetworkManager('https://hearty-rejoicing-production.up.railway.app')
-				MultiplayerService.instance = new MultiplayerService(networkManager)
-			} else {
-				const localManager = new LocalManager()
-				const gameManager = new GameManager(localManager.server)
-				MultiplayerService.instance = new MultiplayerService(localManager.client)
-			}
-		}
-		return MultiplayerService.instance
-	}
-
-	setPlayerName(name: string) {
-		this.playerName = name
-	}
-
-	connect() {
-		if (!this.event) return
-		this.setupNetworkEventForwarding()
-	}
-
-	joinGame(x: number, y: number, scene: string, appearance: PlayerAppearance = DEFAULT_APPEARANCE) {
-		if (!this.event) return
-
-		this.currentScene = scene
-		console.log(`Joining game in scene: ${scene}`)
-		this.event.emit(Receiver.All, Event.Players.CS.Join, { position: { x, y }, scene, appearance })
-	}
-
-	updatePosition(x: number, y: number) {
-		if (!this.event || !this.currentScene) return
-		
-		this.event.emit(Receiver.All, Event.Players.CS.Move, { x, y })
-	}
-
-	transitionToScene(x: number, y: number, scene: string) {
-		if (!this.event) return
-
-		// Send transition event
-		this.event.emit(Receiver.All, Event.Players.CS.TransitionTo, {
-			position: { x, y },
-			scene
-		})
-
-		// Update current scene
-		this.currentScene = scene
-	}
-
-	getPlayers(): PlayerData[] {
-		return Array.from(this.players.values())
-	}
-
-	disconnect() {
-		if (this.event instanceof NetworkManager) {
-			this.event.disconnect()
-		}
-		this.event = null
-		this.players.clear()
-		this.currentScene = null
-	}
-
-	sendChatMessage(message: string) {
-		if (!this.event || !this.currentScene) return
-
-		const chatMessage: ChatMessageData = {
-			message
-		}
-
-		this.event.emit(Receiver.NoSenderGroup, Event.Chat.CS.Message, chatMessage)
-	}
-
-	private handleSendMessage = (message: string) => {
-		this.sendChatMessage(message)
-	}
-
-	private handleDropItem = (data: DropItemData) => {
-		if (!this.event) return
-		this.event.emit(Receiver.All, Event.Inventory.CS.Drop, data)
-	}
-
-	private handlePickUpItem = (data: PickUpItemData) => {
-		if (!this.event) return
-		this.event.emit(Receiver.All, Event.Inventory.CS.PickUp, data)
-	}
-
-	private handleConsumeItem = (data: ConsumeItemData) => {
-		if (!this.event) return
-		this.event.emit(Receiver.All, Event.Inventory.CS.Consume, data)
-	}
-
-	public async interactWithNPC(npcId: string) {
-		if (!this.event) return
-		this.event.emit(Receiver.All, Event.NPC.CS.Interact, { npcId })
-	}
-
-	public async selectNPCResponse(npcId: string, dialogId: string, responseId: string) {
-		if (!this.event) return
-		this.event.emit(Receiver.All, Event.Dialogue.CS.Choice, { 
-			npcId,
-			dialogId,
-			responseId
-		})
-	}
-
-	public async closeNPCDialog(npcId: string) {
-		if (!this.event) return
-		this.event.emit(Receiver.All, Event.Dialogue.CS.Continue, { npcId })
-	}
-
 	public destroy(): void {
-		this.disconnect()
 		EventBus.offAny(this.handleCSEvent)
-		EventBus.off('player:sendMessage', this.handleSendMessage)
-		EventBus.off(Event.Inventory.CS.Drop, this.handleDropItem)
-		EventBus.off(Event.Inventory.CS.PickUp, this.handlePickUpItem)
-		EventBus.off(Event.Inventory.CS.Consume, this.handleConsumeItem)
+        this.events.forEach(eventName => {
+            // todo add handlers:
+			// this.event.off(eventName)
+		})
 	}
 } 

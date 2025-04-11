@@ -1,71 +1,96 @@
 import React, { useEffect, useState } from 'react'
-import { Dialog } from '../types/Types'
-import { NPCService } from '../services/NPCService'
-
-import { EventBus } from '../EventBus'
+import { DialogueNode } from '@backend/Game/Dialogue/types'
 import styles from './DialogUI.module.css'
-import { Event } from '../../../backend/src/events'
+import { EventBus } from '../EventBus'
 
-interface DialogUIProps {
-	npcService: NPCService
-	eventBus: EventBus
-}
-
-export function DialogUI({ npcService, eventBus }: DialogUIProps) {
-	const [dialog, setDialog] = useState<Dialog | null>(null)
-	const [npcId, setNpcId] = useState<string | null>(null)
+export function DialogUI() {
+	const [activeNode, setActiveNode] = useState<DialogueNode | null>(null)
+	const [dialogueId, setDialogueId] = useState<string | null>(null)
 
 	useEffect(() => {
-		const handleDialogUpdate = (data: { npcId: string, dialog: Dialog | null }) => {
-			setDialog(data.dialog)
-			setNpcId(data.npcId)
+		const handleDialogueUpdate = (data: { dialogueId: string, node: DialogueNode }) => {
+			console.log('Dialogue update:', data)
+			setDialogueId(data.dialogueId)
+			setActiveNode(data.node)
 		}
 
-		eventBus.on('npc:dialogUpdate', handleDialogUpdate)
+		const handleDialogueEnd = (data: { dialogueId: string }) => {
+			console.log('Dialogue end:', data)
+			setDialogueId(null)
+			setActiveNode(null)
+		}
+
+		// Listen for both local and server events
+		EventBus.on('dialogue:update', handleDialogueUpdate)
+		EventBus.on('dialogue:end', handleDialogueEnd)
 
 		return () => {
-			eventBus.off('npc:dialogUpdate', handleDialogUpdate)
+			EventBus.off('dialogue:update', handleDialogueUpdate)
+			EventBus.off('dialogue:end', handleDialogueEnd)
 		}
-	}, [eventBus])
+	}, [])
 
-	if (!dialog) {
+	if (!activeNode) {
 		return null
+	}
+
+	const handleContinue = () => {
+		console.log('Continuing dialogue')
+
+	}
+
+	const handleOptionSelect = (optionId: string) => {
+		console.log('Selected option:', optionId)
+
+	}
+
+	const handleClose = () => {
+		console.log('Closing dialogue:', dialogueId)
+		if (dialogueId) {
+			EventBus.emit('dialogue:end', { dialogueId })
+		}
 	}
 
 	return (
 		<div className={styles.dialogContainer}>
 			<div className={styles.dialogContent}>
+				<div className={styles.speakerName}>
+					{activeNode.speaker}
+				</div>
+
 				<div className={styles.dialogText}>
-					<p>{dialog.text}</p>
+					<p>{activeNode.text}</p>
 				</div>
 
 				<div className={styles.responsesList}>
-					{dialog.responses?.map((response, index) => (
+					{activeNode.options?.map((option) => (
 						<button
-							key={response.id}
+							key={option.id}
 							className={styles.responseButton}
-							onClick={() => npcService.selectResponse(index)}
+							onClick={() => handleOptionSelect(option.id)}
 						>
-							{response.text}
+							{option.text}
 						</button>
 					))}
 				</div>
 
-				{(!dialog.responses || dialog.responses.length === 0) && (
+				{(!activeNode.options && activeNode.next) && (
 					<button
 						className={styles.continueButton}
-						onClick={() => npcService.closeDialog()}
+						onClick={handleContinue}
 					>
 						Continue
 					</button>
 				)}
 
-				<button
-					className={styles.closeButton}
-					onClick={() => npcService.closeDialog()}
-				>
-					Close
-				</button>
+				{(!activeNode.options && !activeNode.next) && (
+					<button
+						className={styles.closeButton}
+						onClick={handleClose}
+					>
+						Close
+					</button>
+				)}
 			</div>
 		</div>
 	)

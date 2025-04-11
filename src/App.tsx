@@ -6,8 +6,6 @@ import { Inventory } from './game/components/Inventory';
 import { ChatLog } from './game/components/ChatLog';
 import { DialogUI } from './game/components/DialogUI';
 import { EventBus } from './game/EventBus';
-import { NPCService } from './game/services/NPCService';
-import { MultiplayerService } from './game/services/MultiplayerService';
 
 function App()
 {
@@ -38,17 +36,6 @@ function App()
         }
     }
 
-    useEffect(() => {
-        function handleInventoryToggle() {
-            setIsInventoryOpen(prev => !prev);
-        }
-
-        EventBus.on('inventory:toggle', handleInventoryToggle);
-
-        return () => {
-            EventBus.removeListener('inventory:toggle');
-        };
-    }, []);
 
     return (
         <div id="app">
@@ -57,10 +44,7 @@ function App()
             <DisconnectModal />
             <Inventory isOpen={isInventoryOpen} />
             <ChatLog />
-            <DialogUI 
-                npcService={new NPCService(EventBus, MultiplayerService.getInstance())} 
-                eventBus={EventBus} 
-            />
+            <DialogUI />
             {/* <div>
                 <div>
                     <button className="button" onClick={addSprite}>Add New Sprite</button>

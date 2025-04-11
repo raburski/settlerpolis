@@ -1,9 +1,9 @@
 import { Scene } from 'phaser'
 import { PlayerAppearance } from '../services/MultiplayerService'
-import { BasePlayer, Direction, PlayerState } from './BasePlayer'
 import { PlayerMovedData, PlayerSourcedData } from '../../../backend/src/DataTypes'
+import { PlayerView, Direction, PlayerState } from "./Player/View"
 
-export class MultiplayerPlayer extends BasePlayer {
+export class MultiplayerPlayer extends PlayerView {
 	private playerId: string
 	private lastUpdateTime: number = 0
 	private targetX: number = 0

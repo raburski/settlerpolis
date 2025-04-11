@@ -1,6 +1,4 @@
 import { Scene, GameObjects, Physics } from 'phaser'
-import { PlayerAppearance } from '../services/MultiplayerService'
-import { Inventory } from '../../../backend/src/DataTypes'
 
 export enum Direction {
 	Down = 'down',
@@ -19,10 +17,8 @@ export enum PlayerState {
 	Walking = 'walking'
 }
 
-export class BasePlayer {
-	protected scene: Scene
-	protected container: GameObjects.Container
-	protected body: GameObjects.Sprite
+export class PlayerView extends GameObjects.Container {
+	protected bodySprite: GameObjects.Sprite
 	protected hair: GameObjects.Sprite
 	protected clothes: GameObjects.Sprite
 	protected hands: GameObjects.Sprite
@@ -34,41 +30,37 @@ export class BasePlayer {
 	protected currentState: PlayerState = PlayerState.Idle
 	protected currentAnimationKey: string = ''
 	protected speed: number = 160 // Default speed in pixels per second
-	protected inventory: Inventory = { items: [] }
 
-	constructor(scene: Scene, x: number, y: number, appearance: PlayerAppearance) {
-		this.scene = scene
+	constructor(scene: Scene, x: number = 0, y: number = 0, appearance: PlayerAppearance = {}) {
+		super(scene, x, y)
+		scene.add.existing(this)
 		this.appearance = appearance
 
-		// Create container for all character parts
-		this.container = scene.add.container(x, y)
-
 		// Create sprites for each body part
-		this.body = scene.add.sprite(0, 0, 'player-body')
+		this.bodySprite = scene.add.sprite(0, 0, 'player-body')
 		this.hair = scene.add.sprite(0, 0, 'player-hair')
 		this.clothes = scene.add.sprite(0, 0, 'player-clothes')
 		this.hands = scene.add.sprite(0, 0, 'player-hands')
 
 		// Add all parts to container in correct order (bottom to top)
-		this.container.add([this.body, this.clothes, this.hair, this.hands])
+		this.add([this.bodySprite, this.clothes, this.hair, this.hands])
 
 		// Enable physics on the container
-		scene.physics.add.existing(this.container)
-		const body = this.container.body as Physics.Arcade.Body
+		scene.physics.add.existing(this)
+		const physicsBody = this.body as Physics.Arcade.Body
 		
 		// Add a null check to prevent errors if the body is null
-		if (body) {
+		if (physicsBody) {
 			// Set a collision box for the bottom half of the character
 			// This creates a more 3D-like effect where the character appears to walk behind objects
 			// The character sprite is 80x64 pixels
-			body.setSize(40, 8) // Width: half of the sprite width, Height: half of the sprite height
-			body.setOffset(-20, 22) // Center horizontally, align to bottom
+			physicsBody.setSize(40, 8) // Width: half of the sprite width, Height: half of the sprite height
+			physicsBody.setOffset(-20, 22) // Center horizontally, align to bottom
+			// Make sure the player can't go out of bounds
+			physicsBody.setCollideWorldBounds(true)
 		} else {
 			console.error('Player physics body is null. This might happen during scene transitions.')
 		}
-		
-		// Make sure the player can't go out of bounds
-		body.setCollideWorldBounds(true)
 
 		// Create animations
 		this.createAnimations()
@@ -121,7 +113,6 @@ export class BasePlayer {
 			})
 
 			// For now, we'll use the same animations for up and down
-			// In a more complete implementation, we would add specific animations for these directions
 			sprite.anims.create({
 				key: `${key}-idle-up`,
 				frames: sprite.anims.generateFrameNumbers(key, { start: 0, end: 4 }),
@@ -152,7 +143,7 @@ export class BasePlayer {
 		}
 
 		// Create animations for each body part
-		createSpriteAnimations('player-body', this.body)
+		createSpriteAnimations('player-body', this.bodySprite)
 		createSpriteAnimations('player-hair', this.hair)
 		createSpriteAnimations('player-clothes', this.clothes)
 		createSpriteAnimations('player-hands', this.hands)
@@ -170,13 +161,13 @@ export class BasePlayer {
 		const flipX = this.horizontalDirection === HorizontalDirection.Right
 		
 		// Play animations on all body parts
-		this.body.play(`player-body-${animationKey}`, true)
+		this.bodySprite.play(`player-body-${animationKey}`, true)
 		// this.hair.play(`player-hair-${animationKey}`, true)
 		// this.clothes.play(`player-clothes-${animationKey}`, true)
 		// this.hands.play(`player-hands-${animationKey}`, true)
 		
 		// Apply flipping
-		this.body.setFlipX(flipX)
+		this.bodySprite.setFlipX(flipX)
 		this.hair.setFlipX(flipX)
 		this.clothes.setFlipX(flipX)
 		this.hands.setFlipX(flipX)
@@ -190,7 +181,7 @@ export class BasePlayer {
 			this.messageText.destroy()
 		}
 
-        if (!message) return
+		if (!message) return
 
 		// Create text as a child of the container so it moves with the player
 		this.messageText = this.scene.add.text(0, -50, message, {
@@ -202,7 +193,7 @@ export class BasePlayer {
 		}).setOrigin(0.5)
 
 		// Add the text to the container
-		this.container.add(this.messageText)
+		this.add(this.messageText)
 
 		// Remove the message after 10 seconds
 		this.scene.time.delayedCall(10000, () => {
@@ -233,9 +224,9 @@ export class BasePlayer {
 		}).setOrigin(0.5)
 
 		// Add the text to the container
-		this.container.add(this.systemMessageText)
+		this.add(this.systemMessageText)
 
-        // Remove the message after 2 seconds
+		// Remove the message after 2 seconds
 		this.scene.time.delayedCall(2000, () => {
 			if (this.systemMessageText) {
 				this.systemMessageText.destroy()
@@ -244,38 +235,18 @@ export class BasePlayer {
 		})
 	}
 
-	public getSprite(): GameObjects.Container {
-		return this.container
-	}
-
 	public setCollisionWith(layer: Phaser.Tilemaps.TilemapLayer): void {
-		// Add a null check to prevent errors if the container is null
-		if (!this.container) {
-			console.error('Player container is null in setCollisionWith method. This might happen during scene transitions.')
-			return
-		}
-		
-		this.scene.physics.add.collider(this.container, layer)
-	}
-
-	public destroy(): void {
-		if (this.messageText) {
-			this.messageText.destroy()
-		}
-		if (this.systemMessageText) {
-			this.systemMessageText.destroy()
-		}
-		this.container.destroy()
+		this.scene.physics.add.collider(this, layer)
 	}
 
 	public updatePosition(x: number, y: number): void {
-		this.container.x = x
-		this.container.y = y
+		this.x = x
+		this.y = y
 	}
 
 	public preUpdate(): void {
 		// Update depth based on y position
-		this.container.setDepth(this.container.y)
+		this.setDepth(this.y)
 	}
 
 	public updateDirection(direction: Direction): void {
@@ -325,13 +296,5 @@ export class BasePlayer {
 			frameWidth,
 			frameHeight
 		})
-	}
-
-	public setInventory(inventory: Inventory): void {
-		this.inventory = inventory
-	}
-
-	public getInventory(): Inventory {
-		return this.inventory
 	}
 } 

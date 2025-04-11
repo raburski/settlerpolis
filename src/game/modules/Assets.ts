@@ -99,17 +99,14 @@ export class AssetManager {
 	}
 
 	create(): void {
-		console.log('ASST MNGR CREATE', this.assetsLoadedPromise)
 		const map = this.scene.add.tilemap(this.mapKey)
 		this.loadTilesetObjects(map)
 
 		if (this.assetsLoadedPromise) {
 			this.assetsLoadedPromise.then(() => {
-				console.log('CREATE ASSET via promise')
 				this.initCallback()
 			})
 		} else {
-			console.log('CREATE ASSET via normal')
 			this.initCallback()
 		}
 	}

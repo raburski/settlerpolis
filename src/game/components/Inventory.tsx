@@ -13,7 +13,6 @@ export function Inventory({ isOpen }: InventoryProps) {
 	const [inventory, setInventory] = useState<InventoryType>({ items: [] })
 
 	useEffect(() => {
-        console.log('INV EFFECT')
 		const handleInventoryLoaded = (data: { inventory: InventoryType }) => {
 			setInventory(data.inventory)
 		}
