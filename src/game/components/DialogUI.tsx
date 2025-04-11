@@ -10,13 +10,11 @@ export function DialogUI() {
 
 	useEffect(() => {
 		const handleDialogueTrigger = (data: { dialogueId: string, node: DialogueNode }) => {
-			console.log('Dialogue trigger:', data)
 			setDialogueId(data.dialogueId)
 			setActiveNode(data.node)
 		}
 
 		const handleDialogueEnd = (data: { dialogueId: string }) => {
-			console.log('Dialogue end:', data)
 			setDialogueId(null)
 			setActiveNode(null)
 		}

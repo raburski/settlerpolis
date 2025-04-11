@@ -8,7 +8,7 @@ export type NPC = {
 }
 
 export const createNPC = (scene: Scene, x: number, y: number, npcData: NPC): NPC => {
-	const view = new PlayerView(scene, x, y, {}, true)
+	const view = new PlayerView(scene, x, y)
 	
 	// Make the view interactive with a rectangle hit area
 	view.setInteractive(new Phaser.Geom.Rectangle(-32, -32, 64, 64), Phaser.Geom.Rectangle.Contains)

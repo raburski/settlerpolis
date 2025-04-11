@@ -48,7 +48,7 @@ export class PortalManager {
 			const portalData = zone.getData('portalData') as PortalData
 			if (!portalData) continue
 
-			const playerSprite = this.player.getSprite()
+			const playerSprite = this.player
 			if (!playerSprite) continue
 
 			const playerBounds = playerSprite.getBounds()
@@ -87,7 +87,7 @@ export class PortalManager {
 			if (!portalData) continue
 
 			// Check if the player is overlapping with the zone
-			const playerSprite = this.player.getSprite()
+			const playerSprite = this.player
 			if (!playerSprite) continue
 
 			const playerBounds = playerSprite.getBounds()
@@ -161,7 +161,7 @@ export class PortalManager {
                     // Center the player in the portal
                     const centerX = matchingPortal.x + (matchingPortal.width / 2)
                     const centerY = matchingPortal.y + (matchingPortal.height / 2)
-                    this.player.getSprite().setPosition(centerX, centerY)
+                    this.player.setPosition(centerX, centerY)
                 }
 
 			} catch (error) {

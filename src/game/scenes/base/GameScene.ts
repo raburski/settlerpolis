@@ -8,6 +8,7 @@ import { createRemotePlayer, RemotePlayer } from '../../entities/RemotePlayer'
 import { createNPC, NPC } from '../../entities/NPC'
 import { Keyboard } from '../../modules/Keyboard'
 import { createLoot, Loot, DroppedItem } from '../../entities/Loot'
+import { PortalManager } from "../../modules/Portals";
 
 type Player = {
 	view: PlayerView
@@ -20,11 +21,10 @@ export abstract class GameScene extends MapScene {
 	protected droppedItems: Map<string, Loot> = new Map()
 	protected npcs: Map<string, NPC> = new Map()
 	protected keyboard: Keyboard | null = null
-	// protected npcService: NPCService
+    protected portalManager: PortalManager | null = null
 
 	constructor(key: string, mapKey: string, mapPath: string) {
 		super(key, mapKey, mapPath)
-		// this.npcService = new NPCService(EventBus, this.multiplayerService)
 	}
 
     protected initializeScene(): void {
@@ -50,12 +50,27 @@ export abstract class GameScene extends MapScene {
         // Set up camera to follow player
 		this.cameras.main.startFollow(this.player.view)
 
-        EventBus.emit(Event.Players.CS.Join, { position: { x: playerX, y: playerY}, scene: 'FarmScene', appareance: {}})
+        		// Initialize the portal manager
+		this.portalManager = new PortalManager(this, this.player.view)
+		
+		// Set the portal activated callback
+		this.portalManager.setPortalActivatedCallback((portalData) => {
+			this.transitionToScene(portalData.target, portalData.targetX, portalData.targetY)
+		})
+		
+		// Process portals
+		this.portalManager.processPortals(this.map)
+
+        EventBus.emit(Event.Players.CS.Join, { position: { x: playerX, y: playerY}, scene: this.mapKey, appareance: {}})
     }
 
     update() {
 		if (this.keyboard) {
 			this.keyboard.update()
+		}
+
+        if (this.portalManager) {
+			this.portalManager.update()
 		}
 
         if (this.player) {
@@ -140,6 +155,39 @@ export abstract class GameScene extends MapScene {
 		})
 	}
 
+    	// Transition to a new scene with a fade effect
+	protected transitionToScene(targetScene: string, targetX: number = 0, targetY: number = 0) {
+		// Prevent multiple transitions
+		if (this.transitioning) return
+		this.transitioning = true
+		
+		// Store the player's current position for the new scene
+		const playerX = this.player.view.x
+		const playerY = this.player.view.y
+
+		// Send transition event to server
+		// this.multiplayerService.transitionToScene(targetX, targetY, targetScene)
+		
+		// Clean up resources before transitioning
+		this.cleanupScene()
+		
+		// Create a fade out effect
+		this.cameras.main.fade(500, 0, 0, 0)
+		
+		// Wait for the fade to complete before transitioning
+		this.cameras.main.once('camerafadeoutcomplete', () => {
+			// Start the new scene with the player's position and the current scene name
+			this.scene.start(targetScene, { 
+				x: targetX, 
+				y: targetY,
+				playerX: playerX,
+				playerY: playerY,
+				isTransition: true,
+				fromScene: this.scene.key // Pass the current scene name
+			})
+		})
+	}
+
 
     protected cleanupScene(): void {
 		// Clean up keyboard
@@ -148,11 +196,23 @@ export abstract class GameScene extends MapScene {
 			this.keyboard = null
 		}
 
+		// Clean up player
+		if (this.player) {
+			this.player.controller.destroy()
+			this.player = null
+		}
+
 		// Clean up remote players
 		this.remotePlayers.forEach(player => {
 			player.controller.destroy()
 		})
 		this.remotePlayers.clear()
+
+		// Clean up dropped items
+		this.droppedItems.forEach(item => {
+			item.controller.destroy()
+		})
+		this.droppedItems.clear()
 
 		// Clean up NPCs
 		this.npcs.forEach(npc => {
@@ -160,19 +220,18 @@ export abstract class GameScene extends MapScene {
 		})
 		this.npcs.clear()
 
-		// Clean up dropped items
-		this.droppedItems.forEach(loot => {
-			loot.controller.destroy()
-		})
-		this.droppedItems.clear()
+		// Clean up portal manager
+		if (this.portalManager) {
+			this.portalManager = null
+		}
 
-		// Remove event listeners
-		EventBus.off(Event.Players.SC.Joined, this.handlePlayerJoined, this)
-		EventBus.off(Event.Players.SC.Left, this.handlePlayerLeft, this)
-		EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems, this)
-		EventBus.off(Event.Loot.SC.Despawn, this.handleRemoveItems, this)
-		EventBus.off(Event.NPC.SC.List, this.handleNPCList, this)
-    }
+		// Clean up event listeners
+		EventBus.off(Event.Players.SC.Joined, this.handlePlayerJoined)
+		EventBus.off(Event.Players.SC.Left, this.handlePlayerLeft)
+		EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems)
+		EventBus.off(Event.Loot.SC.Despawn, this.handleRemoveItems)
+		EventBus.off(Event.NPC.SC.List, this.handleNPCList)
+	}
 
     public destroy(): void {
 		// Remove event listeners

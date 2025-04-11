@@ -3,7 +3,6 @@ import { EventBus } from '../../EventBus'
 import { PlayerView } from '../../entities/Player/View'
 import { Event } from '../../../../backend/src/events'
 import { PICKUP_RANGE } from '../../../../backend/src/consts'
-import { PortalManager } from '../../modules/Portals'
 import { AssetManager, TilesetInfo } from '../../modules/Assets'
 import { NPCSprite } from '../../sprites/NPCSprite'
 
@@ -12,8 +11,8 @@ export abstract class MapScene extends Scene {
 	protected mapKey: string
 	protected mapPath: string
 	protected transitioning: boolean = false
-	protected portalManager: PortalManager | null = null
 	protected assetManager: AssetManager
+	protected map: Phaser.Tilemaps.Tilemap
 
 	constructor(key: string, mapKey: string, mapPath: string) {
 		super(key)
@@ -45,10 +44,10 @@ export abstract class MapScene extends Scene {
 	protected initializeScene() {
 		console.log('[SCENE] init', this.mapKey)
 		// Create the map
-		const map = this.make.tilemap({ key: this.mapKey })
+		this.map = this.make.tilemap({ key: this.mapKey })
 		
 		// Load object tilesets and their mappings
-		this.assetManager.loadTilesetObjects(map)
+		this.assetManager.loadTilesetObjects(this.map)
 		
 		// Get all tilesets from the map
 		const mapData = this.cache.tilemap.get(this.mapKey).data
@@ -60,7 +59,7 @@ export abstract class MapScene extends Scene {
 				const imageKey = tileset.image?.split('/').pop().split('.')[0]
 				if (!imageKey) return 
 
-				const tilesetImage = map.addTilesetImage(imageKey)
+				const tilesetImage = this.map.addTilesetImage(imageKey)
 				if (tilesetImage) {
 					tilesetMap.set(tileset.name, tilesetImage)
 				}
@@ -76,7 +75,7 @@ export abstract class MapScene extends Scene {
 				if (layer.type === 'objectgroup') return
 				
 				const layerName = layer.name
-				const createdLayer = map.createLayer(layerName, Array.from(tilesetMap.values()))
+				const createdLayer = this.map.createLayer(layerName, Array.from(tilesetMap.values()))
 				
 				if (createdLayer) {
 					layers.set(layerName, createdLayer)
@@ -94,11 +93,11 @@ export abstract class MapScene extends Scene {
 		}
 
 		// Set world bounds to match the map size
-		this.physics.world.bounds.width = map.widthInPixels
-		this.physics.world.bounds.height = map.heightInPixels
+		this.physics.world.bounds.width = this.map.widthInPixels
+		this.physics.world.bounds.height = this.map.heightInPixels
 
 		// Create static objects from the object layer
-		const staticObjects = map.getObjectLayer('static-objects')?.objects
+		const staticObjects = this.map.getObjectLayer('static-objects')?.objects
 		if (staticObjects) {
 			const staticObjectSprites: Phaser.GameObjects.Image[] = []
 			
@@ -137,8 +136,8 @@ export abstract class MapScene extends Scene {
 		// Calculate the offset to center the map if it's smaller than the window
 		const windowWidth = this.scale.width
 		const windowHeight = this.scale.height
-		const mapWidth = map.widthInPixels
-		const mapHeight = map.heightInPixels
+		const mapWidth = this.map.widthInPixels
+		const mapHeight = this.map.heightInPixels
 		
 		// Only center if map is smaller than window
 		if (mapWidth < windowWidth || mapHeight < windowHeight) {
@@ -156,56 +155,10 @@ export abstract class MapScene extends Scene {
 		if (this.scene.settings.data?.isTransition) {
 			this.cameras.main.fadeIn(500)
 		}
-
-		// Initialize the portal manager
-		this.portalManager = new PortalManager(this, this.player)
-		
-		// Set the portal activated callback
-		this.portalManager.setPortalActivatedCallback((portalData) => {
-			this.transitionToScene(portalData.target, portalData.targetX, portalData.targetY)
-		})
-		
-		// Process portals
-		this.portalManager.processPortals(map)
 	}
 
 	update() {
-		if (this.portalManager) {
-			this.portalManager.update()
-		}
-	}
 
-	// Transition to a new scene with a fade effect
-	protected transitionToScene(targetScene: string, targetX: number = 0, targetY: number = 0) {
-		// Prevent multiple transitions
-		if (this.transitioning) return
-		this.transitioning = true
-		
-		// Store the player's current position for the new scene
-		const playerX = this.player.getSprite().x
-		const playerY = this.player.getSprite().y
-
-		// Send transition event to server
-		// this.multiplayerService.transitionToScene(targetX, targetY, targetScene)
-		
-		// Clean up resources before transitioning
-		this.cleanupScene()
-		
-		// Create a fade out effect
-		this.cameras.main.fade(500, 0, 0, 0)
-		
-		// Wait for the fade to complete before transitioning
-		this.cameras.main.once('camerafadeoutcomplete', () => {
-			// Start the new scene with the player's position and the current scene name
-			this.scene.start(targetScene, { 
-				x: targetX, 
-				y: targetY,
-				playerX: playerX,
-				playerY: playerY,
-				isTransition: true,
-				fromScene: this.scene.key // Pass the current scene name
-			})
-		})
 	}
 
 	/**
