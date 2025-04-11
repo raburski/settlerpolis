@@ -1,4 +1,4 @@
-import { EventManager, Event, EventClient, EventCallback, LifecycleCallback } from '../../../backend/src/Event'
+import { EventManager, Event, EventClient, EventCallback, LifecycleCallback } from '../../../backend/src/events'
 import { Receiver } from '../../../backend/src/Receiver'
 
 class LocalEventClient implements EventClient {

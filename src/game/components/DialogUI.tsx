@@ -4,7 +4,7 @@ import { NPCService } from '../services/NPCService'
 
 import { EventBus } from '../EventBus'
 import styles from './DialogUI.module.css'
-import { Event, EventManager } from '../../../backend/src/Event'
+import { Event } from '../../../backend/src/events'
 
 interface DialogUIProps {
 	npcService: NPCService
@@ -21,10 +21,10 @@ export function DialogUI({ npcService, eventBus }: DialogUIProps) {
 			setNpcId(data.npcId)
 		}
 
-		eventBus.on(Event.NPC.DialogUpdate, handleDialogUpdate)
+		eventBus.on('npc:dialogUpdate', handleDialogUpdate)
 
 		return () => {
-			eventBus.off(Event.NPC.DialogUpdate, handleDialogUpdate)
+			eventBus.off('npc:dialogUpdate', handleDialogUpdate)
 		}
 	}, [eventBus])
 

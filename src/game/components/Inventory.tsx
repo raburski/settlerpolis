@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { EventBus } from '../EventBus'
-import { Event } from '../../../backend/src/Event'
-import { Inventory as InventoryType, Item } from '../../../backend/src/DataTypes'
-import { ItemType } from '../../../backend/src/types'
+import { Event } from '@backend/events'
+import { Inventory as InventoryType, Item } from '@backend/DataTypes'
+import { ItemType } from '@backend/types'
 import styles from './Inventory.module.css'
 
 interface InventoryProps {
@@ -19,16 +19,16 @@ export function Inventory({ isOpen }: InventoryProps) {
 			setInventory(data.inventory)
 		}
 
-		EventBus.on(Event.Inventory.SC.Loaded, handleInventoryLoaded)
+		EventBus.on(Event.Inventory.SC.Update, handleInventoryLoaded)
 
 		return () => {
-			EventBus.off(Event.Inventory.SC.Loaded, handleInventoryLoaded)
+			EventBus.off(Event.Inventory.SC.Update, handleInventoryLoaded)
 		}
 	}, [])
 
 	const handleDropItem = (itemId: string) => {
         console.log('drop item')
-		EventBus.emit(Event.Inventory.CS.Drop, { itemId })
+		EventBus.emit(Event.Players.CS.DropItem, { itemId })
 	}
 
 	const handleConsumeItem = (itemId: string) => {

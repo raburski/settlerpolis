@@ -1,4 +1,4 @@
-import { EventManager, Event, EventClient, EventCallback, LifecycleCallback } from '../../../backend/src/Event'
+import { EventManager, Event, EventClient, EventCallback, LifecycleCallback } from '../../../backend/src/events'
 import { Socket, io } from 'socket.io-client'
 import { Receiver } from '../../../backend/src/Receiver'
 
@@ -121,7 +121,7 @@ export class NetworkManager implements EventManager {
 		this.socket.on(event, (data: any) => {
 			if (this.client) {
 				// Update client's current group based on scene events
-				if (event === Event.Player.CS.Join || event === Event.Player.CS.TransitionTo) {
+				if (event === Event.Players.CS.Join || event === Event.Players.CS.TransitionTo) {
 					const sceneData = data as any
 					if (sceneData.scene) {
 						this.client.setGroup(sceneData.scene)

@@ -4,9 +4,9 @@ import { Player } from '../entities/Player'
 import { MultiplayerService, PlayerData, ChatMessage } from '../services/MultiplayerService'
 import { MultiplayerPlayer } from '../entities/MultiplayerPlayer'
 import { BasePlayer } from '../entities/BasePlayer'
-import { Event } from '../../../backend/src/Event'
-import { ChatMessageData, PlayerJoinData, PlayerMovedData, PlayerSourcedData, DroppedItem, NPC } from "../../../backend/src/DataTypes"
-import { PICKUP_RANGE } from '../../../backend/src/consts'
+import { Event } from '@backend/events'
+import { ChatMessageData, PlayerJoinData, PlayerMovedData, PlayerSourcedData, DroppedItem, NPC } from "@backend/DataTypes"
+import { PICKUP_RANGE } from '@backend/consts'
 import { PortalManager } from '../modules/Portals'
 import { AssetManager, TilesetInfo } from '../modules/Assets'
 import { NPCSprite } from '../sprites/NPCSprite'
@@ -211,19 +211,18 @@ export abstract class MapScene extends Scene {
 
 	private setupMultiplayer() {
         // Set up multiplayer event listeners
-		EventBus.on(Event.Player.SC.Joined, this.handlePlayerJoined, this)
-		EventBus.on(Event.Player.CS.Moved, this.handlePlayerMoved, this)
-		EventBus.on(Event.Player.SC.Left, this.handlePlayerLeft, this)
-		EventBus.on(Event.Player.SC.Disconnected, this.handlePlayerDisconnected, this)
+		EventBus.on(Event.Players.SC.Joined, this.handlePlayerJoined, this)
+		EventBus.on(Event.Players.CS.Move, this.handlePlayerMoved, this)
+		EventBus.on(Event.Players.SC.Left, this.handlePlayerLeft, this)
+		EventBus.on(Event.Players.SC.Left, this.handlePlayerDisconnected, this)
 
         // Listen for chat messages
-		EventBus.on(Event.Chat.CS.Message, this.handleChatMessage, this)
+		EventBus.on(Event.Chat.SC.Receive, this.handleChatMessage, this)
 
 		// Set up scene event listeners
-		EventBus.on(Event.Scene.SC.AddItems, this.handleAddItems, this)
-		EventBus.on(Event.Scene.SC.RemoveItems, this.handleRemoveItems, this)
+		EventBus.on(Event.Loot.SC.Spawn, this.handleAddItems, this)
+		EventBus.on(Event.Loot.SC.Despawn, this.handleRemoveItems, this)
 		EventBus.on(Event.NPC.SC.List, this.handleNPCList, this)
-
 
 		// Connect to multiplayer server
 		this.multiplayerService.connect()
@@ -236,8 +235,6 @@ export abstract class MapScene extends Scene {
 			this.scene.key,
 			this.player.appearance
 		)
-
-
 	}
 
 	private handlePlayerJoined(data: PlayerJoinData) {
@@ -481,13 +478,13 @@ export abstract class MapScene extends Scene {
 	protected cleanupScene(): void {
 		try {
 			// Remove event listeners
-			EventBus.off(Event.Chat.CS.Message, this.handleChatMessage, this)
-			EventBus.off(Event.Player.SC.Joined, this.handlePlayerJoined, this)
-			EventBus.off(Event.Player.CS.Moved, this.handlePlayerMoved, this)
-			EventBus.off(Event.Player.SC.Left, this.handlePlayerLeft, this)
-			EventBus.off(Event.Player.SC.Disconnected, this.handlePlayerDisconnected, this)
-			EventBus.off(Event.Scene.SC.AddItems, this.handleAddItems, this)
-			EventBus.off(Event.Scene.SC.RemoveItems, this.handleRemoveItems, this)
+			EventBus.off(Event.Chat.SC.Receive, this.handleChatMessage, this)
+			EventBus.off(Event.Players.SC.Joined, this.handlePlayerJoined, this)
+			EventBus.off(Event.Players.CS.Move, this.handlePlayerMoved, this)
+			EventBus.off(Event.Players.SC.Left, this.handlePlayerLeft, this)
+			EventBus.off(Event.Players.SC.Left, this.handlePlayerDisconnected, this)
+			EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems, this)
+			EventBus.off(Event.Loot.SC.Despawn, this.handleRemoveItems, this)
 			EventBus.off(Event.NPC.SC.List, this.handleNPCList, this)
 			
 			// Clean up multiplayer players
@@ -509,7 +506,13 @@ export abstract class MapScene extends Scene {
 			}
 			
 			// Clean up dropped items
-			this.droppedItems.forEach(sprite => sprite.destroy())
+			this.droppedItems.forEach(sprite => {
+				const nameText = sprite.getData('nameText') as Phaser.GameObjects.Text
+				if (nameText) {
+					nameText.destroy()
+				}
+				sprite.destroy()
+			})
 			this.droppedItems.clear()
 			
 			// Clean up NPCs
@@ -535,8 +538,8 @@ export abstract class MapScene extends Scene {
 
 	public destroy(): void {
 		// Remove event listeners
-		EventBus.off(Event.Scene.SC.AddItems, this.handleAddItems, this)
-		EventBus.off(Event.Scene.SC.RemoveItems, this.handleRemoveItems, this)
+		EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems, this)
+		EventBus.off(Event.Loot.SC.Despawn, this.handleRemoveItems, this)
 		EventBus.off(Event.NPC.SC.List, this.handleNPCList, this)
 		
 		// Clean up dropped items

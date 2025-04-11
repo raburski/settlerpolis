@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { EventBus } from '../EventBus'
-import { Event } from '../../../backend/src/Event'
+import { Event } from '../../../backend/src/events'
 import styles from './DisconnectModal.module.css'
 
 export function DisconnectModal() {
@@ -11,10 +11,10 @@ export function DisconnectModal() {
 			setIsVisible(true)
 		}
 
-		EventBus.on(Event.Player.SC.Disconnected, handleDisconnect)
+		EventBus.on(Event.Players.SC.Disconnected, handleDisconnect)
 
 		return () => {
-			EventBus.off(Event.Player.SC.Disconnected, handleDisconnect)
+			EventBus.off(Event.Players.SC.Disconnected, handleDisconnect)
 		}
 	}, [])
 

@@ -1,5 +1,5 @@
 import { Dialog, NPC } from '../../../backend/src/DataTypes'
-import { Event } from '../../../backend/src/Event'
+import { Event } from '../../../backend/src/events'
 import { EventBus } from '../EventBus'
 import { MultiplayerService } from './MultiplayerService'
 
@@ -16,7 +16,7 @@ export class NPCService {
 
 	private setupEventListeners() {
 		// Listen for dialog updates from the server
-		this.eventBus.on(Event.NPC.Dialog, (data: { npcId: string, dialog: Dialog | null }) => {
+		this.eventBus.on(Event.Dialogue.SC.Trigger, (data: { npcId: string, dialog: Dialog | null }) => {
 			this.currentDialog = data.dialog
 			
 			if (data.dialog === null) {
@@ -28,11 +28,11 @@ export class NPCService {
 			}
 			
 			// Forward the dialog to any UI components
-			this.eventBus.emit(Event.NPC.DialogUpdate, data)
+			this.eventBus.emit('npc:dialogUpdate', data)
 		})
 
 		// Listen for NPC messages
-		this.eventBus.on(Event.NPC.Message, (data: { npcId: string, message: string }) => {
+		this.eventBus.on(Event.NPC.SC.Message, (data: { npcId: string, message: string }) => {
 			this.eventBus.emit('npc:displayMessage', data)
 		})
 	}
@@ -69,7 +69,7 @@ export class NPCService {
 	}
 
 	public destroy() {
-		this.eventBus.off(Event.NPC.Dialog)
-		this.eventBus.off(Event.NPC.DialogUpdate)
+		this.eventBus.off(Event.Dialogue.SC.Trigger)
+		this.eventBus.off('npc:dialogUpdate')
 	}
 } 

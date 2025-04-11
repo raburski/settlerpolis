@@ -1,5 +1,5 @@
 import { EventBus } from '../EventBus'
-import { Event, EventManager } from '../../../backend/src/Event'
+import { Event, EventManager } from '../../../backend/src/events'
 import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, InventoryData, DropItemData, DroppedItem, PickUpItemData, ConsumeItemData } from '../../../backend/src/DataTypes'
 import { NetworkManager } from '../network/NetworkManager'
 import { LocalManager } from '../network/LocalManager'
@@ -106,20 +106,20 @@ export class MultiplayerService {
 
 		this.currentScene = scene
 		console.log(`Joining game in scene: ${scene}`)
-		this.event.emit(Receiver.All, Event.Player.CS.Join, { position: { x, y }, scene, appearance })
+		this.event.emit(Receiver.All, Event.Players.CS.Join, { position: { x, y }, scene, appearance })
 	}
 
 	updatePosition(x: number, y: number) {
 		if (!this.event || !this.currentScene) return
 		
-		this.event.emit(Receiver.All, Event.Player.CS.Moved, { x, y })
+		this.event.emit(Receiver.All, Event.Players.CS.Moved, { x, y })
 	}
 
 	transitionToScene(x: number, y: number, scene: string) {
 		if (!this.event) return
 
 		// Send transition event
-		this.event.emit(Receiver.All, Event.Player.CS.TransitionTo, {
+		this.event.emit(Receiver.All, Event.Players.CS.TransitionTo, {
 			position: { x, y },
 			scene
 		})
@@ -177,7 +177,7 @@ export class MultiplayerService {
 
 	public async selectNPCResponse(npcId: string, dialogId: string, responseId: string) {
 		if (!this.event) return
-		this.event.emit(Receiver.All, Event.NPC.CS.Dialog, { 
+		this.event.emit(Receiver.All, Event.Dialogue.CS.Choice, { 
 			npcId,
 			dialogId,
 			responseId
@@ -186,7 +186,7 @@ export class MultiplayerService {
 
 	public async closeNPCDialog(npcId: string) {
 		if (!this.event) return
-		this.event.emit(Receiver.All, Event.NPC.CS.CloseDialog, { npcId })
+		this.event.emit(Receiver.All, Event.Dialogue.CS.Continue, { npcId })
 	}
 
 	public destroy(): void {

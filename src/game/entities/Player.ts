@@ -2,8 +2,8 @@ import { Scene, GameObjects, Physics, Input } from 'phaser'
 import { EventBus } from '../EventBus'
 import { Gender, PlayerAppearance } from '../services/MultiplayerService'
 import { BasePlayer, Direction, PlayerState } from './BasePlayer'
-import { Event } from '../../../backend/src/Event'
-import { InventoryData } from '../../../backend/src/DataTypes'
+import { Event } from '@backend/events'
+import { InventoryData } from '@backend/DataTypes'
 
 export const DEFAULT_APPEARANCE: PlayerAppearance = {
 	gender: Gender.Male
@@ -43,7 +43,7 @@ export class Player extends BasePlayer {
 		EventBus.on('chat:inputVisible', this.handleChatInputVisible, this)
 		
 		// Listen for inventory events
-		EventBus.on(Event.Inventory.SC.Loaded, this.handleInventoryLoaded, this)
+		EventBus.on(Event.Inventory.SC.Update, this.handleInventoryLoaded, this)
 	}
 
 	private handleInventoryLoaded = (data: InventoryData) => {
@@ -129,7 +129,7 @@ export class Player extends BasePlayer {
 		// Remove event listeners
 		EventBus.off('chat:inputVisible', this.handleChatInputVisible, this)
 		EventBus.off('player:sendMessage', this.handleSendMessage, this)
-		EventBus.off(Event.Inventory.SC.Loaded, this.handleInventoryLoaded, this)
+		EventBus.off(Event.Inventory.SC.Update, this.handleInventoryLoaded, this)
 		
 		// Call parent destroy method
 		super.destroy()
