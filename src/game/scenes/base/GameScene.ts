@@ -4,6 +4,8 @@ import { Event } from '@backend/events'
 import { createPlayer } from '../../entities/Player'
 import { PlayerView } from '../../entities/Player/View'
 import { PlayerController } from '../../entities/Player/Controller'
+import { createRemotePlayer, RemotePlayer } from '../../entities/RemotePlayer'
+import { createNPC, NPC } from '../../entities/NPC'
 
 type Player = {
 	view: PlayerView
@@ -12,13 +14,9 @@ type Player = {
 
 export abstract class GameScene extends MapScene {
     protected player: Player | null = null
-	protected multiplayerPlayers: Map<string, Player> = new Map()
-	protected lastPositionUpdate: { x: number, y: number } | null = null
-	protected lastPositionUpdateTime: number = 0
-	protected readonly POSITION_UPDATE_THROTTLE = 100 // 100ms
-
+	protected remotePlayers: Map<string, RemotePlayer> = new Map()
 	protected droppedItems: Map<string, GameObjects.Sprite> = new Map()
-	protected npcs: Map<string, NPCSprite> = new Map()
+	protected npcs: Map<string, NPC> = new Map()
 	// protected npcService: NPCService
 
 	constructor(key: string, mapKey: string, mapPath: string) {
@@ -45,82 +43,54 @@ export abstract class GameScene extends MapScene {
 
         // Set up camera to follow player
 		this.cameras.main.startFollow(this.player.view)
+
+        EventBus.emit(Event.Players.CS.Join, { position: { x: playerX, y: playerY}, scene: 'FarmScene', appareance: {}})
     }
 
     update() {
         if (this.player) {
             this.player.controller.update()
         }
+
+		// Update remote players
+		this.remotePlayers.forEach(player => {
+			player.controller.update()
+		})
+
+		// Update NPCs
+		this.npcs.forEach(npc => {
+			npc.controller.update()
+		})
     }
 
     private setupMultiplayer() {
         // Set up multiplayer event listeners
 		EventBus.on(Event.Players.SC.Joined, this.handlePlayerJoined, this)
-		EventBus.on(Event.Players.CS.Move, this.handlePlayerMoved, this)
 		EventBus.on(Event.Players.SC.Left, this.handlePlayerLeft, this)
-		EventBus.on(Event.Players.SC.Left, this.handlePlayerDisconnected, this)
-
-        // Listen for chat messages
-		EventBus.on(Event.Chat.SC.Receive, this.handleChatMessage, this)
 
 		// Set up scene event listeners
 		EventBus.on(Event.Loot.SC.Spawn, this.handleAddItems, this)
 		EventBus.on(Event.Loot.SC.Despawn, this.handleRemoveItems, this)
 		EventBus.on(Event.NPC.SC.List, this.handleNPCList, this)
 
-		// Join the game
-		// const playerSprite = this.player.getSprite()
-		// this.multiplayerService.joinGame(
-		// 	playerSprite.x,
-		// 	playerSprite.y,
-		// 	this.scene.key,
-		// 	this.player.appearance
-		// )
+
 	}
 
-	private handlePlayerJoined(data: PlayerJoinData) {
-        console.log('handlePlayerJoined', data)
-		const multiplayerPlayer = new MultiplayerPlayer(
+	private handlePlayerJoined = (data: { sourcePlayerId: string, position: { x: number, y: number } }) => {
+		const remotePlayer = createRemotePlayer(
 			this,
 			data.position.x,
 			data.position.y,
-			data.sourcePlayerId,
-            {},
-			// playerData.appearance
+			data.sourcePlayerId
 		)
-		this.multiplayerPlayers.set(data.sourcePlayerId, multiplayerPlayer)
+		this.remotePlayers.set(data.sourcePlayerId, remotePlayer)
 	}
 
-	private handlePlayerMoved(data: PlayerMovedData) {
-		const multiplayerPlayer = this.multiplayerPlayers.get(data.sourcePlayerId)
-		if (multiplayerPlayer) {
-			multiplayerPlayer.updatePositionFromServer(data)
-		}
-	}
-
-	private handlePlayerLeft(data: PlayerSourcedData) {
-        const playerId = data.sourcePlayerId
-		const multiplayerPlayer = this.multiplayerPlayers.get(playerId)
-		if (multiplayerPlayer) {
-			multiplayerPlayer.destroy()
-			this.multiplayerPlayers.delete(playerId)
-		}
-	}
-
-	private handlePlayerDisconnected() {
-		// Clean up resources or notify the user about the disconnection
-		console.log('Player disconnected from the server')
-		// You can add UI notifications or other cleanup logic here
-	}
-
-	private handleChatMessage(data: ChatMessageData) {
-		if (data.sourcePlayerId === this.multiplayerService.socket?.id) {
-			this.player?.view.displayMessage(data.message)
-		} else {
-			const multiplayerPlayer = this.multiplayerPlayers.get(data.sourcePlayerId)
-			if (multiplayerPlayer) {
-				multiplayerPlayer.displayMessage(data.message)
-			}
+	private handlePlayerLeft = (data: { sourcePlayerId: string }) => {
+		const remotePlayer = this.remotePlayers.get(data.sourcePlayerId)
+		if (remotePlayer) {
+			remotePlayer.controller.destroy()
+			this.remotePlayers.delete(data.sourcePlayerId)
 		}
 	}
 
@@ -224,33 +194,42 @@ export abstract class GameScene extends MapScene {
 
 	private handleNPCList = (data: { npcs: NPC[] }) => {
 		// Clear existing NPCs first
-		this.npcs.forEach(npc => npc.destroy())
+		this.npcs.forEach(npc => npc.controller.destroy())
 		this.npcs.clear()
-        
 
 		// Create new NPCs
 		data.npcs.forEach(npcData => {
-			const npc = new NPCSprite(this, npcData, this.npcService)
+			const npc = createNPC(this, npcData.position.x, npcData.position.y, npcData)
 			this.npcs.set(npcData.id, npc)
 
 			// If we have a player, set up collision with NPCs
 			if (this.player) {
-				this.physics.add.collider(this.player.view, npc)
+				this.physics.add.collider(this.player.view, npc.view)
 			}
 		})
 	}
 
 
     protected cleanupScene(): void {
-        			// Remove event listeners
-			EventBus.off(Event.Chat.SC.Receive, this.handleChatMessage, this)
-			EventBus.off(Event.Players.SC.Joined, this.handlePlayerJoined, this)
-			EventBus.off(Event.Players.CS.Move, this.handlePlayerMoved, this)
-			EventBus.off(Event.Players.SC.Left, this.handlePlayerLeft, this)
-			EventBus.off(Event.Players.SC.Left, this.handlePlayerDisconnected, this)
-			EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems, this)
-			EventBus.off(Event.Loot.SC.Despawn, this.handleRemoveItems, this)
-			EventBus.off(Event.NPC.SC.List, this.handleNPCList, this)
+		// Clean up remote players
+		this.remotePlayers.forEach(player => {
+			player.controller.destroy()
+		})
+		this.remotePlayers.clear()
+
+		// Clean up NPCs
+		this.npcs.forEach(npc => {
+			npc.controller.destroy()
+		})
+		this.npcs.clear()
+
+		// Remove event listeners
+		EventBus.off(Event.Players.SC.Joined, this.handlePlayerJoined, this)
+		EventBus.off(Event.Players.SC.Left, this.handlePlayerLeft, this)
+		EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems, this)
+		EventBus.off(Event.Loot.SC.Despawn, this.handleRemoveItems, this)
+		EventBus.off(Event.NPC.SC.List, this.handleNPCList, this)
+
         // Clean up dropped items
         this.droppedItems.forEach(sprite => {
             const nameText = sprite.getData('nameText') as Phaser.GameObjects.Text
@@ -260,10 +239,6 @@ export abstract class GameScene extends MapScene {
             sprite.destroy()
         })
         this.droppedItems.clear()
-        
-        // Clean up NPCs
-        this.npcs.forEach(npc => npc.destroy())
-        this.npcs.clear()
     }
 
     public destroy(): void {
@@ -277,7 +252,7 @@ export abstract class GameScene extends MapScene {
 		this.droppedItems.clear()
 
 		// Clean up NPCs
-		this.npcs.forEach(npc => npc.destroy())
+		this.npcs.forEach(npc => npc.controller.destroy())
 		this.npcs.clear()
 
 		// ... rest of destroy code ...

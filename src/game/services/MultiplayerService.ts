@@ -29,10 +29,13 @@ const DEFAULT_APPEARANCE: PlayerAppearance = {
 }
 
 export class MultiplayerService {
+	private debug: boolean = false
     private events: string[]
 	private handleCSEvent = (eventName: string, data: any) => {
 		if (eventName && eventName.startsWith('cs:') && this.event) {
-			console.log('[MULTIPLAYER SERVICE] Forwarding CS event:', eventName, data)
+			if (this.debug) {
+				console.log('[MULTIPLAYER SERVICE] Forwarding CS event:', eventName, data)
+			}
 			this.event.emit(Receiver.All, eventName, data)
 		}
 	}
@@ -66,7 +69,9 @@ export class MultiplayerService {
 			this.event.on(eventName, (data, client) => {
 				// For events that need sourcePlayerId, add it from the client
                 data = { ...data, sourcePlayerId: client.id }
-                console.log('[MULTIPLAYER SERVICE] Feed into the EventBUS', eventName)
+				if (this.debug) {
+					console.log('[MULTIPLAYER SERVICE] Feed into the EventBUS', eventName)
+				}
 				EventBus.emit(eventName, data)
 			})
 		})

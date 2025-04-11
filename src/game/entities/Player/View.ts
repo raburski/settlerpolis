@@ -184,8 +184,8 @@ export class PlayerView extends GameObjects.Container {
 		if (!message) return
 
 		// Create text as a child of the container so it moves with the player
-		this.messageText = this.scene.add.text(0, -50, message, {
-			fontSize: '18px',
+		this.messageText = this.scene.add.text(0, -40, message, {
+			fontSize: '16px',
 			color: '#ffffff',
 			backgroundColor: 'rgba(0, 0, 0, 0.7)',
 			padding: { x: 5, y: 3 },

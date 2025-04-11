@@ -16,6 +16,15 @@ export class PlayerController {
 		private scene: Scene
 	) {
 		this.keyboard = new Keyboard(scene)
+		// Subscribe to chat messages
+		EventBus.on(Event.Chat.SC.Receive, this.handleChatMessage, this)
+	}
+
+	private handleChatMessage = (data: { sourcePlayerId: string, message: string }) => {
+		// Only show message if it's from our player
+		if (data.sourcePlayerId === this.scene.multiplayerService?.socket?.id) {
+			this.view.displayMessage(data.message)
+		}
 	}
 
 	update(): void {
@@ -100,6 +109,7 @@ export class PlayerController {
     }
 
 	public destroy(): void {
+		EventBus.off(Event.Chat.SC.Receive, this.handleChatMessage, this)
 		this.keyboard.destroy()
 	}
 }
