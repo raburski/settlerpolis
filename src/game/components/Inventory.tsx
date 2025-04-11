@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { EventBus } from '../EventBus'
 import { Event } from '../../../backend/src/events'
-import { Inventory as InventoryType, Item } from '@backend/DataTypes'
-import { ItemType } from '@backend/types'
+import { Inventory as InventoryType, Item } from '../../../backend/src/DataTypes'
+import { ItemType } from '../../../backend/src/types'
 import styles from './Inventory.module.css'
 
 export function Inventory() {

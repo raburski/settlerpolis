@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
-import { DialogueNode } from '@backend/Game/Dialogue/types'
+import { DialogueNode } from '../../../backend/src/Game/Dialogue/types'
 import styles from './DialogUI.module.css'
 import { EventBus } from '../EventBus'
-import { DialogueEvents } from '@backend/Game/Dialogue/events'
+import { DialogueEvents } from '../../../backend/src/Game/Dialogue/events'
 
 export function DialogUI() {
 	const [activeNode, setActiveNode] = useState<DialogueNode | null>(null)

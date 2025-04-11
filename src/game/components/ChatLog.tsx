@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { EventBus } from '../EventBus'
 import { Event } from '../../../backend/src/events'
-import { ChatMessageData, ChatSystemMessageData, ChatMessageType } from '@backend/DataTypes'
+import { ChatMessageData, ChatSystemMessageData, ChatMessageType } from '../../../backend/src/DataTypes'
 import styles from './ChatLog.module.css'
 
 interface Message {
