@@ -1,5 +1,6 @@
 export const PlayersEvents = {
 	CS: {
+		Connect: 'cs:players:connect',
 		Join: 'cs:players:join',
 		Move: 'cs:players:move',
 		TransitionTo: 'cs:players:transition-to',
@@ -7,6 +8,7 @@ export const PlayersEvents = {
 		PickupItem: 'cs:players:pickup_item'
 	},
 	SC: {
+		Connected: 'sc:players:connected',
 		Joined: 'sc:players:joined',
 		Left: 'sc:players:left',
 		List: 'sc:players:list'

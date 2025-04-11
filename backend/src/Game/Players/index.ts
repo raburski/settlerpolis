@@ -30,6 +30,18 @@ export class PlayersManager {
 	}
 
 	private setupEventHandlers() {
+		// Handle initial connection
+		this.event.on(Event.Players.CS.Connect, (_, client) => {
+			// Send initial scene and position data
+			client.emit(Receiver.Sender, Event.Players.SC.Connected, {
+				scene: 'FarmScene',  // Initial scene
+				position: {
+					x: 100,  // Initial x position
+					y: 300   // Initial y position
+				}
+			})
+		})
+
 		// Handle client lifecycle
 		this.event.onLeft((client) => {
 			const player = this.players.get(client.id)

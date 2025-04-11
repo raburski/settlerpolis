@@ -35,8 +35,9 @@ export abstract class GameScene extends MapScene {
 
         // Get scene data passed during transition
 		const sceneData = this.scene.settings.data
-		const playerX = sceneData?.playerX || 100
-		const playerY = sceneData?.playerY || 300
+		const playerX = sceneData?.x || 100
+		const playerY = sceneData?.y || 300
+		const isTransition = sceneData?.isTransition || false
 		
 		// Create player at the specified position
 		this.player = createPlayer(this)
@@ -50,7 +51,7 @@ export abstract class GameScene extends MapScene {
         // Set up camera to follow player
 		this.cameras.main.startFollow(this.player.view)
 
-        		// Initialize the portal manager
+        // Initialize the portal manager
 		this.portalManager = new PortalManager(this, this.player.view)
 		
 		// Set the portal activated callback
@@ -61,7 +62,14 @@ export abstract class GameScene extends MapScene {
 		// Process portals
 		this.portalManager.processPortals(this.map)
 
-        EventBus.emit(Event.Players.CS.Join, { position: { x: playerX, y: playerY}, scene: this.mapKey, appareance: {}})
+		// Only emit join event if this is not a scene transition
+		if (!isTransition) {
+			EventBus.emit(Event.Players.CS.Join, { 
+				position: { x: playerX, y: playerY}, 
+				scene: this.mapKey, 
+				appareance: {}
+			})
+		}
     }
 
     update() {
