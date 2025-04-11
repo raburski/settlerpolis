@@ -2,7 +2,9 @@ export const PlayersEvents = {
 	CS: {
 		Join: 'cs:players:join',
 		Moved: 'cs:players:moved',
-		TransitionTo: 'cs:players:transition-to'
+		TransitionTo: 'cs:players:transition-to',
+		DropItem: 'cs:players:drop_item',
+		PickupItem: 'cs:players:pickup_item'
 	},
 	SC: {
 		Joined: 'sc:players:joined',

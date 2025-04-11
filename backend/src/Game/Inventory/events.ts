@@ -1,10 +1,9 @@
 export const InventoryEvents = {
 	CS: {
-		Drop: 'cs:inventory:drop',
-		PickUp: 'cs:inventory:pickup',
 		Consume: 'cs:inventory:consume'
 	},
 	SC: {
-		Loaded: 'sc:inventory:loaded'
+		Loaded: 'sc:inventory:loaded',
+		Update: 'sc:inventory:update'
 	}
 } as const 

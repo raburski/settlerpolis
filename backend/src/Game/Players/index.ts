@@ -1,41 +1,55 @@
 import { EventManager, Event, EventClient } from '../../events'
-import { PlayerJoinData, PlayerMovedData, PlayerTransitionData } from '../DataTypes'
-import { Receiver } from '../Receiver'
+import { Player, PlayerJoinData, PlayerMovedData, PlayerTransitionData } from '../DataTypes'
+import { Receiver } from '../../Receiver'
+import { InventoryManager } from '../Inventory'
+import { LootManager } from '../Loot'
+import { PICKUP_RANGE } from '../../consts'
 
-interface PlayerData extends PlayerJoinData {
-	id: string
+interface DropItemData {
+	itemId: string
+	quantity?: number
+}
+
+interface PickupItemData {
+	itemId: string
 }
 
 export class PlayersManager {
-	private players = new Map<string, PlayerData>()
+	private players = new Map<string, Player>()
 
-	constructor(private event: EventManager) {
+	constructor(
+		private event: EventManager,
+		private inventoryManager: InventoryManager,
+		private lootManager: LootManager
+	) {
 		this.setupEventHandlers()
 	}
 
-	getPlayer(clientId: string): PlayerData | undefined {
-		return this.players.get(clientId)
+	getPlayer(playerId: string): Player | undefined {
+		return this.players.get(playerId)
 	}
 
 	private setupEventHandlers() {
+		// Handle client lifecycle
 		this.event.onLeft((client) => {
-			console.log('Player left:', client.id)
 			const player = this.players.get(client.id)
-			this.players.delete(client.id)
 			if (player) {
+				this.players.delete(client.id)
 				client.emit(Receiver.NoSenderGroup, Event.Players.SC.Left, {})
 			}
 		})
 
+		// Handle player join
 		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
 			const playerId = client.id
 			this.players.set(playerId, {
 				id: playerId,
-				...data,
+				position: data.position,
+				scene: data.scene,
+				appearance: data.appearance
 			})
 
-			client.setGroup(data.scene)
-
+			// Send existing players to new player
 			const scenePlayers = Array.from(this.players.values())
 				.filter(p => p.scene === data.scene && p.id !== client.id)
 			client.emit(Receiver.Sender, Event.Players.SC.List, scenePlayers)
@@ -43,6 +57,16 @@ export class PlayersManager {
 			client.emit(Receiver.NoSenderGroup, Event.Players.SC.Joined, data)
 		})
 
+		// Handle player movement
+		this.event.on<PlayerMovedData>(Event.Players.CS.Moved, (data, client) => {
+			const player = this.players.get(client.id)
+			if (player) {
+				player.position = data
+				client.emit(Receiver.NoSenderGroup, Event.Players.CS.Moved, data)
+			}
+		})
+
+		// Handle scene transition
 		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
 			const playerId = client.id
 			const player = this.players.get(playerId)
@@ -53,8 +77,7 @@ export class PlayersManager {
 				player.scene = data.scene
 				player.position = data.position
 
-				client.setGroup(data.scene)
-
+				// Send existing players in new scene to transitioning player
 				const scenePlayers = Array.from(this.players.values())
 					.filter(p => p.scene === data.scene && p.id !== client.id)
 				client.emit(Receiver.Sender, Event.Players.SC.List, scenePlayers)
@@ -63,12 +86,58 @@ export class PlayersManager {
 			}
 		})
 
-		this.event.on<PlayerMovedData>(Event.Players.CS.Moved, (data, client) => {
+		// Handle item drop request
+		this.event.on<DropItemData>(Event.Players.CS.DropItem, async (data, client) => {
+			// Get player's current position
 			const player = this.players.get(client.id)
-			if (player) {
-				player.position = data
-				client.emit(Receiver.NoSenderGroup, Event.Players.CS.Moved, data)
+			if (!player) return
+
+			// Remove item from inventory
+			const removedItem = this.inventoryManager.removeItem(client, data.itemId)
+			if (!removedItem) return
+
+			// Create dropped item with player's position
+			const droppedItem = {
+				...removedItem,
+				position: player.position,
+				droppedAt: Date.now()
 			}
+
+			// Add item to scene's dropped items
+			this.lootManager.dropItem(droppedItem, client)
+		})
+
+		// Handle item pickup request
+		this.event.on<PickupItemData>(Event.Players.CS.PickupItem, (data, client) => {
+			const player = this.players.get(client.id)
+			if (!player) return
+
+			const sceneItems = this.lootManager.getSceneItems(player.scene)
+			const item = sceneItems.find(item => item.id === data.itemId)
+			if (!item) return
+
+			// Calculate distance between player and item
+			const distance = Math.sqrt(
+				Math.pow(player.position.x - item.position.x, 2) + 
+				Math.pow(player.position.y - item.position.y, 2)
+			)
+
+			// Check if player is within pickup range
+			if (distance > PICKUP_RANGE) {
+				return // Player is too far to pick up the item
+			}
+
+			// Remove item from dropped items
+			const removedItem = this.lootManager.pickItem(data.itemId, client)
+			if (!removedItem) return
+
+			// Add item to player's inventory
+			const inventoryItem = {
+				id: removedItem.id,
+				name: removedItem.name,
+				type: removedItem.type
+			}
+			this.inventoryManager.addItem(client, inventoryItem)
 		})
 	}
 } 
