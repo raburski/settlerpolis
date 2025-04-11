@@ -5,6 +5,7 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import { NetworkManager } from './NetworkManager'
 import { GameManager } from './Game'
+import { EventBusManager } from './EventBusManager'
 
 dotenv.config()
 
@@ -27,8 +28,11 @@ const io = new Server(httpServer, {
 // Create network manager instance
 const network = new NetworkManager(io)
 
-// Create game manager instance
-const game = new GameManager(network)
+// Create event bus manager instance that wraps network manager
+const eventBus = new EventBusManager(network)
+
+// Create game manager instance with event bus
+const game = new GameManager(eventBus)
 
 // Add base path for API routes
 const apiRouter = express.Router()

@@ -195,33 +195,38 @@ export class NetworkManager implements EventManager {
 		})
 	}
 
-	emit(to: Receiver, event: string, data: any, groupName?: string): void {
+	emit(to: Receiver, event: string, data: any, groupName?: string, originalClient?: EventClient): void {
 		if (to === Receiver.Sender || to === Receiver.NoSenderGroup) {
-			throw new Error(`Cannot use ${to} with global emit. These receivers are only available for client-specific emissions.`)
+			if (!originalClient) {
+				throw new Error(`Cannot use ${to} with global emit. These receivers are only available for client-specific emissions.`)
+			}
+			// If we have the original client, use its emit method
+			originalClient.emit(to, event, data)
+			return
 		}
 
 		switch (to) {
-			case Receiver.Group: {
-				if (!groupName) {
-					throw new Error('Group name must be provided when using Receiver.Group')
-				}
-				const clients = this.groupClients.get(groupName)
-				clients?.forEach(clientId => {
-					this.io.to(clientId).emit(event, data)
-				})
-				break
-			}
-			
 			case Receiver.All:
 				this.io.emit(event, data)
 				break
 			
 			case Receiver.Client:
-				if (!groupName) {
-					throw new Error('Target client ID must be provided when using Receiver.Client')
+				if (groupName) { // groupName is used as targetClientId in this case
+					this.io.to(groupName).emit(event, data)
 				}
-				this.io.to(groupName).emit(event, data)
 				break
+			
+			default:
+				if (groupName) {
+					const clients = this.groupClients.get(groupName)
+					if (clients) {
+						clients.forEach(clientId => {
+							this.io.to(clientId).emit(event, data)
+						})
+					}
+				} else {
+					this.io.emit(event, data)
+				}
 		}
 	}
 } 

@@ -1,7 +1,7 @@
 import { EventManager, Event, EventClient } from '../../events'
 import { Inventory, Item, InventoryData, DropItemData, PickUpItemData, ConsumeItemData, PlayerJoinData } from '../DataTypes'
 import { ItemType } from '../types'
-import { Receiver } from '../Receiver'
+import { Receiver } from '../../Receiver'
 import { v4 as uuidv4 } from 'uuid'
 
 const DEFAULT_INVENTORY_ITEM_NAME = 'Butelka mózgotrzepa'
@@ -56,7 +56,7 @@ export class InventoryManager {
 		})
 
 		// Handle player join to send initial inventory
-		this.event.on<PlayerJoinData>(Event.Player.CS.Join, (_, client) => {
+		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (_, client) => {
 			const inventory = this.inventories.get(client.id)
 			if (inventory) {
 				client.emit(Receiver.Sender, Event.Inventory.SC.Loaded, { inventory })

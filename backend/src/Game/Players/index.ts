@@ -23,11 +23,11 @@ export class PlayersManager {
 			const player = this.players.get(client.id)
 			this.players.delete(client.id)
 			if (player) {
-				client.emit(Receiver.NoSenderGroup, Event.Player.SC.Left, {})
+				client.emit(Receiver.NoSenderGroup, Event.Players.SC.Left, {})
 			}
 		})
 
-		this.event.on<PlayerJoinData>(Event.Player.CS.Join, (data, client) => {
+		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
 			const playerId = client.id
 			this.players.set(playerId, {
 				id: playerId,
@@ -38,17 +38,17 @@ export class PlayersManager {
 
 			const scenePlayers = Array.from(this.players.values())
 				.filter(p => p.scene === data.scene && p.id !== client.id)
-			client.emit(Receiver.Sender, Event.Player.SC.List, scenePlayers)
+			client.emit(Receiver.Sender, Event.Players.SC.List, scenePlayers)
 
-			client.emit(Receiver.NoSenderGroup, Event.Player.SC.Joined, data)
+			client.emit(Receiver.NoSenderGroup, Event.Players.SC.Joined, data)
 		})
 
-		this.event.on<PlayerTransitionData>(Event.Player.CS.TransitionTo, (data, client) => {
+		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
 			const playerId = client.id
 			const player = this.players.get(playerId)
 
 			if (player) {
-				client.emit(Receiver.NoSenderGroup, Event.Player.SC.Left, {})
+				client.emit(Receiver.NoSenderGroup, Event.Players.SC.Left, {})
 
 				player.scene = data.scene
 				player.position = data.position
@@ -59,15 +59,15 @@ export class PlayersManager {
 					.filter(p => p.scene === data.scene && p.id !== client.id)
 				client.emit(Receiver.Sender, Event.Players.SC.List, scenePlayers)
 
-				client.emit(Receiver.NoSenderGroup, Event.Player.SC.Joined, data)
+				client.emit(Receiver.NoSenderGroup, Event.Players.SC.Joined, data)
 			}
 		})
 
-		this.event.on<PlayerMovedData>(Event.Player.CS.Moved, (data, client) => {
+		this.event.on<PlayerMovedData>(Event.Players.CS.Moved, (data, client) => {
 			const player = this.players.get(client.id)
 			if (player) {
 				player.position = data
-				client.emit(Receiver.NoSenderGroup, Event.Player.CS.Moved, data)
+				client.emit(Receiver.NoSenderGroup, Event.Players.CS.Moved, data)
 			}
 		})
 	}

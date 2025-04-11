@@ -93,14 +93,14 @@ export class NPCManager {
 
 	private setupEventHandlers() {
 		// Send NPCs list when player joins or transitions to a scene
-		this.event.on<PlayerJoinData>(Event.Player.CS.Join, (data, client) => {
+		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
 			const sceneNPCs = this.getSceneNPCs(data.scene)
 			if (sceneNPCs.length > 0) {
 				client.emit(Receiver.Sender, Event.NPC.SC.List, { npcs: sceneNPCs })
 			}
 		})
 
-		this.event.on<PlayerTransitionData>(Event.Player.CS.TransitionTo, (data, client) => {
+		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
 			const sceneNPCs = this.getSceneNPCs(data.scene)
 			if (sceneNPCs.length > 0) {
 				client.emit(Receiver.Sender, Event.NPC.SC.List, { npcs: sceneNPCs })

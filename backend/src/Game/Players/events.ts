@@ -1,13 +1,13 @@
-export const PlayerEvents = {
+export const PlayersEvents = {
 	CS: {
-		Join: 'cs:player:join',
-		Moved: 'cs:player:moved',
-		TransitionTo: 'cs:player:transition-to'
+		Join: 'cs:players:join',
+		Moved: 'cs:players:moved',
+		TransitionTo: 'cs:players:transition-to'
 	},
 	SC: {
-		Joined: 'sc:player:joined',
-		Left: 'sc:player:left',
-		Disconnected: 'sc:player:disconnected',
-		List: 'sc:player:list'
+		Joined: 'sc:players:joined',
+		Left: 'sc:players:left',
+		Disconnected: 'sc:players:disconnected',
+		List: 'sc:players:list'
 	}
 } as const 

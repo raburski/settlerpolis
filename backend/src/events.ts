@@ -1,11 +1,11 @@
 import { Receiver } from './Receiver'
-import { PlayerEvents } from './Game/Players/events'
+import { PlayersEvents } from './Game/Players/events'
 import { ChatEvents } from './Game/Chat/events'
 import { SystemEvents } from './Game/System/events'
 import { InventoryEvents } from './Game/Inventory/events'
-import { SceneEvents } from './Game/Scene/events'
 import { NPCEvents } from './Game/NPC/events'
 import { ItemsEvents } from './Game/Items/events'
+import { LootEvents } from './Game/Loot/events'
 
 // Interface for client operations
 export interface EventClient {
@@ -28,11 +28,11 @@ export interface EventManager {
 }
 
 export const Event = {
-	Player: PlayerEvents,
+	Players: PlayersEvents,
 	Chat: ChatEvents,
 	System: SystemEvents,
 	Inventory: InventoryEvents,
-	Scene: SceneEvents,
 	NPC: NPCEvents,
-	Items: ItemsEvents
+	Items: ItemsEvents,
+	Loot: LootEvents
 } as const 
