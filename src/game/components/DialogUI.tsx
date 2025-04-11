@@ -57,6 +57,28 @@ export function DialogUI() {
 		}
 	}
 
+	const renderItem = (item: DialogueNode['item']) => {
+		if (!item) return null
+
+		return (
+			<div className={styles.itemContainer}>
+				<div className={styles.itemIcon}>{item.icon || '📦'}</div>
+				<div className={styles.itemInfo}>
+					<div className={styles.itemHeader}>
+						<span className={styles.itemName}>{item.name}</span>
+						{item.quantity && item.quantity > 1 && (
+							<span className={styles.itemQuantity}>x{item.quantity}</span>
+						)}
+					</div>
+					{item.description && (
+						<div className={styles.itemDescription}>{item.description}</div>
+					)}
+					<div className={styles.itemType}>{item.type}</div>
+				</div>
+			</div>
+		)
+	}
+
 	return (
 		<div className={styles.dialogContainer}>
 			<div className={styles.dialogContent}>
@@ -74,17 +96,21 @@ export function DialogUI() {
 
 				<div className={styles.dialogText}>
 					<p>{activeNode.text}</p>
+					{activeNode.item && renderItem(activeNode.item)}
 				</div>
 
 				<div className={styles.responsesList}>
 					{activeNode.options?.map((option) => (
-						<button
-							key={option.id}
-							className={styles.responseButton}
-							onClick={() => handleOptionSelect(option.id)}
-						>
-							{option.text}
-						</button>
+						<div key={option.id} className={styles.responseWrapper}>
+							{option.item && renderItem(option.item)}
+							<button
+								className={styles.responseButton}
+								onClick={() => handleOptionSelect(option.id)}
+							>
+								{option.text}
+							</button>
+							
+						</div>
 					))}
 				</div>
 

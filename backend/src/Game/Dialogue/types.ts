@@ -4,6 +4,7 @@ export interface DialogueNode {
 	options?: DialogueOption[]
 	next?: string
 	event?: DialogueEvent
+	item?: DialogueItem
 }
 
 export interface DialogueOption {
@@ -11,11 +12,21 @@ export interface DialogueOption {
 	text: string
 	next: string
 	event?: DialogueEvent
+	item?: DialogueItem
 }
 
 export interface DialogueEvent {
 	type: string
 	payload: Record<string, any>
+}
+
+export interface DialogueItem {
+	id: string
+	name: string
+	type: string
+	description?: string
+	quantity?: number
+	icon?: string
 }
 
 export interface DialogueTree {

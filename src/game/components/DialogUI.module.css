@@ -117,4 +117,69 @@
 		transform: translateY(0);
 		opacity: 1;
 	}
+}
+
+.responseWrapper {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	width: 100%;
+}
+
+.itemContainer {
+	display: flex;
+	align-items: flex-start;
+	padding: 12px;
+	margin: 8px 0;
+	background: rgba(0, 0, 0, 0.1);
+	border-radius: 8px;
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	transition: all 0.2s ease;
+}
+
+.itemContainer:hover {
+	background: rgba(0, 0, 0, 0.2);
+	transform: translateY(-1px);
+}
+
+.itemIcon {
+	font-size: 24px;
+	margin-right: 12px;
+	min-width: 32px;
+	text-align: center;
+}
+
+.itemInfo {
+	flex: 1;
+}
+
+.itemHeader {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 4px;
+}
+
+.itemName {
+	font-weight: bold;
+	color: #ffd700;
+}
+
+.itemQuantity {
+	font-size: 0.9em;
+	color: #aaa;
+	margin-left: 8px;
+}
+
+.itemDescription {
+	font-size: 0.9em;
+	color: #ddd;
+	margin-bottom: 4px;
+	line-height: 1.4;
+}
+
+.itemType {
+	font-size: 0.8em;
+	color: #888;
+	text-transform: capitalize;
 } 

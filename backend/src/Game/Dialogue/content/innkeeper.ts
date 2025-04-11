@@ -43,7 +43,6 @@ export const dialogue: DialogueTree = {
 				{
 					id: "accept_drink",
 					text: "Thanks!",
-					next: "drink_accepted",
 					event: {
 						type: Event.Inventory.SS.Add,
 						payload: {
@@ -51,13 +50,16 @@ export const dialogue: DialogueTree = {
 							name: "Mozgotrzep",
 							type: "consumable",
 						}
+					},
+					item: {
+						id: "mozgotrzep_drink",
+						name: "Mozgotrzep",
+						type: "consumable",
+						description: "A strong local specialty. Handle with care!",
+						icon: "🍺"
 					}
 				}
 			]
-		},
-		drink_accepted: {
-			speaker: "Innkeeper",
-			text: "Enjoy! But be careful, it's quite strong!",
 		},
 		goodbye_response: {
 			speaker: "Innkeeper",
