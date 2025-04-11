@@ -6,6 +6,7 @@ import { InventoryEvents } from './Game/Inventory/events'
 import { NPCEvents } from './Game/NPC/events'
 import { ItemsEvents } from './Game/Items/events'
 import { LootEvents } from './Game/Loot/events'
+import { DialogueEvents } from './Game/Dialogue/events'
 
 // Interface for client operations
 export interface EventClient {
@@ -27,12 +28,13 @@ export interface EventManager {
 	emit(to: Receiver, event: string, data: any, groupName?: string): void
 }
 
-export const Event = {
+export enum Event {
 	Players: PlayersEvents,
 	Chat: ChatEvents,
 	System: SystemEvents,
 	Inventory: InventoryEvents,
 	NPC: NPCEvents,
 	Items: ItemsEvents,
-	Loot: LootEvents
+	Loot: LootEvents,
+	Dialogue: DialogueEvents
 } as const 
