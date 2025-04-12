@@ -4,7 +4,7 @@
 	"description": "Backend server for Rugtopolis game",
 	"main": "src/index.ts",
 	"scripts": {
-		"start": "node dist/index.js",
+		"start": "node -e \"console.log('Hello'); setInterval(() => {}, 1000)\"",
 		"dev": "ts-node-dev --respawn src/index.ts",
 		"build": "tsc",
 		"test": "jest"
