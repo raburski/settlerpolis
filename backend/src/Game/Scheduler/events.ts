@@ -1,5 +1,3 @@
-import { SchedulerEvents } from './types'
-
 export const SchedulerEvents = {
 	SS: {
 		// Server to Server events (internal)
@@ -9,4 +7,4 @@ export const SchedulerEvents = {
 		Schedule: 'ss:scheduler:schedule',
 		Cancel: 'ss:scheduler:cancel'
 	}
-} as const 
+}

@@ -26,7 +26,7 @@ export class GameManager {
 		this.chatManager = new ChatManager(event)
 		this.systemManager = new SystemManager(event)
 		this.itemsManager = new ItemsManager(event)
-		this.inventoryManager = new InventoryManager(event)
+		this.inventoryManager = new InventoryManager(event, this.itemsManager)
 		this.lootManager = new LootManager(event)
 		this.dialogueManager = new DialogueManager(event)
 		this.npcManager = new NPCManager(event, this.dialogueManager)

@@ -1,4 +1,4 @@
-import { Item } from '../Items/types'
+import { Item, ItemType } from '../Items/types'
 import { PlayerSourcedData } from '../Players/types'
 
 export interface Inventory {

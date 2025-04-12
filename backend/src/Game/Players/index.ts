@@ -140,7 +140,6 @@ export class PlayersManager {
 			// Add item to player's inventory
 			const inventoryItem = {
 				id: removedItem.id,
-				name: removedItem.name,
 				itemType: removedItem.itemType
 			}
 

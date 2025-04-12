@@ -1,6 +1,8 @@
 import { EventManager, Event, EventClient } from '../../events'
-import { DroppedItem, Item, PlayerJoinData, PlayerTransitionData, Position } from '../../types'
+import { PlayerJoinData, PlayerTransitionData, Position } from '../../types'
 import { Receiver } from '../../Receiver'
+import { Item } from "../Items/types"
+import { DroppedItem } from "./types"
 
 export class LootManager {
 	private droppedItems = new Map<string, DroppedItem[]>()

@@ -25,9 +25,10 @@ export interface ItemMetadata {
 }
 
 export interface ItemTypeRequest {
-	itemType: string
+	itemType: ItemType
 }
 
 export interface ItemTypeResponse {
-	metadata: ItemMetadata | null
+	itemType: ItemType
+	meta: ItemMetadata | null
 } 

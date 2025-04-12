@@ -1,7 +1,9 @@
 import { EventManager, Event, EventClient } from '../../events'
-import { Inventory, Item, InventoryData, DropItemData, PickUpItemData, ConsumeItemData, PlayerJoinData } from '../../types'
+import { Inventory, InventoryData, DropItemData, PickUpItemData, ConsumeItemData, PlayerJoinData } from '../../types'
 import { Receiver } from '../../Receiver'
 import { v4 as uuidv4 } from 'uuid'
+import { Item, ItemCategory, ItemType } from "../Items/types"
+import { ItemsManager } from "../Items"
 
 const DEFAULT_INVENTORY_ITEM_NAME = 'mozgotrzep'
 
@@ -15,7 +17,11 @@ function createItemWithRandomId(itemType: string): Item {
 export class InventoryManager {
 	private inventories = new Map<string, Inventory>()
 
-	constructor(private event: EventManager) {
+
+	constructor(
+		private event: EventManager,
+		private itemsManager: ItemsManager,
+	) {
 		this.setupEventHandlers()
 	}
 
@@ -66,20 +72,21 @@ export class InventoryManager {
 			const inventory = this.inventories.get(client.id)
 			if (!inventory) return
 
-			const itemIndex = inventory.items.findIndex(item => item.id === data.itemId)
-			if (itemIndex === -1) return
+			const item = inventory.items.find(item => item.id === data.itemId)
+			if (!item) return
 
 			// Check if item is consumable
-			const item = inventory.items[itemIndex]
-			if (item.type !== ItemType.Consumable) return
+			const itemType = this.itemsManager.getItemMetadata(item.itemType)
+			if (itemType?.category !== ItemCategory.Consumable) return
 
 			// Remove item from inventory
+			const itemIndex = inventory.items.findIndex(item => item.id === data.itemId)
 			inventory.items.splice(itemIndex, 1)
 			client.emit(Receiver.Sender, Event.Inventory.SC.Update, { inventory })
 		})
 
 		// Handle item add from dialogue or other server events
-		this.event.on(Event.Inventory.SS.Add, (data: { itemId: string, name: string, type: string, description?: string }, client) => {
+		this.event.on(Event.Inventory.SS.Add, (data: { itemId: string, itemType: ItemType }, client) => {
 			const inventory = this.inventories.get(client.id)
 			if (!inventory) return
 

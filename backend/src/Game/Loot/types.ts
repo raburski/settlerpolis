@@ -3,6 +3,5 @@ import { Item } from '../Items/types'
 
 export interface DroppedItem extends Item {
 	position: Position
-	scene: string
 	droppedAt: number
 } 
