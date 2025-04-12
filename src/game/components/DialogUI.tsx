@@ -3,10 +3,12 @@ import { DialogueNode } from '../../../backend/src/Game/Dialogue/types'
 import styles from './DialogUI.module.css'
 import { EventBus } from '../EventBus'
 import { DialogueEvents } from '../../../backend/src/Game/Dialogue/events'
+import { itemService } from '../services/ItemService'
 
 export function DialogUI() {
 	const [activeNode, setActiveNode] = useState<DialogueNode | null>(null)
 	const [dialogueId, setDialogueId] = useState<string | null>(null)
+	const [, setUpdateCounter] = useState(0)
 
 	useEffect(() => {
 		const handleDialogueTrigger = (data: { dialogueId: string, node: DialogueNode }) => {
@@ -19,13 +21,21 @@ export function DialogUI() {
 			setActiveNode(null)
 		}
 
+		const handleItemUpdate = () => {
+			setUpdateCounter(c => c + 1)
+		}
+
 		// Listen for dialogue events
 		EventBus.on(DialogueEvents.SC.Trigger, handleDialogueTrigger)
 		EventBus.on(DialogueEvents.SC.End, handleDialogueEnd)
 
+		// Listen for item type updates
+		const unsubscribe = itemService.onUpdate(handleItemUpdate)
+
 		return () => {
 			EventBus.off(DialogueEvents.SC.Trigger, handleDialogueTrigger)
 			EventBus.off(DialogueEvents.SC.End, handleDialogueEnd)
+			unsubscribe()
 		}
 	}, [])
 
@@ -60,20 +70,20 @@ export function DialogUI() {
 	const renderItem = (item: DialogueNode['item']) => {
 		if (!item) return null
 
+		const itemType = itemService.getItemType(item.itemType)
+		if (!itemType) return null
+
 		return (
 			<div className={styles.itemContainer}>
-				<div className={styles.itemIcon}>{item.icon || '📦'}</div>
+				<div className={styles.itemIcon}>{itemType.emoji || '📦'}</div>
 				<div className={styles.itemInfo}>
 					<div className={styles.itemHeader}>
-						<span className={styles.itemName}>{item.name}</span>
-						{item.quantity && item.quantity > 1 && (
-							<span className={styles.itemQuantity}>x{item.quantity}</span>
-						)}
+						<span className={styles.itemName}>{itemType.name}</span>
 					</div>
-					{item.description && (
-						<div className={styles.itemDescription}>{item.description}</div>
+					{itemType.description && (
+						<div className={styles.itemDescription}>{itemType.description}</div>
 					)}
-					<div className={styles.itemType}>{item.type}</div>
+					<div className={styles.itemType}>{itemType.type}</div>
 				</div>
 			</div>
 		)
@@ -102,14 +112,13 @@ export function DialogUI() {
 				<div className={styles.responsesList}>
 					{activeNode.options?.map((option) => (
 						<div key={option.id} className={styles.responseWrapper}>
-							{option.item && renderItem(option.item)}
 							<button
 								className={styles.responseButton}
 								onClick={() => handleOptionSelect(option.id)}
 							>
 								{option.text}
 							</button>
-							
+							{option.item && renderItem(option.item)}
 						</div>
 					))}
 				</div>

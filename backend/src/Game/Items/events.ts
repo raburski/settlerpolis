@@ -1,8 +1,8 @@
 export const ItemsEvents = {
 	CS: {
-		GetMeta: 'cs:items:get_meta'
+		GetType: 'cs:items:get_type'
 	},
 	SC: {
-		Meta: 'sc:items:meta'
+		Type: 'sc:items:type'
 	}
 } as const 

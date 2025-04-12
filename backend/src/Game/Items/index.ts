@@ -1,13 +1,15 @@
 import { EventManager, Event, EventClient } from '../../events'
-import { ItemMetadata, ItemMetaRequest, ItemMetaResponse, ItemType } from '../../types'
+import { ItemMetadata, ItemMetaRequest, ItemMetaResponse } from '../../types'
 import { Receiver } from '../../Receiver'
+import { ItemTypeRequest } from "./types"
 
 const ITEMS_METADATA: Record<string, ItemMetadata> = {
 	'mozgotrzep': {
 		id: 'mozgotrzep',
 		name: 'Mózgotrzep',
+		emoji: '🍺',
 		description: 'A mysterious beverage that makes your brain tingle. The innkeeper\'s specialty.',
-		type: ItemType.Consumable,
+		// type: ItemType.Consumable,
 		rarity: 'uncommon',
 		stackable: true,
 		maxStackSize: 5,
@@ -36,14 +38,14 @@ export class ItemsManager {
 
 	private setupEventHandlers() {
 		// Handle metadata requests
-		this.event.on<ItemMetaRequest>(Event.Items.CS.GetMeta, (data: ItemMetaRequest, client: EventClient) => {
-			const metadata = ITEMS_METADATA[data.itemId] || null
+		this.event.on<ItemTypeRequest>(Event.Items.CS.GetType, (data: ItemTypeRequest, client: EventClient) => {
+			const metadata = ITEMS_METADATA[data.itemType] || null
 			
 			const response: ItemMetaResponse = {
-				metadata
+				itemType: data.itemType,
+				meta: metadata,
 			}
-
-			client.emit(Receiver.Sender, Event.Items.SC.Meta, response)
+			client.emit(Receiver.Sender, Event.Items.SC.Type, response)
 		})
 	}
 

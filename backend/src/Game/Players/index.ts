@@ -110,16 +110,8 @@ export class PlayersManager {
 			const removedItem = this.inventoryManager.removeItem(client, data.itemId)
 			if (!removedItem) return
 
-			// Create dropped item with player's position
-			const droppedItem = {
-				...removedItem,
-				position: player.position,
-				droppedAt: Date.now(),
-				scene: player.scene
-			}
-
 			// Add item to scene's dropped items
-			this.lootManager.dropItem(droppedItem, client)
+			this.lootManager.dropItem(removedItem, player.position, client)
 		})
 
 		// Handle item pickup request
@@ -127,10 +119,9 @@ export class PlayersManager {
 			const player = this.players.get(client.id)
 			if (!player) return
 
-			const sceneItems = this.lootManager.getSceneItems(client.currentGroup)
-			const item = sceneItems.find(item => item.id === data.itemId)
+			const item = this.lootManager.getItem(data.itemId)
 			if (!item) return
-
+			
 			// Calculate distance between player and item
 			const distance = Math.sqrt(
 				Math.pow(player.position.x - item.position.x, 2) + 
@@ -150,8 +141,9 @@ export class PlayersManager {
 			const inventoryItem = {
 				id: removedItem.id,
 				name: removedItem.name,
-				type: removedItem.type
+				itemType: removedItem.itemType
 			}
+
 			this.inventoryManager.addItem(client, inventoryItem)
 		})
 	}

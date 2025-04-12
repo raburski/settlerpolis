@@ -11,10 +11,11 @@ export function DisconnectModal() {
 			setIsVisible(true)
 		}
 
-		EventBus.on(Event.Players.SC.Disconnected, handleDisconnect)
+		// TODO: FIX LATER
+		// EventBus.on(Event.Players.SC.Disconnected, handleDisconnect)
 
 		return () => {
-			EventBus.off(Event.Players.SC.Disconnected, handleDisconnect)
+			// EventBus.off(Event.Players.SC.Disconnected, handleDisconnect)
 		}
 	}, [])
 

@@ -3,10 +3,6 @@ export interface Position {
 	y: number
 }
 
-export enum ItemType {
-	Consumable = 'Consumable'
-}
-
 // Re-export types from modules
 export * from './Game/Players/types'
 export * from './Game/Chat/types'

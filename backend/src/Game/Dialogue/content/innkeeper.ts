@@ -46,17 +46,11 @@ export const dialogue: DialogueTree = {
 					event: {
 						type: Event.Inventory.SS.Add,
 						payload: {
-							itemId: "mozgotrzep_drink",
-							name: "Mozgotrzep",
-							type: "consumable",
+							itemType: "mozgotrzep"
 						}
 					},
 					item: {
-						id: "mozgotrzep_drink",
-						name: "Mozgotrzep",
-						type: "consumable",
-						description: "A strong local specialty. Handle with care!",
-						icon: "🍺"
+						itemType: "mozgotrzep"
 					}
 				}
 			]

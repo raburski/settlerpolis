@@ -1,17 +1,5 @@
-import { Position, ItemType } from '../../types'
+import { Item } from '../Items/types'
 import { PlayerSourcedData } from '../Players/types'
-
-export interface Item {
-	id: string
-	name: string
-	type: ItemType
-}
-
-export interface DroppedItem extends Item {
-	position: Position
-	scene: string
-	droppedAt: number
-}
 
 export interface Inventory {
 	items: Item[]
@@ -55,8 +43,8 @@ export interface ItemMetadata {
 	icon?: string
 }
 
-export interface ItemMetaRequest {
-	itemId: string
+export interface ItemTypeRequest {
+	itemType: string
 }
 
 export interface ItemMetaResponse {

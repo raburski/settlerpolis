@@ -1,16 +1,14 @@
 import { EventManager, Event, EventClient } from '../../events'
 import { Inventory, Item, InventoryData, DropItemData, PickUpItemData, ConsumeItemData, PlayerJoinData } from '../../types'
-import { ItemType } from '../../types'
 import { Receiver } from '../../Receiver'
 import { v4 as uuidv4 } from 'uuid'
 
-const DEFAULT_INVENTORY_ITEM_NAME = 'Butelka mózgotrzepa'
+const DEFAULT_INVENTORY_ITEM_NAME = 'mozgotrzep'
 
-function createItemWithRandomId(name: string, type: ItemType = ItemType.Consumable): Item {
+function createItemWithRandomId(itemType: string): Item {
 	return {
 		id: uuidv4(),
-		name,
-		type
+		itemType,
 	}
 }
 
@@ -24,7 +22,7 @@ export class InventoryManager {
 	addItem(client: EventClient, item: Item) {
 		const inventory = this.inventories.get(client.id)
 		if (!inventory) return
-
+		
 		inventory.items.push(item)
 		client.emit(Receiver.Sender, Event.Inventory.SC.Update, { inventory })
 	}
@@ -87,8 +85,7 @@ export class InventoryManager {
 
 			const item: Item = {
 				id: data.itemId,
-				name: data.name,
-				type: data.type as ItemType,
+				itemType: data.itemType,
 			}
 
 			inventory.items.push(item)

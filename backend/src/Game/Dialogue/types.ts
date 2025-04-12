@@ -10,7 +10,7 @@ export interface DialogueNode {
 export interface DialogueOption {
 	id: string
 	text: string
-	next: string
+	next?: string
 	event?: DialogueEvent
 	item?: DialogueItem
 }
@@ -21,12 +21,8 @@ export interface DialogueEvent {
 }
 
 export interface DialogueItem {
-	id: string
-	name: string
-	type: string
-	description?: string
-	quantity?: number
-	icon?: string
+	id?: string
+	itemType: string
 }
 
 export interface DialogueTree {
