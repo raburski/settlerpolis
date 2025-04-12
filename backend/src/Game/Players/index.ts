@@ -63,13 +63,6 @@ export class PlayersManager {
 				appearance: data.appearance
 			})
 
-			// Send existing players to new player
-			const scenePlayers = Array.from(this.players.values())
-				.filter(p => p.scene === data.scene && p.id !== client.id)
-				.forEach(player => {
-					client.emit(Receiver.Sender, Event.Players.SC.Joined, player)
-				})
-			
 			client.emit(Receiver.NoSenderGroup, Event.Players.SC.Joined, data)
 		})
 

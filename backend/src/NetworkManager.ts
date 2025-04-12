@@ -13,8 +13,8 @@ export class NetworkManager implements EventManager {
 	private leftCallbacks: Set<LifecycleCallback>
 	private lastMessageTimestamps: Map<string, number>
 	private readonly TIMEOUT_CHECK_INTERVAL = 5000 // 5 seconds
-	private readonly MAX_INACTIVE_TIME = 6000 // 6 seconds
-	private debug = false
+	private readonly MAX_INACTIVE_TIME = 60000 // 60 seconds
+	private debug = true
 
 	constructor(io: Server) {
 		this.io = io
@@ -36,20 +36,20 @@ export class NetworkManager implements EventManager {
 
 	private checkInactiveClients() {
 		if (this.debug) console.log('[NetworkManager] Checking for inactive clients')
-		// const now = Date.now()
-		// for (const [clientId, lastMessageTime] of this.lastMessageTimestamps.entries()) {
-		// 	if (now - lastMessageTime > this.MAX_INACTIVE_TIME) {
-		// 		const socket = this.io.sockets.sockets.get(clientId)
-		// 		if (socket) {
-		// 			const client = this.createNetworkClient(socket)
-		// 			// Notify left callbacks about the timeout
-		// 			this.leftCallbacks.forEach(callback => callback(client))
-		// 			// Clean up
-		// 			this.lastMessageTimestamps.delete(clientId)
-		// 			socket.disconnect()
-		// 		}
-		// 	}
-		// }
+		const now = Date.now()
+		for (const [clientId, lastMessageTime] of this.lastMessageTimestamps.entries()) {
+			if (now - lastMessageTime > this.MAX_INACTIVE_TIME) {
+				const socket = this.io.sockets.sockets.get(clientId)
+				if (socket) {
+					const client = this.createNetworkClient(socket)
+					// Notify left callbacks about the timeout
+					this.leftCallbacks.forEach(callback => callback(client))
+					// Clean up
+					this.lastMessageTimestamps.delete(clientId)
+					socket.disconnect()
+				}
+			}
+		}
 	}
 
 	private updateClientTimestamp(clientId: string) {
