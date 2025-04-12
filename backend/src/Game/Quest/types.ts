@@ -29,7 +29,7 @@ export interface Quest {
 	chapter: number
 	title: string
 	description: string
-	start: {
+	start?: {
 		onEvent: string
 		dialogueId: string
 	}

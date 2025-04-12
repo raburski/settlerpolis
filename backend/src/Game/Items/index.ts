@@ -12,6 +12,23 @@ const ITEMS_METADATA: Record<string, ItemMetadata> = {
 		stackable: true,
 		maxStackSize: 5,
 	},
+	'chainfolk_rug': {
+		id: 'chainfolk_rug',
+		name: 'Chainfolk Rug',
+		emoji: '🧶',
+		description: 'A beautifully woven rug with intricate chain patterns. A prized possession among the Chainfolk.',
+		category: ItemCategory.Placeable,
+		stackable: false
+	},
+	'mysterious_stone': {
+		id: 'mysterious_stone',
+		name: 'Mysterious Stone',
+		emoji: '💎',
+		description: 'A peculiar stone that seems to pulse with an inner light. It feels warm to the touch.',
+		category: ItemCategory.Material,
+		stackable: true,
+		maxStackSize: 3
+	}
 }
 
 export class ItemsManager {

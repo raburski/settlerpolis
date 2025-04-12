@@ -9,6 +9,7 @@ import { ItemsManager } from './Items'
 import { DialogueManager } from './Dialogue'
 import { Scheduler } from './Scheduler'
 import { Receiver } from '../Receiver'
+import { QuestManager } from "./Quest"
 
 export class GameManager {
 	private chatManager: ChatManager
@@ -20,6 +21,7 @@ export class GameManager {
 	private itemsManager: ItemsManager
 	private dialogueManager: DialogueManager
 	private scheduler: Scheduler
+	private quest: QuestManager
 
 	constructor(private event: EventManager) {
 		// Initialize managers in dependency order
@@ -31,6 +33,7 @@ export class GameManager {
 		this.dialogueManager = new DialogueManager(event)
 		this.npcManager = new NPCManager(event, this.dialogueManager)
 		this.scheduler = new Scheduler(event)
+		this.quest = new QuestManager(event)
 		
 		// Initialize PlayersManager last since it depends on other managers
 		this.playersManager = new PlayersManager(event, this.inventoryManager, this.lootManager)

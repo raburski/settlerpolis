@@ -6,7 +6,7 @@ export const itemDropSchedules: ScheduleOptions[] = [
 		eventType: LootEvents.SS.Spawn,
 		schedule: {
 			type: 'interval',
-			value: 6000 // every minute
+			value: 60000 // every minute
 		},
 		payload: {
 			itemType: 'mozgotrzep',

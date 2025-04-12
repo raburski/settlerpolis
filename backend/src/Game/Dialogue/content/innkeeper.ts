@@ -1,3 +1,4 @@
+import { Event } from "../../../events"
 import { DialogueTree } from '../types'
 
 export const dialogue: DialogueTree = {
@@ -16,6 +17,11 @@ export const dialogue: DialogueTree = {
 					id: "ask_drink",
 					text: "I could use a drink.",
 					next: "drink_response"
+				},
+				{
+					id: "ask_challenge",
+					text: "I heard you have a special challenge for travelers?",
+					next: "challenge_intro"
 				},
 				{
 					id: "goodbye",
@@ -45,6 +51,54 @@ export const dialogue: DialogueTree = {
 					item: {
 						itemType: "mozgotrzep"
 					}
+				}
+			]
+		},
+		challenge_intro: {
+			speaker: "Innkeeper",
+			text: "Ah, you're interested in my special challenge? Well, I've been looking for someone to prove their dedication to our local specialty - the Mózgotrzep.",
+			options: [
+				{
+					id: "accept_challenge",
+					text: "Tell me more about this challenge.",
+					next: "challenge_explanation"
+				},
+				{
+					id: "decline_challenge",
+					text: "Maybe another time.",
+					next: "start"
+				}
+			]
+		},
+		challenge_explanation: {
+			speaker: "Innkeeper",
+			text: "It's simple really - collect 5 bottles of Mózgotrzep. Show me you appreciate our local brew, and I'll reward you with something special - a genuine Chainfolk Rug! These rugs are quite rare and valuable.",
+			options: [
+				{
+					id: "start_quest",
+					text: "I'll take on your challenge!",
+					event: {
+						type: Event.Quest.SS.Start,
+						payload: {
+							questId: "collect_mozgotrzep"
+						}
+					},
+					next: "challenge_accepted"
+				},
+				{
+					id: "decline_quest",
+					text: "That's a bit too much Mózgotrzep for me.",
+					next: "start"
+				}
+			]
+		},
+		challenge_accepted: {
+			speaker: "Innkeeper",
+			text: "Excellent! Come back when you've collected 5 bottles. And remember - quality testing is encouraged!",
+			options: [
+				{
+					id: "back_to_start",
+					text: "I'll get right on it.",
 				}
 			]
 		},
