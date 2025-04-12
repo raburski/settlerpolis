@@ -32,20 +32,20 @@ export class NetworkManager implements EventManager {
 	}
 
 	private checkInactiveClients() {
-		const now = Date.now()
-		for (const [clientId, lastMessageTime] of this.lastMessageTimestamps.entries()) {
-			if (now - lastMessageTime > this.MAX_INACTIVE_TIME) {
-				const socket = this.io.sockets.sockets.get(clientId)
-				if (socket) {
-					const client = this.createNetworkClient(socket)
-					// Notify left callbacks about the timeout
-					this.leftCallbacks.forEach(callback => callback(client))
-					// Clean up
-					this.lastMessageTimestamps.delete(clientId)
-					socket.disconnect()
-				}
-			}
-		}
+		// const now = Date.now()
+		// for (const [clientId, lastMessageTime] of this.lastMessageTimestamps.entries()) {
+		// 	if (now - lastMessageTime > this.MAX_INACTIVE_TIME) {
+		// 		const socket = this.io.sockets.sockets.get(clientId)
+		// 		if (socket) {
+		// 			const client = this.createNetworkClient(socket)
+		// 			// Notify left callbacks about the timeout
+		// 			this.leftCallbacks.forEach(callback => callback(client))
+		// 			// Clean up
+		// 			this.lastMessageTimestamps.delete(clientId)
+		// 			socket.disconnect()
+		// 		}
+		// 	}
+		// }
 	}
 
 	private updateClientTimestamp(clientId: string) {

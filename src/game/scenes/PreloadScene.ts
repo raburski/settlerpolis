@@ -3,6 +3,7 @@ import WebFont from 'webfontloader'
 import { EventBus } from '../EventBus'
 import { Event } from '../../../backend/src/events'
 import { PlayerView } from '../entities/Player/View'
+import networkManager from "../network"
 
 export class PreloadScene extends Scene {
 	private fontsLoaded: boolean = false
@@ -28,6 +29,9 @@ export class PreloadScene extends Scene {
 	}
 
 	create() {
+		networkManager.connect(() => {
+			EventBus.emit(Event.Players.CS.Connect)
+		})
 		// Set up connection response handler
 		EventBus.once(Event.Players.SC.Connected, (data: { scene: string, position: { x: number, y: number }}) => {
 			this.isConnected = true
@@ -38,9 +42,6 @@ export class PreloadScene extends Scene {
 				isTransition: false
 			})
 		})
-
-		// Request connection to server
-		EventBus.emit(Event.Players.CS.Connect)
 	}
 
 } 

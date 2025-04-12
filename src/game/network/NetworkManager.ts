@@ -2,7 +2,12 @@ import { EventManager, Event, EventClient, EventCallback, LifecycleCallback } fr
 import { Socket, io } from 'socket.io-client'
 import { Receiver } from '../../../backend/src/Receiver'
 
-export class NetworkClient implements EventClient {
+export interface NetworkEventManager extends EventManager {
+	connect(onConnect: () => {})
+	disconnect()
+}
+
+export class NetworkClient implements NetworkEventManager {
 	private _currentGroup: string = 'GLOBAL'
 
 	constructor(
@@ -35,8 +40,8 @@ export class NetworkManager implements EventManager {
 
 	constructor(private readonly serverUrl: string) {}
 
-	private ensureSocket() {
-		if (this.socket) return
+	connect(onConnect: () => {}) {
+		if (this.socket) return 
 
 		this.socket = io(this.serverUrl, {
 			path: '/api/socket.io'
@@ -49,9 +54,8 @@ export class NetworkManager implements EventManager {
 			this.startPingInterval()
 			this.setupSocketHandlers()
 			// Trigger joined callbacks when connected
-			if (this.client) {
-				this.joinedCallbacks.forEach(callback => callback(this.client))
-			}
+			this.joinedCallbacks.forEach(callback => callback(this.client))
+			setTimeout(onConnect, 500)
 		})
 
 		this.socket.on('disconnect', () => {
@@ -62,6 +66,34 @@ export class NetworkManager implements EventManager {
 			}
 			this.client = null
 			this.stopPingInterval()
+		})
+
+		this.socket.on('connect', () => {
+			console.log('[Socket] Connected ✅', this.socket.id)
+		})
+		
+		this.socket.on('disconnect', (reason) => {
+			console.warn('[Socket] Disconnected ❌', reason)
+		})
+		
+		this.socket.on('connect_error', (err) => {
+			console.error('[Socket] Connection Error 🚫', err)
+		})
+		
+		this.socket.on('reconnect', (attempt) => {
+			console.log('[Socket] Reconnected 🔁 on attempt', attempt)
+		})
+		
+		this.socket.on('reconnect_attempt', (attempt) => {
+			console.log('[Socket] Trying to reconnect... attempt', attempt)
+		})
+		
+		this.socket.on('reconnect_error', (err) => {
+			console.error('[Socket] Reconnect failed ❌', err)
+		})
+		
+		this.socket.on('reconnect_failed', () => {
+			console.error('[Socket] Gave up reconnecting 💀')
 		})
 	}
 
@@ -99,7 +131,6 @@ export class NetworkManager implements EventManager {
 	}
 
 	emit(to: Receiver, event: string, data: any, groupName?: string): void {
-		this.ensureSocket()
 		if (!this.socket) return
 
 		this.socket.emit(event, data)
