@@ -173,12 +173,6 @@ export abstract class MapScene extends Scene {
 			// })
 			// this.multiplayerPlayers.clear()
 			
-			// Clean up the player
-			if (this.player) {
-				this.player.destroy()
-				this.player = null
-			}
-			
 			// Clean up portal manager
 			if (this.portalManager) {
 				this.portalManager.cleanup()

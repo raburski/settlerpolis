@@ -10,7 +10,7 @@ const EXAMPLE_NPC: NPC = {
 	id: 'innkeeper',
 	name: 'Innkeeper',
 	position: { x: 100, y: 400 },
-	scene: 'farm-map',
+	scene: 'FarmScene',
 	dialogueId: 'innkeeper_greeting'
 }
 
@@ -18,7 +18,7 @@ const GUARD_NPC: NPC = {
 	id: 'guard',
 	name: 'Guard',
 	position: { x: 300, y: 400 },
-	scene: 'farm-map',
+	scene: 'FarmScene',
 	messages: {
 		default: "Move along, citizen. Nothing to see here.",
 		conditions: [

@@ -3,6 +3,8 @@ import { PlayerJoinData, PlayerTransitionData, Position } from '../../types'
 import { Receiver } from '../../Receiver'
 import { Item } from "../Items/types"
 import { DroppedItem } from "./types"
+import { LootEvents } from './events'
+import { v4 as uuidv4 } from 'uuid'
 
 export class LootManager {
 	private droppedItems = new Map<string, DroppedItem[]>()
@@ -29,6 +31,28 @@ export class LootManager {
 			if (sceneDroppedItems.length > 0) {
 				client.emit(Receiver.Sender, Event.Loot.SC.Spawn, { items: sceneDroppedItems })
 			}
+		})
+
+		// Handle scheduled item spawns
+		this.event.on(LootEvents.SS.Spawn, (data: { itemType: string, position: Position, scene: string }) => {
+			const item: Item = {
+				id: uuidv4(),
+				itemType: data.itemType
+			}
+			
+			const droppedItem: DroppedItem = {
+				...item,
+				position: data.position,
+				droppedAt: Date.now()
+			}
+
+			const sceneDroppedItems = this.droppedItems.get(data.scene) || []
+			sceneDroppedItems.push(droppedItem)
+			this.droppedItems.set(data.scene, sceneDroppedItems)
+			this.itemIdToScene.set(item.id, data.scene)
+
+			// Broadcast to all players in the scene that an item was spawned
+			this.event.emit(Receiver.Group, Event.Loot.SC.Spawn, { items: [droppedItem] }, data.scene)
 		})
 	}
 

@@ -95,6 +95,7 @@ export class PlayersManager {
 
 			if (player) {
 				client.emit(Receiver.NoSenderGroup, Event.Players.SC.Left, {})
+				client.setGroup(data.scene)
 
 				player.scene = data.scene
 				player.position = data.position

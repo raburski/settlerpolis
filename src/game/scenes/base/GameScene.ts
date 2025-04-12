@@ -68,7 +68,7 @@ export abstract class GameScene extends MapScene {
 		if (!isTransition) {
 			EventBus.emit(Event.Players.CS.Join, { 
 				position: { x: playerX, y: playerY}, 
-				scene: this.mapKey, 
+				scene: this.scene.key, 
 				appareance: {}
 			})
 		}
