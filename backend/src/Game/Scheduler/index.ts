@@ -125,8 +125,13 @@ export class Scheduler {
 				return new Date(now.getTime() + Number(schedule.value))
 				
 			case 'cron':
-				const interval = CronExpressionParser.parse(schedule.value as string)
-				return interval.next().toDate()
+				try {
+					const interval = CronExpressionParser.parse(schedule.value as string)
+					return interval.next().toDate()
+				} catch () {
+					console.error('⚠️ Cron expression error:', err)
+				}
+				throw new Error('Invalid schedule type')
 				
 			case 'once':
 				return new Date(Number(schedule.value))
