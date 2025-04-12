@@ -18,6 +18,7 @@ export class EventBusManager implements EventManager {
 	constructor(private networkManager: NetworkManager) {}
 
 	on<T>(event: string, callback: EventCallback<T>): void {
+		console.log('[EVENT BUS] on:', event)
 		// Get existing handlers for this event or create new array
 		const handlers = this.eventHandlers.get(event) || []
 		
@@ -66,6 +67,7 @@ export class EventBusManager implements EventManager {
 	}
 
 	emit(to: Receiver, event: string, data: any, groupName?: string): void {
+		console.log('[EVENT BUS] emit:', to, event)
 		// Handle events based on their prefix
 		if (event.startsWith('sc:')) {
 			// Server to client events should be forwarded to network manager
