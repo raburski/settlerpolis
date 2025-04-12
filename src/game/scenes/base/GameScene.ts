@@ -112,12 +112,12 @@ export abstract class GameScene extends MapScene {
 
 	}
 
-	private handlePlayerJoined = (data: { sourcePlayerId: string, position: { x: number, y: number } }) => {
+	private handlePlayerJoined = (data: { playerId: string, position: { x: number, y: number } }) => {
 		const remotePlayer = createRemotePlayer(
 			this,
 			data.position.x,
 			data.position.y,
-			data.id
+			data.playerId
 		)
 		this.remotePlayers.set(data.id, remotePlayer)
 	}
@@ -129,11 +129,11 @@ export abstract class GameScene extends MapScene {
 		}
 	}
 
-	private handlePlayerLeft = (data: { sourcePlayerId: string }) => {
-		const remotePlayer = this.remotePlayers.get(data.sourcePlayerId)
+	private handlePlayerLeft = (data: { playerId: string }) => {
+		const remotePlayer = this.remotePlayers.get(data.playerId)
 		if (remotePlayer) {
 			remotePlayer.controller.destroy()
-			this.remotePlayers.delete(data.sourcePlayerId)
+			this.remotePlayers.delete(data.playerId)
 		}
 	}
 

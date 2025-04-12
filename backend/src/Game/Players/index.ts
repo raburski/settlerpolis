@@ -53,7 +53,7 @@ export class PlayersManager {
 			const player = this.players.get(client.id)
 			if (player) {
 				this.players.delete(client.id)
-				client.emit(Receiver.NoSenderGroup, Event.Players.SC.Left, {})
+				client.emit(Receiver.NoSenderGroup, Event.Players.SC.Left, { playerId: client.id })
 			}
 		})
 
@@ -63,7 +63,7 @@ export class PlayersManager {
 			client.setGroup(data.scene)
 
 			this.players.set(playerId, {
-				id: playerId,
+				playerId,
 				position: data.position,
 				scene: data.scene,
 				appearance: data.appearance
@@ -71,12 +71,12 @@ export class PlayersManager {
 
 			// Send existing players to new player
 			const scenePlayers = Array.from(this.players.values())
-				.filter(p => p.scene === data.scene && p.id !== client.id)
+				.filter(p => p.scene === data.scene && p.playerId !== client.id)
 				.forEach(player => {
 					client.emit(Receiver.Sender, Event.Players.SC.Joined, player)
 				})
 			
-			client.emit(Receiver.NoSenderGroup, Event.Players.SC.Joined, data)
+			client.emit(Receiver.NoSenderGroup, Event.Players.SC.Joined, { playerId, ...data })
 		})
 
 		// Handle player movement
@@ -101,12 +101,12 @@ export class PlayersManager {
 
 				// Send existing players in new scene to transitioning player
 				const scenePlayers = Array.from(this.players.values())
-					.filter(p => p.scene === data.scene && p.id !== client.id)
+					.filter(p => p.scene === data.scene && p.playerId !== client.id)
 					.forEach(player => {
 						client.emit(Receiver.Sender, Event.Players.SC.Joined, player)
 					})
 
-				client.emit(Receiver.NoSenderGroup, Event.Players.SC.Joined, data)
+				client.emit(Receiver.NoSenderGroup, Event.Players.SC.Joined, { playerId, ...data })
 			}
 		})
 

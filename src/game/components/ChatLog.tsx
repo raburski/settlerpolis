@@ -26,7 +26,7 @@ export function ChatLog() {
 						id: messageCounter.current++,
 						text: data.message,
 						timestamp: new Date(),
-						sourcePlayerId: data.sourcePlayerId,
+						playerId: data.playerId,
 						type: data.type
 					}
 				].slice(-50) // Keep last 50 messages
@@ -77,7 +77,7 @@ export function ChatLog() {
 						{message.timestamp.toLocaleTimeString()}
 					</span>
 					<span className={styles.text}>
-						{message.sourcePlayerId ? `${message.sourcePlayerId}: ` : ''}
+						{message.playerId ? `${message.playerId}: ` : ''}
 						{message.text}
 					</span>
 				</div>

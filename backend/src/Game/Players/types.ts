@@ -5,7 +5,7 @@ export interface PlayerSourcedData {
 }
 
 export interface Player {
-	id: string
+	playerId: string
 	position: Position
 	scene: string
 	appearance?: any // TODO: Define appearance type
