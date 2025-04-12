@@ -57,11 +57,26 @@ export class QuestManager {
 					return
 				}
 
+				// Find first uncompleted step
+				let currentStep = 0
+				const completedSteps: string[] = []
+
+				// Check each step until we find one that's not completed
+				for (let i = 0; i < quest.steps.length; i++) {
+					const step = quest.steps[i]
+					if (this.checkStepCompletion(step, {}, client.id)) {
+						completedSteps.push(step.id)
+						currentStep = i + 1
+						continue
+					}
+					break // Stop at first uncompleted step
+				}
+
 				const progress: QuestProgress = {
 					questId: data.questId,
-					currentStep: 0,
+					currentStep,
 					completed: false,
-					completedSteps: []
+					completedSteps
 				}
 
 				playerState.activeQuests.push(progress)
@@ -82,6 +97,15 @@ export class QuestManager {
 					},
 					progress
 				})
+
+				// Now emit step completion events for any steps that were auto-completed
+				for (const stepId of completedSteps) {
+					client.emit(Receiver.Sender, QuestEvents.SC.StepComplete, {
+						questId: quest.id,
+						stepId,
+						playerId: client.id
+					})
+				}
 			}
 		)
 
