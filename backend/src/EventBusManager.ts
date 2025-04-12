@@ -18,7 +18,6 @@ export class EventBusManager implements EventManager {
 	constructor(private networkManager: NetworkManager) {}
 
 	on<T>(event: string, callback: EventCallback<T>): void {
-		console.log('[EVENT BUS] on:', event)
 		// Get existing handlers for this event or create new array
 		const handlers = this.eventHandlers.get(event) || []
 		
