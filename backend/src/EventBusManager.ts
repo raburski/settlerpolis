@@ -14,10 +14,14 @@ export class EventBusManager implements EventManager {
 	private eventHandlers: Map<string, EventCallback[]> = new Map()
 	private joinedHandlers: LifecycleCallback[] = []
 	private leftHandlers: LifecycleCallback[] = []
+	private debug = true
 
-	constructor(private networkManager: NetworkManager) {}
+	constructor(private networkManager: NetworkManager) {
+		if (this.debug) console.log('[EventBusManager] Initialized')
+	}
 
 	on<T>(event: string, callback: EventCallback<T>): void {
+		if (this.debug) console.log(`[EventBusManager] Registering handler for event: ${event}`)
 		// Get existing handlers for this event or create new array
 		const handlers = this.eventHandlers.get(event) || []
 		
@@ -25,6 +29,10 @@ export class EventBusManager implements EventManager {
 		if (event.startsWith('ss:')) {
 			const wrappedCallback: EventCallback<ServerEventData<T>> = (wrappedData, client) => {
 				try {
+					if (this.debug) console.log(`[EventBusManager] Executing ss: event handler for ${event}`, { 
+						hasClientContext: !!wrappedData.__clientContext,
+						clientId: wrappedData.__clientContext?.id
+					})
 					// If we have client context in the data, create a proxy client
 					if (wrappedData.__clientContext) {
 						const proxyClient = {
@@ -54,6 +62,10 @@ export class EventBusManager implements EventManager {
 		} else {
 			const wrappedCallback: EventCallback<T> = (data, client) => {
 				try {
+					if (this.debug) console.log(`[EventBusManager] Executing event handler for ${event}`, {
+						clientId: client?.id,
+						clientGroup: client?.currentGroup
+					})
 					callback(data, client)
 				} catch (error) {
 					console.error(`[EventBusManager] Error in callback for event ${event}:`, error)
@@ -62,22 +74,33 @@ export class EventBusManager implements EventManager {
 			handlers.push(wrappedCallback)
 		}
 		this.eventHandlers.set(event, handlers)
+		if (this.debug) console.log(`[EventBusManager] Registered handler for ${event}. Total handlers: ${handlers.length}`)
 	}
 
 	onJoined(callback: LifecycleCallback): void {
+		if (this.debug) console.log('[EventBusManager] Registering joined handler')
 		this.joinedHandlers.push(callback)
 		// Forward to network manager
 		this.networkManager.onJoined(callback)
 	}
 
 	onLeft(callback: LifecycleCallback): void {
+		if (this.debug) console.log('[EventBusManager] Registering left handler')
 		this.leftHandlers.push(callback)
 		// Forward to network manager
 		this.networkManager.onLeft(callback)
 	}
 
 	emit(to: Receiver, event: string, data: any, groupName?: string): void {
-		console.log('[EVENT BUS] emit:', to, event)
+		if (this.debug) {
+			console.log('[EventBusManager] Emitting event:', {
+				to,
+				event,
+				groupName,
+				dataType: typeof data
+			})
+		}
+		
 		// Handle events based on their prefix
 		if (event.startsWith('sc:')) {
 			// Server to client events should be forwarded to network manager
@@ -88,6 +111,7 @@ export class EventBusManager implements EventManager {
 		} else if (event.startsWith('ss:')) {
 			// Server to server events should be routed internally
 			const handlers = this.eventHandlers.get(event) || []
+			if (this.debug) console.log(`[EventBusManager] Found ${handlers.length} handlers for ss: event ${event}`)
 			
 			// Wrap the data with client context if we're in a client-originated event chain
 			const wrappedData: ServerEventData = {
