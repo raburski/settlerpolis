@@ -56,13 +56,22 @@ export class PlayersManager {
 		// Handle player join
 		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
 			const playerId = client.id
+			client.setGroup(data.scene)
+
 			this.players.set(playerId, {
 				id: playerId,
 				position: data.position,
 				scene: data.scene,
 				appearance: data.appearance
 			})
-			client.setGroup(data.scene)
+
+			// Send existing players to new player
+			const scenePlayers = Array.from(this.players.values())
+				.filter(p => p.scene === data.scene && p.id !== client.id)
+				.forEach(player => {
+					client.emit(Receiver.Sender, Event.Players.SC.Joined, player)
+				})
+			
 			client.emit(Receiver.NoSenderGroup, Event.Players.SC.Joined, data)
 		})
 
