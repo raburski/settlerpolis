@@ -62,7 +62,7 @@ export class PlayersManager {
 				scene: data.scene,
 				appearance: data.appearance
 			})
-
+			client.setGroup(data.scene)
 			client.emit(Receiver.NoSenderGroup, Event.Players.SC.Joined, data)
 		})
 
