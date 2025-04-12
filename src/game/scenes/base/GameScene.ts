@@ -100,6 +100,8 @@ export abstract class GameScene extends MapScene {
         // Set up multiplayer event listeners
 		EventBus.on(Event.Players.SC.Joined, this.handlePlayerJoined, this)
 		EventBus.on(Event.Players.SC.Left, this.handlePlayerLeft, this)
+		EventBus.on(Event.Players.SC.Move, this.handlePlayerMove, this)
+		EventBus.on(Event.Chat.SC.Receive, this.handleChatReceive, this)
 
 		// Set up scene event listeners
 		EventBus.on(Event.Loot.SC.Spawn, this.handleAddItems, this)
@@ -117,6 +119,20 @@ export abstract class GameScene extends MapScene {
 			data.sourcePlayerId
 		)
 		this.remotePlayers.set(data.sourcePlayerId, remotePlayer)
+	}
+
+	private handleChatReceive = (data) => {
+		const remotePlayer = this.remotePlayers.get(data.sourcePlayerId)
+		if (remotePlayer) {
+			remotePlayer.controller.handleChatMessage(data)
+		}
+	}
+
+	private handlePlayerMove = (data) => {
+		const remotePlayer = this.remotePlayers.get(data.sourcePlayerId)
+		if (remotePlayer) {
+			remotePlayer.controller.handlePlayerMoved(data)
+		}
 	}
 
 	private handlePlayerLeft = (data: { sourcePlayerId: string }) => {

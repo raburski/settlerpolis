@@ -10,8 +10,10 @@ export class Keyboard {
 		D: Phaser.Input.Keyboard.Key
 	}
 	private inventoryKey: Phaser.Input.Keyboard.Key
+	private chatKey: Phaser.Input.Keyboard.Key
 	private enabled: boolean = true
 	private wasInventoryPressed: boolean = false
+	private wasChatPressed: boolean = false
 
 	constructor(private scene: Scene) {
 		this.cursors = scene.input.keyboard.createCursorKeys()
@@ -29,18 +31,25 @@ export class Keyboard {
 			D: Phaser.Input.Keyboard.Key
 		}
 
-		// Add inventory key
+		// Add inventory and chat keys
 		this.inventoryKey = scene.input.keyboard.addKey(Input.Keyboard.KeyCodes.I)
+		this.chatKey = scene.input.keyboard.addKey(Input.Keyboard.KeyCodes.ENTER)
 
 		// Listen for chat input visibility changes
-		EventBus.on('chat:inputVisible', this.handleChatInputVisible, this)
+		EventBus.on('ui:chat:toggle', this.handleChatInputVisible, this)
 	}
 
 	public update() {
-		if (this.enabled && this.inventoryKey.isDown && !this.wasInventoryPressed) {
-			EventBus.emit('ui:inventory:toggle')
+		if (this.enabled) {
+			if (this.inventoryKey.isDown && !this.wasInventoryPressed) {
+				EventBus.emit('ui:inventory:toggle')
+			}
+			if (this.chatKey.isDown && !this.wasChatPressed) {
+				EventBus.emit('ui:chat:toggle', this.chatKey.isDown)
+			}
 		}
 		this.wasInventoryPressed = this.inventoryKey.isDown
+		this.wasChatPressed = this.chatKey.isDown
 	}
 
 	private handleChatInputVisible = (isVisible: boolean) => {

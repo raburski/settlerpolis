@@ -78,7 +78,7 @@ export class PlayersManager {
 			const player = this.players.get(client.id)
 			if (player) {
 				player.position = data
-				client.emit(Receiver.NoSenderGroup, Event.Players.CS.Move, data)
+				client.emit(Receiver.NoSenderGroup, Event.Players.SC.Move, data)
 			}
 		})
 

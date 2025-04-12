@@ -43,12 +43,8 @@ function App()
             <DisconnectModal />
             <Inventory />
             <ChatLog />
+            <Chat />
             <DialogUI />
-            {/* <div>
-                <div>
-                    <button className="button" onClick={addSprite}>Add New Sprite</button>
-                </div>
-            </div> */}
         </div>
     )
 }
