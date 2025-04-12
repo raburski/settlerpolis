@@ -25,6 +25,15 @@ export class InventoryManager {
 		this.setupEventHandlers()
 	}
 
+	public doesHave(itemType: string, quantity: number, playerId: string): boolean {
+		const inventory = this.inventories.get(playerId)
+		if (!inventory) return false
+
+		// Count how many items of this type the player has
+		const count = inventory.items.filter(item => item.itemType === itemType).length
+		return count >= quantity
+	}
+
 	addItem(client: EventClient, item: Item) {
 		const inventory = this.inventories.get(client.id)
 		if (!inventory) return

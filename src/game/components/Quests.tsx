@@ -11,7 +11,6 @@ export function Quests() {
 
 	useEffect(() => {
 		const handleToggle = () => {
-			console.log('[DEBUG] Quests panel visibility toggled:', !isVisible)
 			setIsVisible(prev => !prev)
 		}
 
@@ -24,12 +23,10 @@ export function Quests() {
 
 	useEffect(() => {
 		const handleQuestList = (data: { quests: QuestProgress[] }) => {
-			console.log('[DEBUG] Received quest list:', data.quests)
 			setQuests(data.quests)
 		}
 
 		const handleQuestStart = (data: { quest: Quest, progress: QuestProgress }) => {
-			console.log('[DEBUG] Quest started:', data)
 			setQuestDetails(prev => ({
 				...prev,
 				[data.quest.id]: data.quest
@@ -47,7 +44,6 @@ export function Quests() {
 		}
 
 		const handleQuestUpdate = (data: { questId: string, progress: QuestProgress }) => {
-			console.log('[DEBUG] Received quest update:', data)
 			setQuests(prev => {
 				const newQuests = [...prev]
 				const index = newQuests.findIndex(q => q.questId === data.questId)
@@ -59,12 +55,10 @@ export function Quests() {
 		}
 
 		const handleQuestComplete = (data: { questId: string }) => {
-			console.log('[DEBUG] Quest completed:', data.questId)
 			setQuests(prev => prev.filter(q => q.questId !== data.questId))
 		}
 
 		const handleStepComplete = (data: { questId: string, stepId: string }) => {
-			console.log('[DEBUG] Quest step completed:', data)
 			setQuests(prev => {
 				return prev.map(quest => {
 					if (quest.questId === data.questId) {
@@ -93,18 +87,13 @@ export function Quests() {
 		}
 	}, [])
 
-	console.log('[DEBUG] Current quests state:', quests)
-	console.log('[DEBUG] Current quest details:', questDetails)
-
 	if (!isVisible) {
 		return null
 	}
 
 	const renderQuest = (progress: QuestProgress) => {
-		console.log('[DEBUG] Attempting to render quest:', progress.questId)
 		const quest = questDetails[progress.questId]
 		if (!quest) {
-			console.log('[DEBUG] No quest details found for:', progress.questId)
 			return null
 		}
 
@@ -117,7 +106,32 @@ export function Quests() {
 					)}
 				</div>
 				<p className={styles.questDescription}>{quest.description}</p>
-				<div className={styles.progress}>
+				<div className={styles.questContent}>
+					<div className={styles.steps}>
+						{quest.steps.map((step, index) => (
+							<div 
+								key={step.id} 
+								className={`${styles.step} ${
+									progress.completedSteps.includes(step.id) 
+										? styles.completed 
+										: index === progress.currentStep 
+											? styles.current 
+											: ''
+								}`}
+							>
+								<div className={styles.stepMarker}>
+									{progress.completedSteps.includes(step.id) 
+										? '✓' 
+										: index === progress.currentStep 
+											? '→'
+											: '○'}
+								</div>
+								<div className={styles.stepLabel}>
+									{step.label}
+								</div>
+							</div>
+						))}
+					</div>
 					{quest.reward && (
 						<div className={styles.rewards}>
 							<h4>Rewards:</h4>

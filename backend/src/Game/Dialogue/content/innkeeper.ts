@@ -3,6 +3,7 @@ import { DialogueTree } from '../types'
 
 export const dialogue: DialogueTree = {
 	id: "innkeeper_greeting",
+	npcId: "innkeeper",
 	nodes: {
 		start: {
 			speaker: "Innkeeper",
@@ -99,6 +100,19 @@ export const dialogue: DialogueTree = {
 				{
 					id: "back_to_start",
 					text: "I'll get right on it.",
+				}
+			]
+		},
+		innkeeper_quest_complete: {
+			speaker: "Innkeeper",
+			text: "Ah, you've collected all 5 bottles of Mózgotrzep! That's quite impressive. As promised, here's your reward - a genuine Chainfolk Rug. These are quite rare, you know. Take good care of it!",
+			options: [
+				{
+					id: "thank_innkeeper",
+					text: "Thank you! I'll display it proudly.",
+					item: {
+						itemType: "chainfolk_rug"
+					}
 				}
 			]
 		},

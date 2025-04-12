@@ -11,7 +11,9 @@ const EXAMPLE_NPC: NPC = {
 	name: 'Innkeeper',
 	position: { x: 100, y: 400 },
 	scene: 'FarmScene',
-	dialogueId: 'innkeeper_greeting'
+	messages: {
+		default: "Welcome to the inn!"
+	}
 }
 
 const GUARD_NPC: NPC = {
@@ -67,7 +69,11 @@ export class NPCManager {
 			const npc = this.npcs.get(data.npcId)
 			if (!npc) return
 
-			// Message-based NPC
+			// Try to trigger dialogue first
+			const didTriggerDialogue = this.dialogueManager.triggerDialogue(client, npc.id)
+			if (didTriggerDialogue) return
+
+			// If no dialogue was triggered, fall back to messages
 			if (npc.messages) {
 				let message = npc.messages.default
 				
@@ -85,12 +91,6 @@ export class NPCManager {
 					npcId: npc.id,
 					message
 				})
-				return
-			}
-
-			// Dialogue-based NPC
-			if (npc.dialogueId) {
-				this.dialogueManager.triggerDialogue(client, npc.dialogueId)
 			}
 		})
 	}

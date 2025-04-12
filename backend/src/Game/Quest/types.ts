@@ -2,11 +2,21 @@ export interface QuestStep {
 	id: string
 	label: string
 	optional?: boolean
-	completeOn: {
-		event: string
-		condition: Record<string, any>
+	npcId?: string // The NPC that needs to be talked to
+	dialogue?: {
+		id: string
+		nodeId: string
 	}
-	then?: {
+	completeWhen: {
+		event: string
+		inventory?: {
+			itemType: string
+			quantity: number
+		}
+		condition?: Record<string, any>
+		payload?: Record<string, any>
+	}
+	onComplete?: {
 		triggerDialogue?: string
 		setWorldState?: Record<string, any>
 		logMessage?: string

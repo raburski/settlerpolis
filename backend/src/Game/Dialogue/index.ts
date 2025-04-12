@@ -3,13 +3,14 @@ import { Receiver } from '../../Receiver'
 import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData, DialogueEvent, DialogueItem } from './types'
 import { DialogueEvents } from './events'
 import { dialogues } from './dialogues'
+import { QuestManager } from "../Quest"
 
 export class DialogueManager {
 	private dialogues = new Map<string, DialogueTree>()
 	private activeDialogues = new Map<string, string>() // clientId -> dialogueId
 	private currentNodes = new Map<string, string>() // clientId -> nodeId
 
-	constructor(private event: EventManager) {
+	constructor(private event: EventManager, private questManager: QuestManager) {
 		this.setupEventHandlers()
 		this.loadDialogues()
 	}
@@ -37,14 +38,14 @@ export class DialogueManager {
 		}
 
 		// Emit the event through the event manager to the server
-		this.event.emit(Receiver.All, event.type, event.payload)
+		client.emit(Receiver.All, event.type, event.payload)
 	}
 
 	private handleDialogueEvent(event: DialogueEvent, client: EventClient) {
 		if (!event) return
 
 		// Emit the event through the event manager
-		this.event.emit(Receiver.All, event.type, event.payload)
+		client.emit(Receiver.All, event.type, event.payload)
 	}
 
 	private setupEventHandlers() {
@@ -137,19 +138,31 @@ export class DialogueManager {
 		console.log(`Registered dialogue: ${dialogue.id}`)
 	}
 
-	public triggerDialogue(client: EventClient, dialogueId: string) {
-		const dialogue = this.dialogues.get(dialogueId)
-		if (!dialogue) return
+	public triggerDialogue(client: EventClient, npcId: string): boolean {
+		// First check if there's a quest-specific dialogue for this NPC
+		const questDialogue = this.questManager.findDialogueFor(npcId, client.id)
+		
+		// Find dialogue for this NPC - either quest-specific or default
+		const dialogue = questDialogue 
+			? this.dialogues.get(questDialogue.dialogueId)
+			: Array.from(this.dialogues.values()).find(d => d.npcId === npcId)
+			
+		if (!dialogue) return false
 
-		const startNode = dialogue.nodes[dialogue.startNode]
-		if (!startNode) return
+		// Use quest-specific node if available, otherwise use default start node
+		const startNodeId = questDialogue?.nodeId || dialogue.startNode
+		const startNode = dialogue.nodes[startNodeId]
+		if (!startNode) return false
 
-		this.activeDialogues.set(client.id, dialogueId)
-		this.currentNodes.set(client.id, dialogue.startNode)
+		// Start the dialogue
+		this.activeDialogues.set(client.id, dialogue.id)
+		this.currentNodes.set(client.id, startNodeId)
 		client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
-			dialogueId,
+			dialogueId: dialogue.id,
 			node: startNode
 		})
+
+		return true
 	}
 
 	private getCurrentNode(clientId: string): DialogueNode | undefined {

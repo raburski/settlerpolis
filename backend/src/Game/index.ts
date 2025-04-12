@@ -21,19 +21,20 @@ export class GameManager {
 	private itemsManager: ItemsManager
 	private dialogueManager: DialogueManager
 	private scheduler: Scheduler
-	private quest: QuestManager
+	private questManager: QuestManager
 
 	constructor(private event: EventManager) {
 		// Initialize managers in dependency order
+		
 		this.chatManager = new ChatManager(event)
 		this.systemManager = new SystemManager(event)
 		this.itemsManager = new ItemsManager(event)
 		this.inventoryManager = new InventoryManager(event, this.itemsManager)
+		this.questManager = new QuestManager(event, this.inventoryManager)
 		this.lootManager = new LootManager(event)
-		this.dialogueManager = new DialogueManager(event)
+		this.dialogueManager = new DialogueManager(event, this.questManager)
 		this.npcManager = new NPCManager(event, this.dialogueManager)
 		this.scheduler = new Scheduler(event)
-		this.quest = new QuestManager(event)
 		
 		// Initialize PlayersManager last since it depends on other managers
 		this.playersManager = new PlayersManager(event, this.inventoryManager, this.lootManager)

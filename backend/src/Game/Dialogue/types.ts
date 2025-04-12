@@ -27,6 +27,7 @@ export interface DialogueItem {
 
 export interface DialogueTree {
 	id: string
+	npcId?: string
 	nodes: Record<string, DialogueNode>
 	startNode: string
 }

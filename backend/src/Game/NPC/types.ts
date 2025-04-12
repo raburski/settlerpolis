@@ -8,15 +8,20 @@ export interface NPCMessageCondition {
 
 export interface NPCMessages {
 	default: string
-	conditions?: NPCMessageCondition[]
+	conditions?: Array<{
+		check: () => boolean
+		message: string
+	}>
 }
 
 export interface NPC {
 	id: string
 	name: string
-	position: Position
+	position: {
+		x: number
+		y: number
+	}
 	scene: string
-	dialogueId?: string // Reference to a dialogue tree in the Dialogue system
 	messages?: NPCMessages
 }
 
