@@ -29,19 +29,21 @@ export class PreloadScene extends Scene {
 	}
 
 	create() {
-		networkManager.connect(() => {
-			EventBus.emit(Event.Players.CS.Connect)
-		})
-		// Set up connection response handler
-		EventBus.once(Event.Players.SC.Connected, (data: { scene: string, position: { x: number, y: number }}) => {
-			this.isConnected = true
-			// Start the scene specified by the server
-			this.scene.start(data.scene, {
-				x: data.position.x,
-				y: data.position.y,
-				isTransition: false
+		// Wait for scene to be fully ready
+		this.events.once('preupdate', function() {
+			networkManager.connect(() => {
+				EventBus.emit(Event.Players.CS.Connect)
 			})
-		})
+			
+			// Set up connection response handler
+			EventBus.once(Event.Players.SC.Connected, (data: { scene: string, position: { x: number, y: number }}) => {
+				this.isConnected = true
+				this.scene.start(data.scene, {
+					x: data.position.x,
+					y: data.position.y,
+					isTransition: false
+				})
+			})
+		}, this)
 	}
-
 } 
