@@ -59,6 +59,21 @@ export class EventBusManager implements EventManager {
 				}
 			}
 			handlers.push(wrappedCallback)
+		} else if (event.startsWith('cs:')) {
+			// For client-to-server events, we need to subscribe to the network manager
+			if (this.debug) console.log(`[EventBusManager] Setting up network subscription for ${event}`)
+			this.networkManager.on(event, (data, client) => {
+				if (this.debug) console.log(`[EventBusManager] Received ${event} from network`, {
+					clientId: client.id,
+					clientGroup: client.currentGroup
+				})
+				try {
+					callback(data, client)
+				} catch (error) {
+					console.error(`[EventBusManager] Error in cs: event handler for ${event}:`, error)
+				}
+			})
+			handlers.push(callback)
 		} else {
 			const wrappedCallback: EventCallback<T> = (data, client) => {
 				try {
