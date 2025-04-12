@@ -9,7 +9,7 @@ import { LocalManager } from './network/LocalManager'
 import { GameManager } from '../../backend/src/Game'
 
 // Create multiplayer service instance
-const IS_REMOTE_GAME = false
+const IS_REMOTE_GAME = true
 let multiplayerService: MultiplayerService
 
 if (IS_REMOTE_GAME) {
