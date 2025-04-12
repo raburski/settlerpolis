@@ -29,10 +29,7 @@ export class EventBusManager implements EventManager {
 		if (event.startsWith('ss:')) {
 			const wrappedCallback: EventCallback<ServerEventData<T>> = (wrappedData, client) => {
 				try {
-					if (this.debug) console.log(`[EventBusManager] Executing ss: event handler for ${event}`, { 
-						hasClientContext: !!wrappedData.__clientContext,
-						clientId: wrappedData.__clientContext?.id
-					})
+					if (this.debug) console.log(`[EventBusManager] Executing ss: event handler for ${event}`, wrappedData.__clientContext?.id)
 					// If we have client context in the data, create a proxy client
 					if (wrappedData.__clientContext) {
 						const proxyClient = {
@@ -63,10 +60,7 @@ export class EventBusManager implements EventManager {
 			// For client-to-server events, we need to subscribe to the network manager
 			if (this.debug) console.log(`[EventBusManager] Setting up network subscription for ${event}`)
 			this.networkManager.on(event, (data, client) => {
-				if (this.debug) console.log(`[EventBusManager] Received ${event} from network`, {
-					clientId: client.id,
-					clientGroup: client.currentGroup
-				})
+				if (this.debug) console.log(`[EventBusManager] Received ${event} from network`, client.id, client.currentGroup)
 				try {
 					callback(data as T, client)
 				} catch (error) {
@@ -77,10 +71,7 @@ export class EventBusManager implements EventManager {
 		} else {
 			const wrappedCallback: EventCallback<T> = (data, client) => {
 				try {
-					if (this.debug) console.log(`[EventBusManager] Executing event handler for ${event}`, {
-						clientId: client?.id,
-						clientGroup: client?.currentGroup
-					})
+					if (this.debug) console.log(`[EventBusManager] Executing event handler for ${event}`, client?.id, client?.currentGroup)
 					callback(data, client)
 				} catch (error) {
 					console.error(`[EventBusManager] Error in callback for event ${event}:`, error)

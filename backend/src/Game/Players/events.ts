@@ -11,6 +11,5 @@ export const PlayersEvents = {
 		Connected: 'sc:players:connected',
 		Joined: 'sc:players:joined',
 		Left: 'sc:players:left',
-		List: 'sc:players:list'
 	}
 } as const 

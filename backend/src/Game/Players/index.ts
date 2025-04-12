@@ -66,8 +66,10 @@ export class PlayersManager {
 			// Send existing players to new player
 			const scenePlayers = Array.from(this.players.values())
 				.filter(p => p.scene === data.scene && p.id !== client.id)
-			client.emit(Receiver.Sender, Event.Players.SC.List, scenePlayers)
-
+				.forEach(player => {
+					client.emit(Receiver.Sender, Event.Players.SC.Joined, player)
+				})
+			
 			client.emit(Receiver.NoSenderGroup, Event.Players.SC.Joined, data)
 		})
 
@@ -94,7 +96,9 @@ export class PlayersManager {
 				// Send existing players in new scene to transitioning player
 				const scenePlayers = Array.from(this.players.values())
 					.filter(p => p.scene === data.scene && p.id !== client.id)
-				client.emit(Receiver.Sender, Event.Players.SC.List, scenePlayers)
+					.forEach(player => {
+						client.emit(Receiver.Sender, Event.Players.SC.Joined, player)
+					})
 
 				client.emit(Receiver.NoSenderGroup, Event.Players.SC.Joined, data)
 			}
