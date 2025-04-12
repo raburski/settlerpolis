@@ -14,7 +14,7 @@ export class NetworkManager implements EventManager {
 	private lastMessageTimestamps: Map<string, number>
 	private readonly TIMEOUT_CHECK_INTERVAL = 5000 // 5 seconds
 	private readonly MAX_INACTIVE_TIME = 6000 // 6 seconds
-	private debug = true
+	private debug = false
 
 	constructor(io: Server) {
 		this.io = io

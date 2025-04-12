@@ -33,7 +33,7 @@ export class NetworkManager implements EventManager {
 	private socket: Socket | null = null
 	private lastMessageTime: number = 0
 	private pingInterval: number | null = null
-	private readonly PING_INTERVAL = 3000 // 3 seconds
+	private readonly PING_INTERVAL = 25000 // 5 seconds
 	private handlers: Map<string, EventCallback[]> = new Map()
 	private joinedCallbacks = new Set<LifecycleCallback>()
 	private leftCallbacks = new Set<LifecycleCallback>()

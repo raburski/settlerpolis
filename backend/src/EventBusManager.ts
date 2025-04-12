@@ -108,12 +108,7 @@ export class EventBusManager implements EventManager {
 
 	emit(to: Receiver, event: string, data: any, groupName?: string): void {
 		if (this.debug) {
-			console.log('[EventBusManager] Emitting event:', {
-				to,
-				event,
-				groupName,
-				dataType: typeof data
-			})
+			console.log('[EventBusManager] Emitting event:', event)
 		}
 		
 		// Handle events based on their prefix
