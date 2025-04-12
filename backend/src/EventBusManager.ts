@@ -24,31 +24,42 @@ export class EventBusManager implements EventManager {
 		// Add new handler with wrapped callback for server events
 		if (event.startsWith('ss:')) {
 			const wrappedCallback: EventCallback<ServerEventData<T>> = (wrappedData, client) => {
-				// If we have client context in the data, create a proxy client
-				if (wrappedData.__clientContext) {
-					const proxyClient = {
-						id: wrappedData.__clientContext.id,
-						currentGroup: wrappedData.__clientContext.currentGroup,
-						emit: (to: Receiver, event: string, data: any, targetClientId?: string) => {
-							if (event.startsWith('sc:')) {
-								// For sc: events, use the network manager with the original client's group
-								this.networkManager.emit(to, event, data, wrappedData.__clientContext?.currentGroup)
-							} else {
-								// For other events, use normal emit
-								this.emit(to, event, data, targetClientId)
-							}
-						},
-						setGroup: () => {} // No-op for server events
+				try {
+					// If we have client context in the data, create a proxy client
+					if (wrappedData.__clientContext) {
+						const proxyClient = {
+							id: wrappedData.__clientContext.id,
+							currentGroup: wrappedData.__clientContext.currentGroup,
+							emit: (to: Receiver, event: string, data: any, targetClientId?: string) => {
+								if (event.startsWith('sc:')) {
+									// For sc: events, use the network manager with the original client's group
+									this.networkManager.emit(to, event, data, wrappedData.__clientContext?.currentGroup)
+								} else {
+									// For other events, use normal emit
+									this.emit(to, event, data, targetClientId)
+								}
+							},
+							setGroup: () => {} // No-op for server events
+						}
+						callback(wrappedData.data, proxyClient)
+					} else {
+						// No client context, just pass the data through
+						callback(wrappedData.data, client)
 					}
-					callback(wrappedData.data, proxyClient)
-				} else {
-					// No client context, just pass the data through
-					callback(wrappedData.data, client)
+				} catch (error) {
+					console.error(`[EventBusManager] Error in callback for event ${event}:`, error)
 				}
 			}
 			handlers.push(wrappedCallback)
 		} else {
-			handlers.push(callback)
+			const wrappedCallback: EventCallback<T> = (data, client) => {
+				try {
+					callback(data, client)
+				} catch (error) {
+					console.error(`[EventBusManager] Error in callback for event ${event}:`, error)
+				}
+			}
+			handlers.push(wrappedCallback)
 		}
 		this.eventHandlers.set(event, handlers)
 	}

@@ -33,6 +33,18 @@ const io = new Server(httpServer, {
 	path: '/api/socket.io' // Add path prefix for WebSocket
 })
 
+io.on('connection', (socket) => {
+	console.log('[SOCKET] Connected:', socket.id)
+  
+	socket.onAny((event, ...args) => {
+	  console.log(`[SOCKET] Event: ${event}`, args)
+	})
+  
+	socket.on('disconnect', (reason) => {
+	  console.warn('[SOCKET] Disconnected:', socket.id, 'Reason:', reason)
+	})
+})
+
 // Create network manager instance
 const network = new NetworkManager(io)
 
