@@ -1,6 +1,6 @@
 import { EventManager, Event, EventClient } from '../../events'
 import { Receiver } from '../../Receiver'
-import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData, DialogueEvent } from './types'
+import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData, DialogueEvent, DialogueItem } from './types'
 import { DialogueEvents } from './events'
 import { dialogues } from './dialogues'
 
@@ -25,11 +25,26 @@ export class DialogueManager {
 		}
 	}
 
+	private handleDialogueItem(item: DialogueItem, client: EventClient) {
+		if (!item) return
+
+		// Infer event from item - for now, we assume items are always added to inventory
+		const event = {
+			type: Event.Inventory.SS.Add,
+			payload: {
+				itemType: item.itemType
+			}
+		}
+
+		// Emit the event through the event manager to the server
+		this.event.emit(Receiver.All, event.type, event.payload)
+	}
+
 	private handleDialogueEvent(event: DialogueEvent, client: EventClient) {
 		if (!event) return
 
 		// Emit the event through the event manager
-		client.emit(Receiver.Sender, event.type, event.payload)
+		this.event.emit(Receiver.All, event.type, event.payload)
 	}
 
 	private setupEventHandlers() {
@@ -53,7 +68,11 @@ export class DialogueManager {
 				return
 			}
 
-			// Handle node event if present
+			// Handle node item if present
+			if (currentNode.item) {
+				this.handleDialogueItem(currentNode.item, client)
+			}
+			// Handle node event if present (for backward compatibility)
 			if (currentNode.event) {
 				this.handleDialogueEvent(currentNode.event, client)
 			}
@@ -75,6 +94,14 @@ export class DialogueManager {
 
 			const selectedOption = currentNode.options.find(opt => opt.id === data.choiceId)
 			if (!selectedOption?.next) {
+				// Handle option item if present before ending dialogue
+				if (selectedOption?.item) {
+					this.handleDialogueItem(selectedOption.item, client)
+				}
+				// Handle option event if present (for backward compatibility)
+				if (selectedOption?.event) {
+					this.handleDialogueEvent(selectedOption.event, client)
+				}
 				this.endDialogue(client)
 				return
 			}
@@ -88,7 +115,11 @@ export class DialogueManager {
 				return
 			}
 
-			// Handle option event if present
+			// Handle option item if present
+			if (selectedOption.item) {
+				this.handleDialogueItem(selectedOption.item, client)
+			}
+			// Handle option event if present (for backward compatibility)
 			if (selectedOption.event) {
 				this.handleDialogueEvent(selectedOption.event, client)
 			}
