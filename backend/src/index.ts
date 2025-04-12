@@ -7,6 +7,14 @@ import { NetworkManager } from './NetworkManager'
 import { GameManager } from './Game'
 import { EventBusManager } from './EventBusManager'
 
+process.on('uncaughtException', (err) => {
+	console.error('Uncaught Exception:', err)
+})
+  
+process.on('unhandledRejection', (reason) => {
+	console.error('Unhandled Rejection:', reason)
+})
+
 dotenv.config()
 
 const app = express()
