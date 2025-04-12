@@ -3,7 +3,7 @@ import { GameManager } from "../../../backend/src/Game"
 import { LocalManager } from "./LocalManager"
 import { NetworkEventManager, NetworkManager } from "./NetworkManager"
 
-const IS_REMOTE_GAME = true
+const IS_REMOTE_GAME = false
 
 function getNetworkManager(): NetworkEventManager {
     if (IS_REMOTE_GAME) {
