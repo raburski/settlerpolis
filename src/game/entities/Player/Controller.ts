@@ -13,7 +13,8 @@ export class PlayerController {
 
 	constructor(
 		private view: PlayerView,
-		private scene: Scene
+		private scene: Scene,
+		public playerId: string,
 	) {
 		this.keyboard = new Keyboard(scene)
 		// Subscribe to chat messages
@@ -22,7 +23,7 @@ export class PlayerController {
 
 	private handleChatMessage = (data: { sourcePlayerId: string, message: string }) => {
 		// Only show message if it's from our player
-		if (data.sourcePlayerId === this.scene.multiplayerService?.socket?.id) {
+		if (data.playerId === this.playerId) {
 			this.view.displayMessage(data.message)
 		}
 	}

@@ -9,6 +9,8 @@ import { createNPC, NPC } from '../../entities/NPC'
 import { Keyboard } from '../../modules/Keyboard'
 import { createLoot, Loot, DroppedItem } from '../../entities/Loot'
 import { PortalManager } from "../../modules/Portals";
+import networkManager from "../../network";
+import { playerService } from "../../services/PlayerService";
 
 type Player = {
 	view: PlayerView
@@ -40,7 +42,7 @@ export abstract class GameScene extends MapScene {
 		const isTransition = sceneData?.isTransition || false
 		
 		// Create player at the specified position
-		this.player = createPlayer(this)
+		this.player = createPlayer(this, playerService.playerId)
 
 		// Position the player
 		this.player.view.updatePosition(playerX, playerY)
@@ -101,7 +103,6 @@ export abstract class GameScene extends MapScene {
 		EventBus.on(Event.Players.SC.Joined, this.handlePlayerJoined, this)
 		EventBus.on(Event.Players.SC.Left, this.handlePlayerLeft, this)
 		EventBus.on(Event.Players.SC.Move, this.handlePlayerMove, this)
-		EventBus.on(Event.Chat.SC.Receive, this.handleChatReceive, this)
 
 		// Set up scene event listeners
 		EventBus.on(Event.Loot.SC.Spawn, this.handleAddItems, this)
@@ -116,16 +117,9 @@ export abstract class GameScene extends MapScene {
 			this,
 			data.position.x,
 			data.position.y,
-			data.sourcePlayerId
+			data.id
 		)
-		this.remotePlayers.set(data.sourcePlayerId, remotePlayer)
-	}
-
-	private handleChatReceive = (data) => {
-		const remotePlayer = this.remotePlayers.get(data.sourcePlayerId)
-		if (remotePlayer) {
-			remotePlayer.controller.handleChatMessage(data)
-		}
+		this.remotePlayers.set(data.id, remotePlayer)
 	}
 
 	private handlePlayerMove = (data) => {

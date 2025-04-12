@@ -7,7 +7,7 @@ export class RemotePlayerController {
 	constructor(
 		private view: PlayerView,
 		private scene: Scene,
-		private playerId: string
+		public playerId: string
 	) {
 		// Subscribe to remote player movement events
 		EventBus.on(Event.Players.CS.Move, this.handlePlayerMoved, this)
@@ -24,7 +24,7 @@ export class RemotePlayerController {
 
 	private handleChatMessage = (data: { sourcePlayerId: string, message: string }) => {
 		// Only show message if it's from our player
-		if (data.sourcePlayerId === this.playerId) {
+		if (data.playerId === this.playerId) {
 			this.view.displayMessage(data.message)
 		}
 	}

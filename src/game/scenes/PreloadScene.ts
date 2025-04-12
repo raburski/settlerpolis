@@ -4,6 +4,7 @@ import { EventBus } from '../EventBus'
 import { Event } from '../../../backend/src/events'
 import { PlayerView } from '../entities/Player/View'
 import networkManager from "../network"
+import { playerService } from "../services/PlayerService"
 
 export class PreloadScene extends Scene {
 	private fontsLoaded: boolean = false
@@ -36,8 +37,9 @@ export class PreloadScene extends Scene {
 			})
 			
 			// Set up connection response handler
-			EventBus.once(Event.Players.SC.Connected, (data: { scene: string, position: { x: number, y: number }}) => {
+			EventBus.once(Event.Players.SC.Connected, (data: { playerId: string, scene: string, position: { x: number, y: number }}) => {
 				this.isConnected = true
+				playerService.playerId = data.playerId
 				this.scene.start(data.scene, {
 					x: data.position.x,
 					y: data.position.y,

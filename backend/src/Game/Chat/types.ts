@@ -6,7 +6,7 @@ export enum ChatMessageType {
 export interface ChatMessageData {
 	message: string
 	type: ChatMessageType
-	sourcePlayerId?: string
+	playerId?: string
 }
 
 export interface ChatSystemMessageData {

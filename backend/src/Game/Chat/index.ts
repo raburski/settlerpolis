@@ -16,7 +16,7 @@ export class ChatManager {
 			const messageData: ChatMessageData = {
 				message: data.message.trim(),
 				type: data.type || ChatMessageType.Local,
-				sourcePlayerId: client.id
+				playerId: client.id
 			}
 
 			// For local messages, only broadcast to players in the same scene/zone

@@ -41,7 +41,11 @@ export class PlayersManager {
 		// Handle initial connection
 		this.event.on(Event.Players.CS.Connect, (_, client) => {
 			// Send initial scene and position data
-			client.emit(Receiver.Sender, Event.Players.SC.Connected, INITIAL_POSITION)
+			const playerInit = {
+				...INITIAL_POSITION,
+				playerId: client.id,
+			}
+			client.emit(Receiver.Sender, Event.Players.SC.Connected, playerInit)
 		})
 
 		// Handle client lifecycle
