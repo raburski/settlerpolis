@@ -10,7 +10,7 @@ export class RemotePlayerController {
 		public playerId: string
 	) {
 		// Subscribe to remote player movement events
-		EventBus.on(Event.Players.CS.Move, this.handlePlayerMoved, this)
+		EventBus.on(Event.Players.SC.Move, this.handlePlayerMoved, this)
 		// Subscribe to chat messages
 		EventBus.on(Event.Chat.SC.Receive, this.handleChatMessage, this)
 	}

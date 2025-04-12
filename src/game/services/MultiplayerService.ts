@@ -67,8 +67,6 @@ export class MultiplayerService {
 		// Subscribe to each event and forward to EventBus
 		this.events.forEach(eventName => {
 			this.event.on(eventName, (data, client) => {
-				// For events that need sourcePlayerId, add it from the client
-                data = { ...data, sourcePlayerId: client.id }
 				if (this.debug) {
 					console.log('[MULTIPLAYER SERVICE] Feed into the EventBUS', eventName)
 				}

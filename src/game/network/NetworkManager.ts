@@ -55,7 +55,7 @@ export class NetworkManager implements EventManager {
 			this.setupSocketHandlers()
 			// Trigger joined callbacks when connected
 			this.joinedCallbacks.forEach(callback => callback(this.client))
-			setTimeout(onConnect, 500)
+			onConnect()
 		})
 
 		this.socket.on('disconnect', () => {
