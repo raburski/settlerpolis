@@ -1,5 +1,6 @@
 import { EventManager, Event, EventClient, EventCallback, LifecycleCallback } from '../../../backend/src/events'
 import { Receiver } from '../../../backend/src/Receiver'
+import { NetworkEventManager } from "./NetworkManager"
 
 class LocalEventClient implements EventClient {
 	private _currentGroup: string = 'GLOBAL'
@@ -22,7 +23,7 @@ class LocalEventClient implements EventClient {
 	}
 }
 
-class LocalEventManager implements EventManager {
+class LocalEventManager implements NetworkEventManager {
 	private handlers: Map<string, EventCallback[]> = new Map()
 	private client: LocalEventClient
 	private joinedCallbacks = new Set<LifecycleCallback>()
@@ -35,6 +36,12 @@ class LocalEventManager implements EventManager {
 	) {
 		this.client = new LocalEventClient(clientId, onEmit)
 	}
+
+	connect(onConnect: () => {}) {
+		setTimeout(onConnect, 0)
+	}
+
+	disconnect() {}
 
 	on<T>(event: string, callback: EventCallback<T>): void {
 		if (!this.handlers.has(event)) {

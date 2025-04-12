@@ -4,22 +4,9 @@ import { TempleScene } from './scenes/TempleScene'
 import { PreloadScene } from './scenes/PreloadScene'
 import { AUTO, Game, Types, Scale, Physics } from 'phaser'
 import { MultiplayerService } from './services/MultiplayerService'
-import { NetworkManager } from './network/NetworkManager'
-import { LocalManager } from './network/LocalManager'
-import { GameManager } from '../../backend/src/Game'
+import networkManager from './network'
 
-// Create multiplayer service instance
-const IS_REMOTE_GAME = true
-let multiplayerService: MultiplayerService
-
-if (IS_REMOTE_GAME) {
-	const networkManager = new NetworkManager('https://hearty-rejoicing-production.up.railway.app')
-	multiplayerService = new MultiplayerService(networkManager)
-} else {
-	const localManager = new LocalManager()
-	const gameManager = new GameManager(localManager.server)
-	multiplayerService = new MultiplayerService(localManager.client)
-}
+let multiplayerService = new MultiplayerService(networkManager)
 
 //  Find out more information about the Game Config at:
 //  https://newdocs.phaser.io/docs/3.70.0/Phaser.Types.Core.GameConfig

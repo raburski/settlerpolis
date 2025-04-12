@@ -10,10 +10,6 @@ export function Inventory() {
 	const [inventory, setInventory] = useState<InventoryType>({ items: [] })
 	const [, setUpdateCounter] = useState(0)
 
-	const requestInventory = useCallback(() => {
-		EventBus.emit(Event.Inventory.CS.Get, {})
-	}, [])
-
 	useEffect(() => {
 		const handleToggle = () => {
 			setIsVisible(prev => !prev)
@@ -38,20 +34,11 @@ export function Inventory() {
 		EventBus.on(Event.Inventory.SC.Update, handleInventoryLoaded)
 		const unsubscribe = itemService.onUpdate(handleItemUpdate)
 
-		// Request initial inventory state
-		requestInventory()
-
 		return () => {
 			EventBus.off(Event.Inventory.SC.Update, handleInventoryLoaded)
 			unsubscribe()
 		}
-	}, [requestInventory])
-
-	useEffect(() => {
-		if (isVisible) {
-			requestInventory()
-		}
-	}, [isVisible, requestInventory])
+	}, [])
 
 	const handleDropItem = (itemId: string) => {
 		// Optimistically update the UI

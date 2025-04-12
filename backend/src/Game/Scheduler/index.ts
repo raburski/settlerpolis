@@ -2,7 +2,7 @@ import { EventManager, EventClient } from '../../events'
 import { ScheduledEvent, ScheduleOptions } from './types'
 import { SchedulerEvents } from './events'
 import { defaultSchedules } from './content'
-import { CronExpressionParser } from 'cron-parser'
+// import { CronExpressionParser } from 'cron-parser'
 import { v4 as uuidv4 } from 'uuid'
 import { Receiver } from "../../Receiver"
 
@@ -12,7 +12,7 @@ export class Scheduler {
 
 	constructor(
 		private event: EventManager,
-		schedules: ScheduleOptions[] = defaultSchedules
+		schedules: ScheduleOptions[] = []
 	) {
 		// // Clean up intervals on process exit
 		// process.on('SIGINT', () => this.cleanup())
@@ -125,12 +125,12 @@ export class Scheduler {
 				return new Date(now.getTime() + Number(schedule.value))
 				
 			case 'cron':
-				try {
-					const interval = CronExpressionParser.parse(schedule.value as string)
-					return interval.next().toDate()
-				} catch (err) {
-					console.error('⚠️ Cron expression error:', err)
-				}
+				// try {
+				// 	const interval = CronExpressionParser.parse(schedule.value as string)
+				// 	return interval.next().toDate()
+				// } catch (err) {
+				// 	console.error('⚠️ Cron expression error:', err)
+				// }
 				throw new Error('Invalid schedule type')
 				
 			case 'once':
