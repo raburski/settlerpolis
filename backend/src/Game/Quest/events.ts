@@ -3,6 +3,7 @@ export const QuestEvents = {
 		Start: 'ss:quest:start'
 	},
 	SC: {
+		Start: 'sc:quest:start',
 		Update: 'sc:quest:update',
 		StepComplete: 'sc:quest:step_complete',
 		Complete: 'sc:quest:complete',

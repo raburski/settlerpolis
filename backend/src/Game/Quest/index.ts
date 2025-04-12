@@ -64,11 +64,17 @@ export class QuestManager {
 				playerState.activeQuests.push(progress)
 				this.savePlayerState(data.playerId, playerState)
 
-				const response: QuestUpdateResponse = {
-					questId: data.questId,
+				// Send sanitized quest details and progress
+				client.emit(Receiver.Sender, QuestEvents.SC.Start, {
+					quest: {
+						id: quest.id,
+						title: quest.title,
+						description: quest.description,
+						chapter: quest.chapter,
+						reward: quest.reward
+					},
 					progress
-				}
-				client.emit(Receiver.Sender, QuestEvents.SC.Update, response)
+				})
 			}
 		)
 
@@ -201,22 +207,22 @@ export class QuestManager {
 
 		if (quest.reward) {
 			// Emit reward events
-			if (quest.reward.items) {
-				for (const item of quest.reward.items) {
-					this.event.emit(Receiver.All, 'ss:inventory:add', {
-						playerId,
-						itemId: item.id,
-						quantity: item.qty
-					})
-				}
-			}
+			// if (quest.reward.items) {
+			// 	for (const item of quest.reward.items) {
+			// 		this.event.emit(Receiver.All, 'ss:inventory:add', {
+			// 			playerId,
+			// 			itemId: item.id,
+			// 			quantity: item.qty
+			// 		})
+			// 	}
+			// }
 
-			if (quest.reward.exp) {
-				this.event.emit(Receiver.All, 'ss:player:add_exp', {
-					playerId,
-					exp: quest.reward.exp
-				})
-			}
+			// if (quest.reward.exp) {
+			// 	this.event.emit(Receiver.All, 'ss:player:add_exp', {
+			// 		playerId,
+			// 		exp: quest.reward.exp
+			// 	})
+			// }
 		}
 
 		const response: QuestCompleteResponse = {
