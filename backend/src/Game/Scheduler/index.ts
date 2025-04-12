@@ -128,7 +128,7 @@ export class Scheduler {
 				try {
 					const interval = CronExpressionParser.parse(schedule.value as string)
 					return interval.next().toDate()
-				} catch () {
+				} catch (err) {
 					console.error('⚠️ Cron expression error:', err)
 				}
 				throw new Error('Invalid schedule type')
