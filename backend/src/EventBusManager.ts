@@ -68,7 +68,7 @@ export class EventBusManager implements EventManager {
 					clientGroup: client.currentGroup
 				})
 				try {
-					callback(data, client)
+					callback(data as T, client)
 				} catch (error) {
 					console.error(`[EventBusManager] Error in cs: event handler for ${event}:`, error)
 				}
