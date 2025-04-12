@@ -10,7 +10,10 @@ export const itemDropSchedules: ScheduleOptions[] = [
 		},
 		payload: {
 			itemType: 'mozgotrzep',
-			position: { x: 400, y: 100 },
+			position: {
+				x: { min: 100, max: 300 },
+				y: { min: 300, max: 500 }
+			},
 			scene: 'FarmScene'
 		}
 	}

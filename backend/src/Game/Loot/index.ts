@@ -2,7 +2,7 @@ import { EventManager, Event, EventClient } from '../../events'
 import { PlayerJoinData, PlayerTransitionData, Position } from '../../types'
 import { Receiver } from '../../Receiver'
 import { Item } from "../Items/types"
-import { DroppedItem } from "./types"
+import { DroppedItem, Range, SpawnPosition, LootSpawnPayload } from "./types"
 import { LootEvents } from './events'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -15,6 +15,20 @@ export class LootManager {
 	constructor(private event: EventManager) {
 		this.setupEventHandlers()
 		this.startItemCleanupInterval()
+	}
+
+	private getRandomInRange(range: Range | number): number {
+		if (typeof range === 'number') {
+			return range
+		}
+		return Math.floor(Math.random() * (range.max - range.min + 1)) + range.min
+	}
+
+	private resolvePosition(spawnPosition: SpawnPosition): Position {
+		return {
+			x: this.getRandomInRange(spawnPosition.x),
+			y: this.getRandomInRange(spawnPosition.y)
+		}
 	}
 
 	private setupEventHandlers() {
@@ -34,7 +48,7 @@ export class LootManager {
 		})
 
 		// Handle scheduled item spawns
-		this.event.on(LootEvents.SS.Spawn, (data: { itemType: string, position: Position, scene: string }) => {
+		this.event.on(LootEvents.SS.Spawn, (data: LootSpawnPayload) => {
 			const item: Item = {
 				id: uuidv4(),
 				itemType: data.itemType
@@ -42,7 +56,7 @@ export class LootManager {
 			
 			const droppedItem: DroppedItem = {
 				...item,
-				position: data.position,
+				position: this.resolvePosition(data.position),
 				droppedAt: Date.now()
 			}
 

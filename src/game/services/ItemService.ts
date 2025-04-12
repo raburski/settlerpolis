@@ -14,16 +14,19 @@ class ItemService {
 	private itemTypes: Map<string, ItemType> = new Map()
 	private requestedTypes: Set<string> = new Set()
 	private updateCallbacks: Set<UpdateCallback> = new Set()
+	private eventHandler: ((data: { itemType: string, meta: ItemType }) => void) | null = null
 
 	constructor() {
 		this.setupEventHandlers()
 	}
 
 	private setupEventHandlers() {
-		EventBus.on(ItemsEvents.SC.Type, (data: { itemType: string, meta: ItemType }) => {
+		this.eventHandler = (data: { itemType: string, meta: ItemType }) => {
 			this.itemTypes.set(data.itemType, data.meta)
 			this.notifyUpdate()
-		})
+		}
+
+		EventBus.on(ItemsEvents.SC.Type, this.eventHandler)
 	}
 
 	getItemType(itemType: string): ItemType | undefined {
@@ -53,6 +56,15 @@ class ItemService {
 	clearCache() {
 		this.itemTypes.clear()
 		this.requestedTypes.clear()
+	}
+
+	destroy() {
+		if (this.eventHandler) {
+			EventBus.off(ItemsEvents.SC.Type, this.eventHandler)
+			this.eventHandler = null
+		}
+		this.updateCallbacks.clear()
+		this.clearCache()
 	}
 }
 

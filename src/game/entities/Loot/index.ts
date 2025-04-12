@@ -26,7 +26,7 @@ export function createLoot(
 		scene,
 		item.position.x,
 		item.position.y,
-		item.name,
+		item.itemType,
 		item.textureKey
 	)
 
