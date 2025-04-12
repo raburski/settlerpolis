@@ -6,6 +6,7 @@ import { Inventory } from './game/components/Inventory';
 import { ChatLog } from './game/components/ChatLog';
 import { DialogUI } from './game/components/DialogUI';
 import { EventBus } from './game/EventBus';
+import { Quests } from "./game/components/Quests";
 
 function App()
 {
@@ -45,6 +46,7 @@ function App()
             <ChatLog />
             <Chat />
             <DialogUI />
+            <Quests />
         </div>
     )
 }

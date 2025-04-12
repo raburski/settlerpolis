@@ -7,6 +7,7 @@ import { NPCEvents } from './Game/NPC/events'
 import { ItemsEvents } from './Game/Items/events'
 import { LootEvents } from './Game/Loot/events'
 import { DialogueEvents } from './Game/Dialogue/events'
+import { QuestEvents } from "./Game/Quest/events"
 
 // Interface for client operations
 export interface EventClient {
@@ -36,5 +37,6 @@ export const Event = {
 	NPC: NPCEvents,
 	Items: ItemsEvents,
 	Loot: LootEvents,
-	Dialogue: DialogueEvents
+	Dialogue: DialogueEvents,
+	Quest: QuestEvents,
 }

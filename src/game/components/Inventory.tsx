@@ -73,7 +73,7 @@ export function Inventory() {
 		return (
 			<div key={item.id} className={styles.slot}>
 				<div className={styles.itemContent}>
-					<div className={styles.itemIcon}>{itemType.icon || '📦'}</div>
+					<div className={styles.itemIcon}>{itemType.emoji || '📦'}</div>
 					<div className={styles.itemInfo}>
 						<div className={styles.itemHeader}>
 							<span className={styles.itemName}>{itemType.name}</span>
