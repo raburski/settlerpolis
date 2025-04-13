@@ -5,11 +5,53 @@ import { Inventory as InventoryType, Item } from '../../../backend/src/DataTypes
 import { itemService } from '../services/ItemService'
 import styles from './Inventory.module.css'
 
+const ItemRow = ({ item, handleDropItem, handleConsumeItem }) => {
+	const itemType = itemService.getItemType(item.itemType)
+	if (!itemType) {
+		return null
+	}
+
+	return (
+		<div key={item.id} className={styles.slot}>
+			<div className={styles.itemContent}>
+				<div className={styles.itemIcon}>{itemType.emoji || '📦'}</div>
+				<div className={styles.itemInfo}>
+					<div className={styles.itemHeader}>
+						<span className={styles.itemName}>{itemType.name}</span>
+					</div>
+					{itemType.description && (
+						<div className={styles.itemDescription}>{itemType.description}</div>
+					)}
+					<div className={styles.itemType}>{itemType.type}</div>
+				</div>
+			</div>
+			<div className={styles.buttons}>
+				{itemType.type === 'consumable' && (
+					<button 
+						className={styles.consumeButton}
+						onClick={() => handleConsumeItem(item.id)}
+						title="Consume item"
+					>
+						🍽️
+					</button>
+				)}
+				<button 
+					className={styles.dropButton}
+					onClick={() => handleDropItem(item.id)}
+					title="Drop item"
+				>
+					🗑️
+				</button>
+			</div>
+		</div>
+	)
+}
+
 export function Inventory() {
 	const [isVisible, setIsVisible] = useState(false)
 	const [isExiting, setIsExiting] = useState(false)
-	const [inventory, setInventory] = useState<InventoryType>({ items: [] })
-	const [, setUpdateCounter] = useState(0)
+	const [items, setItems] = useState<Item[]>([])
+	const [updateCounter, setUpdateCounter] = useState<number>(0)
 
 	useEffect(() => {
 		const handleToggle = () => {
@@ -47,39 +89,48 @@ export function Inventory() {
 	}, [isVisible])
 
 	useEffect(() => {
+		// Handle initial inventory load
 		const handleInventoryLoaded = (data: { inventory: InventoryType }) => {
-			setInventory(data.inventory)
+			setItems(data.inventory.items)
 		}
 
+		// Handle item added event
+		const handleItemAdded = (data: { item: Item }) => {
+			setItems([...items, data.item])
+		}
+
+		// Handle item removed event
+		const handleItemRemoved = (data: { itemId: string }) => {
+			const newItems = items.filter(item => item.id !== data.itemId)
+			setItems(newItems)
+		}
+
+		// Handle item metadata updates
 		const handleItemUpdate = () => {
 			setUpdateCounter(c => c + 1)
 		}
 
+		// Register event listeners
 		EventBus.on(Event.Inventory.SC.Update, handleInventoryLoaded)
+		EventBus.on(Event.Inventory.SC.Add, handleItemAdded)
+		EventBus.on(Event.Inventory.SC.Remove, handleItemRemoved)
 		const unsubscribe = itemService.onUpdate(handleItemUpdate)
 
+		// Clean up event listeners
 		return () => {
 			EventBus.off(Event.Inventory.SC.Update, handleInventoryLoaded)
+			EventBus.off(Event.Inventory.SC.Add, handleItemAdded)
+			EventBus.off(Event.Inventory.SC.Remove, handleItemRemoved)
 			unsubscribe()
 		}
-	}, [])
+	}, [items])
 
 	const handleDropItem = (itemId: string) => {
-		// Optimistically update the UI
-		setInventory(prev => ({
-			items: prev.items.filter(item => item.id !== itemId)
-		}))
-
 		// Send the drop request
 		EventBus.emit(Event.Players.CS.DropItem, { itemId })
 	}
 
 	const handleConsumeItem = (itemId: string) => {
-		// Optimistically update the UI
-		setInventory(prev => ({
-			items: prev.items.filter(item => item.id !== itemId)
-		}))
-
 		// Send the consume request
 		EventBus.emit(Event.Inventory.CS.Consume, { itemId })
 	}
@@ -96,48 +147,6 @@ export function Inventory() {
 		return null
 	}
 
-	const renderItem = (item: Item) => {
-		const itemType = itemService.getItemType(item.itemType)
-		if (!itemType) {
-			return null
-		}
-
-		return (
-			<div key={item.id} className={styles.slot}>
-				<div className={styles.itemContent}>
-					<div className={styles.itemIcon}>{itemType.emoji || '📦'}</div>
-					<div className={styles.itemInfo}>
-						<div className={styles.itemHeader}>
-							<span className={styles.itemName}>{itemType.name}</span>
-						</div>
-						{itemType.description && (
-							<div className={styles.itemDescription}>{itemType.description}</div>
-						)}
-						<div className={styles.itemType}>{itemType.type}</div>
-					</div>
-				</div>
-				<div className={styles.buttons}>
-					{itemType.type === 'consumable' && (
-						<button 
-							className={styles.consumeButton}
-							onClick={() => handleConsumeItem(item.id)}
-							title="Consume item"
-						>
-							🍽️
-						</button>
-					)}
-					<button 
-						className={styles.dropButton}
-						onClick={() => handleDropItem(item.id)}
-						title="Drop item"
-					>
-						🗑️
-					</button>
-				</div>
-			</div>
-		)
-	}
-
 	return (
 		<div className={`${styles.inventoryContainer} ${isExiting ? styles.slideOut : ''}`}>
 			<div className={styles.inventoryContent}>
@@ -150,10 +159,16 @@ export function Inventory() {
 				</button>
 				<h2 className={styles.title}>Inventory</h2>
 				<div className={styles.grid}>
-					{inventory.items.length === 0 ? (
+					{items.length === 0 ? (
 						<p className={styles.emptyText}>Your inventory is empty</p>
 					) : (
-						inventory.items.map(item => renderItem(item))
+						items.map(item => 
+							<ItemRow 
+								key={item.id}
+								handleDropItem={handleDropItem}
+								handleConsumeItem={handleConsumeItem}
+								item={item}
+							/>)
 					)}
 				</div>
 			</div>

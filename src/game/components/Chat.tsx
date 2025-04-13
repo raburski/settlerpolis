@@ -3,11 +3,7 @@ import { EventBus } from '../EventBus'
 import styles from './Chat.module.css'
 import { Event } from "../../../backend/src/events"
 
-interface ChatProps {
-	scene: string
-}
-
-export const Chat: React.FC<ChatProps> = ({ scene }) => {
+export const Chat: React.FC<ChatProps> = () => {
 	const [isInputVisible, setIsInputVisible] = useState(false)
 	const inputRef = useRef<HTMLInputElement>(null)
 

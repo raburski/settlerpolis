@@ -33,11 +33,14 @@ export class DialogueManager {
 		// Generate a unique ID for the item
 		const itemId = uuidv4()
 
-		// Emit the event through the event manager to the server
-		client.emit(Receiver.All, Event.Inventory.SS.Add, {
+		// Create a proper Item object
+		const newItem = {
 			id: itemId,
 			itemType: item.itemType
-		})
+		}
+
+		// Emit the event through the event manager to the server
+		client.emit(Receiver.All, Event.Inventory.SS.Add, newItem)
 	}
 
 	private handleDialogueEvent(event: DialogueEvent, client: EventClient) {

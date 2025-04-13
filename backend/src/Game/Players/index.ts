@@ -154,10 +154,7 @@ export class PlayersManager {
 				itemType: removedItem.itemType
 			}
 
-			client.emit(Receiver.All, Event.Inventory.SS.Add, {
-				id: inventoryItem.id,
-				itemType: inventoryItem.itemType
-			})
+			this.inventoryManager.addItem(client, inventoryItem)
 		})
 	}
 } 

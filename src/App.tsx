@@ -13,11 +13,6 @@ function App()
 {
     //  References to the PhaserGame component (game and scene are exposed)
     const phaserRef = useRef<IRefPhaserGame | null>(null);
-    const [currentScene, setCurrentScene] = useState<Phaser.Scene | null>(null);
-
-    const handleSceneChange = (scene: any) => {
-        setCurrentScene(scene.scene.key);
-    };
 
     const addSprite = () => {
         if (phaserRef.current)
@@ -37,11 +32,10 @@ function App()
         }
     }
 
-
     return (
         <div id="app">
-            <PhaserGame ref={phaserRef} currentActiveScene={handleSceneChange} />
-            {currentScene && <Chat scene={currentScene} />}
+            <PhaserGame ref={phaserRef} />
+            <Chat />
             <DisconnectModal />
             <Inventory />
             <ChatLog />

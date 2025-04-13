@@ -39,7 +39,7 @@ export class InventoryManager {
 		if (!inventory) return
 		
 		inventory.items.push(item)
-		client.emit(Receiver.Sender, Event.Inventory.SC.Update, { inventory })
+		client.emit(Receiver.Sender, Event.Inventory.SC.Add, { item })
 	}
 
 	removeItem(client: EventClient, itemId: string): Item | undefined {
@@ -50,7 +50,7 @@ export class InventoryManager {
 		if (itemIndex === -1) return
 
 		const [removedItem] = inventory.items.splice(itemIndex, 1)
-		client.emit(Receiver.Sender, Event.Inventory.SC.Update, { inventory })
+		client.emit(Receiver.Sender, Event.Inventory.SC.Remove, { itemId })
 		return removedItem
 	}
 
@@ -91,16 +91,16 @@ export class InventoryManager {
 			// Remove item from inventory
 			const itemIndex = inventory.items.findIndex(item => item.id === data.itemId)
 			inventory.items.splice(itemIndex, 1)
-			client.emit(Receiver.Sender, Event.Inventory.SC.Update, { inventory })
+			client.emit(Receiver.Sender, Event.Inventory.SC.Remove, { itemId: data.itemId })
 		})
 
 		// Handle item add from dialogue or other server events
-		this.event.on(Event.Inventory.SS.Add, (data: Item, client) => {
+		this.event.on(Event.Inventory.SS.Add, (item: Item, client) => {
 			const inventory = this.inventories.get(client.id)
 			if (!inventory) return
 
-			inventory.items.push(data)
-			client.emit(Receiver.Sender, Event.Inventory.SC.Update, { inventory })
+			inventory.items.push(item)
+			client.emit(Receiver.Sender, Event.Inventory.SC.Add, { item })
 		})
 	}
 } 

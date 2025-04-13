@@ -103,12 +103,12 @@ export class LocalManager {
 		// Create two event managers with different client IDs
 		this.client = new LocalEventManager('client', (to, event, data, groupName) => {
 			// When client emits, forward to server
-			(this.server as LocalEventManager).handleIncomingMessage(to, event, data)
+			(this.server as LocalEventManager).handleIncomingMessage(to, event, data ? JSON.parse(JSON.stringify(data)) : undefined)
 		})
 
 		this.server = new LocalEventManager('server', (to, event, data, groupName) => {
 			// When server emits, forward to client
-			(this.client as LocalEventManager).handleIncomingMessage(to, event, data)
+			(this.client as LocalEventManager).handleIncomingMessage(to, event, data ? JSON.parse(JSON.stringify(data)) : undefined)
 		})
 	}
 } 
