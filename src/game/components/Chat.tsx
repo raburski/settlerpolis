@@ -29,16 +29,19 @@ export const Chat: React.FC<ChatProps> = ({ scene }) => {
 	}, [isInputVisible])
 
 	const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-		if (e.key === 'Enter' && inputRef.current?.value.trim()) {
+		if (e.key === 'Enter') {
 			e.preventDefault()
 			e.stopPropagation()
 			
-			const message = inputRef.current.value.trim()
+			if (inputRef.current?.value.trim()) {
+				const message = inputRef.current.value.trim()
+				
+				// Emit event to send message (will be handled by MultiplayerService and Player)
+				EventBus.emit(Event.Chat.CS.Send, { message })
+				
+				inputRef.current.value = ''
+			}
 			
-			// Emit event to send message (will be handled by MultiplayerService and Player)
-			EventBus.emit(Event.Chat.CS.Send, { message })
-			
-			inputRef.current.value = ''
 			setIsInputVisible(false)
 			EventBus.emit('ui:chat:toggle', false)
 		} else if (e.key === 'Escape') {
