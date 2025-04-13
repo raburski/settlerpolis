@@ -137,23 +137,19 @@ export abstract class GameScene extends MapScene {
 		}
 	}
 
-	private handleAddItems = (data: { items: DroppedItem[] }) => {
-		data.items.forEach(item => {
-			if (this.player) {
-				const loot = createLoot(this, item, this.player.view)
-				this.droppedItems.set(item.id, loot)
-			}
-		})
+	private handleAddItems = (data: { item: DroppedItem }) => {
+		if (this.player) {
+			const loot = createLoot(this, data.item, this.player.view)
+			this.droppedItems.set(data.item.id, loot)
+		}
 	}
 
-	private handleRemoveItems = (data: { itemIds: string[] }) => {
-		data.itemIds.forEach(itemId => {
-			const loot = this.droppedItems.get(itemId)
-			if (loot) {
-				loot.controller.destroy()
-				this.droppedItems.delete(itemId)
-			}
-		})
+	private handleRemoveItems = (data: { itemId: string }) => {
+		const loot = this.droppedItems.get(data.itemId)
+		if (loot) {
+			loot.controller.destroy()
+			this.droppedItems.delete(data.itemId)
+		}
 	}
 
 	private handleNPCList = (data: { npcs: NPC[] }) => {

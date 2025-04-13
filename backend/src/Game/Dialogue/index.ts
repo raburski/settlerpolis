@@ -4,6 +4,7 @@ import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData, D
 import { DialogueEvents } from './events'
 import { dialogues } from './dialogues'
 import { QuestManager } from "../Quest"
+import { v4 as uuidv4 } from 'uuid'
 
 export class DialogueManager {
 	private dialogues = new Map<string, DialogueTree>()
@@ -29,16 +30,14 @@ export class DialogueManager {
 	private handleDialogueItem(item: DialogueItem, client: EventClient) {
 		if (!item) return
 
-		// Infer event from item - for now, we assume items are always added to inventory
-		const event = {
-			type: Event.Inventory.SS.Add,
-			payload: {
-				itemType: item.itemType
-			}
-		}
+		// Generate a unique ID for the item
+		const itemId = uuidv4()
 
 		// Emit the event through the event manager to the server
-		client.emit(Receiver.All, event.type, event.payload)
+		client.emit(Receiver.All, Event.Inventory.SS.Add, {
+			id: itemId,
+			itemType: item.itemType
+		})
 	}
 
 	private handleDialogueEvent(event: DialogueEvent, client: EventClient) {

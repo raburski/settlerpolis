@@ -1,16 +1,7 @@
 import { Scene } from 'phaser'
 import { LootView } from './View'
 import { LootController } from './Controller'
-
-export type DroppedItem = {
-	id: string
-	name: string
-	position: {
-		x: number
-		y: number
-	}
-	textureKey?: string
-}
+import { DroppedItem } from "../../../../backend/src/Game/Loot/types"
 
 export type Loot = {
 	view: LootView

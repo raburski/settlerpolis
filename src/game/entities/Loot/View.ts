@@ -64,20 +64,12 @@ export class LootView extends GameObjects.Container {
 	}
 
 	private setupItemNameDisplay() {
-		// Initial update
-		this.updateItemName()
-
-		// Subscribe to item type updates
-		this.unsubscribe = itemService.onUpdate(() => {
-			this.updateItemName()
+		// Subscribe to item metadata changes
+		this.unsubscribe = itemService.subscribeToItemMetadata(this.itemType, (metadata) => {
+			if (metadata) {
+				this.nameText.setText(metadata.name)
+			}
 		})
-	}
-
-	private updateItemName() {
-		const item = itemService.getItemType(this.itemType)
-		if (item) {
-			this.nameText.setText(item.name)
-		}
 	}
 
 	private playSpawnAnimation() {

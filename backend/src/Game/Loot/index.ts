@@ -2,7 +2,7 @@ import { EventManager, Event, EventClient } from '../../events'
 import { PlayerJoinData, PlayerTransitionData, Position } from '../../types'
 import { Receiver } from '../../Receiver'
 import { Item } from "../Items/types"
-import { DroppedItem, Range, SpawnPosition, LootSpawnPayload } from "./types"
+import { DroppedItem, Range, SpawnPosition, LootSpawnPayload, LootSpawnEventPayload, LootDespawnEventPayload } from "./types"
 import { LootEvents } from './events'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -36,14 +36,20 @@ export class LootManager {
 		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
 			const sceneDroppedItems = this.droppedItems.get(data.scene) || []
 			if (sceneDroppedItems.length > 0) {
-				client.emit(Receiver.Sender, Event.Loot.SC.Spawn, { items: sceneDroppedItems })
+				// Send each item individually
+				sceneDroppedItems.forEach(item => {
+					client.emit(Receiver.Sender, Event.Loot.SC.Spawn, { item } as LootSpawnEventPayload)
+				})
 			}
 		})
 
 		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
 			const sceneDroppedItems = this.droppedItems.get(data.scene) || []
 			if (sceneDroppedItems.length > 0) {
-				client.emit(Receiver.Sender, Event.Loot.SC.Spawn, { items: sceneDroppedItems })
+				// Send each item individually
+				sceneDroppedItems.forEach(item => {
+					client.emit(Receiver.Sender, Event.Loot.SC.Spawn, { item } as LootSpawnEventPayload)
+				})
 			}
 		})
 
@@ -66,7 +72,7 @@ export class LootManager {
 			this.itemIdToScene.set(item.id, data.scene)
 
 			// Broadcast to all players in the scene that an item was spawned
-			this.event.emit(Receiver.Group, Event.Loot.SC.Spawn, { items: [droppedItem] }, data.scene)
+			this.event.emit(Receiver.Group, Event.Loot.SC.Spawn, { item: droppedItem } as LootSpawnEventPayload, data.scene)
 		})
 	}
 
@@ -83,7 +89,7 @@ export class LootManager {
 		this.itemIdToScene.set(item.id, scene)
 
 		// Broadcast to all players in the scene that an item was dropped
-		client.emit(Receiver.Group, Event.Loot.SC.Spawn, { items: [droppedItem] })
+		client.emit(Receiver.Group, Event.Loot.SC.Spawn, { item: droppedItem } as LootSpawnEventPayload)
 	}
 
 	pickItem(itemId: string, client: EventClient): DroppedItem | undefined {
@@ -98,7 +104,7 @@ export class LootManager {
 		this.itemIdToScene.delete(itemId)
 
 		// Broadcast to all players in the scene that an item was picked up
-		client.emit(Receiver.Group, Event.Loot.SC.Despawn, { itemIds: [itemId] })
+		client.emit(Receiver.Group, Event.Loot.SC.Despawn, { itemId } as LootDespawnEventPayload)
 
 		return removedItem
 	}
@@ -136,7 +142,10 @@ export class LootManager {
 			// Clean up the itemIdToScene map
 			expiredItemIds.forEach(id => this.itemIdToScene.delete(id))
 
-			this.event.emit(Receiver.Group, Event.Loot.SC.Despawn, { itemIds: expiredItemIds }, scene)
+			// Send individual despawn events for each expired item
+			expiredItemIds.forEach(itemId => {
+				this.event.emit(Receiver.Group, Event.Loot.SC.Despawn, { itemId } as LootDespawnEventPayload, scene)
+			})
 		}
 	}
 

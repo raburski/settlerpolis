@@ -20,4 +20,12 @@ export type LootSpawnPayload = {
 	itemType: string
 	position: SpawnPosition
 	scene: string
+}
+
+export type LootSpawnEventPayload = {
+	item: DroppedItem
+}
+
+export type LootDespawnEventPayload = {
+	itemId: string
 } 
