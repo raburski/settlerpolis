@@ -48,7 +48,7 @@ export function Quests() {
 
 	useEffect(() => {
 		const handleQuestList = (data: { quests: QuestProgress[] }) => {
-			setQuests(data.quests.map(q => q.quest))
+			setQuests(data.quests)
 		}
 
 		const handleQuestStart = (data: { quest: Quest, progress: QuestProgress }) => {
@@ -58,11 +58,11 @@ export function Quests() {
 			}))
 			setQuests(prev => {
 				const newQuests = [...prev]
-				const index = newQuests.findIndex(q => q.id === data.quest.id)
+				const index = newQuests.findIndex(q => q.questId === data.quest.id)
 				if (index !== -1) {
-					newQuests[index] = data.quest
+					newQuests[index] = data.progress
 				} else {
-					newQuests.push(data.quest)
+					newQuests.push(data.progress)
 				}
 				return newQuests
 			})
@@ -71,22 +71,22 @@ export function Quests() {
 		const handleQuestUpdate = (data: { questId: string, progress: QuestProgress }) => {
 			setQuests(prev => {
 				const newQuests = [...prev]
-				const index = newQuests.findIndex(q => q.id === data.questId)
+				const index = newQuests.findIndex(q => q.questId === data.questId)
 				if (index !== -1) {
-					newQuests[index] = data.progress.quest
+					newQuests[index] = data.progress
 				}
 				return newQuests
 			})
 		}
 
 		const handleQuestComplete = (data: { questId: string }) => {
-			setQuests(prev => prev.filter(q => q.id !== data.questId))
+			setQuests(prev => prev.filter(q => q.questId !== data.questId))
 		}
 
 		const handleStepComplete = (data: { questId: string, stepId: string }) => {
 			setQuests(prev => {
 				return prev.map(quest => {
-					if (quest.id === data.questId) {
+					if (quest.questId === data.questId) {
 						return {
 							...quest,
 							completedSteps: [...quest.completedSteps, data.stepId]
@@ -124,14 +124,14 @@ export function Quests() {
 		return null
 	}
 
-	const renderQuest = (quest: Quest) => {
-		const progress = quests.find(q => q.id === quest.id)
-		if (!progress) {
+	const renderQuest = (progress: QuestProgress) => {
+		const quest = questDetails[progress.questId]
+		if (!quest) {
 			return null
 		}
 
 		return (
-			<div key={quest.id} className={styles.questCard}>
+			<div key={progress.questId} className={styles.questCard}>
 				<div className={styles.questHeader}>
 					<h3 className={styles.questTitle}>{quest.title}</h3>
 					{progress.completed && (
