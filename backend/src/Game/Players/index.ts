@@ -144,6 +144,14 @@ export class PlayersManager {
 				return // Player is too far to pick up the item
 			}
 
+			// Check if player has an empty slot in their inventory
+			if (!this.inventoryManager.hasEmptySlot(client.id)) {
+				client.emit(Receiver.Sender, Event.Chat.SC.SystemMessage, { 
+					message: "Your inventory is full!" 
+				})
+				return
+			}
+
 			// Remove item from dropped items
 			const removedItem = this.lootManager.pickItem(data.itemId, client)
 			if (!removedItem) return

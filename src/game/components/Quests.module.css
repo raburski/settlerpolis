@@ -5,7 +5,7 @@
 	top: 0;
 	right: 0;
 	bottom: 0;
-	width: 400px;
+	width: 360px;
 	background: var(--color-background-medium);
 	backdrop-filter: blur(8px);
 	padding: var(--spacing-md);

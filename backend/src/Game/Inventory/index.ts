@@ -1,9 +1,11 @@
 import { EventManager, Event, EventClient } from '../../events'
-import { Inventory, InventoryData, DropItemData, PickUpItemData, ConsumeItemData, PlayerJoinData } from '../../types'
+import { Inventory, InventoryData, DropItemData, PickUpItemData, ConsumeItemData, MoveItemData, InventorySlot, Position, AddItemData } from './types'
+import { PlayerJoinData } from '../Players/types'
 import { Receiver } from '../../Receiver'
 import { v4 as uuidv4 } from 'uuid'
 import { Item, ItemCategory, ItemType } from "../Items/types"
 import { ItemsManager } from "../Items"
+import { INVENTORY_GRID_ROWS, INVENTORY_GRID_COLUMNS } from '../../consts'
 
 const DEFAULT_INVENTORY_ITEM_NAME = 'mozgotrzep'
 
@@ -14,9 +16,43 @@ function createItemWithRandomId(itemType: string): Item {
 	}
 }
 
+function createEmptySlot(row: number, column: number): InventorySlot {
+	return {
+		position: { row, column },
+		item: null
+	}
+}
+
+function createEmptyInventory(): Inventory {
+	return { slots: [] }
+}
+
+function getSlotAtPosition(inventory: Inventory, position: Position): InventorySlot {
+	// Find existing slot at position
+	let slot = inventory.slots.find(slot => 
+		slot.position.row === position.row && 
+		slot.position.column === position.column
+	)
+	
+	// If slot doesn't exist and position is within grid bounds, create it
+	if (!slot && 
+		position.row >= 0 && position.row < INVENTORY_GRID_ROWS && 
+		position.column >= 0 && position.column < INVENTORY_GRID_COLUMNS
+	) {
+		slot = createEmptySlot(position.row, position.column)
+		inventory.slots.push(slot)
+	}
+	
+	// If slot still doesn't exist (position out of bounds), create a dummy slot
+	if (!slot) {
+		slot = createEmptySlot(position.row, position.column)
+	}
+	
+	return slot
+}
+
 export class InventoryManager {
 	private inventories = new Map<string, Inventory>()
-
 
 	constructor(
 		private event: EventManager,
@@ -25,12 +61,29 @@ export class InventoryManager {
 		this.setupEventHandlers()
 	}
 
+	public hasEmptySlot(playerId: string): boolean {
+		const inventory = this.inventories.get(playerId)
+		if (!inventory) return false
+		
+		// Check each position in the grid for an empty slot
+		for (let row = 0; row < INVENTORY_GRID_ROWS; row++) {
+			for (let column = 0; column < INVENTORY_GRID_COLUMNS; column++) {
+				const slot = getSlotAtPosition(inventory, { row, column })
+				if (slot && slot.item === null) {
+					return true
+				}
+			}
+		}
+		
+		return false
+	}
+
 	public doesHave(itemType: string, quantity: number, playerId: string): boolean {
 		const inventory = this.inventories.get(playerId)
 		if (!inventory) return false
 
 		// Count how many items of this type the player has
-		const count = inventory.items.filter(item => item.itemType === itemType).length
+		const count = inventory.slots.filter(slot => slot.item?.itemType === itemType).length
 		return count >= quantity
 	}
 
@@ -38,29 +91,83 @@ export class InventoryManager {
 		const inventory = this.inventories.get(client.id)
 		if (!inventory) return
 		
-		inventory.items.push(item)
-		client.emit(Receiver.Sender, Event.Inventory.SC.Add, { item })
+		// Find first empty slot by checking each position in the grid
+		for (let row = 0; row < INVENTORY_GRID_ROWS; row++) {
+			for (let column = 0; column < INVENTORY_GRID_COLUMNS; column++) {
+				const slot = getSlotAtPosition(inventory, { row, column })
+				if (slot && slot.item === null) {
+					slot.item = item
+					const addItemData: AddItemData = {
+						item,
+						position: slot.position
+					}
+					client.emit(Receiver.Sender, Event.Inventory.SC.Add, addItemData)
+					return
+				}
+			}
+		}
 	}
 
 	removeItem(client: EventClient, itemId: string): Item | undefined {
 		const inventory = this.inventories.get(client.id)
-		if (!inventory) return
+		if (!inventory) return undefined
 
-		const itemIndex = inventory.items.findIndex(item => item.id === itemId)
-		if (itemIndex === -1) return
+		// Find the slot containing this item
+		const slot = inventory.slots.find(slot => slot.item?.id === itemId)
+		if (!slot) return undefined
 
-		const [removedItem] = inventory.items.splice(itemIndex, 1)
+		// Remove the item from the slot
+		const removedItem = slot.item
+		slot.item = null
+		
 		client.emit(Receiver.Sender, Event.Inventory.SC.Remove, { itemId })
-		return removedItem
+		return removedItem || undefined
+	}
+
+	moveItem(client: EventClient, itemId: string, sourcePosition: Position, targetPosition: Position): boolean {
+		const inventory = this.inventories.get(client.id)
+		if (!inventory) return false
+
+		// Get or create slots at source and target positions
+		const sourceSlot = getSlotAtPosition(inventory, sourcePosition)
+		const targetSlot = getSlotAtPosition(inventory, targetPosition)
+		
+		if (!sourceSlot || !targetSlot) return false
+		
+		// Check if the source slot contains the item
+		if (sourceSlot.item?.id !== itemId) return false
+		
+		// If the target slot is empty, move the item
+		if (targetSlot.item === null) {
+			targetSlot.item = sourceSlot.item
+			sourceSlot.item = null
+		} else {
+			// If the target slot has an item, swap them
+			const tempItem = sourceSlot.item
+			sourceSlot.item = targetSlot.item
+			targetSlot.item = tempItem
+		}
+		
+		client.emit(Receiver.Sender, Event.Inventory.SC.MoveItem, { 
+			itemId, 
+			sourcePosition, 
+			targetPosition 
+		})
+		
+		return true
 	}
 
 	private setupEventHandlers() {
 		// Handle client lifecycle
 		this.event.onJoined((client) => {
-			// Create initial inventory with default item
-			const initialInventory: Inventory = {
-				items: [createItemWithRandomId(DEFAULT_INVENTORY_ITEM_NAME)]
-			}
+			// Create initial inventory
+			const initialInventory = createEmptyInventory()
+			
+			// Add a default item to the first slot
+			const defaultItem = createItemWithRandomId(DEFAULT_INVENTORY_ITEM_NAME)
+			const firstSlot = getSlotAtPosition(initialInventory, { row: 0, column: 0 })
+			firstSlot.item = defaultItem
+			
 			this.inventories.set(client.id, initialInventory)
 		})
 
@@ -81,16 +188,16 @@ export class InventoryManager {
 			const inventory = this.inventories.get(client.id)
 			if (!inventory) return
 
-			const item = inventory.items.find(item => item.id === data.itemId)
-			if (!item) return
+			const slot = inventory.slots.find(slot => slot.item?.id === data.itemId)
+			if (!slot || !slot.item) return
 
 			// Check if item is consumable
-			const itemType = this.itemsManager.getItemMetadata(item.itemType)
+			const itemType = this.itemsManager.getItemMetadata(slot.item.itemType)
 			if (itemType?.category !== ItemCategory.Consumable) return
 
-			// Remove item from inventory
-			const itemIndex = inventory.items.findIndex(item => item.id === data.itemId)
-			inventory.items.splice(itemIndex, 1)
+			// Remove item from slot
+			slot.item = null
+			
 			client.emit(Receiver.Sender, Event.Inventory.SC.Remove, { itemId: data.itemId })
 		})
 
@@ -99,8 +206,26 @@ export class InventoryManager {
 			const inventory = this.inventories.get(client.id)
 			if (!inventory) return
 
-			inventory.items.push(item)
-			client.emit(Receiver.Sender, Event.Inventory.SC.Add, { item })
+			// Find first empty slot by checking each position in the grid
+			for (let row = 0; row < INVENTORY_GRID_ROWS; row++) {
+				for (let column = 0; column < INVENTORY_GRID_COLUMNS; column++) {
+					const slot = getSlotAtPosition(inventory, { row, column })
+					if (slot && slot.item === null) {
+						slot.item = item
+						const addItemData: AddItemData = {
+							item,
+							position: slot.position
+						}
+						client.emit(Receiver.Sender, Event.Inventory.SC.Add, addItemData)
+						return
+					}
+				}
+			}
+		})
+		
+		// Handle moving items between slots
+		this.event.on<MoveItemData>(Event.Inventory.CS.MoveItem, (data, client) => {
+			this.moveItem(client, data.itemId, data.sourcePosition, data.targetPosition)
 		})
 	}
 } 

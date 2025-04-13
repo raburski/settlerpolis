@@ -1,8 +1,18 @@
 import { Item, ItemType } from '../Items/types'
 import { PlayerSourcedData } from '../Players/types'
 
+export interface Position {
+	row: number
+	column: number
+}
+
+export interface InventorySlot {
+	position: Position
+	item: Item | null
+}
+
 export interface Inventory {
-	items: Item[]
+	slots: InventorySlot[]
 }
 
 export interface InventoryData extends PlayerSourcedData {
@@ -19,6 +29,17 @@ export interface PickUpItemData extends PlayerSourcedData {
 
 export interface ConsumeItemData extends PlayerSourcedData {
 	itemId: string
+}
+
+export interface MoveItemData extends PlayerSourcedData {
+	itemId: string
+	sourcePosition: Position
+	targetPosition: Position
+}
+
+export interface AddItemData {
+	item: Item
+	position: Position
 }
 
 export interface ItemMetadata {
