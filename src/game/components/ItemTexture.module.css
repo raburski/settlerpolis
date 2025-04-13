@@ -9,6 +9,7 @@
 	position: relative;
 	overflow: hidden;
 	flex-shrink: 0; /* Prevent flexbox from shrinking the element */
+	cursor: grab;
 }
 
 .textureImage {
@@ -35,6 +36,12 @@
 }
 
 .itemTexture[draggable="true"]:active {
+	cursor: grabbing;
+}
+
+/* Add a class for when the item is being dragged */
+.itemTexture.dragging {
+	opacity: 0.5;
 	cursor: grabbing;
 }
 

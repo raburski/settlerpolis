@@ -5,6 +5,7 @@ import { Inventory as InventoryType, Item, InventorySlot, Position, AddItemData 
 import { itemService } from '../services/ItemService'
 import { ItemTexture } from './ItemTexture'
 import { ItemTooltip } from './ItemTooltip'
+import { InventoryItem } from './InventoryItem'
 import styles from './Inventory.module.css'
 import { INVENTORY_GRID_ROWS, INVENTORY_GRID_COLUMNS } from '../../../backend/src/consts'
 
@@ -12,6 +13,7 @@ const ItemSlot = ({ slot, handleDropItem, handleConsumeItem, handleDragStart, ha
 	const item = slot.item
 	const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 })
 	const [showTooltip, setShowTooltip] = useState(false)
+	const [isDraggingOver, setIsDraggingOver] = useState(false)
 	const slotRef = useRef<HTMLDivElement>(null)
 
 	const updateTooltipPosition = useCallback(() => {
@@ -75,12 +77,36 @@ const ItemSlot = ({ slot, handleDropItem, handleConsumeItem, handleDragStart, ha
 		setShowTooltip(false)
 	}
 
+	const onDragOver = (e: React.DragEvent) => {
+		e.preventDefault()
+		e.dataTransfer.dropEffect = 'move'
+		setIsDraggingOver(true)
+		handleDragOver(e)
+	}
+
+	const handleDragLeave = () => {
+		setIsDraggingOver(false)
+	}
+
+	const onDrop = (e: React.DragEvent) => {
+		e.preventDefault()
+		e.stopPropagation()
+		setIsDraggingOver(false)
+		handleDrop(e)
+	}
+
+	const onItemDragStart = (e: React.DragEvent) => {
+		setShowTooltip(false)
+		handleDragStart(e, item.id, slot.position)
+	}
+
 	if (!item) {
 		return (
 			<div 
-				className={styles.emptySlot}
-				onDragOver={handleDragOver}
-				onDrop={handleDrop}
+				className={`${styles.emptySlot} ${isDraggingOver ? styles.draggingOver : ''}`}
+				onDragOver={onDragOver}
+				onDragLeave={handleDragLeave}
+				onDrop={onDrop}
 				data-row={slot.position.row}
 				data-column={slot.position.column}
 			/>
@@ -97,23 +123,24 @@ const ItemSlot = ({ slot, handleDropItem, handleConsumeItem, handleDragStart, ha
 			<div 
 				ref={slotRef}
 				key={item.id} 
-				className={styles.slot}
+				className={`${styles.slot} ${isDraggingOver ? styles.draggingOver : ''}`}
 				data-row={slot.position.row}
 				data-column={slot.position.column}
 				onMouseEnter={handleMouseEnter}
 				onMouseLeave={handleMouseLeave}
+				onDragOver={onDragOver}
+				onDragLeave={handleDragLeave}
+				onDrop={onDrop}
 			>
 				<div className={styles.itemContent}>
-					<div className={styles.itemIcon}>
-						<ItemTexture 
-							itemType={item.itemType} 
-							className={styles.itemTexture}
-							fallbackEmoji={itemType.emoji || '📦'}
-							draggable={true}
-							onDragStart={(e) => handleDragStart(e, item.id, slot.position)}
-							onDragEnd={handleDragEnd}
-						/>
-					</div>
+					<InventoryItem
+						itemType={item.itemType}
+						itemId={item.id}
+						position={slot.position}
+						fallbackEmoji={itemType.emoji || '📦'}
+						onDragStart={onItemDragStart}
+						onDragEnd={handleDragEnd}
+					/>
 				</div>
 			</div>
 			
@@ -135,6 +162,8 @@ export function Inventory() {
 	const [slots, setSlots] = useState<InventorySlot[]>([])
 	const [updateCounter, setUpdateCounter] = useState<number>(0)
 	const [draggedItem, setDraggedItem] = useState<{id: string, position: Position} | null>(null)
+	const [isDragging, setIsDragging] = useState(false)
+	const inventoryRef = useRef<HTMLDivElement>(null)
 
 	useEffect(() => {
 		const handleToggle = () => {
@@ -176,6 +205,13 @@ export function Inventory() {
 		// Handle drop events on the document
 		const handleDrop = (e: DragEvent) => {
 			e.preventDefault()
+			
+			// Check if this is an inventory operation
+			const inventoryData = e.dataTransfer?.getData('application/inventory')
+			if (inventoryData) {
+				// This is an inventory operation, ignore it
+				return
+			}
 			
 			// Get the item ID from the data transfer
 			const itemId = e.dataTransfer?.getData('text/plain')
@@ -328,6 +364,19 @@ export function Inventory() {
 		}
 	}, [])
 
+	useEffect(() => {
+		const handleDropOutside = (e: DragEvent) => {
+			if (draggedItem && inventoryRef.current && !inventoryRef.current.contains(e.target as Node)) {
+				handleDropItem(draggedItem.id)
+			}
+		}
+
+		document.addEventListener('drop', handleDropOutside)
+		return () => {
+			document.removeEventListener('drop', handleDropOutside)
+		}
+	}, [draggedItem])
+
 	const handleDropItem = (itemId: string) => {
 		// Send the drop request
 		EventBus.emit(Event.Players.CS.DropItem, { itemId })
@@ -339,14 +388,21 @@ export function Inventory() {
 	}
 	
 	const handleDragStart = (e: React.DragEvent, itemId: string, position: Position) => {
-		// Set the data being dragged
-		e.dataTransfer.setData('text/plain', itemId)
+		// Set the data being dragged with a special format for inventory operations
+		e.dataTransfer.setData('application/inventory', JSON.stringify({
+			itemId,
+			sourcePosition: position,
+			type: 'inventory'
+		}))
 		e.dataTransfer.effectAllowed = 'move'
+		
 		setDraggedItem({ id: itemId, position })
+		setIsDragging(true)
 	}
 
 	const handleDragEnd = () => {
 		setDraggedItem(null)
+		setIsDragging(false)
 	}
 	
 	const handleDragOver = (e: React.DragEvent) => {
@@ -356,6 +412,7 @@ export function Inventory() {
 	
 	const handleDrop = (e: React.DragEvent) => {
 		e.preventDefault()
+		e.stopPropagation()
 		
 		if (!draggedItem) return
 		
@@ -373,6 +430,12 @@ export function Inventory() {
 		}
 		
 		// Send move item request
+		console.log('Emitting MoveItem event:', {
+			itemId: draggedItem.id,
+			sourcePosition: draggedItem.position,
+			targetPosition
+		})
+		
 		EventBus.emit(Event.Inventory.CS.MoveItem, {
 			itemId: draggedItem.id,
 			sourcePosition: draggedItem.position,
@@ -419,6 +482,7 @@ export function Inventory() {
 				'--inventory-grid-columns': INVENTORY_GRID_COLUMNS,
 				'--inventory-grid-rows': INVENTORY_GRID_ROWS
 			} as React.CSSProperties}
+			ref={inventoryRef}
 		>
 			<div className={styles.inventoryContent}>
 				<button 

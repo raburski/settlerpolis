@@ -124,37 +124,53 @@ export class InventoryManager {
 		return removedItem || undefined
 	}
 
-	moveItem(client: EventClient, itemId: string, sourcePosition: Position, targetPosition: Position): boolean {
+	private moveItem(data: MoveItemData, client: EventClient) {
+		const { itemId, sourcePosition, targetPosition } = data
+		console.log('Processing MoveItem request:', { itemId, sourcePosition, targetPosition })
+		
 		const inventory = this.inventories.get(client.id)
-		if (!inventory) return false
-
+		if (!inventory) {
+			console.log('Inventory not found for client:', client.id)
+			return
+		}
+		
 		// Get or create slots at source and target positions
 		const sourceSlot = getSlotAtPosition(inventory, sourcePosition)
 		const targetSlot = getSlotAtPosition(inventory, targetPosition)
 		
-		if (!sourceSlot || !targetSlot) return false
+		if (!sourceSlot || !targetSlot) {
+			console.log('Failed to get or create slots')
+			return
+		}
 		
-		// Check if the source slot contains the item
-		if (sourceSlot.item?.id !== itemId) return false
-		
-		// If the target slot is empty, move the item
-		if (targetSlot.item === null) {
+		// If target slot is empty, simply move the item
+		if (!targetSlot.item) {
+			console.log('Moving item to empty slot')
 			targetSlot.item = sourceSlot.item
 			sourceSlot.item = null
 		} else {
-			// If the target slot has an item, swap them
-			const tempItem = sourceSlot.item
-			sourceSlot.item = targetSlot.item
-			targetSlot.item = tempItem
+			// If target slot has an item, swap them
+			console.log('Swapping items between slots')
+			const tempItem = targetSlot.item
+			targetSlot.item = sourceSlot.item
+			sourceSlot.item = tempItem
 		}
 		
-		client.emit(Receiver.Sender, Event.Inventory.SC.MoveItem, { 
-			itemId, 
-			sourcePosition, 
-			targetPosition 
+		// Emit the move item event back to the client
+		console.log('Emitting MoveItem response:', {
+			itemId,
+			sourcePosition,
+			targetPosition
 		})
 		
-		return true
+		client.emit(Receiver.Sender, Event.Inventory.SC.MoveItem, {
+			itemId,
+			sourcePosition,
+			targetPosition
+		})
+
+		// Emit the full inventory update
+		client.emit(Receiver.Sender, Event.Inventory.SC.Update, { inventory })
 	}
 
 	private setupEventHandlers() {
@@ -225,7 +241,8 @@ export class InventoryManager {
 		
 		// Handle moving items between slots
 		this.event.on<MoveItemData>(Event.Inventory.CS.MoveItem, (data, client) => {
-			this.moveItem(client, data.itemId, data.sourcePosition, data.targetPosition)
+			console.log('Received MoveItem event:', data)
+			this.moveItem(data, client)
 		})
 	}
 } 

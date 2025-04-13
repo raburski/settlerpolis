@@ -8,7 +8,7 @@ interface ItemTextureProps {
 	style?: React.CSSProperties
 	fallbackEmoji?: string
 	draggable?: boolean
-	onDragStart?: (e: React.DragEvent<HTMLDivElement>, itemType: string) => void
+	onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void
 	onDragEnd?: (e: React.DragEvent<HTMLDivElement>) => void
 }
 
@@ -27,7 +27,6 @@ export const ItemTexture: React.FC<ItemTextureProps> = ({
 }) => {
 	const [textureInfo, setTextureInfo] = useState<{ key: string, frame: number } | undefined>(undefined)
 	const [textureConfig, setTextureConfig] = useState<{ path: string, frameWidth: number, frameHeight: number, frameCount: number } | undefined>(undefined)
-	const [isLoading, setIsLoading] = useState<boolean>(true)
 	const [error, setError] = useState<boolean>(false)
 
 	useEffect(() => {
@@ -40,14 +39,20 @@ export const ItemTexture: React.FC<ItemTextureProps> = ({
 			const config = itemTextureService.getTextureConfig(itemType)
 			
 			if (config) {
-				setTextureConfig({
-					path: config.path,
-					frameWidth: config.frameWidth,
-					frameHeight: config.frameHeight,
-					frameCount: config.frameCount
-				})
-				// Set loading to false after a short delay to allow the image to load
-				setTimeout(() => setIsLoading(false), 100)
+				// Preload the image
+				const img = new Image()
+				img.src = config.path
+				img.onload = () => {
+					setTextureConfig({
+						path: config.path,
+						frameWidth: config.frameWidth,
+						frameHeight: config.frameHeight,
+						frameCount: config.frameCount
+					})
+				}
+				img.onerror = () => {
+					setError(true)
+				}
 			} else {
 				setError(true)
 			}
@@ -56,20 +61,6 @@ export const ItemTexture: React.FC<ItemTextureProps> = ({
 		}
 	}, [itemType])
 
-	// Handle drag start event
-	const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
-		if (draggable && onDragStart) {
-			onDragStart(e, itemType)
-		}
-	}
-
-	// Handle drag end event
-	const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
-		if (draggable && onDragEnd) {
-			onDragEnd(e)
-		}
-	}
-
 	// If we have an error or no texture info, show the fallback emoji
 	if (error || !textureInfo || !textureConfig) {
 		return (
@@ -77,8 +68,8 @@ export const ItemTexture: React.FC<ItemTextureProps> = ({
 				className={`${styles.itemTexture} ${styles.fallback} ${className}`} 
 				style={style}
 				draggable={draggable}
-				onDragStart={handleDragStart}
-				onDragEnd={handleDragEnd}
+				onDragStart={onDragStart}
+				onDragEnd={onDragEnd}
 			>
 				{fallbackEmoji}
 			</div>
@@ -110,29 +101,14 @@ export const ItemTexture: React.FC<ItemTextureProps> = ({
 		transform: 'scale(0.5)', // Scale down from 64x64 to 32x32
 	}
 
-	// If we're loading, show a loading indicator
-	if (isLoading) {
-		return (
-			<div 
-				className={`${styles.itemTexture} ${styles.loading} ${className}`} 
-				style={style}
-				draggable={draggable}
-				onDragStart={handleDragStart}
-				onDragEnd={handleDragEnd}
-			>
-				{fallbackEmoji}
-			</div>
-		)
-	}
-
 	// Show the sprite sheet with the correct frame
 	return (
 		<div 
 			className={`${styles.itemTexture} ${className}`} 
 			style={bgStyle}
 			draggable={draggable}
-			onDragStart={handleDragStart}
-			onDragEnd={handleDragEnd}
+			onDragStart={onDragStart}
+			onDragEnd={onDragEnd}
 		/>
 	)
 } 
