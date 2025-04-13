@@ -1,13 +1,17 @@
+@import './variables.module.css';
+
 .questsContainer {
 	position: fixed;
 	top: 0;
 	right: 0;
 	bottom: 0;
 	width: 400px;
-	background: rgba(0, 0, 0, 0.9);
-	padding: 20px;
-	color: white;
+	background: var(--color-background-medium);
+	padding: var(--spacing-xl);
+	color: var(--color-text-primary);
 	overflow-y: auto;
+	box-shadow: var(--shadow-md);
+	animation: fadeIn 0.2s ease-out;
 }
 
 .questsContent {
@@ -15,73 +19,86 @@
 }
 
 .title {
-	margin-bottom: 20px;
-	color: #ffd700;
+	composes: title from './variables.module.css';
+	margin-bottom: var(--spacing-xl);
+	text-align: center;
 }
 
 .closeIcon {
-	position: absolute;
-	top: 0;
-	right: 0;
-	background: none;
-	border: none;
-	color: white;
-	font-size: 24px;
-	cursor: pointer;
+	composes: closeIcon from './variables.module.css';
 }
 
 .questCard {
-	background: rgba(255, 255, 255, 0.1);
-	border-radius: 8px;
-	padding: 16px;
-	margin-bottom: 16px;
+	background: var(--color-background-light);
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius-md);
+	padding: var(--spacing-lg);
+	margin-bottom: var(--spacing-lg);
+	transition: var(--transition-fast);
+}
+
+.questCard:hover {
+	border-color: var(--color-border-hover);
+	transform: translateY(-1px);
+	box-shadow: var(--shadow-sm);
 }
 
 .questHeader {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	margin-bottom: 8px;
+	margin-bottom: var(--spacing-sm);
 }
 
 .questTitle {
 	margin: 0;
-	color: #ffd700;
+	color: var(--color-accent-primary);
+	font-size: var(--font-size-lg);
 }
 
 .questDescription {
-	margin-bottom: 16px;
-	color: #ccc;
+	margin-bottom: var(--spacing-lg);
+	color: var(--color-text-secondary);
+	line-height: 1.5;
 }
 
 .questContent {
 	display: flex;
 	flex-direction: column;
-	gap: 16px;
+	gap: var(--spacing-lg);
 }
 
 .steps {
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	gap: var(--spacing-sm);
 }
 
 .step {
 	display: flex;
 	align-items: center;
-	gap: 12px;
-	padding: 8px;
-	border-radius: 4px;
-	background: rgba(255, 255, 255, 0.05);
+	gap: var(--spacing-md);
+	padding: var(--spacing-sm);
+	border-radius: var(--border-radius-sm);
+	background: var(--color-background-medium);
+	border: 1px solid var(--color-border);
+	transition: var(--transition-fast);
+}
+
+.step:hover {
+	border-color: var(--color-border-hover);
+	transform: translateY(-1px);
+	box-shadow: var(--shadow-sm);
 }
 
 .step.completed {
 	background: rgba(0, 255, 0, 0.1);
+	border-color: rgba(0, 255, 0, 0.3);
 }
 
 .step.current {
-	background: rgba(255, 215, 0, 0.1);
-	border: 1px solid rgba(255, 215, 0, 0.3);
+	background: rgba(99, 179, 237, 0.1);
+	border: 1px solid rgba(99, 179, 237, 0.3);
 }
 
 .stepMarker {
@@ -91,17 +108,20 @@
 	align-items: center;
 	justify-content: center;
 	border-radius: 50%;
-	background: rgba(255, 255, 255, 0.1);
+	background: var(--color-background-light);
+	border: 1px solid var(--color-border);
 }
 
 .completed .stepMarker {
 	background: rgba(0, 255, 0, 0.2);
-	color: #90EE90;
+	color: var(--color-accent-green);
+	border-color: var(--color-accent-green);
 }
 
 .current .stepMarker {
-	background: rgba(255, 215, 0, 0.2);
-	color: #ffd700;
+	background: rgba(99, 179, 237, 0.2);
+	color: var(--color-accent-primary);
+	border-color: var(--color-accent-primary);
 }
 
 .stepLabel {
@@ -109,13 +129,15 @@
 }
 
 .rewards {
-	border-top: 1px solid rgba(255, 255, 255, 0.1);
-	padding-top: 16px;
+	border-top: 1px solid var(--color-border);
+	padding-top: var(--spacing-lg);
+	margin-top: var(--spacing-sm);
 }
 
 .rewards h4 {
-	color: #ffd700;
-	margin: 0 0 8px 0;
+	color: var(--color-accent-primary);
+	margin: 0 0 var(--spacing-sm) 0;
+	font-size: var(--font-size-md);
 }
 
 .rewards ul {
@@ -125,20 +147,28 @@
 }
 
 .rewards li {
-	color: #ccc;
-	margin-bottom: 4px;
+	color: var(--color-text-secondary);
+	margin-bottom: var(--spacing-xs);
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-sm);
 }
 
 .completedBadge {
 	background: rgba(0, 255, 0, 0.2);
-	color: #90EE90;
-	padding: 4px 8px;
-	border-radius: 4px;
-	font-size: 14px;
+	color: var(--color-accent-green);
+	padding: var(--spacing-xs) var(--spacing-sm);
+	border-radius: var(--border-radius-sm);
+	font-size: var(--font-size-sm);
+	border: 1px solid var(--color-accent-green);
 }
 
 .emptyText {
-	color: #666;
+	color: var(--color-text-muted);
 	text-align: center;
-	padding: 20px;
+	padding: var(--spacing-xl);
+	font-style: italic;
+	border: 1px dashed var(--color-border);
+	border-radius: var(--border-radius-sm);
+	background-color: var(--color-background-light);
 } 

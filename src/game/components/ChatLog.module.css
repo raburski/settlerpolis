@@ -1,54 +1,56 @@
+@import './variables.module.css';
+
 .container {
 	position: absolute;
-	bottom: 20px;
-	left: 20px;
+	bottom: var(--spacing-xl);
+	left: var(--spacing-xl);
 	width: 400px;
 	max-height: 200px;
 	overflow-y: auto;
-	background-color: rgba(0, 0, 0, 0.7);
-	border-radius: 8px;
-	padding: 10px;
-	color: white;
-	font-size: 14px;
+	background-color: var(--color-background-dark);
+	border-radius: var(--border-radius-md);
+	padding: var(--spacing-sm);
+	color: var(--color-text-primary);
+	font-size: var(--font-size-sm);
 }
 
 .message {
-	margin-bottom: 4px;
+	margin-bottom: var(--spacing-xs);
 	line-height: 1.4;
 }
 
 .timestamp {
-	color: #999;
-	margin-right: 8px;
-	font-size: 12px;
+	color: var(--color-text-muted);
+	margin-right: var(--spacing-sm);
+	font-size: var(--font-size-xs);
 }
 
 /* Message types */
 .local {
-	color: #fff;
+	color: var(--color-text-primary);
 }
 
 .system {
-	color: #ffd700;
+	color: var(--color-accent-primary);
 	font-style: italic;
 }
 
 .warning {
-	color: #ffa500;
+	color: var(--color-accent-orange);
 	font-weight: bold;
 }
 
 .error {
-	color: #ff4444;
+	color: var(--color-accent-red);
 	font-weight: bold;
 }
 
 .success {
-	color: #00ff00;
+	color: var(--color-accent-green);
 }
 
 .info {
-	color: #87ceeb;
+	color: var(--color-accent-light-blue);
 }
 
 /* Custom scrollbar styles */
