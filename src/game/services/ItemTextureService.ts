@@ -40,6 +40,13 @@ export const ITEM_TEXTURES: ItemTextureConfig[] = [
 		frameWidth: 64,
 		frameHeight: 64,
 		frameCount: 16 // Assuming there are 16 frames in total (4 rows x 4 columns)
+	},
+    {
+		key: 'item-chapter1',
+		path: 'assets/items/chapter_1.png',
+		frameWidth: 64,
+		frameHeight: 64,
+		frameCount: 9 // Assuming there are 16 frames in total (4 rows x 4 columns)
 	}
 	// Add more item textures here as needed
 ]
@@ -52,9 +59,9 @@ export const ITEM_TEXTURE_MAPPINGS: ItemTextureMapping[] = [
 		position: { row: 0, col: 0 } // First line, third row (0-based index)
 	},
 	{
-		itemType: 'alco',
-		textureKey: 'item-alco',
-		position: { row: 0, col: 0 } // First position
+		itemType: 'chainfolk_rug',
+		textureKey: 'item-chapter1',
+		position: { row: 0, col: 2 } // First position
 	}
 	// Add more mappings here as needed
 ]
