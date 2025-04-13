@@ -1,5 +1,6 @@
 import { Scene, GameObjects } from 'phaser'
 import { itemService } from '../../services/ItemService'
+import { itemTextureService } from '../../services/ItemTextureService'
 
 export class LootView extends GameObjects.Container {
 	private sprite: GameObjects.Sprite
@@ -11,16 +12,27 @@ export class LootView extends GameObjects.Container {
 		scene: Scene, 
 		x: number, 
 		y: number, 
-		itemType: string,
-		textureKey: string = 'mozgotrzep'
+		itemType: string
 	) {
 		super(scene, x, y)
 		scene.add.existing(this)
 
 		this.itemType = itemType
 
-		// Create the sprite
-		this.sprite = scene.add.sprite(0, 0, textureKey)
+		// Get the texture for this item type
+		const textureInfo = itemTextureService.getItemTexture(itemType)
+		
+		// Create the sprite with the appropriate texture
+		if (textureInfo) {
+			this.sprite = scene.add.sprite(0, 0, textureInfo.key, textureInfo.frame)
+			// Scale down the sprite to fit the game world better
+			this.sprite.setScale(0.5)
+		} else {
+			// Fallback to a default texture if the item type doesn't have a texture
+			this.sprite = scene.add.sprite(0, 0, 'mozgotrzep')
+			this.sprite.setScale(0.5)
+		}
+		
 		this.sprite.setScale(0)
 		this.sprite.setAlpha(0)
 		
@@ -106,7 +118,6 @@ export class LootView extends GameObjects.Container {
 	}
 
 	public static preload(scene: Scene) {
-		// Load loot textures if needed
-		// scene.load.image('mozgotrzep', 'assets/items/mozgotrzep.png')
+		// No need to preload textures here as they are preloaded by ItemTextureService
 	}
 } 

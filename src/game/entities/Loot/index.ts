@@ -17,8 +17,7 @@ export function createLoot(
 		scene,
 		item.position.x,
 		item.position.y,
-		item.itemType,
-		item.textureKey
+		item.itemType
 	)
 
 	const controller = new LootController(

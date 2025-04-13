@@ -83,14 +83,29 @@
 
 .itemIcon {
 	font-size: 1.5rem;
-	width: 2.5rem;
-	height: 2.5rem;
+	width: 48px;
+	height: 48px;
+	min-width: 48px;
+	min-height: 48px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background-color: var(--color-background-medium);
-	border: 1px solid var(--color-border);
+	background-color: var(--color-background-lighter);
+	border: 1px solid var(--color-background-medium);
 	border-radius: var(--border-radius-sm);
+	overflow: hidden;
+	flex-shrink: 0;
+}
+
+.itemTexture {
+	width: 64px;
+	height: 64px;
+	min-width: 64px;
+	min-height: 64px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
 }
 
 .itemInfo {
@@ -107,18 +122,17 @@
 }
 
 .itemName {
-	font-weight: 500;
-	color: var(--color-accent-primary);
+	font-weight: 600;
 }
 
 .itemDescription {
-	font-size: var(--font-size-sm);
+	font-size: 0.875rem;
 	color: var(--color-text-secondary);
 }
 
 .itemType {
-	font-size: var(--font-size-xs);
-	color: var(--color-text-muted);
+	font-size: 0.75rem;
+	color: var(--color-text-tertiary);
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
 }
@@ -126,46 +140,39 @@
 .buttons {
 	display: flex;
 	gap: 0.5rem;
-	margin-left: 0.75rem;
 }
 
 .consumeButton,
 .dropButton {
 	background: none;
-	border: 1px solid var(--color-border);
+	border: none;
 	cursor: pointer;
-	padding: 0.25rem;
+	padding: 0.5rem;
 	border-radius: var(--border-radius-sm);
 	transition: var(--transition-fast);
-	color: var(--color-text-primary);
-	font-size: var(--font-size-md);
+	font-size: 1.25rem;
 }
 
 .consumeButton:hover,
 .dropButton:hover {
-	background-color: var(--color-background-hover);
-	transform: translateY(-1px);
-	box-shadow: var(--shadow-sm);
+	background-color: var(--color-background-medium);
+	transform: scale(1.1);
 }
 
 @keyframes slideIn {
 	from {
 		transform: translateX(100%);
-		opacity: 0;
 	}
 	to {
 		transform: translateX(0);
-		opacity: 1;
 	}
 }
 
 @keyframes slideOut {
 	from {
 		transform: translateX(0);
-		opacity: 1;
 	}
 	to {
 		transform: translateX(100%);
-		opacity: 0;
 	}
 } 

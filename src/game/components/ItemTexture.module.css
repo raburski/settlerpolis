@@ -1,0 +1,42 @@
+.itemTexture {
+	width: 32px;
+	height: 32px;
+	min-width: 32px;
+	min-height: 32px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+	overflow: hidden;
+	flex-shrink: 0; /* Prevent flexbox from shrinking the element */
+}
+
+.textureImage {
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+}
+
+.fallback {
+	background-color: rgba(0, 0, 0, 0.1);
+	border-radius: 4px;
+	font-size: 16px;
+}
+
+.loading {
+	background-color: rgba(0, 0, 0, 0.05);
+	border-radius: 4px;
+	animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+	0% {
+		opacity: 0.6;
+	}
+	50% {
+		opacity: 1;
+	}
+	100% {
+		opacity: 0.6;
+	}
+} 

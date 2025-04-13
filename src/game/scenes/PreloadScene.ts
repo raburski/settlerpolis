@@ -8,6 +8,7 @@ import networkManager from "../network"
 import { playerService } from "../services/PlayerService"
 import { NPCView } from "../entities/NPC/View"
 import { PlayerView3 } from "../entities/Player/View3"
+import { itemTextureService } from '../services/ItemTextureService'
 
 export class PreloadScene extends Scene {
 	private fontsLoaded: boolean = false
@@ -35,6 +36,9 @@ export class PreloadScene extends Scene {
 		PlayerView2.preload(this)
 		PlayerView3.preload(this)
 		NPCView.preload(this)
+		
+		// Preload item assets
+		itemTextureService.preload(this)
 	}
 
 	create() {

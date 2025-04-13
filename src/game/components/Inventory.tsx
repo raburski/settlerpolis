@@ -3,6 +3,7 @@ import { EventBus } from '../EventBus'
 import { Event } from '../../../backend/src/events'
 import { Inventory as InventoryType, Item } from '../../../backend/src/DataTypes'
 import { itemService } from '../services/ItemService'
+import { ItemTexture } from './ItemTexture'
 import styles from './Inventory.module.css'
 
 const ItemRow = ({ item, handleDropItem, handleConsumeItem }) => {
@@ -14,7 +15,13 @@ const ItemRow = ({ item, handleDropItem, handleConsumeItem }) => {
 	return (
 		<div key={item.id} className={styles.slot}>
 			<div className={styles.itemContent}>
-				<div className={styles.itemIcon}>{itemType.emoji || '📦'}</div>
+				<div className={styles.itemIcon}>
+					<ItemTexture 
+						itemType={item.itemType} 
+						className={styles.itemTexture}
+						fallbackEmoji={itemType.emoji || '📦'}
+					/>
+				</div>
 				<div className={styles.itemInfo}>
 					<div className={styles.itemHeader}>
 						<span className={styles.itemName}>{itemType.name}</span>
