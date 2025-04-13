@@ -5,6 +5,7 @@
 	top: var(--spacing-lg);
 	right: var(--spacing-lg);
 	display: flex;
+	flex-direction: column;
 	gap: var(--spacing-sm);
 	z-index: var(--z-index-modal);
 }

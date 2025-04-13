@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { EventBus } from '../EventBus'
 import { Event } from '../../../backend/src/events'
-import styles from './TopPanel.module.css'
+import styles from './SidePanel.module.css'
 
-export function TopPanel() {
+export function SidePanel() {
 	const [inventoryPulse, setInventoryPulse] = useState(false)
 	const [questsPulse, setQuestsPulse] = useState(false)
 

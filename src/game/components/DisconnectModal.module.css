@@ -14,27 +14,30 @@
 }
 
 .modal {
-	background-color: white;
+	background-color: var(--color-background-medium);
+	backdrop-filter: blur(8px);
 	padding: 2rem;
 	border-radius: var(--border-radius-md);
 	text-align: center;
 	max-width: 400px;
 	width: 90%;
+	border: 1px solid var(--color-border);
+	box-shadow: var(--shadow-md);
 }
 
 .modal h2 {
 	margin: 0 0 1rem;
-	color: #333;
+	color: var(--color-text-primary);
 	font-size: var(--font-size-xxl);
 }
 
 .modal p {
 	margin: 0 0 1.5rem;
-	color: #666;
+	color: var(--color-text-secondary);
 }
 
 .modal button {
-	background-color: var(--color-accent-blue);
+	background-color: var(--color-accent-primary);
 	color: white;
 	border: none;
 	padding: 0.75rem 1.5rem;
@@ -45,5 +48,7 @@
 }
 
 .modal button:hover {
-	background-color: #357abd;
+	background-color: var(--color-accent-secondary);
+	transform: translateY(-1px);
+	box-shadow: var(--shadow-sm);
 } 

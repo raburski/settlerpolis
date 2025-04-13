@@ -7,20 +7,44 @@ import styles from './Inventory.module.css'
 
 export function Inventory() {
 	const [isVisible, setIsVisible] = useState(false)
+	const [isExiting, setIsExiting] = useState(false)
 	const [inventory, setInventory] = useState<InventoryType>({ items: [] })
 	const [, setUpdateCounter] = useState(0)
 
 	useEffect(() => {
 		const handleToggle = () => {
-			setIsVisible(prev => !prev)
+			if (isVisible) {
+				// Start exit animation
+				setIsExiting(true)
+				// Wait for animation to complete before hiding
+				setTimeout(() => {
+					setIsVisible(false)
+					setIsExiting(false)
+				}, 300) // Match animation duration
+			} else {
+				setIsVisible(true)
+			}
+		}
+
+		const handleQuestsToggle = () => {
+			// Close inventory when quests are opened
+			if (isVisible) {
+				setIsExiting(true)
+				setTimeout(() => {
+					setIsVisible(false)
+					setIsExiting(false)
+				}, 300)
+			}
 		}
 
 		EventBus.on('ui:inventory:toggle', handleToggle)
+		EventBus.on('ui:quests:toggle', handleQuestsToggle)
 
 		return () => {
 			EventBus.off('ui:inventory:toggle', handleToggle)
+			EventBus.off('ui:quests:toggle', handleQuestsToggle)
 		}
-	}, [])
+	}, [isVisible])
 
 	useEffect(() => {
 		const handleInventoryLoaded = (data: { inventory: InventoryType }) => {
@@ -60,7 +84,15 @@ export function Inventory() {
 		EventBus.emit(Event.Inventory.CS.Consume, { itemId })
 	}
 
-	if (!isVisible) {
+	const handleClose = () => {
+		setIsExiting(true)
+		setTimeout(() => {
+			setIsVisible(false)
+			setIsExiting(false)
+		}, 300)
+	}
+
+	if (!isVisible && !isExiting) {
 		return null
 	}
 
@@ -107,11 +139,11 @@ export function Inventory() {
 	}
 
 	return (
-		<div className={styles.inventoryContainer}>
+		<div className={`${styles.inventoryContainer} ${isExiting ? styles.slideOut : ''}`}>
 			<div className={styles.inventoryContent}>
 				<button 
 					className={styles.closeIcon}
-					onClick={() => setIsVisible(false)}
+					onClick={handleClose}
 					aria-label="Close inventory"
 				>
 					×

@@ -6,24 +6,49 @@ import styles from './Quests.module.css'
 
 export function Quests() {
 	const [isVisible, setIsVisible] = useState(false)
-	const [quests, setQuests] = useState<QuestProgress[]>([])
+	const [isExiting, setIsExiting] = useState(false)
+	const [quests, setQuests] = useState<Quest[]>([])
+	const [activeQuest, setActiveQuest] = useState<Quest | null>(null)
 	const [questDetails, setQuestDetails] = useState<Record<string, Quest>>({})
 
 	useEffect(() => {
 		const handleToggle = () => {
-			setIsVisible(prev => !prev)
+			if (isVisible) {
+				// Start exit animation
+				setIsExiting(true)
+				// Wait for animation to complete before hiding
+				setTimeout(() => {
+					setIsVisible(false)
+					setIsExiting(false)
+				}, 300) // Match animation duration
+			} else {
+				setIsVisible(true)
+			}
+		}
+
+		const handleInventoryToggle = () => {
+			// Close quests when inventory is opened
+			if (isVisible) {
+				setIsExiting(true)
+				setTimeout(() => {
+					setIsVisible(false)
+					setIsExiting(false)
+				}, 300)
+			}
 		}
 
 		EventBus.on('ui:quests:toggle', handleToggle)
+		EventBus.on('ui:inventory:toggle', handleInventoryToggle)
 
 		return () => {
 			EventBus.off('ui:quests:toggle', handleToggle)
+			EventBus.off('ui:inventory:toggle', handleInventoryToggle)
 		}
 	}, [isVisible])
 
 	useEffect(() => {
 		const handleQuestList = (data: { quests: QuestProgress[] }) => {
-			setQuests(data.quests)
+			setQuests(data.quests.map(q => q.quest))
 		}
 
 		const handleQuestStart = (data: { quest: Quest, progress: QuestProgress }) => {
@@ -33,11 +58,11 @@ export function Quests() {
 			}))
 			setQuests(prev => {
 				const newQuests = [...prev]
-				const index = newQuests.findIndex(q => q.questId === data.quest.id)
+				const index = newQuests.findIndex(q => q.id === data.quest.id)
 				if (index !== -1) {
-					newQuests[index] = data.progress
+					newQuests[index] = data.quest
 				} else {
-					newQuests.push(data.progress)
+					newQuests.push(data.quest)
 				}
 				return newQuests
 			})
@@ -46,22 +71,22 @@ export function Quests() {
 		const handleQuestUpdate = (data: { questId: string, progress: QuestProgress }) => {
 			setQuests(prev => {
 				const newQuests = [...prev]
-				const index = newQuests.findIndex(q => q.questId === data.questId)
+				const index = newQuests.findIndex(q => q.id === data.questId)
 				if (index !== -1) {
-					newQuests[index] = data.progress
+					newQuests[index] = data.progress.quest
 				}
 				return newQuests
 			})
 		}
 
 		const handleQuestComplete = (data: { questId: string }) => {
-			setQuests(prev => prev.filter(q => q.questId !== data.questId))
+			setQuests(prev => prev.filter(q => q.id !== data.questId))
 		}
 
 		const handleStepComplete = (data: { questId: string, stepId: string }) => {
 			setQuests(prev => {
 				return prev.map(quest => {
-					if (quest.questId === data.questId) {
+					if (quest.id === data.questId) {
 						return {
 							...quest,
 							completedSteps: [...quest.completedSteps, data.stepId]
@@ -87,18 +112,26 @@ export function Quests() {
 		}
 	}, [])
 
-	if (!isVisible) {
+	const handleClose = () => {
+		setIsExiting(true)
+		setTimeout(() => {
+			setIsVisible(false)
+			setIsExiting(false)
+		}, 300)
+	}
+
+	if (!isVisible && !isExiting) {
 		return null
 	}
 
-	const renderQuest = (progress: QuestProgress) => {
-		const quest = questDetails[progress.questId]
-		if (!quest) {
+	const renderQuest = (quest: Quest) => {
+		const progress = quests.find(q => q.id === quest.id)
+		if (!progress) {
 			return null
 		}
 
 		return (
-			<div key={progress.questId} className={styles.questCard}>
+			<div key={quest.id} className={styles.questCard}>
 				<div className={styles.questHeader}>
 					<h3 className={styles.questTitle}>{quest.title}</h3>
 					{progress.completed && (
@@ -151,11 +184,11 @@ export function Quests() {
 	}
 
 	return (
-		<div className={styles.questsContainer}>
+		<div className={`${styles.questsContainer} ${isExiting ? styles.slideOut : ''}`}>
 			<div className={styles.questsContent}>
 				<button 
 					className={styles.closeIcon}
-					onClick={() => setIsVisible(false)}
+					onClick={handleClose}
 					aria-label="Close quests"
 				>
 					×

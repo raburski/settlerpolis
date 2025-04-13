@@ -7,7 +7,7 @@ import { ChatLog } from './game/components/ChatLog';
 import { DialogUI } from './game/components/DialogUI';
 import { EventBus } from './game/EventBus';
 import { Quests } from "./game/components/Quests";
-import { TopPanel } from "./game/components/TopPanel";
+import { SidePanel } from "./game/components/SidePanel";
 
 function App()
 {
@@ -48,7 +48,7 @@ function App()
             <Chat />
             <DialogUI />
             <Quests />
-            <TopPanel />
+            <SidePanel />
         </div>
     )
 }

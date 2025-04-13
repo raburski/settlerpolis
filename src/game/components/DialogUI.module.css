@@ -16,6 +16,7 @@
 	border: 2px solid var(--color-border);
 	border-radius: var(--border-radius-lg);
 	background-color: var(--color-background-medium);
+	backdrop-filter: blur(8px);
 	box-shadow: var(--shadow-md);
 	position: relative;
 }

@@ -7,11 +7,19 @@
 	bottom: 0;
 	width: 400px;
 	background: var(--color-background-medium);
-	padding: var(--spacing-xl);
+	backdrop-filter: blur(8px);
+	padding: var(--spacing-md);
+	padding-left: var(--spacing-xl);
+	padding-right: calc(var(--spacing-xl) + 60px);
 	color: var(--color-text-primary);
 	overflow-y: auto;
 	box-shadow: var(--shadow-md);
-	animation: fadeIn 0.2s ease-out;
+	animation: slideIn 0.3s ease-out;
+	z-index: var(--z-index-modal);
+}
+
+.questsContainer.slideOut {
+	animation: slideOut 0.3s ease-out forwards;
 }
 
 .questsContent {
@@ -20,12 +28,17 @@
 
 .title {
 	composes: title from './variables.module.css';
+	margin-top: var(--spacing-md);
 	margin-bottom: var(--spacing-xl);
 	text-align: center;
 }
 
 .closeIcon {
 	composes: closeIcon from './variables.module.css';
+	position: absolute;
+	top: var(--spacing-xs);
+	left: var(--spacing-md);
+	margin-top: -16px;
 }
 
 .questCard {
@@ -171,4 +184,26 @@
 	border: 1px dashed var(--color-border);
 	border-radius: var(--border-radius-sm);
 	background-color: var(--color-background-light);
+}
+
+@keyframes slideIn {
+	from {
+		transform: translateX(100%);
+		opacity: 0;
+	}
+	to {
+		transform: translateX(0);
+		opacity: 1;
+	}
+}
+
+@keyframes slideOut {
+	from {
+		transform: translateX(0);
+		opacity: 1;
+	}
+	to {
+		transform: translateX(100%);
+		opacity: 0;
+	}
 } 
