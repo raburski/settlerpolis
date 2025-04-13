@@ -3,8 +3,10 @@ import WebFont from 'webfontloader'
 import { EventBus } from '../EventBus'
 import { Event } from '../../../backend/src/events'
 import { PlayerView } from '../entities/Player/View'
+import { PlayerView2 } from '../entities/Player/View2'
 import networkManager from "../network"
 import { playerService } from "../services/PlayerService"
+import { NPCView } from "../entities/NPC/View"
 
 export class PreloadScene extends Scene {
 	private fontsLoaded: boolean = false
@@ -27,6 +29,11 @@ export class PreloadScene extends Scene {
 			}
 		)
 		loadingText.setOrigin(0.5)
+		
+		// Preload player assets
+		PlayerView.preload(this)
+		PlayerView2.preload(this)
+		NPCView.preload(this)
 	}
 
 	create() {

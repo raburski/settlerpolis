@@ -1,8 +1,12 @@
 import { Scene, Physics } from 'phaser'
 import { Direction, PlayerState, PlayerView } from './View'
+import { PlayerView2 } from './View2'
 import { Keyboard } from '../../modules/Keyboard'
 import { Event } from "../../../../backend/src/events"
 import { EventBus } from "../../EventBus"
+
+// Define a union type for both view classes
+type PlayerViewType = PlayerView | PlayerView2
 
 export class PlayerController {
 	private keyboard: Keyboard
@@ -12,7 +16,7 @@ export class PlayerController {
 	protected readonly POSITION_UPDATE_THROTTLE = 100 // 100ms
 
 	constructor(
-		private view: PlayerView,
+		private view: PlayerViewType,
 		private scene: Scene,
 		public playerId: string,
 	) {
