@@ -1,6 +1,5 @@
 import { Scene, GameObjects, Input, Physics } from 'phaser'
 import { EventBus } from '../../EventBus'
-import { PlayerView } from '../../entities/Player/View'
 import { Event } from '../../../../backend/src/events'
 import { PICKUP_RANGE } from '../../../../backend/src/consts'
 import { AssetManager, TilesetInfo } from '../../modules/Assets'
@@ -23,8 +22,6 @@ export abstract class MapScene extends Scene {
 	}
 
 	preload() {
-		// Load player assets
-		PlayerView.preload(this)
 		
 		// Load item placeholder
 		this.load.image('mozgotrzep', 'assets/items/mozgotrzep.png')

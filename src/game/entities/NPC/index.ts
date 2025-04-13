@@ -1,5 +1,4 @@
 import { Scene } from 'phaser'
-import { PlayerView } from '../Player/View'
 import { NPCView } from "./View"
 import { NPCController } from './Controller'
 

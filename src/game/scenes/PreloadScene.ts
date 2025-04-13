@@ -7,6 +7,7 @@ import { PlayerView2 } from '../entities/Player/View2'
 import networkManager from "../network"
 import { playerService } from "../services/PlayerService"
 import { NPCView } from "../entities/NPC/View"
+import { PlayerView3 } from "../entities/Player/View3"
 
 export class PreloadScene extends Scene {
 	private fontsLoaded: boolean = false
@@ -31,8 +32,8 @@ export class PreloadScene extends Scene {
 		loadingText.setOrigin(0.5)
 		
 		// Preload player assets
-		PlayerView.preload(this)
 		PlayerView2.preload(this)
+		PlayerView3.preload(this)
 		NPCView.preload(this)
 	}
 

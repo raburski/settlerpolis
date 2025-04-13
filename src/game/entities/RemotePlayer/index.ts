@@ -1,5 +1,5 @@
 import { Scene } from 'phaser'
-import { PlayerView } from '../Player/View'
+import { PlayerView2 } from '../Player/View2'
 import { RemotePlayerController } from './Controller'
 
 export type RemotePlayer = {
@@ -8,7 +8,7 @@ export type RemotePlayer = {
 }
 
 export const createRemotePlayer = (scene: Scene, x: number, y: number, playerId: string): RemotePlayer => {
-	const view = new PlayerView(scene, x, y)
+	const view = new PlayerView2(scene, x, y)
 	const controller = new RemotePlayerController(view, scene, playerId)
 	return { view, controller }
 } 

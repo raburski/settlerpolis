@@ -1,7 +1,7 @@
 import { EventBus } from "../../EventBus";
 import { MapScene } from "./MapScene";
 import { Event } from '../../../../backend/src/events'
-import { createPlayer, createPlayerWithNewSprite } from '../../entities/Player'
+import { createPlayer } from '../../entities/Player'
 import { PlayerView } from '../../entities/Player/View'
 import { PlayerView2 } from '../../entities/Player/View2'
 import { PlayerController } from '../../entities/Player/Controller'
@@ -42,7 +42,7 @@ export abstract class GameScene extends MapScene {
 		const playerY = sceneData?.y || 300
 		const isTransition = sceneData?.isTransition || false
 		
-		this.player = createPlayerWithNewSprite(this, playerService.playerId)
+		this.player = createPlayer(this, playerService.playerId)
 		// Position the player
 		this.player.view.updatePosition(playerX, playerY)
 

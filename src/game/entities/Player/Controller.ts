@@ -1,5 +1,5 @@
 import { Scene, Physics } from 'phaser'
-import { Direction, PlayerState, PlayerView } from './View'
+import { Direction, PlayerState, PlayerView } from './View2'
 import { PlayerView2 } from './View2'
 import { Keyboard } from '../../modules/Keyboard'
 import { Event } from "../../../../backend/src/events"

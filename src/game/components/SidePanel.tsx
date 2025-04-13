@@ -28,6 +28,8 @@ export function SidePanel() {
 
 		// Inventory updates
 		EventBus.on(Event.Inventory.SC.Update, triggerInventoryPulse)
+		EventBus.on(Event.Inventory.SC.Add, triggerInventoryPulse)
+		EventBus.on(Event.Inventory.SC.Remove, triggerInventoryPulse)
 
 		// Quest updates
 		EventBus.on(Event.Quest.SC.Update, triggerQuestsPulse)
