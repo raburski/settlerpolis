@@ -29,6 +29,15 @@
 	animation: pulse 1.5s infinite;
 }
 
+/* Styles for draggable items */
+.itemTexture[draggable="true"] {
+	cursor: grab;
+}
+
+.itemTexture[draggable="true"]:active {
+	cursor: grabbing;
+}
+
 @keyframes pulse {
 	0% {
 		opacity: 0.6;

@@ -12,6 +12,16 @@ const ItemRow = ({ item, handleDropItem, handleConsumeItem }) => {
 		return null
 	}
 
+	const handleDragStart = (e, itemType) => {
+		// Set the data being dragged
+		e.dataTransfer.setData('text/plain', item.id)
+		e.dataTransfer.effectAllowed = 'move'
+	}
+
+	const handleDragEnd = (e) => {
+		// Clean up after drag ends
+	}
+
 	return (
 		<div key={item.id} className={styles.slot}>
 			<div className={styles.itemContent}>
@@ -20,6 +30,9 @@ const ItemRow = ({ item, handleDropItem, handleConsumeItem }) => {
 						itemType={item.itemType} 
 						className={styles.itemTexture}
 						fallbackEmoji={itemType.emoji || '📦'}
+						draggable={true}
+						onDragStart={handleDragStart}
+						onDragEnd={handleDragEnd}
 					/>
 				</div>
 				<div className={styles.itemInfo}>
@@ -94,6 +107,59 @@ export function Inventory() {
 			EventBus.off('ui:quests:toggle', handleQuestsToggle)
 		}
 	}, [isVisible])
+
+	// Set up drag and drop event handlers
+	useEffect(() => {
+		// Handle drop events on the document
+		const handleDrop = (e: DragEvent) => {
+			e.preventDefault()
+			
+			// Get the item ID from the data transfer
+			const itemId = e.dataTransfer?.getData('text/plain')
+			
+			if (itemId) {
+				// Emit the item dropped event with the correct event name
+				EventBus.emit(Event.Players.CS.DropItem, { itemId })
+			}
+		}
+		
+		// Handle drag over events to allow dropping
+		const handleDragOver = (e: DragEvent) => {
+			e.preventDefault()
+			e.dataTransfer!.dropEffect = 'move'
+		}
+		
+		// Handle drag enter events
+		const handleDragEnter = (e: DragEvent) => {
+			e.preventDefault()
+			EventBus.emit('inventory:item:dragEnter')
+		}
+		
+		// Handle drag leave events
+		const handleDragLeave = (e: DragEvent) => {
+			e.preventDefault()
+			EventBus.emit('inventory:item:dragLeave')
+		}
+		
+		// Add event listeners to the game container
+		const gameContainer = document.getElementById('app')
+		if (gameContainer) {
+			gameContainer.addEventListener('drop', handleDrop)
+			gameContainer.addEventListener('dragover', handleDragOver)
+			gameContainer.addEventListener('dragenter', handleDragEnter)
+			gameContainer.addEventListener('dragleave', handleDragLeave)
+		}
+		
+		// Clean up event listeners
+		return () => {
+			if (gameContainer) {
+				gameContainer.removeEventListener('drop', handleDrop)
+				gameContainer.removeEventListener('dragover', handleDragOver)
+				gameContainer.removeEventListener('dragenter', handleDragEnter)
+				gameContainer.removeEventListener('dragleave', handleDragLeave)
+			}
+		}
+	}, [])
 
 	useEffect(() => {
 		// Handle initial inventory load

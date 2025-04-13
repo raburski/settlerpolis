@@ -59,6 +59,9 @@ export class LootView extends GameObjects.Container {
 		// Setup item name display
 		this.setupItemNameDisplay()
 
+		// Set depth based on y position for proper layering
+		this.setDepth(y)
+
 		// Play spawn animation
 		this.playSpawnAnimation()
 	}
@@ -101,9 +104,22 @@ export class LootView extends GameObjects.Container {
 					y: 0,
 					duration: 400,
 					ease: 'Bounce.out',
+					onComplete: () => {
+						// Update depth after animation completes to ensure proper layering
+						this.setDepth(this.y)
+					}
 				})
 			}
 		})
+	}
+
+	/**
+	 * Called before the physics update
+	 * This ensures the depth is always up to date
+	 */
+	public preUpdate(): void {
+		// Update depth based on current y position
+		this.setDepth(this.y)
 	}
 
 	public setInteractive(callback: () => void) {

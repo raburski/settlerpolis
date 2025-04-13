@@ -54,6 +54,9 @@ export class PlayerView2 extends GameObjects.Container {
 
 		// Set initial frame based on direction
 		this.updateSpriteFrame()
+		
+		// Set initial depth based on y position
+		this.setDepth(y)
 	}
 
 	/**
@@ -123,6 +126,8 @@ export class PlayerView2 extends GameObjects.Container {
 	public updatePosition(x: number, y: number): void {
 		this.x = x
 		this.y = y
+		// Update depth based on y position
+		this.setDepth(y)
 	}
 
 	/**
@@ -130,6 +135,8 @@ export class PlayerView2 extends GameObjects.Container {
 	 */
 	public preUpdate(): void {
 		// This method is called by the controller before the physics update
+		// Update depth based on current y position
+		this.setDepth(this.y)
 	}
 
 	/**

@@ -7,6 +7,9 @@ interface ItemTextureProps {
 	className?: string
 	style?: React.CSSProperties
 	fallbackEmoji?: string
+	draggable?: boolean
+	onDragStart?: (e: React.DragEvent<HTMLDivElement>, itemType: string) => void
+	onDragEnd?: (e: React.DragEvent<HTMLDivElement>) => void
 }
 
 /**
@@ -17,7 +20,10 @@ export const ItemTexture: React.FC<ItemTextureProps> = ({
 	itemType, 
 	className = '', 
 	style = {},
-	fallbackEmoji = '📦'
+	fallbackEmoji = '📦',
+	draggable = false,
+	onDragStart,
+	onDragEnd
 }) => {
 	const [textureInfo, setTextureInfo] = useState<{ key: string, frame: number } | undefined>(undefined)
 	const [textureConfig, setTextureConfig] = useState<{ path: string, frameWidth: number, frameHeight: number, frameCount: number } | undefined>(undefined)
@@ -50,12 +56,29 @@ export const ItemTexture: React.FC<ItemTextureProps> = ({
 		}
 	}, [itemType])
 
+	// Handle drag start event
+	const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
+		if (draggable && onDragStart) {
+			onDragStart(e, itemType)
+		}
+	}
+
+	// Handle drag end event
+	const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
+		if (draggable && onDragEnd) {
+			onDragEnd(e)
+		}
+	}
+
 	// If we have an error or no texture info, show the fallback emoji
 	if (error || !textureInfo || !textureConfig) {
 		return (
 			<div 
 				className={`${styles.itemTexture} ${styles.fallback} ${className}`} 
 				style={style}
+				draggable={draggable}
+				onDragStart={handleDragStart}
+				onDragEnd={handleDragEnd}
 			>
 				{fallbackEmoji}
 			</div>
@@ -93,6 +116,9 @@ export const ItemTexture: React.FC<ItemTextureProps> = ({
 			<div 
 				className={`${styles.itemTexture} ${styles.loading} ${className}`} 
 				style={style}
+				draggable={draggable}
+				onDragStart={handleDragStart}
+				onDragEnd={handleDragEnd}
 			>
 				{fallbackEmoji}
 			</div>
@@ -104,6 +130,9 @@ export const ItemTexture: React.FC<ItemTextureProps> = ({
 		<div 
 			className={`${styles.itemTexture} ${className}`} 
 			style={bgStyle}
+			draggable={draggable}
+			onDragStart={handleDragStart}
+			onDragEnd={handleDragEnd}
 		/>
 	)
 } 

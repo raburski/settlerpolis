@@ -34,6 +34,10 @@ export class LootController {
 		})
 	}
 
+	update(): void {
+		this.view.preUpdate()
+	}
+
 	public destroy() {
 		this.view.destroy()
 	}
