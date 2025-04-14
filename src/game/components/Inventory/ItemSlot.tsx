@@ -4,6 +4,10 @@ import { itemService } from '../../services/ItemService'
 import { ItemTooltip } from './ItemTooltip'
 import { InventoryItem } from './InventoryItem'
 import styles from '../Inventory.module.css'
+import { ItemCategory } from "../../../../backend/src/Game/Items/types"
+import { Event } from "../../events"
+import { EquipmentSlotType } from "../../../../backend/src/types"
+import { EventBus } from "../../EventBus"
 
 interface ItemSlotProps {
 	slot: InventorySlot
@@ -82,6 +86,18 @@ export const ItemSlot: React.FC<ItemSlotProps> = ({
 		}
 	}, [updateTooltipPosition])
 
+	const handleClick = () => {
+		if (item) {
+			const itemType = itemService.getItemType(item.itemType)
+			if (itemType?.category === ItemCategory.Placeable && !isEquipped) {
+				EventBus.emit(Event.Players.CS.Equip, {
+					itemId: item.id,
+					slotType: EquipmentSlotType.Hand
+				})
+			}
+		}
+	}
+
 	const handleMouseEnter = () => {
 		if (item) {
 			updateTooltipPosition()
@@ -147,6 +163,7 @@ export const ItemSlot: React.FC<ItemSlotProps> = ({
 				onDragOver={onDragOver}
 				onDragLeave={handleDragLeave}
 				onDrop={onDrop}
+				onClick={handleClick}
 			>
 				<div className={styles.itemContent}>
 					<InventoryItem

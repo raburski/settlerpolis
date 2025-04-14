@@ -18,6 +18,7 @@ export class ItemPlacementManager {
 	private placementText: Phaser.GameObjects.Text | null = null
 	private isPlacementModeActive = false
 	private currentItem: any = null
+	private hasMouseMoved = false
 
 	constructor(scene: Scene, player: Player) {
 		this.scene = scene
@@ -60,6 +61,7 @@ export class ItemPlacementManager {
 	private activatePlacementMode(item: any) {
 		this.isPlacementModeActive = true
 		this.currentItem = item
+		this.hasMouseMoved = false
 
 		// Get item metadata for sprite information
 		const itemMetadata = itemService.getItemType(item.itemType)
@@ -67,11 +69,12 @@ export class ItemPlacementManager {
 		// Get the appropriate texture for the preview
 		const texture = this.getTexture(itemMetadata)
 		
-		// Create a semi-transparent preview sprite
+		// Create a semi-transparent preview sprite but keep it hidden initially
 		this.previewSprite = this.scene.add.sprite(0, 0, texture.key, texture.frame)
 		this.previewSprite.setAlpha(0.5)
 		this.previewSprite.setDepth(1000) // Ensure it's above other game objects
 		this.previewSprite.setOrigin(0, 0) // Set anchor to top-left corner
+		this.previewSprite.setVisible(false) // Hide initially
 		
 		// Set the scale from the texture configuration
 		this.previewSprite.setScale(texture.scale)
@@ -87,7 +90,7 @@ export class ItemPlacementManager {
 			this.previewSprite.setDisplaySize(defaultSize, defaultSize)
 		}
 
-		// Create placement instructions text
+		// Create placement instructions text but keep it hidden initially
 		this.placementText = this.scene.add.text(16, 16, 'Click to place item', {
 			fontSize: '16px',
 			color: '#ffffff',
@@ -95,6 +98,7 @@ export class ItemPlacementManager {
 			padding: { x: 8, y: 4 }
 		})
 		this.placementText.setDepth(1000)
+		this.placementText.setVisible(false) // Hide initially
 	}
 	
 	private getTexture(itemMetadata: any): { key: string, frame: number, scale: number } {
@@ -123,6 +127,7 @@ export class ItemPlacementManager {
 	private deactivatePlacementMode() {
 		this.isPlacementModeActive = false
 		this.currentItem = null
+		this.hasMouseMoved = false
 
 		if (this.previewSprite) {
 			this.previewSprite.destroy()
@@ -137,6 +142,15 @@ export class ItemPlacementManager {
 
 	private handlePointerMove(pointer: Phaser.Input.Pointer) {
 		if (!this.isPlacementModeActive || !this.previewSprite) return
+
+		// Set hasMouseMoved to true on first move
+		if (!this.hasMouseMoved) {
+			this.hasMouseMoved = true
+			this.previewSprite.setVisible(true)
+			if (this.placementText) {
+				this.placementText.setVisible(true)
+			}
+		}
 
 		// Get the world position of the pointer
 		const worldPoint = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y)
@@ -154,7 +168,7 @@ export class ItemPlacementManager {
 		this.previewSprite.setPosition(snappedX, snappedY)
 
 		// Show/hide placement text based on distance to player
-		if (this.placementText) {
+		if (this.placementText && this.hasMouseMoved) {
 			// Get player position from the scene
 			const playerPosition = this.getPlayerPosition()
 			
@@ -175,7 +189,7 @@ export class ItemPlacementManager {
 				centerY
 			)
 
-			this.placementText.setVisible(distance <= PLACE_RANGE)
+			this.placementText.setVisible(distance <= PLACE_RANGE && this.hasMouseMoved)
 		}
 	}
 
