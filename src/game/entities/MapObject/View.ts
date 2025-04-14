@@ -5,20 +5,27 @@ import { itemService } from "../../services/ItemService"
 import { itemTextureService } from "../../services/ItemTextureService"
 
 export class MapObjectView {
-	private sprite: GameObjects.Sprite
+	private sprite: GameObjects.Sprite | null = null
 	private mapObject: MapObject
+	private unsubscribe: (() => void) | null = null
 
 	constructor(scene: Scene, mapObject: MapObject) {
 		this.mapObject = mapObject
 		
-		// Get item metadata to determine the sprite to use
-		const itemMetadata = itemService.getItemType(mapObject.item.itemType)
-		
+		// Subscribe to item metadata updates
+		this.unsubscribe = itemService.subscribeToItemMetadata(mapObject.item.itemType, (itemMetadata) => {
+			if (itemMetadata) {
+				this.initializeSprite(scene, itemMetadata)
+			}
+		})
+	}
+	
+	private initializeSprite(scene: Scene, itemMetadata: ItemMetadata): void {
 		// Create the sprite using the appropriate texture
 		const texture = this.getTexture(itemMetadata)
 		this.sprite = scene.add.sprite(
-			mapObject.position.x,
-			mapObject.position.y,
+			this.mapObject.position.x,
+			this.mapObject.position.y,
 			texture.key,
 			texture.frame
 		)
@@ -27,7 +34,7 @@ export class MapObjectView {
 		this.sprite.setOrigin(0, 0)
 		
 		// Set the rotation
-		this.sprite.setRotation(mapObject.rotation)
+		this.sprite.setRotation(this.mapObject.rotation)
 		
 		// Set the scale from the texture configuration
 		this.sprite.setScale(texture.scale)
@@ -41,7 +48,7 @@ export class MapObjectView {
 		this.setDisplaySize(itemMetadata)
 	}
 	
-	private getTexture(itemMetadata: ItemMetadata | null): { key: string, frame: number, scale: number } {
+	private getTexture(itemMetadata: ItemMetadata): { key: string, frame: number, scale: number } {
 		// If we have metadata with a placement property, try to get the placeable texture
 		if (itemMetadata?.placement) {
 			const placeableTexture = itemTextureService.getPlaceableItemTexture(this.mapObject.item.itemType)
@@ -64,7 +71,9 @@ export class MapObjectView {
 		}
 	}
 	
-	private setDisplaySize(itemMetadata: ItemMetadata | null): void {
+	private setDisplaySize(itemMetadata: ItemMetadata): void {
+		if (!this.sprite) return
+		
 		// Default size
 		const defaultSize = 32
 		
@@ -86,7 +95,7 @@ export class MapObjectView {
 		}
 	}
 	
-	public getSprite(): GameObjects.Sprite {
+	public getSprite(): GameObjects.Sprite | null {
 		return this.sprite
 	}
 	
@@ -95,6 +104,13 @@ export class MapObjectView {
 	}
 	
 	public destroy(): void {
-		this.sprite.destroy()
+		if (this.unsubscribe) {
+			this.unsubscribe()
+			this.unsubscribe = null
+		}
+		if (this.sprite) {
+			this.sprite.destroy()
+			this.sprite = null
+		}
 	}
 } 
