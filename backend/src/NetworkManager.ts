@@ -176,14 +176,6 @@ export class NetworkManager implements EventManager {
 		// Set up disconnect handler
 		socket.on('disconnect', () => {
 			if (this.debug) console.log(`[NetworkManager] Client disconnected: ${socket.id}`)
-			// Clean up group membership on disconnect
-			const group = this.clientGroups.get(socket.id)
-			if (group) {
-				this.removeClientFromGroup(socket.id, group)
-			}
-			
-			// Clean up timestamp
-			this.lastMessageTimestamps.delete(socket.id)
 			
 			// Notify left callbacks
 			if (this.debug) console.log(`[NetworkManager] Notifying ${this.leftCallbacks.size} left callbacks`)
@@ -192,6 +184,14 @@ export class NetworkManager implements EventManager {
 			const handlers = this.eventHandlers.get('disconnect')
 			if (handlers) {
 				handlers.forEach(callback => callback(undefined, client))
+			}
+
+			// Clean up timestamp
+			this.lastMessageTimestamps.delete(socket.id)
+			// Clean up group membership on disconnect
+			const group = this.clientGroups.get(socket.id)
+			if (group) {
+				this.removeClientFromGroup(socket.id, group)
 			}
 		})
 	}
