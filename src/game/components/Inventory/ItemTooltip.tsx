@@ -1,17 +1,18 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
-import { Item } from '../../../backend/src/Game/Items/types'
-import { itemService } from '../services/ItemService'
-import styles from './Inventory.module.css'
+import { Item } from '../../../../backend/src/Game/Inventory/types'
+import { itemService } from '../../services/ItemService'
+import styles from '../Inventory.module.css'
 
 interface ItemTooltipProps {
 	item: Item
 	position: { top: number; left: number }
-	onConsume: (itemId: string) => void
-	onDrop: (itemId: string) => void
 }
 
-export const ItemTooltip: React.FC<ItemTooltipProps> = ({ item, position, onConsume, onDrop }) => {
+export const ItemTooltip: React.FC<ItemTooltipProps> = ({ 
+	item, 
+	position, 
+}) => {
 	const itemType = itemService.getItemType(item.itemType)
 	
 	if (!itemType) {

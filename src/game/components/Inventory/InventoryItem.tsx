@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react'
-import { ItemTexture } from './ItemTexture'
+import { ItemTexture } from '../ItemTexture'
 import styles from './InventoryItem.module.css'
 
 interface InventoryItemProps {

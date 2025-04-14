@@ -1,175 +1,24 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react'
-import { EventBus } from '../EventBus'
-import { Event } from '../../../backend/src/events'
-import { Inventory as InventoryType, Item, InventorySlot, Position, AddItemData } from '../../../backend/src/Game/Inventory/types'
-import { EquipmentSlotType } from '../../../backend/src/Game/Players/types'
-import { itemService } from '../services/ItemService'
-import { ItemTexture } from './ItemTexture'
-import { ItemTooltip } from './ItemTooltip'
-import { InventoryItem } from './InventoryItem'
-import styles from './Inventory.module.css'
-import { INVENTORY_GRID_ROWS, INVENTORY_GRID_COLUMNS } from '../../../backend/src/consts'
+import { useState, useEffect, useRef } from 'react'
+import { EventBus } from '../../EventBus'
+import { Event } from '../../events'
+import { itemService } from '../../services/ItemService'
+import { INVENTORY_GRID_COLUMNS, INVENTORY_GRID_ROWS } from "../../../../backend/src/consts"
+import { EquipmentSlotType } from '../../../../backend/src/Game/Players/types'
+import { InventorySlot, Position, Item } from '../../../../backend/src/Game/Inventory/types'
 
-const ItemSlot = ({ slot, handleDropItem, handleConsumeItem, handleDragStart, handleDragEnd, handleDragOver, handleDrop, isEquipped = false }) => {
-	const item = slot.item
-	const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 })
-	const [showTooltip, setShowTooltip] = useState(false)
-	const [isDraggingOver, setIsDraggingOver] = useState(false)
-	const slotRef = useRef<HTMLDivElement>(null)
-
-	const updateTooltipPosition = useCallback(() => {
-		if (slotRef.current) {
-			const rect = slotRef.current.getBoundingClientRect()
-			const windowWidth = window.innerWidth
-			const tooltipWidth = 200 // min-width of tooltip
-			const tooltipHeight = 150 // approximate height of tooltip
-			const offset = 8 // offset from the slot
-			
-			// Calculate if tooltip would go off screen
-			const spaceOnRight = windowWidth - rect.right
-			const spaceOnLeft = rect.left
-			const spaceBelow = window.innerHeight - rect.bottom
-			
-			// Position tooltip below the slot
-			let left = rect.left + (rect.width / 2) - (tooltipWidth / 2)
-			let top = rect.bottom + offset
-			
-			// If tooltip would go off screen to the right, align it to the right edge of the slot
-			if (left + tooltipWidth > windowWidth) {
-				left = rect.right - tooltipWidth
-			}
-			
-			// If tooltip would go off screen to the left, align it to the left edge of the slot
-			if (left < 0) {
-				left = rect.left
-			}
-			
-			// If tooltip would go off screen to the bottom, show it above the slot
-			if (spaceBelow < tooltipHeight + offset) {
-				top = rect.top - tooltipHeight - offset
-			}
-			
-			setTooltipPosition({
-				top,
-				left
-			})
-		}
-	}, [])
-
-	useEffect(() => {
-		updateTooltipPosition()
-		window.addEventListener('resize', updateTooltipPosition)
-		window.addEventListener('scroll', updateTooltipPosition)
-		
-		return () => {
-			window.removeEventListener('resize', updateTooltipPosition)
-			window.removeEventListener('scroll', updateTooltipPosition)
-		}
-	}, [updateTooltipPosition])
-
-	const handleMouseEnter = () => {
-		if (item) {
-			updateTooltipPosition()
-			setShowTooltip(true)
-		}
-	}
-
-	const handleMouseLeave = () => {
-		setShowTooltip(false)
-	}
-
-	const onDragOver = (e: React.DragEvent) => {
-		e.preventDefault()
-		e.dataTransfer.dropEffect = 'move'
-		setIsDraggingOver(true)
-		handleDragOver(e)
-	}
-
-	const handleDragLeave = () => {
-		setIsDraggingOver(false)
-	}
-
-	const onDrop = (e: React.DragEvent) => {
-		e.preventDefault()
-		e.stopPropagation()
-		setIsDraggingOver(false)
-		handleDrop(e)
-	}
-
-	const onItemDragStart = (e: React.DragEvent) => {
-		setShowTooltip(false)
-		handleDragStart(e, item.id, slot.position)
-	}
-
-	if (!item) {
-		return (
-			<div 
-				className={`${styles.emptySlot} ${isDraggingOver ? styles.draggingOver : ''}`}
-				onDragOver={onDragOver}
-				onDragLeave={handleDragLeave}
-				onDrop={onDrop}
-				data-row={slot.position.row}
-				data-column={slot.position.column}
-			/>
-		)
-	}
-
-	const itemType = itemService.getItemType(item.itemType)
-	if (!itemType) {
-		return null
-	}
-
-	return (
-		<>
-			<div 
-				ref={slotRef}
-				key={item.id} 
-				className={`${styles.slot} ${isDraggingOver ? styles.draggingOver : ''}`}
-				data-row={slot.position.row}
-				data-column={slot.position.column}
-				onMouseEnter={handleMouseEnter}
-				onMouseLeave={handleMouseLeave}
-				onDragOver={onDragOver}
-				onDragLeave={handleDragLeave}
-				onDrop={onDrop}
-			>
-				<div className={styles.itemContent}>
-					<InventoryItem
-						itemType={item.itemType}
-						itemId={item.id}
-						position={slot.position}
-						fallbackEmoji={itemType.emoji || '📦'}
-						onDragStart={onItemDragStart}
-						onDragEnd={handleDragEnd}
-					/>
-				</div>
-			</div>
-			
-			{showTooltip && (
-				<ItemTooltip 
-					item={item}
-					position={tooltipPosition}
-					onConsume={handleConsumeItem}
-					onDrop={handleDropItem}
-					isEquipped={isEquipped}
-				/>
-			)}
-		</>
-	)
-}
-
-export function Inventory() {
+export const useInventory = () => {
 	const [isVisible, setIsVisible] = useState(false)
 	const [isExiting, setIsExiting] = useState(false)
 	const [slots, setSlots] = useState<InventorySlot[]>([])
 	const [updateCounter, setUpdateCounter] = useState<number>(0)
-	const [draggedItem, setDraggedItem] = useState<{id: string, position: Position} | null>(null)
+	const [draggedItem, setDraggedItem] = useState<Item | null>(null)
 	const [isDragging, setIsDragging] = useState(false)
 	const [equippedItems, setEquippedItems] = useState<Record<EquipmentSlotType, Item | null>>({
 		[EquipmentSlotType.Hand]: null
 	})
 	const inventoryRef = useRef<HTMLDivElement>(null)
 
+	// Handle inventory visibility
 	useEffect(() => {
 		const handleToggle = () => {
 			if (isVisible) {
@@ -283,6 +132,7 @@ export function Inventory() {
 		}
 	}, [])
 
+	// Handle inventory data
 	useEffect(() => {
 		// Handle initial inventory load
 		const handleInventoryLoaded = (data: { inventory: InventoryType }) => {
@@ -387,6 +237,7 @@ export function Inventory() {
 		}
 	}, [])
 
+	// Handle dropping items outside the inventory
 	useEffect(() => {
 		const handleDropOutside = (e: DragEvent) => {
 			if (draggedItem && inventoryRef.current && !inventoryRef.current.contains(e.target as Node)) {
@@ -400,6 +251,30 @@ export function Inventory() {
 		}
 	}, [draggedItem])
 
+	// Create a grid of slots
+	const createGridSlots = () => {
+		const gridSlots: InventorySlot[] = []
+		for (let row = 0; row < INVENTORY_GRID_ROWS; row++) {
+			for (let column = 0; column < INVENTORY_GRID_COLUMNS; column++) {
+				const existingSlot = slots.find(slot => 
+					slot.position.row === row && 
+					slot.position.column === column
+				)
+				
+				if (existingSlot) {
+					gridSlots.push(existingSlot)
+				} else {
+					gridSlots.push({
+						position: { row, column },
+						item: null
+					})
+				}
+			}
+		}
+		return gridSlots
+	}
+
+	// Event handlers
 	const handleDropItem = (itemId: string) => {
 		// Send the drop request
 		EventBus.emit(Event.Players.CS.DropItem, { itemId })
@@ -411,21 +286,31 @@ export function Inventory() {
 	}
 	
 	const handleDragStart = (e: React.DragEvent, itemId: string, position: Position) => {
-		// Set the data being dragged with a special format for inventory operations
-		e.dataTransfer.setData('application/inventory', JSON.stringify({
-			itemId,
-			sourcePosition: position,
-			type: 'inventory'
-		}))
-		e.dataTransfer.effectAllowed = 'move'
-		
-		setDraggedItem({ id: itemId, position })
 		setIsDragging(true)
+		
+		// Check if this is an equipped item
+		const isEquippedItem = position.row === -1 && position.column === -1
+		const item = isEquippedItem 
+			? equippedItems[EquipmentSlotType.Hand]
+			: createGridSlots().find(slot => slot.item?.id === itemId)?.item || null
+		
+		if (item) {
+			setDraggedItem({
+				...item,
+				position: isEquippedItem ? { row: -1, column: -1 } : position
+			})
+		}
+		
+		e.dataTransfer.setData('application/inventory', JSON.stringify({
+			type: 'inventory',
+			itemId,
+			position: isEquippedItem ? { row: -1, column: -1 } : position
+		}))
 	}
 
 	const handleDragEnd = () => {
-		setDraggedItem(null)
 		setIsDragging(false)
+		setDraggedItem(null)
 	}
 	
 	const handleDragOver = (e: React.DragEvent) => {
@@ -447,13 +332,13 @@ export function Inventory() {
 		const targetPosition: Position = { row: targetRow, column: targetColumn }
 		
 		// Don't process if dropping on the same slot
-		if (draggedItem.position.row === targetPosition.row && 
-			draggedItem.position.column === targetPosition.column) {
+		if (draggedItem.position?.row === targetPosition.row && 
+			draggedItem.position?.column === targetPosition.column) {
 			return
 		}
 		
 		// Check if this is an equipped item being dragged
-		const isEquippedItem = draggedItem.position.row === -1 && draggedItem.position.column === -1
+		const isEquippedItem = draggedItem.position?.row === -1 && draggedItem.position?.column === -1
 		
 		if (isEquippedItem) {
 			// This is an equipped item, send unequip event with target position
@@ -471,38 +356,6 @@ export function Inventory() {
 		}
 	}
 
-	const handleClose = () => {
-		setIsExiting(true)
-		setTimeout(() => {
-			setIsVisible(false)
-			setIsExiting(false)
-		}, 300)
-	}
-
-	if (!isVisible && !isExiting) {
-		return null
-	}
-
-	// Create a grid of slots
-	const gridSlots: InventorySlot[] = []
-	for (let row = 0; row < INVENTORY_GRID_ROWS; row++) {
-		for (let column = 0; column < INVENTORY_GRID_COLUMNS; column++) {
-			const existingSlot = slots.find(slot => 
-				slot.position.row === row && 
-				slot.position.column === column
-			)
-			
-			if (existingSlot) {
-				gridSlots.push(existingSlot)
-			} else {
-				gridSlots.push({
-					position: { row, column },
-					item: null
-				})
-			}
-		}
-	}
-
 	const handleUnequipItem = (slotType: EquipmentSlotType, targetPosition?: Position) => {
 		// Send unequip request
 		EventBus.emit(Event.Players.CS.Unequip, {
@@ -511,88 +364,30 @@ export function Inventory() {
 		})
 	}
 
-	return (
-		<div 
-			className={`${styles.inventoryContainer} ${isExiting ? styles.slideOut : ''}`}
-			style={{
-				'--inventory-grid-columns': INVENTORY_GRID_COLUMNS,
-				'--inventory-grid-rows': INVENTORY_GRID_ROWS
-			} as React.CSSProperties}
-			ref={inventoryRef}
-		>
-			<div className={styles.inventoryContent}>
-				<button 
-					className={styles.closeIcon}
-					onClick={handleClose}
-					aria-label="Close inventory"
-				>
-					×
-				</button>
-				<h2 className={styles.title}>Inventory</h2>
-				<div className={styles.equipmentSection}>
-					<div 
-						className={`${styles.equipmentSlot} ${isDragging ? styles.draggingOver : ''}`}
-						onDragOver={handleDragOver}
-						onDrop={(e) => {
-							e.preventDefault()
-							e.stopPropagation()
-							if (!draggedItem) return
+	const handleClose = () => {
+		setIsExiting(true)
+		setTimeout(() => {
+			setIsVisible(false)
+			setIsExiting(false)
+		}, 300)
+	}
 
-							// Send equip request
-							EventBus.emit(Event.Players.CS.Equip, {
-								itemId: draggedItem.id,
-								slotType: EquipmentSlotType.Hand
-							})
-						}}
-					>
-						{equippedItems[EquipmentSlotType.Hand] && (
-							<ItemSlot 
-								slot={{
-									position: { row: -1, column: -1 }, // Special position for equipped items
-									item: equippedItems[EquipmentSlotType.Hand]
-								}}
-								handleDropItem={handleDropItem}
-								handleConsumeItem={handleConsumeItem}
-								handleDragStart={handleDragStart}
-								handleDragEnd={handleDragEnd}
-								handleDragOver={handleDragOver}
-								handleDrop={(e) => {
-									e.preventDefault()
-									e.stopPropagation()
-									
-									// Get the target position from the drop event
-									const targetRow = parseInt(e.currentTarget.getAttribute('data-row') || '')
-									const targetColumn = parseInt(e.currentTarget.getAttribute('data-column') || '')
-									
-									if (!isNaN(targetRow) && !isNaN(targetColumn)) {
-										// Unequip to specific position
-										handleUnequipItem(EquipmentSlotType.Hand, { row: targetRow, column: targetColumn })
-									} else {
-										// Just unequip without specific position
-										handleUnequipItem(EquipmentSlotType.Hand)
-									}
-								}}
-								isEquipped={true}
-							/>
-						)}
-					</div>
-				</div>
-				<div className={styles.grid}>
-					{gridSlots.map((slot, index) => (
-						<ItemSlot 
-							key={`${slot.position.row}-${slot.position.column}`}
-							slot={slot}
-							handleDropItem={handleDropItem}
-							handleConsumeItem={handleConsumeItem}
-							handleDragStart={handleDragStart}
-							handleDragEnd={handleDragEnd}
-							handleDragOver={handleDragOver}
-							handleDrop={handleDrop}
-							isEquipped={false}
-						/>
-					))}
-				</div>
-			</div>
-		</div>
-	)
+	return {
+		isVisible,
+		isExiting,
+		slots,
+		draggedItem,
+		isDragging,
+		equippedItems,
+		inventoryRef,
+		gridSlots: createGridSlots(),
+		handleDropItem,
+		handleConsumeItem,
+		handleDragStart,
+		handleDragEnd,
+		handleDragOver,
+		handleDrop,
+		handleUnequipItem,
+		handleClose
+	}
 } 

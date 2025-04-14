@@ -1,0 +1,95 @@
+.itemDetails {
+	position: fixed;
+	background: var(--color-background-medium);
+	border: 1px solid var(--color-border);
+	padding: var(--spacing-sm);
+	border-radius: var(--border-radius-sm);
+	z-index: 9999;
+	opacity: 1;
+	visibility: visible;
+	transition: opacity 0.2s ease, visibility 0.2s ease;
+	width: 220px;
+	box-shadow: var(--shadow-md);
+	pointer-events: auto;
+}
+
+.itemInfo {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-xs);
+	width: 100%;
+}
+
+.itemHeader {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	border-bottom: 1px solid var(--color-border);
+	padding-bottom: var(--spacing-xs);
+	width: 100%;
+}
+
+.itemName {
+	font-weight: bold;
+	color: var(--color-text-primary);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 100%;
+}
+
+.itemDescription {
+	color: var(--color-text-secondary);
+	font-size: 0.9em;
+	line-height: 1.4;
+	word-wrap: break-word;
+	width: 100%;
+}
+
+.itemType {
+	color: var(--color-text-tertiary);
+	font-size: 0.8em;
+	text-transform: capitalize;
+	padding: 2px 6px;
+	background: var(--color-background-light);
+	border-radius: var(--border-radius-xs);
+	display: inline-block;
+	white-space: nowrap;
+}
+
+.buttons {
+	display: flex;
+	gap: var(--spacing-sm);
+	margin-top: var(--spacing-sm);
+}
+
+.consumeButton,
+.dropButton,
+.unequipButton {
+	background: none;
+	border: none;
+	cursor: pointer;
+	padding: 4px 8px;
+	border-radius: 4px;
+	transition: all 0.2s ease;
+}
+
+.consumeButton:hover,
+.dropButton:hover,
+.unequipButton:hover {
+	background: rgba(255, 255, 255, 0.1);
+}
+
+.consumeButton:active,
+.dropButton:active,
+.unequipButton:active {
+	background: rgba(255, 255, 255, 0.2);
+}
+
+.unequipButton {
+	color: var(--color-danger);
+}
+
+.unequipButton:hover {
+	background: rgba(255, 0, 0, 0.1);
+} 
