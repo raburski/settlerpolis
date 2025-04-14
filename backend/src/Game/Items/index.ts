@@ -18,7 +18,15 @@ const ITEMS_METADATA: Record<string, ItemMetadata> = {
 		emoji: '🧶',
 		description: 'A beautifully woven rug with intricate chain patterns. A prized possession among the Chainfolk.',
 		category: ItemCategory.Placeable,
-		stackable: false
+		stackable: false,
+		placement: {
+			size: {
+				width: 2,
+				height: 3
+			},
+			blocksMovement: false,
+			blocksPlacement: false
+		}
 	},
 	'mysterious_stone': {
 		id: 'mysterious_stone',

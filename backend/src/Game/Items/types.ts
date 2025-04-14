@@ -22,6 +22,14 @@ export interface ItemMetadata {
 	category: ItemCategory
 	stackable: boolean
 	maxStackSize?: number
+	placement?: {
+		size: {
+			width: number
+			height: number
+		}
+		blocksMovement: boolean
+		blocksPlacement: boolean
+	}
 }
 
 export interface ItemTypeRequest {

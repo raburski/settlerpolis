@@ -8,6 +8,7 @@ import { EventBus } from "../../EventBus"
 import { PLACE_RANGE } from '../../../../backend/src/consts'
 import { Player } from '../../../../backend/src/Game/Players/types'
 import { PlayerController } from '../../entities/Player/Controller'
+import { itemTextureService } from '../../services/ItemTextureService'
 
 export class ItemPlacementManager {
 	private scene: Scene
@@ -63,10 +64,28 @@ export class ItemPlacementManager {
 		// Get item metadata for sprite information
 		const itemMetadata = itemService.getItemType(item.itemType)
 		
+		// Get the appropriate texture for the preview
+		const texture = this.getTexture(itemMetadata)
+		
 		// Create a semi-transparent preview sprite
-		this.previewSprite = this.scene.add.sprite(0, 0, itemMetadata?.spriteKey || 'default_item')
+		this.previewSprite = this.scene.add.sprite(0, 0, texture.key, texture.frame)
 		this.previewSprite.setAlpha(0.5)
 		this.previewSprite.setDepth(1000) // Ensure it's above other game objects
+		this.previewSprite.setOrigin(0, 0) // Set anchor to top-left corner
+		
+		// Set the scale from the texture configuration
+		this.previewSprite.setScale(texture.scale)
+
+		// Set the display size based on placement size
+		const defaultSize = 32
+		if (itemMetadata?.placement?.size) {
+			this.previewSprite.setDisplaySize(
+				itemMetadata.placement.size.width * defaultSize,
+				itemMetadata.placement.size.height * defaultSize
+			)
+		} else {
+			this.previewSprite.setDisplaySize(defaultSize, defaultSize)
+		}
 
 		// Create placement instructions text
 		this.placementText = this.scene.add.text(16, 16, 'Click to place item', {
@@ -76,6 +95,29 @@ export class ItemPlacementManager {
 			padding: { x: 8, y: 4 }
 		})
 		this.placementText.setDepth(1000)
+	}
+	
+	private getTexture(itemMetadata: any): { key: string, frame: number, scale: number } {
+		// If we have metadata with a placement property, try to get the placeable texture
+		if (itemMetadata?.placement) {
+			const placeableTexture = itemTextureService.getPlaceableItemTexture(this.currentItem.itemType)
+			if (placeableTexture) {
+				return placeableTexture
+			}
+		}
+		
+		// Fallback to regular item texture
+		const regularTexture = itemTextureService.getItemTexture(this.currentItem.itemType)
+		if (regularTexture) {
+			return regularTexture
+		}
+		
+		// If no texture is found, use the emoji as a fallback
+		return {
+			key: itemMetadata?.emoji || 'default_item',
+			frame: 0,
+			scale: 1
+		}
 	}
 
 	private deactivatePlacementMode() {
@@ -99,10 +141,14 @@ export class ItemPlacementManager {
 		// Get the world position of the pointer
 		const worldPoint = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y)
 		
-		// Snap to grid (32x32)
+		// Use a fixed offset of gridSize/2 for more centered tracking
 		const gridSize = 32
-		const snappedX = Math.floor(worldPoint.x / gridSize) * gridSize + gridSize / 2
-		const snappedY = Math.floor(worldPoint.y / gridSize) * gridSize + gridSize / 2
+		const offsetX = gridSize / 2
+		const offsetY = gridSize / 2
+		
+		// Snap to grid (32x32), accounting for the fixed offset
+		const snappedX = Math.floor((worldPoint.x - offsetX) / gridSize) * gridSize
+		const snappedY = Math.floor((worldPoint.y - offsetY) / gridSize) * gridSize
 
 		// Update preview sprite position
 		this.previewSprite.setPosition(snappedX, snappedY)
@@ -112,11 +158,21 @@ export class ItemPlacementManager {
 			// Get player position from the scene
 			const playerPosition = this.getPlayerPosition()
 			
+			// Get item metadata for size information
+			const itemMetadata = itemService.getItemType(this.currentItem.itemType)
+			const defaultSize = 32
+			const width = itemMetadata?.placement?.size?.width || 1
+			const height = itemMetadata?.placement?.size?.height || 1
+			
+			// Calculate center point for distance check
+			const centerX = snappedX + (width * defaultSize) / 2
+			const centerY = snappedY + (height * defaultSize) / 2
+			
 			const distance = Phaser.Math.Distance.Between(
 				playerPosition.x,
 				playerPosition.y,
-				snappedX,
-				snappedY
+				centerX,
+				centerY
 			)
 
 			this.placementText.setVisible(distance <= PLACE_RANGE)
@@ -129,20 +185,34 @@ export class ItemPlacementManager {
 		// Get the world position of the pointer
 		const worldPoint = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y)
 		
-		// Snap to grid (32x32)
+		// Use a fixed offset of gridSize/2 for more centered tracking
 		const gridSize = 32
-		const snappedX = Math.floor(worldPoint.x / gridSize) * gridSize + gridSize / 2
-		const snappedY = Math.floor(worldPoint.y / gridSize) * gridSize + gridSize / 2
+		const offsetX = gridSize / 2
+		const offsetY = gridSize / 2
+		
+		// Snap to grid (32x32), accounting for the fixed offset
+		const snappedX = Math.floor((worldPoint.x - offsetX) / gridSize) * gridSize
+		const snappedY = Math.floor((worldPoint.y - offsetY) / gridSize) * gridSize
 
 		// Get player position from the scene
 		const playerPosition = this.getPlayerPosition()
 		
-		// Calculate distance to player
+		// Get item metadata for size information
+		const itemMetadata = itemService.getItemType(this.currentItem.itemType)
+		const defaultSize = 32
+		const width = itemMetadata?.placement?.size?.width || 1
+		const height = itemMetadata?.placement?.size?.height || 1
+		
+		// Calculate center point for distance check
+		const centerX = snappedX + (width * defaultSize) / 2
+		const centerY = snappedY + (height * defaultSize) / 2
+		
+		// Calculate distance to player using center point
 		const distance = Phaser.Math.Distance.Between(
 			playerPosition.x,
 			playerPosition.y,
-			snappedX,
-			snappedY
+			centerX,
+			centerY
 		)
 
 		// Only allow placement if within range

@@ -62,23 +62,52 @@ export class MapObjectsManager {
 		console.log('Object removed:', mapObject)
 	}
 
-	private checkCollision(mapName: string, position: Position): boolean {
-		// Get objects for the specific map
-		const mapObjects = this.getMapObjects(mapName)
-		if (!mapObjects) return false
+	private checkCollision(mapName: string, position: Position, item?: Item): boolean {
+		const objects = this.mapObjectsByMap.get(mapName)
+		if (!objects) return false
 
-		// Check if there's already an object at this position
-		for (const object of mapObjects.values()) {
-			const distance = Math.sqrt(
-				Math.pow(object.position.x - position.x, 2) +
-				Math.pow(object.position.y - position.y, 2)
-			)
-			if (distance < 32) { // Minimum distance between objects
-				return true
+		// Get item metadata to check placement properties
+		const itemMetadata = item ? this.itemsManager.getItemMetadata(item.itemType) : null
+		const width = itemMetadata?.placement?.size?.width || 1
+		const height = itemMetadata?.placement?.size?.height || 1
+
+		// Check each object in the map
+		for (const [_, object] of objects) {
+			// Get object's metadata to check its placement properties
+			const objectMetadata = this.itemsManager.getItemMetadata(object.item.itemType)
+			const objectWidth = objectMetadata?.placement?.size?.width || 1
+			const objectHeight = objectMetadata?.placement?.size?.height || 1
+
+			// Check if the rectangles overlap
+			if (this.doRectanglesOverlap(
+				position, width, height,
+				object.position, objectWidth, objectHeight
+			)) {
+				// If either object blocks placement, return true (collision)
+				if (itemMetadata?.placement?.blocksPlacement || objectMetadata?.placement?.blocksPlacement) {
+					return true
+				}
 			}
 		}
 
 		return false
+	}
+
+	private doRectanglesOverlap(
+		pos1: Position, width1: number, height1: number,
+		pos2: Position, width2: number, height2: number
+	): boolean {
+		// Check if one rectangle is to the left of the other
+		if (pos1.x + width1 <= pos2.x || pos2.x + width2 <= pos1.x) {
+			return false
+		}
+
+		// Check if one rectangle is above the other
+		if (pos1.y + height1 <= pos2.y || pos2.y + height2 <= pos1.y) {
+			return false
+		}
+
+		return true
 	}
 
 	private addObjectToMap(mapObject: MapObject) {
@@ -153,7 +182,7 @@ export class MapObjectsManager {
 
 	public placeObject(playerId: string, data: PlaceObjectData, client: EventClient): boolean {
 		// Check for collisions
-		const hasCollision = this.checkCollision(client.currentGroup, data.position)
+		const hasCollision = this.checkCollision(client.currentGroup, data.position, data.item)
 		if (hasCollision) {
 			return false
 		}

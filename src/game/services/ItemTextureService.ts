@@ -12,6 +12,8 @@ export interface ItemTextureConfig {
 	frameHeight: number
 	/** The number of frames in the texture */
 	frameCount: number
+	/** The scale to apply to the texture (default: 1) */
+	scale?: number
 }
 
 // Define the item texture position
@@ -39,16 +41,30 @@ export const ITEM_TEXTURES: ItemTextureConfig[] = [
 		path: 'assets/items/alco.png',
 		frameWidth: 64,
 		frameHeight: 64,
-		frameCount: 16 // Assuming there are 16 frames in total (4 rows x 4 columns)
+		frameCount: 16, // Assuming there are 16 frames in total (4 rows x 4 columns)
+		scale: 1
 	},
     {
 		key: 'item-chapter1',
 		path: 'assets/items/chapter_1.png',
 		frameWidth: 64,
 		frameHeight: 64,
-		frameCount: 9 // Assuming there are 16 frames in total (4 rows x 4 columns)
+		frameCount: 9, // Assuming there are 16 frames in total (4 rows x 4 columns)
+		scale: 1
 	}
 	// Add more item textures here as needed
+]
+
+// Define placeable item textures
+export const PLACEABLE_ITEM_TEXTURES: ItemTextureConfig[] = [
+	{
+		key: 'placeable-rug',
+		path: 'assets/items/placeables/rug.png',
+		frameWidth: 128,
+		frameHeight: 192,
+		frameCount: 1,
+		scale: 0.5
+	}
 ]
 
 // Define the item texture mappings
@@ -66,13 +82,31 @@ export const ITEM_TEXTURE_MAPPINGS: ItemTextureMapping[] = [
 	// Add more mappings here as needed
 ]
 
+// Define placeable item texture mappings
+export const PLACEABLE_ITEM_TEXTURE_MAPPINGS: ItemTextureMapping[] = [
+	{
+		itemType: 'chainfolk_rug',
+		textureKey: 'placeable-rug',
+		position: { row: 0, col: 0 }
+	}
+]
+
 class ItemTextureService {
 	/**
 	 * Preloads all item textures for a Phaser scene
 	 * @param scene The Phaser scene to preload textures for
 	 */
 	public preload(scene: Scene): void {
+		// Preload regular item textures
 		ITEM_TEXTURES.forEach(texture => {
+			scene.load.spritesheet(texture.key, texture.path, {
+				frameWidth: texture.frameWidth,
+				frameHeight: texture.frameHeight
+			})
+		})
+
+		// Preload placeable item textures
+		PLACEABLE_ITEM_TEXTURES.forEach(texture => {
 			scene.load.spritesheet(texture.key, texture.path, {
 				frameWidth: texture.frameWidth,
 				frameHeight: texture.frameHeight
@@ -83,9 +117,9 @@ class ItemTextureService {
 	/**
 	 * Gets the texture key and frame index for an item type
 	 * @param itemType The item type to get the texture for
-	 * @returns The texture key and frame index, or undefined if not found
+	 * @returns The texture key, frame index, and scale, or undefined if not found
 	 */
-	public getItemTexture(itemType: string): { key: string, frame: number } | undefined {
+	public getItemTexture(itemType: string): { key: string, frame: number, scale: number } | undefined {
 		// Find the mapping for this item type
 		const mapping = ITEM_TEXTURE_MAPPINGS.find(m => m.itemType === itemType)
 		if (!mapping) {
@@ -99,24 +133,6 @@ class ItemTextureService {
 		}
 
 		// Calculate the number of columns per row based on the texture dimensions
-		// We can calculate this by dividing the total width of the texture by the frame width
-		// The total width is frameWidth * columnsPerRow
-		// So columnsPerRow = totalWidth / frameWidth
-		// Since we don't have the total width directly, we can calculate it from the frame count
-		// Assuming the texture is a grid, the total width is frameWidth * columnsPerRow
-		// And the total height is frameHeight * rowsPerRow
-		// So frameCount = columnsPerRow * rowsPerRow
-		// We can calculate rowsPerRow by dividing the total height by frameHeight
-		// So rowsPerRow = totalHeight / frameHeight
-		// Since we don't have the total height directly, we can calculate it from the frame count
-		// So rowsPerRow = Math.ceil(frameCount / columnsPerRow)
-		// But we don't have columnsPerRow yet, so we need to solve for it
-		// We can use the fact that frameCount = columnsPerRow * rowsPerRow
-		// And rowsPerRow = Math.ceil(frameCount / columnsPerRow)
-		// So frameCount = columnsPerRow * Math.ceil(frameCount / columnsPerRow)
-		// This is a bit tricky to solve directly, so we'll use a simpler approach
-		// We'll assume that the texture is a square grid, so columnsPerRow = Math.sqrt(frameCount)
-		// This is a reasonable assumption for most sprite sheets
 		const columnsPerRow = Math.ceil(Math.sqrt(texture.frameCount))
 
 		// Calculate the frame index based on the position
@@ -124,7 +140,39 @@ class ItemTextureService {
 
 		return {
 			key: mapping.textureKey,
-			frame: frameIndex
+			frame: frameIndex,
+			scale: texture.scale || 1
+		}
+	}
+
+	/**
+	 * Gets the texture key and frame index for a placeable item type
+	 * @param itemType The item type to get the placeable texture for
+	 * @returns The texture key, frame index, and scale, or undefined if not found
+	 */
+	public getPlaceableItemTexture(itemType: string): { key: string, frame: number, scale: number } | undefined {
+		// Find the mapping for this item type
+		const mapping = PLACEABLE_ITEM_TEXTURE_MAPPINGS.find(m => m.itemType === itemType)
+		if (!mapping) {
+			return undefined
+		}
+
+		// Find the texture for this item type
+		const texture = PLACEABLE_ITEM_TEXTURES.find(t => t.key === mapping.textureKey)
+		if (!texture) {
+			return undefined
+		}
+
+		// Calculate the number of columns per row based on the texture dimensions
+		const columnsPerRow = Math.ceil(Math.sqrt(texture.frameCount))
+
+		// Calculate the frame index based on the position
+		const frameIndex = mapping.position.row * columnsPerRow + mapping.position.col
+
+		return {
+			key: mapping.textureKey,
+			frame: frameIndex,
+			scale: texture.scale || 1
 		}
 	}
 

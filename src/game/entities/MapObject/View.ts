@@ -2,6 +2,7 @@ import { Scene, GameObjects } from 'phaser'
 import { MapObject } from '../../../../backend/src/Game/MapObjects/types'
 import { ItemMetadata } from '../../../../backend/src/Game/Items/types'
 import { itemService } from "../../services/ItemService"
+import { itemTextureService } from "../../services/ItemTextureService"
 
 export class MapObjectView {
 	private sprite: GameObjects.Sprite
@@ -13,39 +14,68 @@ export class MapObjectView {
 		// Get item metadata to determine the sprite to use
 		const itemMetadata = itemService.getItemType(mapObject.item.itemType)
 		
-		// Create the sprite
+		// Create the sprite using the appropriate texture
+		const texture = this.getTexture(itemMetadata)
 		this.sprite = scene.add.sprite(
 			mapObject.position.x,
 			mapObject.position.y,
-			this.getSpriteKey(itemMetadata)
+			texture.key,
+			texture.frame
 		)
+		
+		// Set the anchor point to top-left corner
+		this.sprite.setOrigin(0, 0)
 		
 		// Set the rotation
 		this.sprite.setRotation(mapObject.rotation)
 		
-		// Add physics body
-		scene.physics.add.existing(this.sprite, true) // true makes it static
+		// Set the scale from the texture configuration
+		this.sprite.setScale(texture.scale)
+		
+		// Add physics body only if the item blocks movement
+		if (itemMetadata?.placement?.blocksMovement) {
+			scene.physics.add.existing(this.sprite, true) // true makes it static
+		}
 		
 		// Set the display size based on the item type
 		this.setDisplaySize(itemMetadata)
 	}
 	
-	private getSpriteKey(itemMetadata: ItemMetadata | null): string {
-		// If we have metadata with a specific sprite, use it
-		if (itemMetadata && itemMetadata.emoji) {
-			return itemMetadata.emoji
+	private getTexture(itemMetadata: ItemMetadata | null): { key: string, frame: number, scale: number } {
+		// If we have metadata with a placement property, try to get the placeable texture
+		if (itemMetadata?.placement) {
+			const placeableTexture = itemTextureService.getPlaceableItemTexture(this.mapObject.item.itemType)
+			if (placeableTexture) {
+				return placeableTexture
+			}
 		}
 		
-		// Default to a placeholder sprite
-		return 'mozgotrzep'
+		// Fallback to regular item texture
+		const regularTexture = itemTextureService.getItemTexture(this.mapObject.item.itemType)
+		if (regularTexture) {
+			return regularTexture
+		}
+		
+		// If no texture is found, use the emoji as a fallback
+		return {
+			key: itemMetadata?.emoji || 'mozgotrzep',
+			frame: 0,
+			scale: 1
+		}
 	}
 	
 	private setDisplaySize(itemMetadata: ItemMetadata | null): void {
 		// Default size
 		const defaultSize = 32
 		
-		// If we have metadata with a specific size, use it
-		if (itemMetadata && itemMetadata.metadata && itemMetadata.metadata.size) {
+		// If we have metadata with a placement size, use it
+		if (itemMetadata?.placement?.size) {
+			this.sprite.setDisplaySize(
+				itemMetadata.placement.size.width * defaultSize,
+				itemMetadata.placement.size.height * defaultSize
+			)
+		} else if (itemMetadata?.metadata?.size) {
+			// Fallback to metadata size if available
 			this.sprite.setDisplaySize(
 				itemMetadata.metadata.size.width || defaultSize,
 				itemMetadata.metadata.size.height || defaultSize
