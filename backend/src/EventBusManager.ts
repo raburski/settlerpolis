@@ -14,7 +14,7 @@ export class EventBusManager implements EventManager {
 	private eventHandlers: Map<string, EventCallback[]> = new Map()
 	private joinedHandlers: LifecycleCallback[] = []
 	private leftHandlers: LifecycleCallback[] = []
-	private debug = true
+	private debug = false
 
 	constructor(private networkManager: NetworkManager) {
 		if (this.debug) console.log('[EventBusManager] Initialized')

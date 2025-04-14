@@ -67,6 +67,7 @@ export class PlayersManager {
 
 		// Handle client lifecycle
 		this.event.onLeft((client) => {
+			console.log('[PLAYERS] on left', client.id)
 			const player = this.players.get(client.id)
 			if (player) {
 				this.players.delete(client.id)
