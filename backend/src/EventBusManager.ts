@@ -42,6 +42,10 @@ export class EventBusManager implements EventManager {
 									// For sc: events, use the network manager with the original client's group
 									if (this.debug) console.log(`[EventBusManager] Proxy client routing sc: event to networkManager: ${event}`)
 									this.networkManager.emit(to, event, data, wrappedData.__clientContext?.currentGroup)
+								} else if (event.startsWith('ss:')) {
+									// For ss: events, use the server's emit function directly
+									if (this.debug) console.log(`[EventBusManager] Proxy client routing ss: event to server emit: ${event}`)
+									this.emit(to, event, data, targetClientId)
 								} else {
 									// For other events, use normal emit
 									if (this.debug) console.log(`[EventBusManager] Proxy client routing event to emit: ${event}`)
