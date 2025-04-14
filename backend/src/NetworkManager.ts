@@ -98,13 +98,7 @@ export class NetworkManager implements EventManager {
 			},
 			emit: (to: Receiver, event: string, data: any, targetClientId?: string) => {
 				if (self.debug) {
-					console.log('[NetworkManager] Client emit:', {
-						from: socket.id,
-						to,
-						event,
-						targetClientId,
-						currentGroup: self.clientGroups.get(socket.id)
-					})
+					console.log('[NetworkManager] Client emit:', to, event)
 				}
 				
 				// Update timestamp when client emits a message
