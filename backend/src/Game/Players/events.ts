@@ -5,12 +5,16 @@ export const PlayersEvents = {
 		Move: 'cs:players:move',
 		TransitionTo: 'cs:players:transition-to',
 		DropItem: 'cs:players:drop_item',
-		PickupItem: 'cs:players:pickup_item'
+		PickupItem: 'cs:players:pickup_item',
+		Equip: 'cs:players:equip',
+		Unequip: 'cs:players:unequip'
 	},
 	SC: {
 		Connected: 'sc:players:connected',
 		Joined: 'sc:players:joined',
 		Left: 'sc:players:left',
 		Move: 'sc:players:move',
-	}
+		Equip: 'sc:players:equip',
+		Unequip: 'sc:players:unequip'
+	},
 } as const 

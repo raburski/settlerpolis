@@ -34,24 +34,6 @@ export const ItemTooltip: React.FC<ItemTooltipProps> = ({ item, position, onCons
 					<div className={styles.itemDescription}>{itemType.description}</div>
 				)}
 				<div className={styles.itemType}>{itemType.type}</div>
-				<div className={styles.buttons}>
-					{itemType.type === 'consumable' && (
-						<button 
-							className={styles.consumeButton}
-							onClick={() => onConsume(item.id)}
-							title="Consume item"
-						>
-							🍽️
-						</button>
-					)}
-					<button 
-						className={styles.dropButton}
-						onClick={() => onDrop(item.id)}
-						title="Drop item"
-					>
-						🗑️
-					</button>
-				</div>
 			</div>
 		</div>,
 		document.body

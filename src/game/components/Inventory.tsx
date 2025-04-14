@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { EventBus } from '../EventBus'
 import { Event } from '../../../backend/src/events'
 import { Inventory as InventoryType, Item, InventorySlot, Position, AddItemData } from '../../../backend/src/Game/Inventory/types'
+import { EquipmentSlotType } from '../../../backend/src/Game/Players/types'
 import { itemService } from '../services/ItemService'
 import { ItemTexture } from './ItemTexture'
 import { ItemTooltip } from './ItemTooltip'
@@ -9,7 +10,7 @@ import { InventoryItem } from './InventoryItem'
 import styles from './Inventory.module.css'
 import { INVENTORY_GRID_ROWS, INVENTORY_GRID_COLUMNS } from '../../../backend/src/consts'
 
-const ItemSlot = ({ slot, handleDropItem, handleConsumeItem, handleDragStart, handleDragEnd, handleDragOver, handleDrop }) => {
+const ItemSlot = ({ slot, handleDropItem, handleConsumeItem, handleDragStart, handleDragEnd, handleDragOver, handleDrop, isEquipped = false }) => {
 	const item = slot.item
 	const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 })
 	const [showTooltip, setShowTooltip] = useState(false)
@@ -150,6 +151,7 @@ const ItemSlot = ({ slot, handleDropItem, handleConsumeItem, handleDragStart, ha
 					position={tooltipPosition}
 					onConsume={handleConsumeItem}
 					onDrop={handleDropItem}
+					isEquipped={isEquipped}
 				/>
 			)}
 		</>
@@ -163,6 +165,9 @@ export function Inventory() {
 	const [updateCounter, setUpdateCounter] = useState<number>(0)
 	const [draggedItem, setDraggedItem] = useState<{id: string, position: Position} | null>(null)
 	const [isDragging, setIsDragging] = useState(false)
+	const [equippedItems, setEquippedItems] = useState<Record<EquipmentSlotType, Item | null>>({
+		[EquipmentSlotType.Hand]: null
+	})
 	const inventoryRef = useRef<HTMLDivElement>(null)
 
 	useEffect(() => {
@@ -191,12 +196,30 @@ export function Inventory() {
 			}
 		}
 
+		const handleItemEquipped = (data: { itemId: string, slotType: EquipmentSlotType, item: Item }) => {
+			setEquippedItems(prev => ({
+				...prev,
+				[data.slotType]: data.item
+			}))
+		}
+
+		const handleItemUnequipped = (data: { slotType: EquipmentSlotType, item: Item }) => {
+			setEquippedItems(prev => ({
+				...prev,
+				[data.slotType]: null
+			}))
+		}
+
 		EventBus.on('ui:inventory:toggle', handleToggle)
 		EventBus.on('ui:quests:toggle', handleQuestsToggle)
+		EventBus.on(Event.Players.SC.Equip, handleItemEquipped)
+		EventBus.on(Event.Players.SC.Unequip, handleItemUnequipped)
 
 		return () => {
 			EventBus.off('ui:inventory:toggle', handleToggle)
 			EventBus.off('ui:quests:toggle', handleQuestsToggle)
+			EventBus.off(Event.Players.SC.Equip, handleItemEquipped)
+			EventBus.off(Event.Players.SC.Unequip, handleItemUnequipped)
 		}
 	}, [isVisible])
 
@@ -429,18 +452,23 @@ export function Inventory() {
 			return
 		}
 		
-		// Send move item request
-		console.log('Emitting MoveItem event:', {
-			itemId: draggedItem.id,
-			sourcePosition: draggedItem.position,
-			targetPosition
-		})
+		// Check if this is an equipped item being dragged
+		const isEquippedItem = draggedItem.position.row === -1 && draggedItem.position.column === -1
 		
-		EventBus.emit(Event.Inventory.CS.MoveItem, {
-			itemId: draggedItem.id,
-			sourcePosition: draggedItem.position,
-			targetPosition
-		})
+		if (isEquippedItem) {
+			// This is an equipped item, send unequip event with target position
+			EventBus.emit(Event.Players.CS.Unequip, {
+				slotType: EquipmentSlotType.Hand,
+				targetPosition
+			})
+		} else {
+			// Regular inventory move
+			EventBus.emit(Event.Inventory.CS.MoveItem, {
+				itemId: draggedItem.id,
+				sourcePosition: draggedItem.position,
+				targetPosition
+			})
+		}
 	}
 
 	const handleClose = () => {
@@ -475,6 +503,14 @@ export function Inventory() {
 		}
 	}
 
+	const handleUnequipItem = (slotType: EquipmentSlotType, targetPosition?: Position) => {
+		// Send unequip request
+		EventBus.emit(Event.Players.CS.Unequip, {
+			slotType,
+			targetPosition
+		})
+	}
+
 	return (
 		<div 
 			className={`${styles.inventoryContainer} ${isExiting ? styles.slideOut : ''}`}
@@ -493,6 +529,54 @@ export function Inventory() {
 					×
 				</button>
 				<h2 className={styles.title}>Inventory</h2>
+				<div className={styles.equipmentSection}>
+					<div 
+						className={`${styles.equipmentSlot} ${isDragging ? styles.draggingOver : ''}`}
+						onDragOver={handleDragOver}
+						onDrop={(e) => {
+							e.preventDefault()
+							e.stopPropagation()
+							if (!draggedItem) return
+
+							// Send equip request
+							EventBus.emit(Event.Players.CS.Equip, {
+								itemId: draggedItem.id,
+								slotType: EquipmentSlotType.Hand
+							})
+						}}
+					>
+						{equippedItems[EquipmentSlotType.Hand] && (
+							<ItemSlot 
+								slot={{
+									position: { row: -1, column: -1 }, // Special position for equipped items
+									item: equippedItems[EquipmentSlotType.Hand]
+								}}
+								handleDropItem={handleDropItem}
+								handleConsumeItem={handleConsumeItem}
+								handleDragStart={handleDragStart}
+								handleDragEnd={handleDragEnd}
+								handleDragOver={handleDragOver}
+								handleDrop={(e) => {
+									e.preventDefault()
+									e.stopPropagation()
+									
+									// Get the target position from the drop event
+									const targetRow = parseInt(e.currentTarget.getAttribute('data-row') || '')
+									const targetColumn = parseInt(e.currentTarget.getAttribute('data-column') || '')
+									
+									if (!isNaN(targetRow) && !isNaN(targetColumn)) {
+										// Unequip to specific position
+										handleUnequipItem(EquipmentSlotType.Hand, { row: targetRow, column: targetColumn })
+									} else {
+										// Just unequip without specific position
+										handleUnequipItem(EquipmentSlotType.Hand)
+									}
+								}}
+								isEquipped={true}
+							/>
+						)}
+					</div>
+				</div>
 				<div className={styles.grid}>
 					{gridSlots.map((slot, index) => (
 						<ItemSlot 
@@ -504,6 +588,7 @@ export function Inventory() {
 							handleDragEnd={handleDragEnd}
 							handleDragOver={handleDragOver}
 							handleDrop={handleDrop}
+							isEquipped={false}
 						/>
 					))}
 				</div>

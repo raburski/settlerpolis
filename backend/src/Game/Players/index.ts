@@ -1,9 +1,11 @@
 import { EventManager, Event } from '../../events'
-import { Player, PlayerJoinData, PlayerMoveData, PlayerTransitionData } from '../../types'
+import { Player, PlayerJoinData, PlayerMoveData, PlayerTransitionData, EquipmentSlotType, EquipItemData, UnequipItemData } from '../../types'
 import { Receiver } from '../../Receiver'
 import { InventoryManager } from '../Inventory'
 import { LootManager } from '../Loot'
 import { PICKUP_RANGE } from '../../consts'
+import { ItemsManager } from '../Items'
+import { Position } from '../Inventory/types'
 
 interface DropItemData {
 	itemId: string
@@ -22,13 +24,18 @@ const INITIAL_POSITION = {
 	}
 }
 
+const INITIAL_EQUIPMENT: Record<EquipmentSlotType, null> = {
+	[EquipmentSlotType.Hand]: null
+}
+
 export class PlayersManager {
 	private players = new Map<string, Player>()
 
 	constructor(
 		private event: EventManager,
 		private inventoryManager: InventoryManager,
-		private lootManager: LootManager
+		private lootManager: LootManager,
+		private itemsManager: ItemsManager
 	) {
 		this.setupEventHandlers()
 	}
@@ -66,7 +73,8 @@ export class PlayersManager {
 				playerId,
 				position: data.position,
 				scene: data.scene,
-				appearance: data.appearance
+				appearance: data.appearance,
+				equipment: { ...INITIAL_EQUIPMENT }
 			})
 
 			// Send existing players to new player
@@ -163,6 +171,97 @@ export class PlayersManager {
 			}
 
 			this.inventoryManager.addItem(client, inventoryItem)
+		})
+
+		// Handle item equip request
+		this.event.on<EquipItemData>(Event.Players.CS.Equip, (data, client) => {
+			const player = this.players.get(client.id)
+			if (!player) return
+
+			// Initialize equipment if not exists
+			if (!player.equipment) {
+				player.equipment = { ...INITIAL_EQUIPMENT }
+			}
+
+			// Remove item from inventory
+			const item = this.inventoryManager.removeItem(client, data.itemId)
+			if (!item) return
+
+			// Get item metadata to check if it's equippable
+			const itemMeta = this.itemsManager.getItemMetadata(item.itemType)
+			if (!itemMeta) return
+
+			// Check if item is equippable (you might want to add an 'equippable' property to ItemMetadata)
+			// For now, we'll assume all items are equippable
+
+			// If there's already an item in the slot, put it back in inventory
+			if (player.equipment[data.slotType]) {
+				const oldItem = player.equipment[data.slotType]
+				if (oldItem) {
+					this.inventoryManager.addItem(client, oldItem)
+				}
+			}
+
+			// Equip the new item
+			player.equipment[data.slotType] = item
+
+			// Notify client about the equip with full item data
+			client.emit(Receiver.Sender, Event.Players.SC.Equip, {
+				itemId: item.id,
+				slotType: data.slotType,
+				item: item
+			})
+		})
+
+		// Handle item unequip request
+		this.event.on<UnequipItemData>(Event.Players.CS.Unequip, (data, client) => {
+			const player = this.players.get(client.id)
+			if (!player || !player.equipment) return
+
+			// Get the equipped item
+			const equippedItem = player.equipment[data.slotType]
+			if (!equippedItem) return
+
+			// If a target position is provided, try to add the item to that slot
+			if (data.targetPosition) {
+				// Check if the target slot is empty
+				const targetSlot = this.inventoryManager.getSlotAtPosition(client.id, data.targetPosition)
+				if (targetSlot && !targetSlot.item) {
+					// Add the item to the target slot
+					this.inventoryManager.addItemToPosition(client, equippedItem, data.targetPosition)
+					
+					// Clear the equipment slot
+					player.equipment[data.slotType] = null
+					
+					// Notify client about the unequip
+					client.emit(Receiver.Sender, Event.Players.SC.Unequip, {
+						slotType: data.slotType,
+						item: equippedItem
+					})
+					return
+				}
+			}
+			
+			// If no target position or target slot is occupied, try to find an empty slot
+			const emptySlot = this.inventoryManager.findFirstEmptySlot(client.id)
+			if (emptySlot) {
+				// Found an empty slot, add the item there
+				this.inventoryManager.addItemToPosition(client, equippedItem, emptySlot)
+				
+				// Clear the equipment slot
+				player.equipment[data.slotType] = null
+				
+				// Notify client about the unequip
+				client.emit(Receiver.Sender, Event.Players.SC.Unequip, {
+					slotType: data.slotType,
+					item: equippedItem
+				})
+			} else {
+				// Inventory is full, notify the client
+				client.emit(Receiver.Sender, Event.Chat.SC.SystemMessage, { 
+					message: "Your inventory is full! Cannot unequip item." 
+				})
+			}
 		})
 	}
 } 

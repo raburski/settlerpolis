@@ -257,4 +257,60 @@
 	box-shadow: var(--shadow-md);
 	opacity: 0.8;
 	pointer-events: none;
+}
+
+.equipButton {
+	background: none;
+	border: none;
+	cursor: pointer;
+	padding: 4px;
+	font-size: 1.2em;
+	transition: transform 0.2s;
+}
+
+.equipButton:hover {
+	transform: scale(1.2);
+}
+
+.equipmentSection {
+	display: flex;
+	justify-content: center;
+	margin-bottom: var(--spacing-md);
+	padding: var(--spacing-sm);
+	background: var(--color-background-lighter);
+	border-radius: var(--border-radius-sm);
+	box-shadow: var(--shadow-sm);
+}
+
+.equipmentSlot {
+	width: 48px;
+	height: 48px;
+	border: 2px solid var(--color-border);
+	background: var(--color-background-light);
+	border-radius: var(--border-radius-sm);
+	margin: 0 var(--spacing-xs);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+}
+
+.equipmentSlot::after {
+	content: '🤚';
+	position: absolute;
+	opacity: 0.3;
+	font-size: 1.5em;
+	pointer-events: none;
+}
+
+.equipmentSlot:hover {
+	border-color: var(--color-border-hover);
+	background: var(--color-background-lighter);
+}
+
+.equipmentSlot.draggingOver {
+	border-color: var(--color-primary);
+	background: var(--color-background-lighter);
+	transform: scale(1.05);
+	box-shadow: var(--shadow-md);
 } 

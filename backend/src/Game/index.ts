@@ -37,7 +37,7 @@ export class GameManager {
 		this.scheduler = new Scheduler(event)
 		
 		// Initialize PlayersManager last since it depends on other managers
-		this.playersManager = new PlayersManager(event, this.inventoryManager, this.lootManager)
+		this.playersManager = new PlayersManager(event, this.inventoryManager, this.lootManager, this.itemsManager)
 		
 		this.setupEventHandlers()
 	}
