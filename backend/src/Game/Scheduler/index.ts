@@ -12,7 +12,7 @@ export class Scheduler {
 
 	constructor(
 		private event: EventManager,
-		schedules: ScheduleOptions[] = defaultSchedules
+		schedules: ScheduleOptions[] = []// = defaultSchedules
 	) {
 		// Load provided schedules or defaults
 		this.loadSchedules(schedules)
