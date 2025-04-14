@@ -57,6 +57,7 @@ export class PlayersManager {
 	private setupEventHandlers() {
 		// Handle initial connection
 		this.event.on(Event.Players.CS.Connect, (_, client) => {
+			console.log('[PLAYERS] on CONNECT', client.id)
 			// Send initial scene and position data
 			const playerInit = {
 				...INITIAL_POSITION,
@@ -67,12 +68,16 @@ export class PlayersManager {
 
 		// Handle client lifecycle
 		this.event.onLeft((client) => {
-			console.log('[PLAYERS] on left', client.id)
+			console.log('[PLAYERS] on LEFT', client.id)
 			const player = this.players.get(client.id)
 			if (player) {
 				this.players.delete(client.id)
 				client.emit(Receiver.NoSenderGroup, Event.Players.SC.Left, { playerId: client.id })
 			}
+		})
+		
+		this.event.onJoined((client) => {
+			console.log('[PLAYERS] on JOINED', client.id)
 		})
 
 		// Handle player join
