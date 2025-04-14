@@ -259,6 +259,13 @@ export class InventoryManager {
 		client.emit(Receiver.Sender, Event.Inventory.SC.Add, addItemData)
 	}
 
+	public getSlotForItem(playerId: string, itemId: string): InventorySlot | undefined {
+		const inventory = this.inventories.get(playerId)
+		if (!inventory) return undefined
+
+		return inventory.slots.find(slot => slot.item?.id === itemId)
+	}
+
 	public getItem(playerId: string, itemId: string): Item | undefined {
 		const inventory = this.inventories.get(playerId)
 		if (!inventory) return undefined

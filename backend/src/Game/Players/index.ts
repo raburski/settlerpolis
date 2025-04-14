@@ -193,6 +193,13 @@ export class PlayersManager {
 				player.equipment = { ...INITIAL_EQUIPMENT }
 			}
 
+			// Find the source slot of the item being equipped
+			const sourceSlot = this.inventoryManager.getSlotForItem(client.id, data.itemId)
+			if (!sourceSlot || !sourceSlot.item) {
+				console.log('Source slot not found or item mismatch')
+				return
+			}
+
 			// Remove item from inventory
 			const item = this.inventoryManager.removeItem(client, data.itemId)
 			if (!item) return
@@ -201,14 +208,12 @@ export class PlayersManager {
 			const itemMeta = this.itemsManager.getItemMetadata(item.itemType)
 			if (!itemMeta) return
 
-			// Check if item is equippable (you might want to add an 'equippable' property to ItemMetadata)
-			// For now, we'll assume all items are equippable
-
-			// If there's already an item in the slot, put it back in inventory
+			// If there's already an item in the slot, move it to the source position
 			if (player.equipment[data.slotType]) {
 				const oldItem = player.equipment[data.slotType]
 				if (oldItem) {
-					this.inventoryManager.addItem(client, oldItem)
+					// Add the old item to the source position
+					this.inventoryManager.addItemToPosition(client, oldItem, sourceSlot.position)
 				}
 			}
 

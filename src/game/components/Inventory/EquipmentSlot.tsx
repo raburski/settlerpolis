@@ -1,8 +1,8 @@
 import React from 'react'
-import { Item, Position } from '../../../backend/src/Game/Inventory/types'
-import { EquipmentSlotType } from '../../../backend/src/Game/Players/types'
+import { Item, Position } from '../../../../backend/src/Game/Inventory/types'
+import { EquipmentSlotType } from '../../../../backend/src/Game/Players/types'
 import { EventBus } from '../../EventBus'
-import { Event } from '../../../backend/src/events'
+import { Event } from '../../events'
 import { ItemSlot } from './ItemSlot'
 import styles from '../Inventory.module.css'
 
@@ -27,32 +27,48 @@ export const EquipmentSlot: React.FC<EquipmentSlotProps> = ({
 	handleConsumeItem,
 	handleUnequipItem
 }) => {
+	const handleEquipmentDrop = (e: React.DragEvent) => {
+		e.preventDefault()
+		e.stopPropagation()
+		e.currentTarget.classList.remove(styles.draggingOver)
+		
+		// Get the dragged item data
+		const inventoryData = e.dataTransfer.getData('application/inventory')
+		if (!inventoryData) return
+		
+		try {
+			const data = JSON.parse(inventoryData)
+			if (data.type === 'inventory') {
+				// Send equip request
+				EventBus.emit(Event.Players.CS.Equip, {
+					itemId: data.itemId,
+					slotType: EquipmentSlotType.Hand,
+					sourcePosition: data.position
+				})
+			}
+		} catch (error) {
+			console.error('Error parsing inventory data:', error)
+		}
+	}
+
+	const handleDragEnter = (e: React.DragEvent) => {
+		e.preventDefault()
+		e.currentTarget.classList.add(styles.draggingOver)
+	}
+
+	const handleDragLeave = (e: React.DragEvent) => {
+		e.preventDefault()
+		e.currentTarget.classList.remove(styles.draggingOver)
+	}
+
 	return (
 		<div className={styles.equipmentSection}>
 			<div 
 				className={`${styles.equipmentSlot} ${isDragging ? styles.draggingOver : ''}`}
 				onDragOver={handleDragOver}
-				onDrop={(e) => {
-					e.preventDefault()
-					e.stopPropagation()
-					
-					// Get the dragged item data
-					const inventoryData = e.dataTransfer.getData('application/inventory')
-					if (!inventoryData) return
-					
-					try {
-						const data = JSON.parse(inventoryData)
-						if (data.type === 'inventory') {
-							// Send equip request
-							EventBus.emit(Event.Players.CS.Equip, {
-								itemId: data.itemId,
-								slotType: EquipmentSlotType.Hand
-							})
-						}
-					} catch (error) {
-						console.error('Error parsing inventory data:', error)
-					}
-				}}
+				onDragEnter={handleDragEnter}
+				onDragLeave={handleDragLeave}
+				onDrop={handleEquipmentDrop}
 			>
 				{equippedItem && (
 					<ItemSlot 
@@ -64,23 +80,11 @@ export const EquipmentSlot: React.FC<EquipmentSlotProps> = ({
 						handleConsumeItem={handleConsumeItem}
 						handleDragStart={handleDragStart}
 						handleDragEnd={handleDragEnd}
-						handleDragOver={handleDragOver}
-						handleDrop={(e) => {
+						handleDragOver={(e) => {
 							e.preventDefault()
 							e.stopPropagation()
-							
-							// Get the target position from the drop event
-							const targetRow = parseInt(e.currentTarget.getAttribute('data-row') || '')
-							const targetColumn = parseInt(e.currentTarget.getAttribute('data-column') || '')
-							
-							if (!isNaN(targetRow) && !isNaN(targetColumn)) {
-								// Unequip to specific position
-								handleUnequipItem(EquipmentSlotType.Hand, { row: targetRow, column: targetColumn })
-							} else {
-								// Just unequip without specific position
-								handleUnequipItem(EquipmentSlotType.Hand)
-							}
 						}}
+						handleDrop={handleEquipmentDrop}
 						isEquipped={true}
 					/>
 				)}

@@ -47,6 +47,8 @@ export class ItemPlacementManager {
 			// Check if the item is placeable using the metadata
 			if (itemMetadata && itemMetadata.category === ItemCategory.Placeable) {
 				this.activatePlacementMode(data.item)
+			} else {
+				this.deactivatePlacementMode()
 			}
 		}
 	}

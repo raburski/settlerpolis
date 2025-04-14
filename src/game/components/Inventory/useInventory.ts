@@ -341,7 +341,7 @@ export const useInventory = () => {
 		const isEquippedItem = draggedItem.position?.row === -1 && draggedItem.position?.column === -1
 		
 		if (isEquippedItem) {
-			// This is an equipped item, send unequip event with target position
+			// For equipped items, always try to unequip to the target position
 			EventBus.emit(Event.Players.CS.Unequip, {
 				slotType: EquipmentSlotType.Hand,
 				targetPosition

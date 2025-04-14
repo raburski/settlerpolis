@@ -92,7 +92,8 @@ export const ItemSlot: React.FC<ItemSlotProps> = ({
 			if (itemType?.category === ItemCategory.Placeable && !isEquipped) {
 				EventBus.emit(Event.Players.CS.Equip, {
 					itemId: item.id,
-					slotType: EquipmentSlotType.Hand
+					slotType: EquipmentSlotType.Hand,
+					sourcePosition: slot.position
 				})
 			}
 		}
