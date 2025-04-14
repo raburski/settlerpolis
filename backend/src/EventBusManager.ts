@@ -22,6 +22,7 @@ export class EventBusManager implements EventManager {
 
 	on<T>(event: string, callback: EventCallback<T>): void {
 		if (this.debug) console.log(`[EventBusManager] Registering handler for event: ${event}`)
+		
 		// Get existing handlers for this event or create new array
 		const handlers = this.eventHandlers.get(event) || []
 		
@@ -31,29 +32,10 @@ export class EventBusManager implements EventManager {
 			const wrappedCallback: EventCallback<ServerEventData<T>> = (wrappedData, client) => {
 				try {
 					if (this.debug) console.log(`[EventBusManager] Executing ss: event handler for ${event}`, wrappedData.__clientContext?.id)
+					
 					// If we have client context in the data, create a proxy client
 					if (wrappedData.__clientContext) {
-						const proxyClient = {
-							id: wrappedData.__clientContext.id,
-							currentGroup: wrappedData.__clientContext.currentGroup,
-							emit: (to: Receiver, event: string, data: any, targetClientId?: string) => {
-								if (this.debug) console.log(`[EventBusManager] Proxy client emitting event: ${event}, to: ${to}, targetClientId: ${targetClientId}`)
-								if (event.startsWith('sc:')) {
-									// For sc: events, use the network manager with the original client's group
-									if (this.debug) console.log(`[EventBusManager] Proxy client routing sc: event to networkManager: ${event}`)
-									this.networkManager.emit(to, event, data, wrappedData.__clientContext?.currentGroup)
-								} else if (event.startsWith('ss:')) {
-									// For ss: events, use the server's emit function directly
-									if (this.debug) console.log(`[EventBusManager] Proxy client routing ss: event to server emit: ${event}`)
-									this.emit(to, event, data, targetClientId)
-								} else {
-									// For other events, use normal emit
-									if (this.debug) console.log(`[EventBusManager] Proxy client routing event to emit: ${event}`)
-									this.emit(to, event, data, targetClientId)
-								}
-							},
-							setGroup: () => {} // No-op for server events
-						}
+						const proxyClient = this.createProxyClient(wrappedData.__clientContext)
 						callback(wrappedData.data, proxyClient)
 					} else {
 						// No client context, just pass the data through
@@ -71,7 +53,9 @@ export class EventBusManager implements EventManager {
 			this.networkManager.on(event, (data, client) => {
 				if (this.debug) console.log(`[EventBusManager] Received ${event} from network`, client.id, client.currentGroup)
 				try {
-					callback(data as T, client)
+					// Create a proxy client that routes ss: events to EventBusManager
+					const proxyClient = this.createNetworkProxyClient(client)
+					callback(data as T, proxyClient)
 				} catch (error) {
 					console.error(`[EventBusManager] Error in cs: event handler for ${event}:`, error)
 				}
@@ -88,6 +72,7 @@ export class EventBusManager implements EventManager {
 			}
 			handlers.push(wrappedCallback)
 		}
+		
 		this.eventHandlers.set(event, handlers)
 		if (this.debug) console.log(`[EventBusManager] Registered handler for ${event}. Total handlers: ${handlers.length}`)
 	}
@@ -125,37 +110,91 @@ export class EventBusManager implements EventManager {
 			console.error(`[EventBusManager] Incorrect event emission: ${event}. Server should not emit cs: events.`)
 		} else if (event.startsWith('ss:')) {
 			// Server to server events should be routed internally
-			if (this.debug) console.log(`[EventBusManager] Processing ss: event internally: ${event}`)
-			const handlers = this.eventHandlers.get(event) || []
-			if (this.debug) console.log(`[EventBusManager] Found ${handlers.length} handlers for ss: event ${event}`)
-			
-			// Wrap the data with client context if we're in a client-originated event chain
-			const wrappedData: ServerEventData = {
-				data,
-				__clientContext: to === Receiver.Sender || to === Receiver.NoSenderGroup || to === Receiver.All ? 
-					{ id: groupName || 'server', currentGroup: groupName || 'server' } : undefined
-			}
-
-			if (this.debug) console.log(`[EventBusManager] Wrapped data for ss: event:`, 
-				'hasClientContext:', !!wrappedData.__clientContext,
-				'clientId:', wrappedData.__clientContext?.id,
-				'clientGroup:', wrappedData.__clientContext?.currentGroup)
-
-			handlers.forEach(handler => {
-				try {
-					if (this.debug) console.log(`[EventBusManager] Calling handler for ss: event ${event}`)
-					handler(wrappedData, {
-						id: 'server',
-						currentGroup: 'server',
-						emit: this.emit.bind(this),
-						setGroup: () => {} // No-op for server events
-					})
-				} catch (error) {
-					console.error(`[EventBusManager] Error handling event ${event}:`, error)
-				}
-			})
+			this.handleServerToServerEvent(event, to, data, groupName)
 		} else {
 			console.warn(`[EventBusManager] Event ${event} has no recognized prefix (sc:, cs:, ss:)`)
 		}
+	}
+	
+	// Helper methods to reduce code duplication
+	
+	private createProxyClient(clientContext: { id: string, currentGroup: string }) {
+		return {
+			id: clientContext.id,
+			currentGroup: clientContext.currentGroup,
+			emit: (to: Receiver, event: string, data: any, targetClientId?: string) => {
+				if (this.debug) console.log(`[EventBusManager] Proxy client emitting event: ${event}, to: ${to}, targetClientId: ${targetClientId}`)
+				if (event.startsWith('sc:')) {
+					// For sc: events, use the network manager with the original client's group
+					if (this.debug) console.log(`[EventBusManager] Proxy client routing sc: event to networkManager: ${event}`)
+					this.networkManager.emit(to, event, data, clientContext.currentGroup)
+				} else if (event.startsWith('ss:')) {
+					// For ss: events, use the server's emit function directly
+					if (this.debug) console.log(`[EventBusManager] Proxy client routing ss: event to server emit: ${event}`)
+					this.emit(to, event, data, targetClientId)
+				} else {
+					// For other events, use normal emit
+					if (this.debug) console.log(`[EventBusManager] Proxy client routing event to emit: ${event}`)
+					this.emit(to, event, data, targetClientId)
+				}
+			},
+			setGroup: () => {} // No-op for server events
+		}
+	}
+	
+	private createNetworkProxyClient(client: any) {
+		return {
+			id: client.id,
+			currentGroup: client.currentGroup,
+			emit: (to: Receiver, event: string, data: any, targetClientId?: string) => {
+				if (this.debug) console.log(`[EventBusManager] Network proxy client emitting event: ${event}, to: ${to}, targetClientId: ${targetClientId}`)
+				if (event.startsWith('ss:')) {
+					// For ss: events, use the EventBusManager's emit function
+					if (this.debug) console.log(`[EventBusManager] Network proxy client routing ss: event to EventBusManager: ${event}`)
+					this.emit(to, event, data, targetClientId)
+				} else if (event.startsWith('sc:')) {
+					// For sc: events, use the network manager
+					if (this.debug) console.log(`[EventBusManager] Network proxy client routing sc: event to networkManager: ${event}`)
+					this.networkManager.emit(to, event, data, client.currentGroup)
+				} else {
+					// For other events, use the original client's emit function
+					if (this.debug) console.log(`[EventBusManager] Network proxy client routing event to original client: ${event}`)
+					client.emit(to, event, data, targetClientId)
+				}
+			},
+			setGroup: client.setGroup
+		}
+	}
+	
+	private handleServerToServerEvent(event: string, to: Receiver, data: any, groupName?: string) {
+		if (this.debug) console.log(`[EventBusManager] Processing ss: event internally: ${event}`)
+		const handlers = this.eventHandlers.get(event) || []
+		if (this.debug) console.log(`[EventBusManager] Found ${handlers.length} handlers for ss: event ${event}`)
+		
+		// Wrap the data with client context if we're in a client-originated event chain
+		const wrappedData: ServerEventData = {
+			data,
+			__clientContext: to === Receiver.Sender || to === Receiver.NoSenderGroup || to === Receiver.All ? 
+				{ id: groupName || 'server', currentGroup: groupName || 'server' } : undefined
+		}
+
+		if (this.debug) console.log(`[EventBusManager] Wrapped data for ss: event:`, 
+			'hasClientContext:', !!wrappedData.__clientContext,
+			'clientId:', wrappedData.__clientContext?.id,
+			'clientGroup:', wrappedData.__clientContext?.currentGroup)
+
+		handlers.forEach(handler => {
+			try {
+				if (this.debug) console.log(`[EventBusManager] Calling handler for ss: event ${event}`)
+				handler(wrappedData, {
+					id: 'server',
+					currentGroup: 'server',
+					emit: this.emit.bind(this),
+					setGroup: () => {} // No-op for server events
+				})
+			} catch (error) {
+				console.error(`[EventBusManager] Error handling event ${event}:`, error)
+			}
+		})
 	}
 } 
