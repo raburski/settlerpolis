@@ -34,13 +34,17 @@ export class PlayerController {
 	}
 
 	private handleChatMessage = (data: { sourcePlayerId: string, message: string }) => {
+		if (data.sourcePlayerId && data.sourcePlayerId === this.playerId) return
+		
 		// Only show message if it's from our player
 		if (data.playerId === this.playerId) {
 			this.view.displayMessage(data.message)
 		}
 	}
 
-	private handleItemEquipped = (data: { itemId: string, slotType: EquipmentSlotType, item: Item }) => {
+	private handleItemEquipped = (data: { itemId: string, slotType: EquipmentSlotType, item: Item, sourcePlayerId: string }) => {
+		if (data.sourcePlayerId && data.sourcePlayerId === this.playerId) return
+
 		// Only handle equipment for our player
 		if (data.slotType === EquipmentSlotType.Hand) {
 			this.equippedItem = data.item
@@ -49,6 +53,8 @@ export class PlayerController {
 	}
 
 	private handleItemUnequipped = (data: { slotType: EquipmentSlotType, item: Item }) => {
+		if (data.sourcePlayerId && data.sourcePlayerId === this.playerId) return
+
 		// Only handle equipment for our player
 		if (data.slotType === EquipmentSlotType.Hand) {
 			this.equippedItem = null

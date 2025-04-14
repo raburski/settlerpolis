@@ -227,7 +227,7 @@ export class PlayersManager {
 			player.equipment[data.slotType] = item
 
 			// Notify client about the equip with full item data
-			client.emit(Receiver.Sender, Event.Players.SC.Equip, {
+			client.emit(Receiver.Group, Event.Players.SC.Equip, {
 				itemId: item.id,
 				slotType: data.slotType,
 				item: item
@@ -255,7 +255,7 @@ export class PlayersManager {
 					player.equipment[data.slotType] = null
 					
 					// Notify client about the unequip
-					client.emit(Receiver.Sender, Event.Players.SC.Unequip, {
+					client.emit(Receiver.Group, Event.Players.SC.Unequip, {
 						slotType: data.slotType,
 						item: equippedItem
 					})
@@ -273,7 +273,7 @@ export class PlayersManager {
 				player.equipment[data.slotType] = null
 				
 				// Notify client about the unequip
-				client.emit(Receiver.Sender, Event.Players.SC.Unequip, {
+				client.emit(Receiver.Group, Event.Players.SC.Unequip, {
 					slotType: data.slotType,
 					item: equippedItem
 				})

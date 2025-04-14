@@ -115,7 +115,7 @@ export class NetworkManager implements EventManager {
 							const clients = self.groupClients.get(group)
 							if (self.debug) console.log(`[NetworkManager] Emitting to group ${group}, clients: ${Array.from(clients || [])}`)
 							clients?.forEach(clientId => {
-								self.io.to(clientId).emit(event, data)
+								self.io.to(clientId).emit(event, { ...data, sourcePlayerId: socket.id })
 							})
 						}
 						break
@@ -137,7 +137,7 @@ export class NetworkManager implements EventManager {
 					
 					case Receiver.All:
 						if (self.debug) console.log('[NetworkManager] Broadcasting to all clients')
-						self.io.emit(event, data)
+						self.io.emit(event, { ...data, sourcePlayerId: socket.id })
 						break
 					
 					case Receiver.Client:
