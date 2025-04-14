@@ -62,7 +62,7 @@ export class MapObjectsManager {
 		this.removeObjectFromMap(mapObject.id, mapName)
 
 		// Notify all clients in the same map about the removed object
-		this.event.emit(Receiver.Sender, Event.MapObjects.SC.Despawn, { objectId }, mapName)
+		this.event.emit(Receiver.Group, Event.MapObjects.SC.Despawn, { objectId }, mapName)
 
 		console.log('Object removed:', mapObject)
 	}
@@ -152,7 +152,7 @@ export class MapObjectsManager {
 		if (mapObjects && mapObjects.size > 0) {
 			// Send each object to the client
 			for (const object of mapObjects.values()) {
-				client.emit(Receiver.Sender, Event.MapObjects.SC.Spawn, { object })
+				client.emit(Receiver.Group, Event.MapObjects.SC.Spawn, { object })
 			}
 		}
 	}
@@ -208,7 +208,7 @@ export class MapObjectsManager {
 		this.addObjectToMap(object)
 
 		// Broadcast to all players
-		client.emit(Receiver.Sender, Event.MapObjects.SC.Spawn, { object })
+		client.emit(Receiver.Group, Event.MapObjects.SC.Spawn, { object })
 
 		return true
 	}
