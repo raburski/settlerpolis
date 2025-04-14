@@ -109,6 +109,10 @@ export class EventBusManager implements EventManager {
 	emit(to: Receiver, event: string, data: any, groupName?: string): void {
 		if (this.debug) {
 			console.log('[EventBusManager] Emitting event:', event, 'to:', to, 'groupName:', groupName)
+			if (event.startsWith('ss:')) {
+				console.log('[EventBusManager] Stack trace for ss: event emission:')
+				console.trace()
+			}
 		}
 		
 		// Handle events based on their prefix
@@ -128,7 +132,7 @@ export class EventBusManager implements EventManager {
 			// Wrap the data with client context if we're in a client-originated event chain
 			const wrappedData: ServerEventData = {
 				data,
-				__clientContext: to === Receiver.Sender || to === Receiver.NoSenderGroup ? 
+				__clientContext: to === Receiver.Sender || to === Receiver.NoSenderGroup || to === Receiver.All ? 
 					{ id: groupName || 'server', currentGroup: groupName || 'server' } : undefined
 			}
 
