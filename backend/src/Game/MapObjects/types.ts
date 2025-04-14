@@ -13,7 +13,7 @@ export interface MapObject {
 
 export interface PlaceObjectData {
 	position: Position
-	rotation: number
+	rotation?: number
 	metadata?: Record<string, any>
 	item: Item
 }

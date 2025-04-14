@@ -6,7 +6,7 @@ import { Item } from '../Items/types'
 import { ItemsManager } from '../Items'
 import { InventoryManager } from '../Inventory'
 import { PLACE_RANGE } from '../../consts'
-import { EquipmentSlotType } from '../Players/types'
+import { EquipmentSlotType, PlayerJoinData, PlayerTransitionData } from '../Players/types'
 import { Position } from '../../types'
 
 export class MapObjectsManager {
@@ -28,8 +28,13 @@ export class MapObjectsManager {
 		})
 
 		// Handle player joining a map to send existing objects
-		this.event.onJoined((client) => {
-			this.sendMapObjectsToClient(client)
+		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
+			this.sendMapObjectsToClient(client, data.scene)
+		})
+
+		// Handle player transitioning to a new scene
+		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
+			this.sendMapObjectsToClient(client, data.scene)
 		})
 	}
 
@@ -140,8 +145,8 @@ export class MapObjectsManager {
 		return this.mapObjectsByMap.get(mapName)
 	}
 
-	private sendMapObjectsToClient(client: EventClient) {
-		const mapName = client.currentGroup
+	public sendMapObjectsToClient(client: EventClient, map?: string) {
+		const mapName = map || client.currentGroup
 		const mapObjects = this.getMapObjects(mapName)
 		
 		if (mapObjects && mapObjects.size > 0) {

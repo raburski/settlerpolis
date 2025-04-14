@@ -88,6 +88,9 @@ export class LootView extends GameObjects.Container {
 	}
 
 	private playSpawnAnimation() {
+		// Check if scene and tweens are still available
+		if (!this.scene || !this.scene.tweens) return
+
 		// First tween: throw up and fade in
 		this.scene.tweens.add({
 			targets: this.sprite,
@@ -98,6 +101,9 @@ export class LootView extends GameObjects.Container {
 			duration: 300,
 			ease: 'Quad.out',
 			onComplete: () => {
+				// Check again before starting second tween
+				if (!this.scene || !this.scene.tweens) return
+
 				// Second tween: fall down with bounce
 				this.scene.tweens.add({
 					targets: this.sprite,
@@ -106,7 +112,9 @@ export class LootView extends GameObjects.Container {
 					ease: 'Bounce.out',
 					onComplete: () => {
 						// Update depth after animation completes to ensure proper layering
-						this.setDepth(this.y)
+						if (this.active) {
+							this.setDepth(this.y)
+						}
 					}
 				})
 			}
