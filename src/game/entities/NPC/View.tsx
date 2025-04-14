@@ -21,7 +21,7 @@ export class NPCView extends GameObjects.Container {
 	protected currentState: PlayerState = PlayerState.Idle
 	protected speed: number = 160 // Default speed in pixels per second
 
-	constructor(scene: Scene, x: number = 0, y: number = 0, isNPC: boolean = false) {
+	constructor(scene: Scene, x: number = 0, y: number = 0) {
 		super(scene, x, y)
 		scene.add.existing(this)
 
@@ -45,9 +45,7 @@ export class NPCView extends GameObjects.Container {
 			physicsBody.setCollideWorldBounds(true)
 
 			// If this is an NPC, make it immovable
-			if (isNPC) {
-				physicsBody.setImmovable(true)
-			}
+			physicsBody.setImmovable(true)
 		} else {
 			console.error('Player physics body is null. This might happen during scene transitions.')
 		}

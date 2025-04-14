@@ -180,7 +180,7 @@ export class PlayersManager {
 				itemType: removedItem.itemType
 			}
 
-			this.inventoryManager.addItem(client, inventoryItem)
+			client.emit(Receiver.All, Event.Inventory.SS.Add, inventoryItem)
 		})
 
 		// Handle item equip request

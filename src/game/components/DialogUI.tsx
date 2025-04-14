@@ -4,6 +4,7 @@ import styles from './DialogUI.module.css'
 import { EventBus } from '../EventBus'
 import { DialogueEvents } from '../../../backend/src/Game/Dialogue/events'
 import { itemService } from '../services/ItemService'
+import { ItemTexture } from './ItemTexture'
 
 export function DialogUI() {
 	const [activeNode, setActiveNode] = useState<DialogueNode | null>(null)
@@ -75,7 +76,13 @@ export function DialogUI() {
 
 		return (
 			<div className={styles.itemContainer}>
-				<div className={styles.itemIcon}>{itemType.emoji || '📦'}</div>
+				<div className={styles.itemIcon}>
+					<ItemTexture 
+						itemType={item.itemType}
+						fallbackEmoji={itemType.emoji || '📦'}
+						style={{ width: '48px', height: '48px' }}
+					/>
+				</div>
 				<div className={styles.itemInfo}>
 					<div className={styles.itemHeader}>
 						<span className={styles.itemName}>{itemType.name}</span>
