@@ -195,20 +195,9 @@ export class InventoryManager {
 			const inventory = this.inventories.get(client.id)
 			if (!inventory) return
 
-			// Find first empty slot by checking each position in the grid
-			for (let row = 0; row < INVENTORY_GRID_ROWS; row++) {
-				for (let column = 0; column < INVENTORY_GRID_COLUMNS; column++) {
-					const slot = getSlotAtPosition(inventory, { row, column })
-					if (slot && slot.item === null) {
-						slot.item = item
-						const addItemData: AddItemData = {
-							item,
-							position: slot.position
-						}
-						client.emit(Receiver.Sender, Event.Inventory.SC.Add, addItemData)
-						return
-					}
-				}
+			const emptySlot = this.findFirstEmptySlot(client.id)
+			if (emptySlot) {
+				this.addItemToPosition(client, item, emptySlot)
 			}
 		})
 		
