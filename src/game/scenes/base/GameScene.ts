@@ -137,7 +137,7 @@ export abstract class GameScene extends MapScene {
 			data.position.y,
 			data.playerId
 		)
-		this.remotePlayers.set(data.id, remotePlayer)
+		this.remotePlayers.set(data.playerId, remotePlayer)
 	}
 
 	private handlePlayerMove = (data) => {

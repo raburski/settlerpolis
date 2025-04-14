@@ -18,7 +18,7 @@ export class PlayerController {
 
     protected lastPositionUpdate: { x: number, y: number } | null = null
 	protected lastPositionUpdateTime: number = 0
-	protected readonly POSITION_UPDATE_THROTTLE = 100 // 100ms
+	protected readonly POSITION_UPDATE_THROTTLE = 50 // 100ms
 
 	constructor(
 		private view: PlayerViewType,
