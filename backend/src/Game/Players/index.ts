@@ -1,11 +1,20 @@
-import { EventManager, Event } from '../../events'
-import { Player, PlayerJoinData, PlayerMoveData, PlayerTransitionData, EquipmentSlotType, EquipItemData, UnequipItemData } from '../../types'
+import { EventManager, Event, EventClient } from '../../events'
+import { Player, PlayerJoinData, PlayerMoveData, PlayerAttackData, PlayerPlaceData, EquipmentSlotType, EquipItemData, UnequipItemData } from './types'
 import { Receiver } from '../../Receiver'
 import { InventoryManager } from '../Inventory'
 import { LootManager } from '../Loot'
-import { PICKUP_RANGE } from '../../consts'
+import { PICKUP_RANGE, PLACE_RANGE } from '../../consts'
 import { ItemsManager } from '../Items'
-import { Position } from '../Inventory/types'
+import { MapObjectsManager } from '../MapObjects'
+import { PlaceObjectData } from '../MapObjects/types'
+import { Position } from '../../types'
+import { v4 as uuidv4 } from 'uuid'
+
+// Define missing types
+interface PlayerTransitionData {
+	scene: string
+	position: Position
+}
 
 interface DropItemData {
 	itemId: string
@@ -35,7 +44,8 @@ export class PlayersManager {
 		private event: EventManager,
 		private inventoryManager: InventoryManager,
 		private lootManager: LootManager,
-		private itemsManager: ItemsManager
+		private itemsManager: ItemsManager,
+		private mapObjectsManager: MapObjectsManager
 	) {
 		this.setupEventHandlers()
 	}
@@ -263,5 +273,48 @@ export class PlayersManager {
 				})
 			}
 		})
+
+		// Handle place request
+		this.event.on<PlaceObjectData>(Event.Players.CS.Place, this.handlePlace.bind(this))
+	}
+
+	private handlePlace = (data: PlaceObjectData, client: EventClient) => {
+		const player = this.players.get(client.id)
+		if (!player) return
+
+		// Check if player has equipment
+		if (!player.equipment) {
+			console.log('Player has no equipment:', player.playerId)
+			return
+		}
+
+		// Check if player has an item in their hand
+		const item = player.equipment[EquipmentSlotType.Hand]
+		if (!item) {
+			console.log('No item in hand:', player.playerId)
+			return
+		}
+
+		// Create place data with the item
+		const placeData: PlaceObjectData = {
+			position: data.position,
+			rotation: data.rotation,
+			metadata: data.metadata,
+			item
+		}
+
+		// Try to place the object
+		const success = this.mapObjectsManager.placeObject(player.playerId, placeData, client)
+
+		if (success) {
+			// Remove item from player's equipment
+			player.equipment[EquipmentSlotType.Hand] = null
+
+			// Notify client about the unequip
+			client.emit(Receiver.Sender, Event.Players.SC.Unequip, {
+				slotType: EquipmentSlotType.Hand,
+				item
+			})
+		}
 	}
 } 

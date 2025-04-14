@@ -42,4 +42,14 @@ export interface PlayerTransitionData extends PlayerSourcedData {
 export interface PlayerMoveData extends PlayerSourcedData {
 	x: number
 	y: number
+}
+
+export interface PlayerAttackData extends PlayerSourcedData {
+	position: WorldPosition
+}
+
+export interface PlayerPlaceData extends PlayerSourcedData {
+	position: WorldPosition
+	rotation?: number
+	metadata?: Record<string, any>
 } 

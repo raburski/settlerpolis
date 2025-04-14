@@ -7,7 +7,8 @@ export const PlayersEvents = {
 		DropItem: 'cs:players:drop_item',
 		PickupItem: 'cs:players:pickup_item',
 		Equip: 'cs:players:equip',
-		Unequip: 'cs:players:unequip'
+		Unequip: 'cs:players:unequip',
+		Place: 'cs:players:place'
 	},
 	SC: {
 		Connected: 'sc:players:connected',

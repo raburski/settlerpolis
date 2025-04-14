@@ -12,6 +12,8 @@ import { createLoot, Loot, DroppedItem } from '../../entities/Loot'
 import { PortalManager } from "../../modules/Portals";
 import networkManager from "../../network";
 import { playerService } from "../../services/PlayerService";
+import { createMapObject, MapObjectEntity } from '../../entities/MapObject'
+import { ItemPlacementManager } from '../../modules/ItemPlacement'
 
 type Player = {
 	view: PlayerView2
@@ -23,8 +25,10 @@ export abstract class GameScene extends MapScene {
 	protected remotePlayers: Map<string, RemotePlayer> = new Map()
 	protected droppedItems: Map<string, Loot> = new Map()
 	protected npcs: Map<string, NPC> = new Map()
+	protected mapObjects: Map<string, MapObjectEntity> = new Map()
 	protected keyboard: Keyboard | null = null
     protected portalManager: PortalManager | null = null
+	protected itemPlacementManager: ItemPlacementManager | null = null
 
 	constructor(key: string, mapKey: string, mapPath: string) {
 		super(key, mapKey, mapPath)
@@ -63,6 +67,9 @@ export abstract class GameScene extends MapScene {
 		// Process portals
 		this.portalManager.processPortals(this.map)
 
+		// Initialize the item placement manager
+		this.itemPlacementManager = new ItemPlacementManager(this, playerService.player)
+
 		// Only emit join event if this is not a scene transition
 		if (!isTransition) {
 			EventBus.emit(Event.Players.CS.Join, { 
@@ -95,6 +102,16 @@ export abstract class GameScene extends MapScene {
 		this.npcs.forEach(npc => {
 			npc.controller.update()
 		})
+
+		// Update map objects
+		this.mapObjects.forEach(mapObject => {
+			mapObject.controller.update()
+		})
+
+		// Update item placement manager
+		if (this.itemPlacementManager) {
+			this.itemPlacementManager.update()
+		}
     }
 
     private setupMultiplayer() {
@@ -108,7 +125,9 @@ export abstract class GameScene extends MapScene {
 		EventBus.on(Event.Loot.SC.Despawn, this.handleRemoveItems, this)
 		EventBus.on(Event.NPC.SC.List, this.handleNPCList, this)
 
-
+		// Set up map objects event listeners
+		EventBus.on(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn, this)
+		EventBus.on(Event.MapObjects.SC.Despawn, this.handleMapObjectDespawn, this)
 	}
 
 	private handlePlayerJoined = (data: { playerId: string, position: { x: number, y: number } }) => {
@@ -166,6 +185,27 @@ export abstract class GameScene extends MapScene {
 				this.physics.add.collider(this.player.view, npc.view)
 			}
 		})
+	}
+
+	private handleMapObjectSpawn = (data: { object: any }) => {
+		// Only add objects for the current map
+		if (data.object.mapName === this.scene.key) {
+			const mapObject = createMapObject(this, data.object)
+			this.mapObjects.set(data.object.id, mapObject)
+			
+			// If we have a player, set up collision with the map object
+			if (this.player) {
+				this.physics.add.collider(this.player.view, mapObject.view.getSprite())
+			}
+		}
+	}
+
+	private handleMapObjectDespawn = (data: { objectId: string }) => {
+		const mapObject = this.mapObjects.get(data.objectId)
+		if (mapObject) {
+			mapObject.controller.destroy()
+			this.mapObjects.delete(data.objectId)
+		}
 	}
 
     	// Transition to a new scene with a fade effect
@@ -233,9 +273,21 @@ export abstract class GameScene extends MapScene {
 		})
 		this.npcs.clear()
 
+		// Clean up map objects
+		this.mapObjects.forEach(mapObject => {
+			mapObject.controller.destroy()
+		})
+		this.mapObjects.clear()
+
 		// Clean up portal manager
 		if (this.portalManager) {
 			this.portalManager = null
+		}
+
+		// Clean up item placement manager
+		if (this.itemPlacementManager) {
+			this.itemPlacementManager.destroy()
+			this.itemPlacementManager = null
 		}
 
 		// Clean up event listeners
@@ -244,22 +296,20 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems)
 		EventBus.off(Event.Loot.SC.Despawn, this.handleRemoveItems)
 		EventBus.off(Event.NPC.SC.List, this.handleNPCList)
+		EventBus.off(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn)
+		EventBus.off(Event.MapObjects.SC.Despawn, this.handleMapObjectDespawn)
 	}
 
     public destroy(): void {
 		// Remove event listeners
-		EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems, this)
-		EventBus.off(Event.Loot.SC.Despawn, this.handleRemoveItems, this)
-		EventBus.off(Event.NPC.SC.List, this.handleNPCList, this)
+		EventBus.off(Event.Players.SC.Joined, this.handlePlayerJoined)
+		EventBus.off(Event.Players.SC.Left, this.handlePlayerLeft)
+		EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems)
+		EventBus.off(Event.Loot.SC.Despawn, this.handleRemoveItems)
+		EventBus.off(Event.NPC.SC.List, this.handleNPCList)
+		EventBus.off(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn)
+		EventBus.off(Event.MapObjects.SC.Despawn, this.handleMapObjectDespawn)
 		
-		// Clean up dropped items
-		this.droppedItems.forEach(loot => loot.controller.destroy())
-		this.droppedItems.clear()
-
-		// Clean up NPCs
-		this.npcs.forEach(npc => npc.controller.destroy())
-		this.npcs.clear()
-
-		// ... rest of destroy code ...
+		super.destroy()
 	}
 }

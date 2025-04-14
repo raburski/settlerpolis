@@ -189,4 +189,11 @@ export class PlayerController {
 			this.equippedItemSprite.destroy()
 		}
 	}
+
+	/**
+	 * Returns the current position of the player
+	 */
+	public getPosition(): { x: number, y: number } {
+		return { x: this.view.x, y: this.view.y }
+	}
 }

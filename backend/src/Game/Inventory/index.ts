@@ -7,7 +7,7 @@ import { Item, ItemCategory, ItemType } from "../Items/types"
 import { ItemsManager } from "../Items"
 import { INVENTORY_GRID_ROWS, INVENTORY_GRID_COLUMNS } from '../../consts'
 
-const DEFAULT_INVENTORY_ITEM_NAME = 'mozgotrzep'
+const DEFAULT_INVENTORY_ITEM_NAME = 'chainfolk_rug'
 
 function createItemWithRandomId(itemType: string): Item {
 	return {
@@ -257,5 +257,13 @@ export class InventoryManager {
 			position: slot.position
 		}
 		client.emit(Receiver.Sender, Event.Inventory.SC.Add, addItemData)
+	}
+
+	public getItem(playerId: string, itemId: string): Item | undefined {
+		const inventory = this.inventories.get(playerId)
+		if (!inventory) return undefined
+
+		const slot = inventory.slots.find(slot => slot.item?.id === itemId)
+		return slot?.item || undefined
 	}
 } 
