@@ -26,7 +26,8 @@
         "dev-nolog": "vite --config vite/config.dev.mjs",
         "build-nolog": "vite build --config vite/config.prod.mjs",
         "prepare": "husky install",
-        "check-backend": "cd backend && npm run check-types"
+        "check-backend": "cd backend && npm run check-types",
+        "check-consistency": "cd backend && ts-node src/consistency.ts"
     },
     "dependencies": {
         "cron-parser": "^5.1.1",
@@ -47,6 +48,7 @@
         "eslint-plugin-react-refresh": "^0.4.7",
         "husky": "^9.0.11",
         "terser": "^5.28.1",
+        "ts-node": "^10.9.2",
         "typescript": "^5.2.2",
         "vite": "^5.3.1"
     }
