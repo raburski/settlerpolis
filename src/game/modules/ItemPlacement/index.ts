@@ -7,22 +7,21 @@ import { ItemCategory } from '../../../../backend/src/Game/Items/types'
 import { EventBus } from "../../EventBus"
 import { PLACE_RANGE } from '../../../../backend/src/consts'
 import { Player } from '../../../../backend/src/Game/Players/types'
-import { PlayerController } from '../../entities/Player/Controller'
 import { itemTextureService } from '../../services/ItemTextureService'
+import { BasePlayerController } from "../../entities/Player/BaseController"
 
 export class ItemPlacementManager {
 	private scene: Scene
-	private player: Player
-	private playerController: PlayerController | null = null
+	private playerController: BasePlayerController
 	private previewSprite: Phaser.GameObjects.Sprite | null = null
 	private placementText: Phaser.GameObjects.Text | null = null
 	private isPlacementModeActive = false
 	private currentItem: any = null
 	private hasMouseMoved = false
 
-	constructor(scene: Scene, player: Player) {
+	constructor(scene: Scene, playerController: PlayerController) {
 		this.scene = scene
-		this.player = player
+		this.playerController = playerController
 		this.setupEventListeners()
 	}
 
@@ -39,7 +38,7 @@ export class ItemPlacementManager {
 	}
 
 	private handleItemEquipped = (data: { itemId: string, slotType: EquipmentSlotType, item: any, sourcePlayerId: string }) => {
-		if (data.sourcePlayerId && data.sourcePlayerId !== this.player.playerId) return
+		if (data.sourcePlayerId && data.sourcePlayerId !== this.playerController.playerId) return
 
 		// Only handle hand slot items
 		if (data.slotType === EquipmentSlotType.Hand && data.item) {
@@ -56,7 +55,7 @@ export class ItemPlacementManager {
 	}
 
 	private handleItemUnequipped = (data: { slotType: EquipmentSlotType, item: any, sourcePlayerId: string }) => {
-		if (data.sourcePlayerId && data.sourcePlayerId !== this.player.playerId) return
+		if (data.sourcePlayerId && data.sourcePlayerId !== this.playerController.playerId) return
 		// Only handle hand slot items
 		if (data.slotType === EquipmentSlotType.Hand && this.isPlacementModeActive) {
 			this.deactivatePlacementMode()
@@ -175,7 +174,7 @@ export class ItemPlacementManager {
 		// Show/hide placement text based on distance to player
 		if (this.placementText && this.hasMouseMoved) {
 			// Get player position from the scene
-			const playerPosition = this.getPlayerPosition()
+			const playerPosition = this.playerController.getPosition()
 			
 			// Get item metadata for size information
 			const itemMetadata = itemService.getItemType(this.currentItem.itemType)
@@ -214,7 +213,7 @@ export class ItemPlacementManager {
 		const snappedY = Math.floor((worldPoint.y - offsetY) / gridSize) * gridSize
 
 		// Get player position from the scene
-		const playerPosition = this.getPlayerPosition()
+		const playerPosition = this.playerController.getPosition()
 		
 		// Get item metadata for size information
 		const itemMetadata = itemService.getItemType(this.currentItem.itemType)
@@ -253,28 +252,6 @@ export class ItemPlacementManager {
 		} else {
 			console.log('Too far to place item. Distance:', distance)
 		}
-	}
-
-	/**
-	 * Gets the current player position from the scene
-	 */
-	private getPlayerPosition(): { x: number, y: number } {
-		// Try to get the player controller from the scene
-		if (!this.playerController) {
-			// Find the player in the scene
-			const gameScene = this.scene as any
-			if (gameScene.player && gameScene.player.controller) {
-				this.playerController = gameScene.player.controller
-			}
-		}
-		
-		// If we have a controller, use its getPosition method
-		if (this.playerController) {
-			return this.playerController.getPosition()
-		}
-		
-		// Fallback to the player object's position
-		return { x: this.player.position.x, y: this.player.position.y }
 	}
 
 	public update() {

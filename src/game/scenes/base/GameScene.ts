@@ -63,7 +63,7 @@ export abstract class GameScene extends MapScene {
 		this.portalManager.processPortals(this.map)
 
 		// Initialize the item placement manager
-		this.itemPlacementManager = new ItemPlacementManager(this, playerService.player)
+		this.itemPlacementManager = new ItemPlacementManager(this, this.player.controller)
 
 		// Only emit join event if this is not a scene transition
 		if (!isTransition) {
