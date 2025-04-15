@@ -1,10 +1,10 @@
 import { EventBus } from "../../EventBus";
 import { MapScene } from "./MapScene";
 import { Event } from '../../../../backend/src/events'
-import { createPlayer } from '../../entities/Player'
+import { createLocalPlayer, LocalPlayer } from '../../entities/LocalPlayer'
 import { PlayerView } from '../../entities/Player/View'
 import { PlayerView2 } from '../../entities/Player/View2'
-import { PlayerController } from '../../entities/Player/Controller'
+import { LocalPlayerController } from '../../entities/Player/LocalPlayerController'
 import { createRemotePlayer, RemotePlayer } from '../../entities/RemotePlayer'
 import { createNPC, NPC } from '../../entities/NPC'
 import { Keyboard } from '../../modules/Keyboard'
@@ -15,13 +15,8 @@ import { playerService } from "../../services/PlayerService";
 import { createMapObject, MapObjectEntity } from '../../entities/MapObject'
 import { ItemPlacementManager } from '../../modules/ItemPlacement'
 
-type Player = {
-	view: PlayerView2
-	controller: PlayerController
-}
-
 export abstract class GameScene extends MapScene {
-    protected player: Player | null = null
+    protected player: LocalPlayer | null = null
 	protected remotePlayers: Map<string, RemotePlayer> = new Map()
 	protected droppedItems: Map<string, Loot> = new Map()
 	protected npcs: Map<string, NPC> = new Map()
@@ -46,7 +41,7 @@ export abstract class GameScene extends MapScene {
 		const playerY = sceneData?.y || 300
 		const isTransition = sceneData?.isTransition || false
 		
-		this.player = createPlayer(this, playerService.playerId)
+		this.player = createLocalPlayer(this, playerX, playerY, playerService.playerId)
 		// Position the player
 		this.player.view.updatePosition(playerX, playerY)
 
