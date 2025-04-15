@@ -27,7 +27,8 @@
         "build-nolog": "vite build --config vite/config.prod.mjs",
         "prepare": "husky install",
         "check-backend": "cd backend && npm run check-types",
-        "check-consistency": "cd backend && ts-node src/consistency.ts"
+        "check-consistency": "cd backend && ts-node scripts/consistency.ts",
+        "export-types": "cd backend && ts-node scripts/types-export.ts"
     },
     "dependencies": {
         "cron-parser": "^5.1.1",

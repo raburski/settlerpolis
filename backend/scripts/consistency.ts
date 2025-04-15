@@ -1,9 +1,9 @@
 import { readdirSync } from 'fs'
 import { join } from 'path'
-import { QuestStep } from './Game/Quest/types'
-import { DialogueTree, DialogueNode } from './Game/Dialogue/types'
-import { AllQuests } from './Game/Quest/quests'
-import { AllDialogues } from './Game/Dialogue/content'
+import { QuestStep } from '../src/Game/Quest/types'
+import { DialogueTree, DialogueNode } from '../src/Game/Dialogue/types'
+import { AllQuests } from '../src/Game/Quest/quests'
+import { AllDialogues } from '../src/Game/Dialogue/content'
 
 interface DialogueContent {
 	npcId: string
