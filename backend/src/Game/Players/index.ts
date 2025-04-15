@@ -94,11 +94,7 @@ export class PlayersManager {
 			})
 
 			// Send existing players to new player
-			const scenePlayers = Array.from(this.players.values())
-				.filter(p => p.scene === data.scene && p.playerId !== client.id)
-				.forEach(player => {
-					client.emit(Receiver.Sender, Event.Players.SC.Joined, player)
-				})
+			this.sendPlayers(data.scene, client)
 			
 			client.emit(Receiver.NoSenderGroup, Event.Players.SC.Joined, { playerId, ...data })
 		})
@@ -125,11 +121,7 @@ export class PlayersManager {
 				player.position = data.position
 
 				// Send existing players in new scene to transitioning player
-				const scenePlayers = Array.from(this.players.values())
-					.filter(p => p.scene === data.scene && p.playerId !== client.id)
-					.forEach(player => {
-						client.emit(Receiver.Sender, Event.Players.SC.Joined, player)
-					})
+				this.sendPlayers(data.scene, client)
 
 				client.emit(Receiver.NoSenderGroup, Event.Players.SC.Joined, { playerId, ...data })
 			}
@@ -327,5 +319,32 @@ export class PlayersManager {
 				item
 			})
 		}
+	}
+
+	/**
+	 * Sends player data and equipment information to a client for all players in a scene
+	 * @param scene The scene to get players from
+	 * @param client The client to send data to
+	 */
+	private sendPlayers(scene: string, client: EventClient) {
+		const scenePlayers = Array.from(this.players.values())
+			.filter(p => p.scene === scene && p.playerId !== client.id)
+			.forEach(player => {
+				client.emit(Receiver.Sender, Event.Players.SC.Joined, player)
+				
+				// Send equipment data for each player if they have items equipped
+				if (player.equipment) {
+					Object.entries(player.equipment).forEach(([slotType, item]) => {
+						if (item) {
+							client.emit(Receiver.Sender, Event.Players.SC.Equip, {
+								playerId: player.playerId,
+								itemId: item.id,
+								slotType: slotType as EquipmentSlotType,
+								item: item
+							})
+						}
+					})
+				}
+			})
 	}
 } 

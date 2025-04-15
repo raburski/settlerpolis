@@ -152,7 +152,7 @@ export class MapObjectsManager {
 		if (mapObjects && mapObjects.size > 0) {
 			// Send each object to the client
 			for (const object of mapObjects.values()) {
-				client.emit(Receiver.Group, Event.MapObjects.SC.Spawn, { object })
+				client.emit(Receiver.Sender, Event.MapObjects.SC.Spawn, { object })
 			}
 		}
 	}
