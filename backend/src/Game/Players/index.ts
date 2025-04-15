@@ -337,7 +337,7 @@ export class PlayersManager {
 					Object.entries(player.equipment).forEach(([slotType, item]) => {
 						if (item) {
 							client.emit(Receiver.Sender, Event.Players.SC.Equip, {
-								playerId: player.playerId,
+								sourcePlayerId: player.playerId,
 								itemId: item.id,
 								slotType: slotType as EquipmentSlotType,
 								item: item
