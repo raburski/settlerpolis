@@ -1,8 +1,8 @@
 import { EventManager, Event, EventClient } from '../../events'
 import { Receiver } from '../../Receiver'
-import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData, DialogueEvent, DialogueItem } from './types'
+import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData, DialogueEvent, DialogueItem, DialogueTreePartial } from './types'
 import { DialogueEvents } from './events'
-import { dialogues } from './dialogues'
+import { AllDialogues } from './content'
 import { QuestManager } from "../Quest"
 import { v4 as uuidv4 } from 'uuid'
 
@@ -18,8 +18,8 @@ export class DialogueManager {
 
 	private loadDialogues() {
 		try {
-			// Load dialogues from the shared TypeScript file
-			Object.values(dialogues).forEach(dialogue => {
+			// Load dialogues from the content directory
+			AllDialogues.forEach(dialogue => {
 				this.registerDialogue(dialogue)
 			})
 		} catch (error) {

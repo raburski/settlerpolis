@@ -1,6 +1,6 @@
 export interface DialogueNode {
-	speaker: string
-	text: string
+	speaker?: string
+	text?: string
 	options?: DialogueOption[]
 	next?: string
 	event?: DialogueEvent
@@ -25,10 +25,15 @@ export interface DialogueItem {
 	itemType: string
 }
 
-export interface DialogueTree {
-	id: string
+export interface DialogueTreePartial {
+	id?: string
 	npcId?: string
 	nodes: Record<string, DialogueNode>
+	startNode?: string
+}
+
+export interface DialogueTree extends DialogueTreePartial {
+	id: string
 	startNode: string
 }
 

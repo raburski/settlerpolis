@@ -1,45 +1,18 @@
 import { Event } from "../../../events"
-import { DialogueTree } from '../types'
+import { DialogueTree, DialogueTreePartial } from '../types'
+import { dialogueCompose } from '../utils'
 
-export const dialogue: DialogueTree = {
-	id: "innkeeper_greeting",
-	npcId: "innkeeper",
+const freeDrinkDialogue: DialogueTreePartial = {
 	nodes: {
 		start: {
-			speaker: "Innkeeper",
-			text: "Welcome to my inn, traveler! How can I help you today?",
 			options: [
-				{
-					id: "ask_room",
-					text: "Do you have any rooms available?",
-					next: "room_response"
-				},
 				{
 					id: "ask_drink",
 					text: "I could use a drink.",
-					next: "drink_response"
+					next: "drink_response",
+					//condition: { flag: { nonExists: ''} }
+					// flag: { notExists: 'inkeeper.ask_drink' }
 				},
-				{
-					id: "ask_challenge",
-					text: "I heard you have a special challenge for travelers?",
-					next: "challenge_intro"
-				},
-				{
-					id: "goodbye",
-					text: "Nothing, just looking around.",
-					next: "goodbye_response"
-				}
-			]
-		},
-		room_response: {
-			speaker: "Innkeeper",
-			text: "We do have rooms available, but they are all currently under renovation. Check back later!",
-			options: [
-				{
-					id: "back_to_greeting",
-					text: "Let me ask you something else.",
-					next: "start"
-				}
 			]
 		},
 		drink_response: {
@@ -53,6 +26,21 @@ export const dialogue: DialogueTree = {
 						itemType: "mozgotrzep"
 					}
 				}
+			]
+		},
+	}
+}
+
+const mozgotrzepQuestDialogue: DialogueTreePartial = {
+	nodes: {
+		start: {
+			options: [
+				{
+					id: "ask_challenge",
+					text: "I heard you have a special challenge for travelers?",
+					next: "challenge_intro",
+					// condition: { event: { pending: false, finished: false }}
+				},
 			]
 		},
 		challenge_intro: {
@@ -116,6 +104,38 @@ export const dialogue: DialogueTree = {
 				}
 			]
 		},
+	}
+}
+
+const dialogueDefault: DialogueTreePartial = {
+	nodes: {
+		start: {
+			speaker: "Innkeeper",
+			text: "Welcome to my inn, traveler! How can I help you today?",
+			options: [
+				{
+					id: "ask_room",
+					text: "Do you have any rooms available?",
+					next: "room_response"
+				},
+				{
+					id: "goodbye",
+					text: "Nothing, just looking around.",
+					next: "goodbye_response"
+				}
+			]
+		},
+		room_response: {
+			speaker: "Innkeeper",
+			text: "We do have rooms available, but they are all currently under renovation. Check back later!",
+			options: [
+				{
+					id: "back_to_greeting",
+					text: "Let me ask you something else.",
+					next: "start"
+				}
+			]
+		},
 		goodbye_response: {
 			speaker: "Innkeeper",
 			text: "Feel free to look around. Let me know if you need anything!"
@@ -123,3 +143,10 @@ export const dialogue: DialogueTree = {
 	},
 	startNode: "start"
 } 
+
+export const dialogue = dialogueCompose(
+	{ id: 'innkeeper_greeting', npcId: 'innkeeper' }, 
+	dialogueDefault, 
+	mozgotrzepQuestDialogue, 
+	freeDrinkDialogue
+)
