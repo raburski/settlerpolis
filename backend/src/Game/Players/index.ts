@@ -220,7 +220,6 @@ export class PlayersManager {
 
 			// Notify client about the equip with full item data
 			client.emit(Receiver.Group, Event.Players.SC.Equip, {
-				itemId: item.id,
 				slotType: data.slotType,
 				item: item
 			})
@@ -338,7 +337,6 @@ export class PlayersManager {
 						if (item) {
 							client.emit(Receiver.Sender, Event.Players.SC.Equip, {
 								sourcePlayerId: player.playerId,
-								itemId: item.id,
 								slotType: slotType as EquipmentSlotType,
 								item: item
 							})

@@ -31,10 +31,6 @@
 .dragImage {
 	width: 64px;
 	height: 64px;
-	background: var(--color-background-light);
-	border: 2px solid var(--color-primary);
-	border-radius: var(--border-radius-sm);
-	box-shadow: var(--shadow-md);
 	opacity: 0.8;
 	pointer-events: none;
 } 

@@ -48,6 +48,7 @@ export const useInventory = () => {
 		}
 
 		const handleItemEquipped = (data: { itemId: string, slotType: EquipmentSlotType, item: Item, sourcePlayerId: string }) => {
+			console.log('handleItemEquipped', data.sourcePlayerId, playerId, data.sourcePlayerId && data.sourcePlayerId !== playerId)
 			if (data.sourcePlayerId && data.sourcePlayerId !== playerId) return
 			setEquippedItems(prev => ({
 				...prev,
