@@ -36,11 +36,11 @@ export class GameManager {
 		this.inventoryManager = new InventoryManager(event, this.itemsManager)
 		this.questManager = new QuestManager(event, this.inventoryManager)
 		this.lootManager = new LootManager(event)
-		this.dialogueManager = new DialogueManager(event, this.questManager)
+		this.flagsManager = new FlagsManager(event)
+		this.dialogueManager = new DialogueManager(event, this.questManager, this.flagsManager)
 		this.npcManager = new NPCManager(event, this.dialogueManager)
 		this.scheduler = new Scheduler(event)
 		this.mapObjectsManager = new MapObjectsManager(event, this.itemsManager, this.inventoryManager)
-		this.flagsManager = new FlagsManager(event)
 		
 		// Initialize PlayersManager last since it depends on other managers
 		this.playersManager = new PlayersManager(

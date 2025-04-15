@@ -1,3 +1,5 @@
+import { FlagScope } from '../Flags/types'
+
 export interface DialogueNode {
 	speaker?: string
 	text?: string
@@ -11,8 +13,11 @@ export interface DialogueOption {
 	id: string
 	text: string
 	next?: string
-	event?: DialogueEvent
 	item?: DialogueItem
+	condition?: DialogueCondition
+	conditions?: DialogueCondition[]
+	effect?: DialogueEffect
+	effects?: DialogueEffect[]
 }
 
 export interface DialogueEvent {
@@ -49,4 +54,39 @@ export interface DialogueContinueData {
 export interface DialogueChoiceData {
 	dialogueId: string
 	choiceId: string
+}
+
+export interface FlagCondition {
+	exists?: string
+	notExists?: string
+	scope: FlagScope
+	playerId?: string
+	mapId?: string
+}
+
+export interface QuestCondition {
+	canStart: string
+}
+
+export interface DialogueCondition {
+	flag?: FlagCondition
+	quest?: QuestCondition
+}
+
+export interface FlagEffect {
+	set?: string
+	unset?: string
+	scope: FlagScope
+	playerId?: string
+	mapId?: string
+}
+
+export interface QuestEffect {
+	start: string
+}
+
+export interface DialogueEffect {
+	flag?: FlagEffect
+	event?: DialogueEvent
+	quest?: QuestEffect
 } 

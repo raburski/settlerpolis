@@ -1,3 +1,14 @@
+export enum QuestScope {
+	Player = 'player',
+	Global = 'global',
+	Shared = 'shared'
+}
+
+export interface QuestSettings {
+	repeatable: boolean
+	scope: QuestScope
+}
+
 export interface QuestStep {
 	id: string
 	label: string
@@ -39,6 +50,7 @@ export interface Quest {
 	chapter: number
 	title: string
 	description: string
+	settings?: QuestSettings
 	start?: {
 		onEvent: string
 		dialogueId: string

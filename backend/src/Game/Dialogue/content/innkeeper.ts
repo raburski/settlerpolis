@@ -1,4 +1,5 @@
 import { Event } from "../../../events"
+import { FlagScope } from "../../Flags/types"
 import { DialogueTree, DialogueTreePartial } from '../types'
 import { dialogueCompose } from '../utils'
 
@@ -10,9 +11,9 @@ const freeDrinkDialogue: DialogueTreePartial = {
 					id: "ask_drink",
 					text: "I could use a drink.",
 					next: "drink_response",
-					// condition: {
-					// 	flag: { nonExists: '' }
-					// }
+					condition: {
+						flag: { notExists: 'inkeeper.free_drink', scope: FlagScope.Player }
+					}
 				},
 			]
 		},
@@ -23,6 +24,9 @@ const freeDrinkDialogue: DialogueTreePartial = {
 				{
 					id: "accept_drink",
 					text: "Thanks!",
+					effect: { 
+						flag: { set: 'inkeeper.free_drink', scope: FlagScope.Player }
+					},
 					item: {
 						itemType: "mozgotrzep"
 					},
@@ -40,7 +44,9 @@ const mozgotrzepQuestDialogue: DialogueTreePartial = {
 					id: "ask_challenge",
 					text: "I heard you have a special challenge for travelers?",
 					next: "challenge_intro",
-					// condition: { event: { pending: false, finished: false }}
+					condition: {
+						quest: { canStart: 'collect_mozgotrzep' }
+					}
 				},
 			]
 		},
@@ -67,11 +73,8 @@ const mozgotrzepQuestDialogue: DialogueTreePartial = {
 				{
 					id: "start_quest",
 					text: "I'll take on your challenge!",
-					event: {
-						type: Event.Quest.SS.Start,
-						payload: {
-							questId: "collect_mozgotrzep"
-						}
+					effect: {
+						quest: { start: "collect_mozgotrzep" },
 					},
 					next: "challenge_accepted"
 				},

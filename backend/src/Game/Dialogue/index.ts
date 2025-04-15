@@ -1,9 +1,10 @@
 import { EventManager, Event, EventClient } from '../../events'
 import { Receiver } from '../../Receiver'
-import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData, DialogueEvent, DialogueItem, DialogueTreePartial } from './types'
+import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData, DialogueEvent, DialogueItem, DialogueTreePartial, DialogueCondition, FlagCondition, DialogueEffect, FlagEffect, QuestEffect, DialogueOption, QuestCondition } from './types'
 import { DialogueEvents } from './events'
 import { AllDialogues } from './content'
 import { QuestManager } from "../Quest"
+import { FlagsManager } from "../Flags"
 import { v4 as uuidv4 } from 'uuid'
 
 export class DialogueManager {
@@ -11,7 +12,11 @@ export class DialogueManager {
 	private activeDialogues = new Map<string, string>() // clientId -> dialogueId
 	private currentNodes = new Map<string, string>() // clientId -> nodeId
 
-	constructor(private event: EventManager, private questManager: QuestManager) {
+	constructor(
+		private event: EventManager, 
+		private questManager: QuestManager,
+		private flagsManager: FlagsManager
+	) {
 		this.setupEventHandlers()
 		this.loadDialogues()
 	}
@@ -50,6 +55,163 @@ export class DialogueManager {
 		client.emit(Receiver.All, event.type, event.payload)
 	}
 
+	/**
+	 * Apply a flag effect
+	 */
+	private applyFlagEffect(effect: FlagEffect, client: EventClient) {
+		const { set, unset, scope, playerId, mapId } = effect
+		
+		// If playerId is not provided, use the client's ID
+		const targetPlayerId = playerId || client.id
+		
+		// Warning if scope is undefined
+		if (scope === undefined) {
+			console.warn('Flag effect scope is undefined. This may cause unexpected behavior.', set || unset)
+		}
+		
+		if (set) {
+			this.flagsManager.setFlag(client, {
+				name: set,
+				value: true,
+				scope,
+				playerId: targetPlayerId,
+				mapId
+			})
+		}
+		
+		if (unset) {
+			this.flagsManager.unsetFlag(client, {
+				name: unset,
+				scope,
+				playerId: targetPlayerId,
+				mapId
+			})
+		}
+	}
+
+	/**
+	 * Apply a quest effect
+	 */
+	private applyQuestEffect(effect: QuestEffect, client: EventClient) {
+		const { start } = effect
+		
+		if (start) {
+			// Use the QuestManager's startQuest method
+			this.questManager.startQuest(start, client.id, client)
+		}
+	}
+
+	/**
+	 * Apply a dialogue effect
+	 */
+	private applyDialogueEffect(effect: DialogueEffect, client: EventClient) {
+		if (!effect) return
+		
+		if (effect.flag) {
+			this.applyFlagEffect(effect.flag, client)
+		}
+
+		if (effect.event) {
+			this.handleDialogueEvent(effect.event, client)
+		}
+
+		if (effect.quest) {
+			this.applyQuestEffect(effect.quest, client)
+		}
+	}
+
+	/**
+	 * Apply effects from a dialogue option
+	 */
+	private applyDialogueEffects(option: DialogueOption, client: EventClient) {
+		if (!option) return
+		
+		// Apply single effect if present
+		if (option.effect) {
+			this.applyDialogueEffect(option.effect, client)
+		}
+		
+		// Apply multiple effects if present
+		if (option.effects && option.effects.length > 0) {
+			option.effects.forEach(effect => {
+				this.applyDialogueEffect(effect, client)
+			})
+		}
+	}
+
+	/**
+	 * Check if a flag condition is met
+	 */
+	private checkFlagCondition(condition: FlagCondition, client: EventClient): boolean {
+		const { exists, notExists, scope, playerId, mapId } = condition
+		
+		// If playerId is not provided, use the client's ID
+		const targetPlayerId = playerId || client.id
+		
+		if (exists) {
+			return this.flagsManager.hasFlag(exists, scope, targetPlayerId, mapId)
+		}
+		
+		if (notExists) {
+			return !this.flagsManager.hasFlag(notExists, scope, targetPlayerId, mapId)
+		}
+		
+		return true
+	}
+
+	/**
+	 * Check if a quest condition is met
+	 */
+	private checkQuestCondition(condition: QuestCondition, client: EventClient): boolean {
+		// Check with the Quest module if the player can start the quest
+		return this.questManager.canStartQuest(condition.canStart, client.id)
+	}
+
+	/**
+	 * Check if a dialogue condition is met
+	 */
+	private checkCondition(condition: DialogueCondition, client: EventClient): boolean {
+		if (!condition) return true
+		
+		if (condition.flag) {
+			return this.checkFlagCondition(condition.flag, client)
+		}
+		
+		if (condition.quest) {
+			return this.checkQuestCondition(condition.quest, client)
+		}
+		
+		return true
+	}
+
+	/**
+	 * Filter dialogue options based on conditions
+	 */
+	private filterOptionsByConditions(node: DialogueNode, client: EventClient): DialogueNode {
+		if (!node.options) return node
+		
+		const filteredOptions = node.options.filter(option => {
+			// Check single condition if present
+			if (option.condition && !this.checkCondition(option.condition, client)) {
+				return false
+			}
+			
+			// Check multiple conditions if present
+			if (option.conditions) {
+				return option.conditions.every(condition => 
+					this.checkCondition(condition, client)
+				)
+			}
+			
+			return true
+		})
+		
+		return {
+			...node,
+			options: filteredOptions
+		}
+	}
+
 	private setupEventHandlers() {
 		// Handle dialogue continue
 		this.event.on<DialogueContinueData>(DialogueEvents.CS.Continue, (data, client) => {
@@ -75,15 +237,15 @@ export class DialogueManager {
 			if (currentNode.item) {
 				this.handleDialogueItem(currentNode.item, client)
 			}
-			// Handle node event if present (for backward compatibility)
-			if (currentNode.event) {
-				this.handleDialogueEvent(currentNode.event, client)
-			}
 
 			this.currentNodes.set(client.id, currentNode.next)
+			
+			// Filter options based on conditions
+			const filteredNode = this.filterOptionsByConditions(nextNode, client)
+			
 			client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
 				dialogueId,
-				node: nextNode
+				node: filteredNode
 			})
 		})
 
@@ -101,9 +263,9 @@ export class DialogueManager {
 				if (selectedOption?.item) {
 					this.handleDialogueItem(selectedOption.item, client)
 				}
-				// Handle option event if present (for backward compatibility)
-				if (selectedOption?.event) {
-					this.handleDialogueEvent(selectedOption.event, client)
+				// Apply effects if present
+				if (selectedOption) {
+					this.applyDialogueEffects(selectedOption, client)
 				}
 				this.endDialogue(client)
 				return
@@ -122,15 +284,17 @@ export class DialogueManager {
 			if (selectedOption.item) {
 				this.handleDialogueItem(selectedOption.item, client)
 			}
-			// Handle option event if present (for backward compatibility)
-			if (selectedOption.event) {
-				this.handleDialogueEvent(selectedOption.event, client)
-			}
+			// Apply effects if present
+			this.applyDialogueEffects(selectedOption, client)
 
 			this.currentNodes.set(client.id, selectedOption.next)
+			
+			// Filter options based on conditions
+			const filteredNode = this.filterOptionsByConditions(nextNode, client)
+			
 			client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
 				dialogueId,
-				node: nextNode
+				node: filteredNode
 			})
 		})
 	}
@@ -159,9 +323,14 @@ export class DialogueManager {
 		// Start the dialogue
 		this.activeDialogues.set(client.id, dialogue.id)
 		this.currentNodes.set(client.id, startNodeId)
+
+		// Filter options based on conditions
+		const filteredNode = this.filterOptionsByConditions(startNode, client)
+
+		// Send the dialogue to the client
 		client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
 			dialogueId: dialogue.id,
-			node: startNode
+			node: filteredNode
 		})
 
 		return true

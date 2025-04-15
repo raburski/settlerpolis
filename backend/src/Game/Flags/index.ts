@@ -1,4 +1,4 @@
-import { EventManager } from '../../events'
+import { EventManager, EventClient } from '../../events'
 import { FlagsEvents } from './events'
 import { Flag, SetFlagData, UnsetFlagData, FlagScope } from './types'
 import { Receiver } from '../../Receiver'
@@ -12,13 +12,13 @@ export class FlagsManager {
 
 	private setupEventHandlers() {
 		// Handle server-to-server flag setting
-		this.event.on<SetFlagData>(FlagsEvents.SS.SetFlag, (data) => {
-			this.setFlag(data)
+		this.event.on<SetFlagData>(FlagsEvents.SS.SetFlag, (data, client) => {
+			this.setFlag(client, data)
 		})
 
 		// Handle server-to-server flag unsetting
-		this.event.on<UnsetFlagData>(FlagsEvents.SS.UnsetFlag, (data) => {
-			this.unsetFlag(data)
+		this.event.on<UnsetFlagData>(FlagsEvents.SS.UnsetFlag, (data, client) => {
+			this.unsetFlag(client, data)
 		})
 	}
 
@@ -70,27 +70,47 @@ export class FlagsManager {
 	/**
 	 * Set a flag with the specified name, value, scope, and identifiers
 	 */
-	public setFlag(data: SetFlagData): void {
+	public setFlag(client: EventClient, data: SetFlagData): void {
 		const { name, value, scope, playerId, mapId } = data
 		const key = this.getFlagKey(name, scope, playerId, mapId)
 		
-		this.flags.set(key, {
+		const flag = {
 			name,
 			value,
 			scope,
 			playerId,
 			mapId
+		}
+		
+		this.flags.set(key, flag)
+		
+		// Emit FlagSet event
+		client.emit(Receiver.All, FlagsEvents.SS.FlagSet, {
+			flag,
+			key
 		})
 	}
 
 	/**
 	 * Unset a flag with the specified name, scope, and identifiers
 	 */
-	public unsetFlag(data: UnsetFlagData): void {
+	public unsetFlag(client: EventClient, data: UnsetFlagData): void {
 		const { name, scope, playerId, mapId } = data
 		const key = this.getFlagKey(name, scope, playerId, mapId)
 		
+		// Get the flag before deleting it
+		const flag = this.flags.get(key)
+		
+		// Delete the flag
 		this.flags.delete(key)
+		
+		// Emit FlagUnset event if the flag existed
+		if (flag) {
+			client.emit(Receiver.All, FlagsEvents.SS.FlagUnset, {
+				flag,
+				key
+			})
+		}
 	}
 
 	/**

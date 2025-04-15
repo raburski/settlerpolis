@@ -1,11 +1,15 @@
 import { Event } from "../../../../events"
-import { Quest } from '../../types'
+import { Quest, QuestScope } from '../../types'
 
 export const CollectMozgotrzepQuest: Quest = {
 	id: 'collect_mozgotrzep',
 	chapter: 1,
 	title: "The Innkeeper's Challenge",
 	description: "Prove your dedication to the local specialty by collecting 5 bottles of Mózgotrzep for the innkeeper.",
+	settings: {
+		scope: QuestScope.Player,
+		repeatable: false,
+	},
 	steps: [
 		{
 			id: 'collect_drinks',

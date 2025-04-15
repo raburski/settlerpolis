@@ -8,7 +8,8 @@ import {
 	QuestStartRequest,
 	QuestUpdateResponse,
 	QuestListResponse,
-	QuestCompleteResponse
+	QuestCompleteResponse,
+	QuestScope
 } from './types'
 import { AllQuests } from './quests'
 import { InventoryManager } from "../Inventory"
@@ -17,6 +18,8 @@ export class QuestManager {
 	private quests: Map<string, Quest> = new Map()
 	private playerQuestStates: Map<string, PlayerQuestState> = new Map()
 	private eventToQuestSteps: Map<string, Array<{ questId: string, stepIndex: number }>> = new Map()
+	private globalQuestStates: Map<string, QuestProgress> = new Map()
+	private sharedQuestStates: Map<string, QuestProgress> = new Map()
 
 	constructor(private event: EventManager, private inventoryManager: InventoryManager) {
 		this.loadQuests()
@@ -47,65 +50,7 @@ export class QuestManager {
 		this.event.on<QuestStartRequest>(
 			QuestEvents.SS.Start,
 			(data: QuestStartRequest, client: EventClient) => {
-				const quest = this.quests.get(data.questId)
-				if (!quest) {
-					return
-				}
-
-				const playerState = this.getOrCreatePlayerState(client.id)
-				if (playerState.completedQuests.includes(data.questId)) {
-					return
-				}
-
-				// Find first uncompleted step
-				let currentStep = 0
-				const completedSteps: string[] = []
-
-				// Check each step until we find one that's not completed
-				for (let i = 0; i < quest.steps.length; i++) {
-					const step = quest.steps[i]
-					if (this.checkStepCompletion(step, {}, client.id)) {
-						completedSteps.push(step.id)
-						currentStep = i + 1
-						continue
-					}
-					break // Stop at first uncompleted step
-				}
-
-				const progress: QuestProgress = {
-					questId: data.questId,
-					currentStep,
-					completed: false,
-					completedSteps
-				}
-
-				playerState.activeQuests.push(progress)
-				this.savePlayerState(client.id, playerState)
-
-				// Send sanitized quest details and progress
-				client.emit(Receiver.Sender, QuestEvents.SC.Start, {
-					quest: {
-						id: quest.id,
-						title: quest.title,
-						description: quest.description,
-						chapter: quest.chapter,
-						reward: quest.reward,
-						steps: quest.steps.map(step => ({
-							id: step.id,
-							label: step.label
-						}))
-					},
-					progress
-				})
-
-				// Now emit step completion events for any steps that were auto-completed
-				for (const stepId of completedSteps) {
-					client.emit(Receiver.Sender, QuestEvents.SC.StepComplete, {
-						questId: quest.id,
-						stepId,
-						playerId: client.id
-					})
-				}
+				this.startQuest(data.questId, data.playerId, client)
 			}
 		)
 
@@ -130,7 +75,6 @@ export class QuestManager {
 				
 				// Check each quest step that listens to this event
 				for (const { questId, stepIndex } of questSteps) {
-                    
 					const questProgress = playerState.activeQuests.find(q => q.questId === questId)
 					if (!questProgress || questProgress.completed) continue
 
@@ -233,11 +177,37 @@ export class QuestManager {
 	) {
 		progress.completed = true
 		const playerState = this.getOrCreatePlayerState(playerId)
-		playerState.completedQuests.push(quest.id)
-		playerState.activeQuests = playerState.activeQuests.filter(
-			q => q.questId !== quest.id
-		)
-
+		
+		// Get default settings if not provided
+		const settings = quest.settings || { repeatable: false, scope: QuestScope.Player }
+		
+		// Handle different quest scopes
+		if (settings.scope === QuestScope.Player) {
+			// For player-scoped quests, move to completed quests
+			playerState.completedQuests.push(quest.id)
+			playerState.activeQuests = playerState.activeQuests.filter(
+				q => q.questId !== quest.id
+			)
+		} else if (settings.scope === QuestScope.Global) {
+			// For global quests, mark as completed globally
+			this.globalQuestStates.set(quest.id, progress)
+			
+			// Also mark as completed for the player
+			playerState.completedQuests.push(quest.id)
+			playerState.activeQuests = playerState.activeQuests.filter(
+				q => q.questId !== quest.id
+			)
+		} else if (settings.scope === QuestScope.Shared) {
+			// For shared quests, mark as completed in shared state
+			this.sharedQuestStates.set(quest.id, progress)
+			
+			// Also mark as completed for the player
+			playerState.completedQuests.push(quest.id)
+			playerState.activeQuests = playerState.activeQuests.filter(
+				q => q.questId !== quest.id
+			)
+		}
+		
 		if (quest.reward) {
 			// Emit reward events
 			// if (quest.reward.items) {
@@ -302,5 +272,165 @@ export class QuestManager {
 		}
 		
 		return undefined
+	}
+
+	/**
+	 * Check if a player can start a specific quest
+	 * @param questId The ID of the quest to check
+	 * @param playerId The ID of the player
+	 * @returns true if the player can start the quest, false otherwise
+	 */
+	public canStartQuest(questId: string, playerId: string): boolean {
+		const quest = this.quests.get(questId)
+		if (!quest) return false
+
+		// Get default settings if not provided
+		const settings = quest.settings || { repeatable: false, scope: QuestScope.Player }
+		
+		// Get player state
+		const playerState = this.getOrCreatePlayerState(playerId)
+		
+		// Check if quest is already completed by the player
+		const isCompleted = playerState.completedQuests.includes(questId)
+		
+		// Check if quest is already active for the player
+		const isActive = playerState.activeQuests.some(q => q.questId === questId)
+		
+		// For player-scoped quests
+		if (settings.scope === QuestScope.Player) {
+			// If quest is not repeatable and already completed, can't start
+			if (!settings.repeatable && isCompleted) return false
+			
+			// If quest is already active, can't start again
+			if (isActive) return false
+			
+			return true
+		}
+		
+		// For global quests (one instance for everyone)
+		if (settings.scope === QuestScope.Global) {
+			// Check if global quest is already active
+			const globalQuestState = this.globalQuestStates.get(questId)
+			if (globalQuestState && !globalQuestState.completed) return false
+			
+			// If quest is not repeatable and already completed globally, can't start
+			if (!settings.repeatable && globalQuestState?.completed) return false
+			
+			return true
+		}
+		
+		// For shared quests (many players can take it and progress is communal)
+		if (settings.scope === QuestScope.Shared) {
+			// Check if player has already completed this shared quest
+			if (!settings.repeatable && isCompleted) return false
+			
+			// Check if shared quest is already active
+			const sharedQuestState = this.sharedQuestStates.get(questId)
+			if (sharedQuestState && !sharedQuestState.completed) {
+				// If quest is already active, player can join it
+				return true
+			}
+			
+			return true
+		}
+		
+		// Default case
+		return true
+	}
+
+	/**
+	 * Start a quest for a player
+	 * @param questId The ID of the quest to start
+	 * @param playerId The ID of the player
+	 * @param client The client to emit events to
+	 */
+	public startQuest(questId: string, playerId: string, client: EventClient): void {
+		const quest = this.quests.get(questId)
+		if (!quest) return
+		
+		// Get default settings if not provided
+		const settings = quest.settings || { repeatable: false, scope: QuestScope.Player }
+		
+		// Ensure scope is defined, default to Player if not
+		if (!settings.scope) {
+			settings.scope = QuestScope.Player
+		}
+		
+		// Get player state
+		const playerState = this.getOrCreatePlayerState(playerId)
+		
+		// Check if quest is already active for the player
+		const isActive = playerState.activeQuests.some(q => q.questId === questId)
+		if (isActive) return
+		
+		// Find first uncompleted step
+		let currentStep = 0
+		const completedSteps: string[] = []
+		
+		// Check each step until we find one that's not completed
+		for (let i = 0; i < quest.steps.length; i++) {
+			const step = quest.steps[i]
+			if (this.checkStepCompletion(step, {}, playerId)) {
+				completedSteps.push(step.id)
+				currentStep = i + 1
+				continue
+			}
+			break // Stop at first uncompleted step
+		}
+		
+		const progress: QuestProgress = {
+			questId: questId,
+			currentStep,
+			completed: false,
+			completedSteps
+		}
+		
+		// Handle different quest scopes
+		if (settings.scope === QuestScope.Player) {
+			// For player-scoped quests, add to player's active quests
+			playerState.activeQuests.push(progress)
+			this.savePlayerState(playerId, playerState)
+		} else if (settings.scope === QuestScope.Global) {
+			// For global quests, set the global quest state
+			this.globalQuestStates.set(questId, progress)
+		} else if (settings.scope === QuestScope.Shared) {
+			// For shared quests, check if it's already active
+			const sharedQuestState = this.sharedQuestStates.get(questId)
+			if (sharedQuestState && !sharedQuestState.completed) {
+				// If quest is already active, just add player to it
+				playerState.activeQuests.push(progress)
+				this.savePlayerState(playerId, playerState)
+			} else {
+				// If quest is not active, create a new shared quest state
+				this.sharedQuestStates.set(questId, progress)
+				playerState.activeQuests.push(progress)
+				this.savePlayerState(playerId, playerState)
+			}
+		}
+		
+		// Send sanitized quest details and progress
+		client.emit(Receiver.Sender, QuestEvents.SC.Start, {
+			quest: {
+				id: quest.id,
+				title: quest.title,
+				description: quest.description,
+				chapter: quest.chapter,
+				reward: quest.reward,
+				steps: quest.steps.map(step => ({
+					id: step.id,
+					label: step.label
+				}))
+			},
+			progress
+		})
+		
+		// Now emit step completion events for any steps that were auto-completed
+		for (const stepId of completedSteps) {
+			client.emit(Receiver.Sender, QuestEvents.SC.StepComplete, {
+				questId: quest.id,
+				stepId,
+				playerId: playerId
+			})
+		}
 	}
 } 
