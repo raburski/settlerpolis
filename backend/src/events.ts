@@ -9,6 +9,7 @@ import { LootEvents } from './Game/Loot/events'
 import { DialogueEvents } from './Game/Dialogue/events'
 import { QuestEvents } from "./Game/Quest/events"
 import { MapObjectsEvents } from "./Game/MapObjects/events"
+import { FlagsEvents } from "./Game/Flags/events"
 
 // Interface for client operations
 export interface EventClient {
@@ -41,4 +42,5 @@ export const Event = {
 	Dialogue: DialogueEvents,
 	Quest: QuestEvents,
 	MapObjects: MapObjectsEvents,
+	Flags: FlagsEvents,
 }

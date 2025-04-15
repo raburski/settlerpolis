@@ -10,8 +10,9 @@ const freeDrinkDialogue: DialogueTreePartial = {
 					id: "ask_drink",
 					text: "I could use a drink.",
 					next: "drink_response",
-					//condition: { flag: { nonExists: ''} }
-					// flag: { notExists: 'inkeeper.ask_drink' }
+					// condition: {
+					// 	flag: { nonExists: '' }
+					// }
 				},
 			]
 		},
@@ -24,7 +25,7 @@ const freeDrinkDialogue: DialogueTreePartial = {
 					text: "Thanks!",
 					item: {
 						itemType: "mozgotrzep"
-					}
+					},
 				}
 			]
 		},

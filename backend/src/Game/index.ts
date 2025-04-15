@@ -11,6 +11,7 @@ import { Scheduler } from './Scheduler'
 import { Receiver } from '../Receiver'
 import { QuestManager } from "./Quest"
 import { MapObjectsManager } from "./MapObjects"
+import { FlagsManager } from "./Flags"
 
 export class GameManager {
 	private chatManager: ChatManager
@@ -24,6 +25,7 @@ export class GameManager {
 	private scheduler: Scheduler
 	private questManager: QuestManager
 	private mapObjectsManager: MapObjectsManager
+	private flagsManager: FlagsManager
 
 	constructor(private event: EventManager) {
 		// Initialize managers in dependency order
@@ -38,6 +40,7 @@ export class GameManager {
 		this.npcManager = new NPCManager(event, this.dialogueManager)
 		this.scheduler = new Scheduler(event)
 		this.mapObjectsManager = new MapObjectsManager(event, this.itemsManager, this.inventoryManager)
+		this.flagsManager = new FlagsManager(event)
 		
 		// Initialize PlayersManager last since it depends on other managers
 		this.playersManager = new PlayersManager(
