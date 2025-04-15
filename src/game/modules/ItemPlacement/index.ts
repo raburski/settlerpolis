@@ -38,7 +38,9 @@ export class ItemPlacementManager {
 		this.scene.input.on('pointerdown', this.handlePointerDown, this)
 	}
 
-	private handleItemEquipped = (data: { itemId: string, slotType: EquipmentSlotType, item: any }) => {
+	private handleItemEquipped = (data: { itemId: string, slotType: EquipmentSlotType, item: any, sourcePlayerId: string }) => {
+		if (data.sourcePlayerId && data.sourcePlayerId !== this.player.playerId) return
+
 		// Only handle hand slot items
 		if (data.slotType === EquipmentSlotType.Hand && data.item) {
 			// Get item metadata from the service
@@ -53,7 +55,8 @@ export class ItemPlacementManager {
 		}
 	}
 
-	private handleItemUnequipped = (data: { slotType: EquipmentSlotType, item: any }) => {
+	private handleItemUnequipped = (data: { slotType: EquipmentSlotType, item: any, sourcePlayerId: string }) => {
+		if (data.sourcePlayerId && data.sourcePlayerId !== this.player.playerId) return
 		// Only handle hand slot items
 		if (data.slotType === EquipmentSlotType.Hand && this.isPlacementModeActive) {
 			this.deactivatePlacementMode()

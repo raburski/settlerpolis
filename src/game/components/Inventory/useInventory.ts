@@ -5,6 +5,7 @@ import { itemService } from '../../services/ItemService'
 import { INVENTORY_GRID_COLUMNS, INVENTORY_GRID_ROWS } from "../../../../backend/src/consts"
 import { EquipmentSlotType } from '../../../../backend/src/Game/Players/types'
 import { InventorySlot, Position, Item } from '../../../../backend/src/Game/Inventory/types'
+import { usePlayerId } from '../hooks/usePlayerId'
 
 export const useInventory = () => {
 	const [isVisible, setIsVisible] = useState(false)
@@ -13,6 +14,7 @@ export const useInventory = () => {
 	const [updateCounter, setUpdateCounter] = useState<number>(0)
 	const [draggedItem, setDraggedItem] = useState<Item | null>(null)
 	const [isDragging, setIsDragging] = useState(false)
+	const playerId = usePlayerId()
 	const [equippedItems, setEquippedItems] = useState<Record<EquipmentSlotType, Item | null>>({
 		[EquipmentSlotType.Hand]: null
 	})
@@ -45,14 +47,16 @@ export const useInventory = () => {
 			}
 		}
 
-		const handleItemEquipped = (data: { itemId: string, slotType: EquipmentSlotType, item: Item }) => {
+		const handleItemEquipped = (data: { itemId: string, slotType: EquipmentSlotType, item: Item, sourcePlayerId: string }) => {
+			if (data.sourcePlayerId && data.sourcePlayerId !== playerId) return
 			setEquippedItems(prev => ({
 				...prev,
 				[data.slotType]: data.item
 			}))
 		}
 
-		const handleItemUnequipped = (data: { slotType: EquipmentSlotType, item: Item }) => {
+		const handleItemUnequipped = (data: { slotType: EquipmentSlotType, item: Item, sourcePlayerId: string }) => {
+			if (data.sourcePlayerId && data.sourcePlayerId !== playerId) return
 			setEquippedItems(prev => ({
 				...prev,
 				[data.slotType]: null
@@ -70,7 +74,7 @@ export const useInventory = () => {
 			EventBus.off(Event.Players.SC.Equip, handleItemEquipped)
 			EventBus.off(Event.Players.SC.Unequip, handleItemUnequipped)
 		}
-	}, [isVisible])
+	}, [isVisible, playerId])
 
 	// Set up drag and drop event handlers
 	useEffect(() => {
