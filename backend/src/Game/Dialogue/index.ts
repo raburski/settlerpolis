@@ -1,6 +1,6 @@
 import { EventManager, Event, EventClient } from '../../events'
 import { Receiver } from '../../Receiver'
-import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData, DialogueEvent, DialogueItem, DialogueTreePartial, DialogueCondition, FlagCondition, DialogueEffect, FlagEffect, QuestEffect, DialogueOption, QuestCondition, AffinityCondition, AffinityEffect, AffinityOverallCondition } from './types'
+import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData, DialogueEvent, DialogueItem, DialogueCondition, FlagCondition, DialogueEffect, FlagEffect, QuestEffect, DialogueOption, QuestCondition, AffinityCondition, AffinityEffect, AffinityOverallCondition } from './types'
 import { DialogueEvents } from './events'
 import { AllDialogues } from './content'
 import { QuestManager } from "../Quest"
@@ -106,8 +106,8 @@ export class DialogueManager {
 	/**
 	 * Apply an affinity effect
 	 */
-	private applyAffinityEffect(effect: AffinityEffect, client: EventClient) {
-		const { npcId, sentimentType, set, add } = effect
+	private applyAffinityEffect(effect: AffinityEffect, client: EventClient, npcId: string) {
+		const { sentimentType, set, add } = effect
 		
 		if (set !== undefined) {
 			this.affinityManager.setAffinityValue(client.id, npcId, sentimentType, set, client)
@@ -119,7 +119,7 @@ export class DialogueManager {
 	/**
 	 * Apply a dialogue effect
 	 */
-	private applyDialogueEffect(effect: DialogueEffect, client: EventClient) {
+	private applyDialogueEffect(effect: DialogueEffect, client: EventClient, npcId: string) {
 		if (!effect) return
 		
 		if (effect.flag) {
@@ -135,25 +135,25 @@ export class DialogueManager {
 		}
 
 		if (effect.affinity) {
-			this.applyAffinityEffect(effect.affinity, client)
+			this.applyAffinityEffect(effect.affinity, client, npcId)
 		}
 	}
 
 	/**
 	 * Apply effects from a dialogue option
 	 */
-	private applyDialogueEffects(option: DialogueOption, client: EventClient) {
+	private applyDialogueEffects(option: DialogueOption, client: EventClient, npcId: string) {
 		if (!option) return
 		
 		// Apply single effect if present
 		if (option.effect) {
-			this.applyDialogueEffect(option.effect, client)
+			this.applyDialogueEffect(option.effect, client, npcId)
 		}
 		
 		// Apply multiple effects if present
 		if (option.effects && option.effects.length > 0) {
 			option.effects.forEach(effect => {
-				this.applyDialogueEffect(effect, client)
+				this.applyDialogueEffect(effect, client, npcId)
 			})
 		}
 	}
@@ -189,18 +189,18 @@ export class DialogueManager {
 	/**
 	 * Check if an affinity condition is met
 	 */
-	private checkAffinityCondition(condition: AffinityCondition, client: EventClient): boolean {
-		const { npcId, sentimentType, minValue, maxValue } = condition
+	private checkAffinityCondition(condition: AffinityCondition, client: EventClient, npcId: string): boolean {
+		const { sentimentType, min, max } = condition
 		
 		// Get the current affinity value
 		const currentValue = this.affinityManager.getAffinityValue(client.id, npcId, sentimentType)
 		
 		// Check if the value is within the specified range
-		if (minValue !== undefined && currentValue < minValue) {
+		if (min !== undefined && currentValue < min) {
 			return false
 		}
 		
-		if (maxValue !== undefined && currentValue > maxValue) {
+		if (max !== undefined && currentValue > max) {
 			return false
 		}
 		
@@ -210,8 +210,8 @@ export class DialogueManager {
 	/**
 	 * Check if an overall affinity condition is met
 	 */
-	private checkAffinityOverallCondition(condition: AffinityOverallCondition, client: EventClient): boolean {
-		const { npcId, minScore, maxScore } = condition
+	private checkAffinityOverallCondition(condition: AffinityOverallCondition, client: EventClient, npcId: string): boolean {
+		const { minScore, maxScore } = condition
 		
 		// Get the current overall affinity score
 		const currentScore = this.affinityManager.calculateOverallScore(client.id, npcId)
@@ -231,7 +231,7 @@ export class DialogueManager {
 	/**
 	 * Check if a dialogue condition is met
 	 */
-	private checkCondition(condition: DialogueCondition, client: EventClient): boolean {
+	private checkCondition(condition: DialogueCondition, client: EventClient, npcId: string): boolean {
 		if (!condition) return true
 		
 		if (condition.flag) {
@@ -243,11 +243,11 @@ export class DialogueManager {
 		}
 		
 		if (condition.affinity) {
-			return this.checkAffinityCondition(condition.affinity, client)
+			return this.checkAffinityCondition(condition.affinity, client, npcId)
 		}
 		
 		if (condition.affinityOverall) {
-			return this.checkAffinityOverallCondition(condition.affinityOverall, client)
+			return this.checkAffinityOverallCondition(condition.affinityOverall, client, npcId)
 		}
 		
 		return true
@@ -256,18 +256,18 @@ export class DialogueManager {
 	/**
 	 * Filter dialogue options based on conditions
 	 */
-	private filterOptionsByConditions(node: DialogueNode, client: EventClient): DialogueNode {
+	private filterOptionsByConditions(node: DialogueNode, client: EventClient, npcId: string): DialogueNode {
 		if (!node.options) return node
 		
 		const filteredOptions = node.options.filter(option => {
 			// Check single condition if present
-			if (option.condition && !this.checkCondition(option.condition, client)) {
+			if (option.condition && !this.checkCondition(option.condition, client, npcId)) {
 				return false
 			}
 			
 			// Check multiple conditions if present
 			if (option.conditions) {
-				return option.conditions.every(condition => this.checkCondition(condition, client))
+				return option.conditions.every(condition => this.checkCondition(condition, client, npcId))
 			}
 			
 			return true
@@ -308,7 +308,7 @@ export class DialogueManager {
 			this.currentNodes.set(client.id, currentNode.next)
 			
 			// Filter options based on conditions
-			const filteredNode = this.filterOptionsByConditions(nextNode, client)
+			const filteredNode = this.filterOptionsByConditions(nextNode, client, dialogue.npcId)
 			
 			client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
 				dialogueId,
@@ -321,6 +321,9 @@ export class DialogueManager {
 			const dialogueId = this.activeDialogues.get(client.id)
 			if (!dialogueId || dialogueId !== data.dialogueId) return
 
+			const dialogue = this.dialogues.get(dialogueId)
+			if (!dialogue) return
+
 			const currentNode = this.getCurrentNode(client.id)
 			if (!currentNode?.options) return
 
@@ -332,14 +335,11 @@ export class DialogueManager {
 				}
 				// Apply effects if present
 				if (selectedOption) {
-					this.applyDialogueEffects(selectedOption, client)
+					this.applyDialogueEffects(selectedOption, client, dialogue.npcId)
 				}
 				this.endDialogue(client)
 				return
 			}
-
-			const dialogue = this.dialogues.get(dialogueId)
-			if (!dialogue) return
 
 			const nextNode = dialogue.nodes[selectedOption.next]
 			if (!nextNode) {
@@ -352,12 +352,12 @@ export class DialogueManager {
 				this.handleDialogueItem(selectedOption.item, client)
 			}
 			// Apply effects if present
-			this.applyDialogueEffects(selectedOption, client)
+			this.applyDialogueEffects(selectedOption, client, dialogue.npcId)
 
 			this.currentNodes.set(client.id, selectedOption.next)
 			
 			// Filter options based on conditions
-			const filteredNode = this.filterOptionsByConditions(nextNode, client)
+			const filteredNode = this.filterOptionsByConditions(nextNode, client, dialogue.npcId)
 			
 			client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
 				dialogueId,
@@ -392,8 +392,8 @@ export class DialogueManager {
 		this.currentNodes.set(client.id, startNodeId)
 
 		// Filter options based on conditions
-		const filteredNode = this.filterOptionsByConditions(startNode, client)
-
+		const filteredNode = this.filterOptionsByConditions(startNode, client, dialogue.npcId)
+		
 		// Send the dialogue to the client
 		client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
 			dialogueId: dialogue.id,

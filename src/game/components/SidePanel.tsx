@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react'
 import { EventBus } from '../EventBus'
 import { Event } from '../../../backend/src/events'
+import { AffinityEvents } from '../../../backend/src/Game/Affinity/events'
 import styles from './SidePanel.module.css'
 
 export function SidePanel() {
 	const [inventoryPulse, setInventoryPulse] = useState(false)
 	const [questsPulse, setQuestsPulse] = useState(false)
+	const [relationshipsPulse, setRelationshipsPulse] = useState(false)
 
 	const handleInventoryClick = () => {
 		EventBus.emit('ui:inventory:toggle')
@@ -13,6 +15,10 @@ export function SidePanel() {
 
 	const handleQuestsClick = () => {
 		EventBus.emit('ui:quests:toggle')
+	}
+
+	const handleRelationshipsClick = () => {
+		EventBus.emit('ui:relationships:toggle')
 	}
 
 	useEffect(() => {
@@ -26,6 +32,11 @@ export function SidePanel() {
 			setTimeout(() => setQuestsPulse(false), 500)
 		}
 
+		const triggerRelationshipsPulse = () => {
+			setRelationshipsPulse(true)
+			setTimeout(() => setRelationshipsPulse(false), 500)
+		}
+
 		// Inventory updates
 		EventBus.on(Event.Inventory.SC.Update, triggerInventoryPulse)
 		EventBus.on(Event.Inventory.SC.Add, triggerInventoryPulse)
@@ -36,11 +47,15 @@ export function SidePanel() {
 		EventBus.on(Event.Quest.SC.Complete, triggerQuestsPulse)
 		EventBus.on(Event.Quest.SC.StepComplete, triggerQuestsPulse)
 
+		// Relationships updates
+		EventBus.on(AffinityEvents.SC.Update, triggerRelationshipsPulse)
+
 		return () => {
 			EventBus.off(Event.Inventory.SC.Update, triggerInventoryPulse)
 			EventBus.off(Event.Quest.SC.Update, triggerQuestsPulse)
 			EventBus.off(Event.Quest.SC.Complete, triggerQuestsPulse)
 			EventBus.off(Event.Quest.SC.StepComplete, triggerQuestsPulse)
+			EventBus.off(AffinityEvents.SC.Update, triggerRelationshipsPulse)
 		}
 	}, [])
 
@@ -59,6 +74,13 @@ export function SidePanel() {
 				title="Toggle Inventory"
 			>
 				🎒
+			</button>
+			<button 
+				className={`${styles.button} ${relationshipsPulse ? styles.pulse : ''}`}
+				onClick={handleRelationshipsClick}
+				title="Toggle Relationships"
+			>
+				💝
 			</button>
 		</div>
 	)

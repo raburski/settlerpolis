@@ -2,6 +2,7 @@ import { Event } from "../../../events"
 import { FlagScope } from "../../Flags/types"
 import { DialogueTree, DialogueTreePartial } from '../types'
 import { dialogueCompose } from '../utils'
+import { AffinitySentimentType } from '../../Affinity/types'
 
 const freeDrinkDialogue: DialogueTreePartial = {
 	nodes: {
@@ -12,7 +13,7 @@ const freeDrinkDialogue: DialogueTreePartial = {
 					text: "I could use a drink.",
 					next: "drink_response",
 					condition: {
-						flag: { notExists: 'inkeeper.free_drink', scope: FlagScope.Player }
+						flag: { notExists: 'inkeeper.free_drink', scope: FlagScope.Player },
 					}
 				},
 			]
@@ -25,7 +26,11 @@ const freeDrinkDialogue: DialogueTreePartial = {
 					id: "accept_drink",
 					text: "Thanks!",
 					effect: { 
-						flag: { set: 'inkeeper.free_drink', scope: FlagScope.Player }
+						flag: { set: 'inkeeper.free_drink', scope: FlagScope.Player },
+						affinity: {
+							sentimentType: AffinitySentimentType.Trust,
+							add: 5
+						}
 					},
 					item: {
 						itemType: "mozgotrzep"
@@ -48,6 +53,16 @@ const mozgotrzepQuestDialogue: DialogueTreePartial = {
 						quest: { canStart: 'collect_mozgotrzep' }
 					}
 				},
+				{
+					id: "ask_secret",
+					text: "Do you have any secret recipes you'd be willing to share?",
+					next: "secret_recipe",
+					condition: {
+						affinityOverall: {
+							minScore: 50
+						}
+					}
+				}
 			]
 		},
 		challenge_intro: {
@@ -57,7 +72,13 @@ const mozgotrzepQuestDialogue: DialogueTreePartial = {
 				{
 					id: "accept_challenge",
 					text: "Tell me more about this challenge.",
-					next: "challenge_explanation"
+					next: "challenge_explanation",
+					effect: {
+						affinity: {
+							sentimentType: AffinitySentimentType.Curiosity,
+							add: 300
+						}
+					}
 				},
 				{
 					id: "decline_challenge",
@@ -75,6 +96,10 @@ const mozgotrzepQuestDialogue: DialogueTreePartial = {
 					text: "I'll take on your challenge!",
 					effect: {
 						quest: { start: "collect_mozgotrzep" },
+						affinity: {
+							sentimentType: AffinitySentimentType.Devotion,
+							add: 5
+						}
 					},
 					next: "challenge_accepted"
 				},
@@ -102,12 +127,35 @@ const mozgotrzepQuestDialogue: DialogueTreePartial = {
 				{
 					id: "thank_innkeeper",
 					text: "Thank you! I'll display it proudly.",
+					effect: {
+						affinity: {
+							sentimentType: AffinitySentimentType.Trust,
+							add: 10
+						}
+					},
 					item: {
 						itemType: "chainfolk_rug"
 					}
 				}
 			]
 		},
+		secret_recipe: {
+			speaker: "Innkeeper",
+			text: "Well, since you've proven yourself to be a true friend of the inn... The secret to Mózgotrzep is a special blend of herbs from the northern mountains, mixed with just a touch of moonlight essence. But shhh, don't tell anyone!",
+			options: [
+				{
+					id: "promise_secret",
+					text: "Your secret is safe with me!",
+					effect: {
+						affinity: {
+							sentimentType: AffinitySentimentType.Trust,
+							add: 15
+						}
+					},
+					next: "start"
+				}
+			]
+		}
 	}
 }
 

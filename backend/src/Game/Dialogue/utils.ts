@@ -7,7 +7,7 @@ import { DialogueTree, DialogueTreePartial } from './types'
  * @returns A complete DialogueTree
  */
 export function dialogueCompose(
-	base: { id: string; npcId?: string },
+	base: { id: string; npcId: string },
 	...partials: DialogueTreePartial[]
 ): DialogueTree {
 	// Start with the base dialogue tree

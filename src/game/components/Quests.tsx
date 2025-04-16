@@ -37,12 +37,25 @@ export function Quests() {
 			}
 		}
 
+		const handleRelationshipsToggle = () => {
+			// Close quests when relationships is opened
+			if (isVisible) {
+				setIsExiting(true)
+				setTimeout(() => {
+					setIsVisible(false)
+					setIsExiting(false)
+				}, 300)
+			}
+		}
+
 		EventBus.on('ui:quests:toggle', handleToggle)
 		EventBus.on('ui:inventory:toggle', handleInventoryToggle)
+		EventBus.on('ui:relationships:toggle', handleRelationshipsToggle)
 
 		return () => {
 			EventBus.off('ui:quests:toggle', handleToggle)
 			EventBus.off('ui:inventory:toggle', handleInventoryToggle)
+			EventBus.off('ui:relationships:toggle', handleRelationshipsToggle)
 		}
 	}, [isVisible])
 

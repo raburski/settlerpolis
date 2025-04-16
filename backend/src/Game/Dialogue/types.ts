@@ -41,6 +41,7 @@ export interface DialogueTreePartial {
 export interface DialogueTree extends DialogueTreePartial {
 	id: string
 	startNode: string
+	npcId: string
 }
 
 export interface DialogueTriggerData {
@@ -70,14 +71,12 @@ export interface QuestCondition {
 }
 
 export interface AffinityCondition {
-	npcId: string
 	sentimentType: AffinitySentimentType
-	minValue?: number
-	maxValue?: number
+	min?: number
+	max?: number
 }
 
 export interface AffinityOverallCondition {
-	npcId: string
 	minScore?: number
 	maxScore?: number
 }
@@ -102,7 +101,6 @@ export interface QuestEffect {
 }
 
 export interface AffinityEffect {
-	npcId: string
 	sentimentType: AffinitySentimentType
 	set?: number
 	add?: number

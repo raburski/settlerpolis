@@ -2,6 +2,7 @@ import { DialogueTree } from '../types'
 
 export const dialogue: DialogueTree = {
 	id: "hasha_home_restored",
+	npcId: 'hasha',
 	nodes: {
 		start: {
 			speaker: "Hasha",

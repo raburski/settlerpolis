@@ -1,8 +1,9 @@
 import { EventManager, Event, EventClient } from '../../events'
-import { AffinitySentimentType, AffinityData, AffinityUpdateEventData, AffinityUpdatedEventData } from './types'
+import { AffinitySentimentType, AffinityData, AffinityUpdateEventData, AffinityUpdatedEventData, AffinityListEventData, AffinitySCUpdateEventData } from './types'
 import { AffinityEvents } from './events'
 import { Receiver } from '../../Receiver'
 import { NPCSentimentWeights } from './content'
+import { getOverallNPCApproach } from './utils'
 
 export class AffinityManager {
 	private affinities: Map<string, AffinityData> = new Map()
@@ -25,6 +26,12 @@ export class AffinityManager {
 			} else if (add !== undefined) {
 				this.changeAffinityValue(playerId, npcId, sentimentType, add, client)
 			}
+		})
+
+		// Handle player connection to send initial affinity list
+		this.event.on(Event.Players.CS.Connect, (_, client: EventClient) => {
+			const listData = this.getAllNPCApproaches(client.id)
+			client.emit(Receiver.Sender, AffinityEvents.SC.List, listData)
 		})
 	}
 
@@ -77,14 +84,23 @@ export class AffinityManager {
 		affinityData.sentiments[sentimentType] = clampedValue
 		affinityData.lastUpdated = Date.now()
 		
-		// Emit update event
+		const overallScore = this.calculateOverallScore(playerId, npcId)
+		const approach = getOverallNPCApproach(affinityData.sentiments)
+		
+		// Emit SS update event
 		client.emit(Receiver.All, AffinityEvents.SS.Updated, {
 			playerId,
 			npcId,
 			sentimentType,
 			value: clampedValue,
-			overallScore: this.calculateOverallScore(playerId, npcId)
+			overallScore
 		} as AffinityUpdatedEventData)
+
+		// Emit SC update event
+		client.emit(Receiver.Sender, AffinityEvents.SC.Update, {
+			npcId,
+			approach
+		} as AffinitySCUpdateEventData)
 	}
 
 	// Change a sentiment value by a specific amount
@@ -98,14 +114,23 @@ export class AffinityManager {
 		affinityData.sentiments[sentimentType] = newValue
 		affinityData.lastUpdated = Date.now()
 		
-		// Emit update event
+		const overallScore = this.calculateOverallScore(playerId, npcId)
+		const approach = getOverallNPCApproach(affinityData.sentiments)
+		
+		// Emit SS update event
 		client.emit(Receiver.All, AffinityEvents.SS.Updated, {
 			playerId,
 			npcId,
 			sentimentType,
 			value: newValue,
-			overallScore: this.calculateOverallScore(playerId, npcId)
+			overallScore
 		} as AffinityUpdatedEventData)
+
+		// Emit SC update event
+		client.emit(Receiver.Sender, AffinityEvents.SC.Update, {
+			npcId,
+			approach
+		} as AffinitySCUpdateEventData)
 	}
 
 	// Get the current value for a specific sentiment type
@@ -128,27 +153,12 @@ export class AffinityManager {
 
 	// Internal method to calculate overall score from affinity data
 	private calculateOverallScoreFromData(affinityData: AffinityData): number {
-		const weights = this.npcWeights.get(affinityData.npcId)
-		if (!weights) {
-			// If no weights defined, use equal weights for all sentiments
-			const sum = Object.values(affinityData.sentiments).reduce((total, value) => total + value, 0)
-			const maxPossibleSum = Object.keys(affinityData.sentiments).length * 100
-			return Math.round(((sum + maxPossibleSum) / (2 * maxPossibleSum)) * 100)
-		}
-
-		// Calculate weighted sum
-		let weightedSum = 0
-		let totalWeight = 0
-
-		Object.entries(affinityData.sentiments).forEach(([sentimentType, value]) => {
-			const weight = weights[sentimentType as AffinitySentimentType] || 1
-			weightedSum += value * weight
-			totalWeight += weight
-		})
-
-		// Normalize to 0-100 scale
-		const maxPossibleWeightedSum = totalWeight * 100
-		return Math.round(((weightedSum + maxPossibleWeightedSum) / (2 * maxPossibleWeightedSum)) * 100)
+		const { sentiments } = affinityData
+		const values = Object.values(sentiments)
+		const sum = values.reduce((acc, val) => acc + val, 0)
+		const maxPossibleSum = Object.keys(sentiments).length * 100
+		// Normalize from -100 to 100 instead of 0 to 100
+		return (sum / maxPossibleSum) * 200 - 100
 	}
 
 	// Get all NPCs that a player has affinity with
@@ -175,5 +185,27 @@ export class AffinityManager {
 		})
 		
 		return playerIds
+	}
+
+	// Get all NPCs and their approaches for a player
+	public getAllNPCApproaches(playerId: string): AffinityListEventData {
+		const affinities: AffinityListEventData['affinities'] = []
+		
+		// Get all unique NPCs for this player
+		const npcIds = new Set<string>()
+		this.affinities.forEach((data, key) => {
+			if (data.playerId === playerId) {
+				npcIds.add(data.npcId)
+			}
+		})
+		
+		// Get approach for each NPC
+		npcIds.forEach(npcId => {
+			const sentiments = this.getAllAffinityValues(playerId, npcId)
+			const approach = getOverallNPCApproach(sentiments)
+			affinities.push({ npcId, approach })
+		})
+		
+		return { affinities }
 	}
 } 

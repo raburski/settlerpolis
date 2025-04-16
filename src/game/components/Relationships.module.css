@@ -1,0 +1,110 @@
+@import './variables.module.css';
+
+.relationshipsContainer {
+	position: fixed;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: 360px;
+	background: var(--color-background-medium);
+	backdrop-filter: blur(8px);
+	padding: var(--spacing-md);
+	padding-left: var(--spacing-xl);
+	padding-right: calc(var(--spacing-xl) + 60px);
+	color: var(--color-text-primary);
+	overflow-y: auto;
+	box-shadow: var(--shadow-md);
+	animation: slideIn 0.3s ease-out;
+	z-index: var(--z-index-modal);
+}
+
+.relationshipsContainer.slideOut {
+	animation: slideOut 0.3s ease-out forwards;
+}
+
+.relationshipsContent {
+	position: relative;
+}
+
+.title {
+	composes: title from './variables.module.css';
+	margin-top: var(--spacing-md);
+	margin-bottom: var(--spacing-xl);
+	text-align: center;
+}
+
+.closeIcon {
+	composes: closeIcon from './variables.module.css';
+	position: absolute;
+	top: var(--spacing-xs);
+	left: var(--spacing-md);
+	margin-top: -16px;
+}
+
+.relationshipList {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-md);
+}
+
+.relationshipCard {
+	background: var(--color-background-light);
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius-md);
+	padding: var(--spacing-lg);
+	transition: var(--transition-fast);
+}
+
+.relationshipCard:hover {
+	border-color: var(--color-border-hover);
+	transform: translateY(-1px);
+	box-shadow: var(--shadow-sm);
+}
+
+.relationshipHeader {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.npcName {
+	margin: 0;
+	color: var(--color-accent-primary);
+	font-size: var(--font-size-lg);
+}
+
+.approachBadge {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-xs);
+	font-size: var(--font-size-sm);
+	font-weight: 500;
+	padding: var(--spacing-xs) var(--spacing-sm);
+	border-radius: var(--border-radius-sm);
+	background: var(--color-background-medium);
+}
+
+.emptyText {
+	color: var(--color-text-secondary);
+	text-align: center;
+	margin: var(--spacing-xl) 0;
+	font-style: italic;
+}
+
+@keyframes slideIn {
+	from {
+		transform: translateX(100%);
+	}
+	to {
+		transform: translateX(0);
+	}
+}
+
+@keyframes slideOut {
+	from {
+		transform: translateX(0);
+	}
+	to {
+		transform: translateX(100%);
+	}
+} 

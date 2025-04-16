@@ -7,6 +7,7 @@ import { ChatLog } from './game/components/ChatLog';
 import { DialogUI } from './game/components/DialogUI';
 import { Quests } from "./game/components/Quests";
 import { SidePanel } from "./game/components/SidePanel";
+import { Relationships } from "./game/components/Relationships";
 
 function App()
 {
@@ -23,6 +24,7 @@ function App()
             <Chat />
             <DialogUI />
             <Quests />
+            <Relationships />
             <SidePanel />
         </div>
     )
