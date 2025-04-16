@@ -48,14 +48,27 @@ export function Quests() {
 			}
 		}
 
+		const handleSettingsToggle = () => {
+			// Close quests when settings is opened
+			if (isVisible) {
+				setIsExiting(true)
+				setTimeout(() => {
+					setIsVisible(false)
+					setIsExiting(false)
+				}, 300)
+			}
+		}
+
 		EventBus.on('ui:quests:toggle', handleToggle)
 		EventBus.on('ui:inventory:toggle', handleInventoryToggle)
 		EventBus.on('ui:relationships:toggle', handleRelationshipsToggle)
+		EventBus.on('ui:settings:toggle', handleSettingsToggle)
 
 		return () => {
 			EventBus.off('ui:quests:toggle', handleToggle)
 			EventBus.off('ui:inventory:toggle', handleInventoryToggle)
 			EventBus.off('ui:relationships:toggle', handleRelationshipsToggle)
+			EventBus.off('ui:settings:toggle', handleSettingsToggle)
 		}
 	}, [isVisible])
 

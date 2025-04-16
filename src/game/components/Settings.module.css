@@ -1,0 +1,147 @@
+@import './variables.module.css';
+
+.settingsContainer {
+	position: fixed;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: 360px;
+	background: var(--color-background-medium);
+	backdrop-filter: blur(8px);
+	padding: var(--spacing-md);
+	padding-left: var(--spacing-xl);
+	padding-right: calc(var(--spacing-xl) + 60px);
+	color: var(--color-text-primary);
+	overflow-y: auto;
+	box-shadow: var(--shadow-md);
+	animation: slideIn 0.3s ease-out;
+	z-index: var(--z-index-modal);
+}
+
+.settingsContainer.slideOut {
+	animation: slideOut 0.3s ease-out forwards;
+}
+
+.settingsContent {
+	position: relative;
+}
+
+.title {
+	composes: title from './variables.module.css';
+	margin-top: var(--spacing-md);
+	margin-bottom: var(--spacing-xl);
+	text-align: center;
+}
+
+.closeIcon {
+	composes: closeIcon from './variables.module.css';
+	position: absolute;
+	top: var(--spacing-xs);
+	left: var(--spacing-md);
+	margin-top: -16px;
+}
+
+.settingCard {
+	background: var(--color-background-light);
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius-md);
+	padding: var(--spacing-lg);
+	margin-bottom: var(--spacing-lg);
+	transition: var(--transition-fast);
+}
+
+.settingCard:hover {
+	border-color: var(--color-border-hover);
+	transform: translateY(-1px);
+	box-shadow: var(--shadow-sm);
+}
+
+.settingTitle {
+	margin: 0 0 var(--spacing-md) 0;
+	color: var(--color-accent-primary);
+	font-size: var(--font-size-lg);
+}
+
+.settingContent {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-md);
+}
+
+.settingRow {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: var(--spacing-md);
+}
+
+.settingRow label {
+	color: var(--color-text-secondary);
+	flex: 1;
+}
+
+.slider {
+	flex: 2;
+	height: 4px;
+	-webkit-appearance: none;
+	background: var(--color-background-medium);
+	border-radius: 2px;
+	outline: none;
+}
+
+.slider::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	appearance: none;
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background: var(--color-accent-primary);
+	cursor: pointer;
+	border: none;
+}
+
+.slider::-moz-range-thumb {
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background: var(--color-accent-primary);
+	cursor: pointer;
+	border: none;
+}
+
+.select {
+	flex: 2;
+	padding: var(--spacing-sm) var(--spacing-md);
+	border-radius: var(--border-radius-sm);
+	background: var(--color-background-medium);
+	border: 1px solid var(--color-border);
+	color: var(--color-text-primary);
+	font-size: var(--font-size-md);
+	outline: none;
+}
+
+.select:focus {
+	border-color: var(--color-accent-primary);
+}
+
+@keyframes slideIn {
+	from {
+		transform: translateX(100%);
+		opacity: 0;
+	}
+	to {
+		transform: translateX(0);
+		opacity: 1;
+	}
+}
+
+@keyframes slideOut {
+	from {
+		transform: translateX(0);
+		opacity: 1;
+	}
+	to {
+		transform: translateX(100%);
+		opacity: 0;
+	}
+} 

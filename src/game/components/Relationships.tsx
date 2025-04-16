@@ -52,14 +52,27 @@ export function Relationships() {
 			}
 		}
 
+		const handleSettingsToggle = () => {
+			// Close relationships when settings is opened
+			if (isVisible) {
+				setIsExiting(true)
+				setTimeout(() => {
+					setIsVisible(false)
+					setIsExiting(false)
+				}, 300)
+			}
+		}
+
 		EventBus.on('ui:relationships:toggle', handleToggle)
 		EventBus.on('ui:inventory:toggle', handleInventoryToggle)
 		EventBus.on('ui:quests:toggle', handleQuestsToggle)
+		EventBus.on('ui:settings:toggle', handleSettingsToggle)
 
 		return () => {
 			EventBus.off('ui:relationships:toggle', handleToggle)
 			EventBus.off('ui:inventory:toggle', handleInventoryToggle)
 			EventBus.off('ui:quests:toggle', handleQuestsToggle)
+			EventBus.off('ui:settings:toggle', handleSettingsToggle)
 		}
 	}, [isVisible])
 

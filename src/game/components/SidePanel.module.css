@@ -6,8 +6,15 @@
 	right: var(--spacing-lg);
 	display: flex;
 	flex-direction: column;
-	gap: var(--spacing-sm);
+	justify-content: space-between;
+	height: calc(100vh - 2 * var(--spacing-lg));
 	z-index: var(--z-index-modal);
+}
+
+.topButtons {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-sm);
 }
 
 .button {

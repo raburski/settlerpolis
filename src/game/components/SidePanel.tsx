@@ -21,6 +21,10 @@ export function SidePanel() {
 		EventBus.emit('ui:relationships:toggle')
 	}
 
+	const handleSettingsClick = () => {
+		EventBus.emit('ui:settings:toggle')
+	}
+
 	useEffect(() => {
 		const triggerInventoryPulse = () => {
 			setInventoryPulse(true)
@@ -61,26 +65,35 @@ export function SidePanel() {
 
 	return (
 		<div className={styles.panel}>
+			<div className={styles.topButtons}>
+				<button 
+					className={`${styles.button} ${questsPulse ? styles.pulse : ''}`}
+					onClick={handleQuestsClick}
+					title="Toggle Quests"
+				>
+					📜
+				</button>
+				<button 
+					className={`${styles.button} ${inventoryPulse ? styles.pulse : ''}`}
+					onClick={handleInventoryClick}
+					title="Toggle Inventory"
+				>
+					🎒
+				</button>
+				<button 
+					className={`${styles.button} ${relationshipsPulse ? styles.pulse : ''}`}
+					onClick={handleRelationshipsClick}
+					title="Toggle Relationships"
+				>
+					💝
+				</button>
+			</div>
 			<button 
-				className={`${styles.button} ${questsPulse ? styles.pulse : ''}`}
-				onClick={handleQuestsClick}
-				title="Toggle Quests"
+				className={styles.button}
+				onClick={handleSettingsClick}
+				title="Settings"
 			>
-				📜
-			</button>
-			<button 
-				className={`${styles.button} ${inventoryPulse ? styles.pulse : ''}`}
-				onClick={handleInventoryClick}
-				title="Toggle Inventory"
-			>
-				🎒
-			</button>
-			<button 
-				className={`${styles.button} ${relationshipsPulse ? styles.pulse : ''}`}
-				onClick={handleRelationshipsClick}
-				title="Toggle Relationships"
-			>
-				💝
+				⚙️
 			</button>
 		</div>
 	)

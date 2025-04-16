@@ -58,6 +58,17 @@ export const useInventory = () => {
 			}
 		}
 
+		const handleSettingsToggle = () => {
+			// Close inventory when settings is opened
+			if (isVisible) {
+				setIsExiting(true)
+				setTimeout(() => {
+					setIsVisible(false)
+					setIsExiting(false)
+				}, 300)
+			}
+		}
+
 		const handleItemEquipped = (data: { itemId: string, slotType: EquipmentSlotType, item: Item, sourcePlayerId: string }) => {
 			if (data.sourcePlayerId && data.sourcePlayerId !== playerId) return
 			setEquippedItems(prev => ({
@@ -77,6 +88,7 @@ export const useInventory = () => {
 		EventBus.on('ui:inventory:toggle', handleToggle)
 		EventBus.on('ui:quests:toggle', handleQuestsToggle)
 		EventBus.on('ui:relationships:toggle', handleRelationshipsToggle)
+		EventBus.on('ui:settings:toggle', handleSettingsToggle)
 		EventBus.on(Event.Players.SC.Equip, handleItemEquipped)
 		EventBus.on(Event.Players.SC.Unequip, handleItemUnequipped)
 
@@ -84,6 +96,7 @@ export const useInventory = () => {
 			EventBus.off('ui:inventory:toggle', handleToggle)
 			EventBus.off('ui:quests:toggle', handleQuestsToggle)
 			EventBus.off('ui:relationships:toggle', handleRelationshipsToggle)
+			EventBus.off('ui:settings:toggle', handleSettingsToggle)
 			EventBus.off(Event.Players.SC.Equip, handleItemEquipped)
 			EventBus.off(Event.Players.SC.Unequip, handleItemUnequipped)
 		}
