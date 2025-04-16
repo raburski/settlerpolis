@@ -1,14 +1,8 @@
 import { useRef } from 'react';
 import { IRefPhaserGame, PhaserGame } from './game/PhaserGame';
-import { Chat } from './game/components/Chat';
 import { DisconnectModal } from './game/components/DisconnectModal';
-import { Inventory } from './game/components/Inventory';
-import { ChatLog } from './game/components/ChatLog';
-import { DialogUI } from './game/components/DialogUI';
-import { Quests } from "./game/components/Quests";
-import { SidePanel } from "./game/components/SidePanel";
-import { Relationships } from "./game/components/Relationships";
 import { FullscreenMessage } from './game/components/FullscreenMessage';
+import { UIContainer } from './game/components/UIContainer';
 
 function App()
 {
@@ -18,15 +12,8 @@ function App()
     return (
         <div id="app">
             <PhaserGame ref={phaserRef} />
-            <Chat />
+            <UIContainer />
             <DisconnectModal />
-            <Inventory />
-            <ChatLog />
-            <Chat />
-            <DialogUI />
-            <Quests />
-            <Relationships />
-            <SidePanel />
             <FullscreenMessage />
         </div>
     )

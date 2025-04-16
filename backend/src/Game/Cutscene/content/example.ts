@@ -7,6 +7,7 @@ export const introCutscene: Cutscene = {
 	id: 'intro',
 	skippable: true,
 	steps: [
+		{ event: Event.FX.SC.Play, payload: { type: FXType.HideUI }},
 		{ event: Event.FX.SC.Play, payload: { type: FXType.ShakeScreen }, duration: 800 },
 		{ event: Event.Chat.SC.Receive, payload: { message: '!' }, duration: 1000 },
 		{ event: Event.FX.SC.Play, payload: { type: FXType.ShakeScreen }, duration: 1200 },
@@ -39,6 +40,7 @@ export const introCutscene: Cutscene = {
 				type: FXType.FadeFromBlack
 			},
 			duration: 1000
-		}
+		},
+		{ event: Event.FX.SC.Play, payload: { type: FXType.ShowUI }},
 	]
 } 

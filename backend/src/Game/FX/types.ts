@@ -3,7 +3,9 @@ export enum FXType {
 	FadeFromBlack = 'fadeFromBlack',
 	MoveCameraTo = 'moveCameraTo',
 	ShakeScreen = 'shakeScreen',
-	FocusOnNPC = 'focusOnNPC'
+	FocusOnNPC = 'focusOnNPC',
+    HideUI = 'hideUI',
+    ShowUI = 'showUI',
 }
 
 export interface FXPlayEventData {
