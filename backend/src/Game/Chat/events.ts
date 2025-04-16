@@ -4,6 +4,7 @@ export const ChatEvents = {
 	},
 	SC: {
 		Receive: 'sc:chat:receive',
-		SystemMessage: 'sc:chat:system_message'
+		SystemMessage: 'sc:chat:system_message',
+		FullscreenMessage: 'sc:chat:fullscreen_message'
 	}
 } as const 

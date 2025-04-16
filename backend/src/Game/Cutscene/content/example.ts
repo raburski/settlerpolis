@@ -9,7 +9,7 @@ export const introCutscene: Cutscene = {
 	steps: [
 		{ event: Event.FX.SC.Play, payload: { type: FXType.ShakeScreen }, duration: 800 },
 		{ event: Event.Chat.SC.Receive, payload: { message: '!' }, duration: 1000 },
-		{ event: Event.FX.SC.Play, payload: { type: FXType.ShakeScreen }, duration: 2000 },
+		{ event: Event.FX.SC.Play, payload: { type: FXType.ShakeScreen }, duration: 1200 },
 		{
 			event: FXEvents.SC.Play,
 			payload: {
@@ -18,20 +18,20 @@ export const introCutscene: Cutscene = {
 			duration: 1000
 		},
 		{
-			event: 'sc:cutscene:showText',
+			event: Event.Chat.SC.FullscreenMessage,
 			payload: {
-				text: 'Welcome to Rugtopolis',
-				duration: 3000
+				message: 'Welcome to Rugtopolis',
+				duration: 2000
 			},
-			duration: 3000
+			duration: 2000
 		},
 		{
-			event: 'sc:cutscene:showText',
+			event: Event.Chat.SC.FullscreenMessage,
 			payload: {
-				text: 'A world of adventure awaits...',
-				duration: 3000
+				message: 'A world of adventure awaits...',
+				duration: 1600
 			},
-			duration: 3000
+			duration: 2000
 		},
 		{
 			event: FXEvents.SC.Play,
