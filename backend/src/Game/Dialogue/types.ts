@@ -1,5 +1,6 @@
 import { FlagScope } from '../Flags/types'
 import { AffinitySentimentType } from '../Affinity/types'
+import { FXType } from '../FX/types'
 
 export interface DialogueNode {
 	speaker?: string
@@ -106,9 +107,15 @@ export interface AffinityEffect {
 	add?: number
 }
 
+export interface FXEffect {
+	type: FXType
+	payload?: Record<string, any>
+}
+
 export interface DialogueEffect {
 	flag?: FlagEffect
 	event?: DialogueEvent
 	quest?: QuestEffect
 	affinity?: AffinityEffect
+	fx?: FXEffect
 }

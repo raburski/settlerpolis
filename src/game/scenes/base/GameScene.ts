@@ -14,6 +14,7 @@ import networkManager from "../../network";
 import { playerService } from "../../services/PlayerService";
 import { createMapObject, MapObjectEntity } from '../../entities/MapObject'
 import { ItemPlacementManager } from '../../modules/ItemPlacement'
+import { FX } from '../../modules/FX'
 
 export abstract class GameScene extends MapScene {
     protected player: LocalPlayer | null = null
@@ -24,6 +25,7 @@ export abstract class GameScene extends MapScene {
 	protected keyboard: Keyboard | null = null
     protected portalManager: PortalManager | null = null
 	protected itemPlacementManager: ItemPlacementManager | null = null
+	protected fx: FX | null = null
 
 	constructor(key: string, mapKey: string, mapPath: string) {
 		super(key, mapKey, mapPath)
@@ -64,6 +66,9 @@ export abstract class GameScene extends MapScene {
 
 		// Initialize the item placement manager
 		this.itemPlacementManager = new ItemPlacementManager(this, this.player.controller)
+
+		// Initialize FX
+		this.fx = new FX(this)
 
 		// Only emit join event if this is not a scene transition
 		if (!isTransition) {
@@ -242,6 +247,12 @@ export abstract class GameScene extends MapScene {
 		if (this.keyboard) {
 			this.keyboard.destroy()
 			this.keyboard = null
+		}
+
+		// Clean up FX
+		if (this.fx) {
+			this.fx.destroy()
+			this.fx = null
 		}
 
 		// Clean up player

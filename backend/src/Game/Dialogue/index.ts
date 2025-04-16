@@ -7,6 +7,7 @@ import { QuestManager } from "../Quest"
 import { FlagsManager } from "../Flags"
 import { AffinityManager } from "../Affinity"
 import { v4 as uuidv4 } from 'uuid'
+import { FXEvents } from "../FX/events"
 
 export class DialogueManager {
 	private dialogues = new Map<string, DialogueTree>()
@@ -136,6 +137,10 @@ export class DialogueManager {
 
 		if (effect.affinity) {
 			this.applyAffinityEffect(effect.affinity, client, npcId)
+		}
+
+		if (effect.fx) {
+			client.emit(Receiver.Sender, FXEvents.SC.Play, effect.fx)
 		}
 	}
 

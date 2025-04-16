@@ -11,6 +11,7 @@ import { QuestEvents } from "./Game/Quest/events"
 import { MapObjectsEvents } from "./Game/MapObjects/events"
 import { FlagsEvents } from "./Game/Flags/events"
 import { AffinityEvents } from "./Game/Affinity/events"
+import { FXEvents } from "./Game/FX/events"
 
 // Interface for client operations
 export interface EventClient {
@@ -45,4 +46,5 @@ export const Event = {
 	MapObjects: MapObjectsEvents,
 	Flags: FlagsEvents,
 	Affinity: AffinityEvents,
+	FX: FXEvents,
 }

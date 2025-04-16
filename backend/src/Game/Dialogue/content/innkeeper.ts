@@ -3,6 +3,7 @@ import { FlagScope } from "../../Flags/types"
 import { DialogueTree, DialogueTreePartial } from '../types'
 import { dialogueCompose } from '../utils'
 import { AffinitySentimentType } from '../../Affinity/types'
+import { FXType } from '../../FX/types'
 
 const freeDrinkDialogue: DialogueTreePartial = {
 	nodes: {
@@ -174,7 +175,14 @@ const dialogueDefault: DialogueTreePartial = {
 					id: "goodbye",
 					text: "Nothing, just looking around.",
 					next: "goodbye_response"
-				}
+				},
+				{
+					id: "try_fx",
+					text: "FX Testing",
+					effect: {
+						fx: { type: FXType.ShakeScreen }
+					}
+				},
 			]
 		},
 		room_response: {
