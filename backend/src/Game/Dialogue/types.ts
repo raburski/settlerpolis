@@ -112,10 +112,15 @@ export interface FXEffect {
 	payload?: Record<string, any>
 }
 
+export interface CutsceneEffect {
+	trigger: string
+}
+
 export interface DialogueEffect {
 	flag?: FlagEffect
 	event?: DialogueEvent
 	quest?: QuestEffect
 	affinity?: AffinityEffect
 	fx?: FXEffect
+	cutscene?: CutsceneEffect
 }

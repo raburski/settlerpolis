@@ -36,10 +36,7 @@ export abstract class BasePlayerController {
 	protected handleChatMessage = (data: { sourcePlayerId: string, message: string, playerId: string }) => {
 		if (!this.shouldHandleEvent(data)) return
 		
-		// Only show message if it's from our player
-		if (data.playerId === this.playerId) {
-			this.view.displayMessage(data.message)
-		}
+		this.view.displayMessage(data.message)
 	}
 
 	protected handleItemEquipped = (data: { itemId: string, slotType: EquipmentSlotType, item: Item, sourcePlayerId: string }) => {

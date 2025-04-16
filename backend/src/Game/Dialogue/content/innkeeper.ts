@@ -180,7 +180,7 @@ const dialogueDefault: DialogueTreePartial = {
 					id: "try_fx",
 					text: "FX Testing",
 					effect: {
-						fx: { type: FXType.ShakeScreen }
+						cutscene: { trigger: 'intro' }
 					}
 				},
 			]

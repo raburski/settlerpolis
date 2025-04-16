@@ -13,6 +13,7 @@ import { QuestManager } from "./Quest"
 import { MapObjectsManager } from "./MapObjects"
 import { FlagsManager } from "./Flags"
 import { AffinityManager } from "./Affinity"
+import { CutsceneManager } from './Cutscene'
 
 export class GameManager {
 	private chatManager: ChatManager
@@ -28,6 +29,7 @@ export class GameManager {
 	private mapObjectsManager: MapObjectsManager
 	private flagsManager: FlagsManager
 	private affinityManager: AffinityManager
+	private cutsceneManager: CutsceneManager
 
 	constructor(private event: EventManager) {
 		// Initialize managers in dependency order
@@ -40,6 +42,7 @@ export class GameManager {
 		this.lootManager = new LootManager(event)
 		this.flagsManager = new FlagsManager(event)
 		this.affinityManager = new AffinityManager(event)
+		this.cutsceneManager = new CutsceneManager(event)
 		this.dialogueManager = new DialogueManager(event, this.questManager, this.flagsManager, this.affinityManager)
 		this.npcManager = new NPCManager(event, this.dialogueManager)
 		this.scheduler = new Scheduler(event)

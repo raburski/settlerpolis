@@ -1,6 +1,6 @@
 import { EventManager, Event, EventClient } from '../../events'
 import { Receiver } from '../../Receiver'
-import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData, DialogueEvent, DialogueItem, DialogueCondition, FlagCondition, DialogueEffect, FlagEffect, QuestEffect, DialogueOption, QuestCondition, AffinityCondition, AffinityEffect, AffinityOverallCondition } from './types'
+import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData, DialogueEvent, DialogueItem, DialogueCondition, FlagCondition, DialogueEffect, FlagEffect, QuestEffect, DialogueOption, QuestCondition, AffinityCondition, AffinityEffect, AffinityOverallCondition, CutsceneEffect } from './types'
 import { DialogueEvents } from './events'
 import { AllDialogues } from './content'
 import { QuestManager } from "../Quest"
@@ -8,6 +8,7 @@ import { FlagsManager } from "../Flags"
 import { AffinityManager } from "../Affinity"
 import { v4 as uuidv4 } from 'uuid'
 import { FXEvents } from "../FX/events"
+import { CutsceneEvents } from "../Cutscene/events"
 
 export class DialogueManager {
 	private dialogues = new Map<string, DialogueTree>()
@@ -118,6 +119,18 @@ export class DialogueManager {
 	}
 
 	/**
+	 * Apply a cutscene effect
+	 */
+	private applyCutsceneEffect(effect: CutsceneEffect, client: EventClient) {
+		const { trigger } = effect
+		
+		if (trigger) {
+			// Trigger the cutscene
+			client.emit(Receiver.Sender, CutsceneEvents.SS.Trigger, { cutsceneId: trigger })
+		}
+	}
+
+	/**
 	 * Apply a dialogue effect
 	 */
 	private applyDialogueEffect(effect: DialogueEffect, client: EventClient, npcId: string) {
@@ -141,6 +154,10 @@ export class DialogueManager {
 
 		if (effect.fx) {
 			client.emit(Receiver.Sender, FXEvents.SC.Play, effect.fx)
+		}
+
+		if (effect.cutscene) {
+			this.applyCutsceneEffect(effect.cutscene, client)
 		}
 	}
 
