@@ -43,12 +43,6 @@ export const CollectMozgotrzepQuest: Quest = {
 		}
 	],
 	reward: {
-		exp: 50,
-		items: [
-			{
-				id: 'chainfolk_rug',
-				qty: 1
-			}
-		]
+		exp: 50
 	}
 } 

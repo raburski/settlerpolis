@@ -1,4 +1,5 @@
 import { FlagScope } from '../Flags/types'
+import { AffinitySentimentType } from '../Affinity/types'
 
 export interface DialogueNode {
 	speaker?: string
@@ -68,9 +69,24 @@ export interface QuestCondition {
 	canStart: string
 }
 
+export interface AffinityCondition {
+	npcId: string
+	sentimentType: AffinitySentimentType
+	minValue?: number
+	maxValue?: number
+}
+
+export interface AffinityOverallCondition {
+	npcId: string
+	minScore?: number
+	maxScore?: number
+}
+
 export interface DialogueCondition {
 	flag?: FlagCondition
 	quest?: QuestCondition
+	affinity?: AffinityCondition
+	affinityOverall?: AffinityOverallCondition
 }
 
 export interface FlagEffect {
@@ -85,8 +101,16 @@ export interface QuestEffect {
 	start: string
 }
 
+export interface AffinityEffect {
+	npcId: string
+	sentimentType: AffinitySentimentType
+	set?: number
+	add?: number
+}
+
 export interface DialogueEffect {
 	flag?: FlagEffect
 	event?: DialogueEvent
 	quest?: QuestEffect
-} 
+	affinity?: AffinityEffect
+}

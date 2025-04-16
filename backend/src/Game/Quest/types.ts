@@ -28,21 +28,16 @@ export interface QuestStep {
 		payload?: Record<string, any>
 	}
 	onComplete?: {
-		triggerDialogue?: string
-		setWorldState?: Record<string, any>
 		logMessage?: string
-		fx?: {
-			play: string
-		}
 	}
 }
 
 export interface QuestReward {
+	exp?: number
 	items?: Array<{
 		id: string
 		qty: number
 	}>
-	exp?: number
 }
 
 export interface Quest {
@@ -51,10 +46,6 @@ export interface Quest {
 	title: string
 	description: string
 	settings?: QuestSettings
-	start?: {
-		onEvent: string
-		dialogueId: string
-	}
 	steps: QuestStep[]
 	reward?: QuestReward
 }

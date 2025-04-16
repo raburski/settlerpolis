@@ -1,10 +1,11 @@
 import { EventManager, Event, EventClient } from '../../events'
 import { Receiver } from '../../Receiver'
-import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData, DialogueEvent, DialogueItem, DialogueTreePartial, DialogueCondition, FlagCondition, DialogueEffect, FlagEffect, QuestEffect, DialogueOption, QuestCondition } from './types'
+import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData, DialogueEvent, DialogueItem, DialogueTreePartial, DialogueCondition, FlagCondition, DialogueEffect, FlagEffect, QuestEffect, DialogueOption, QuestCondition, AffinityCondition, AffinityEffect, AffinityOverallCondition } from './types'
 import { DialogueEvents } from './events'
 import { AllDialogues } from './content'
 import { QuestManager } from "../Quest"
 import { FlagsManager } from "../Flags"
+import { AffinityManager } from "../Affinity"
 import { v4 as uuidv4 } from 'uuid'
 
 export class DialogueManager {
@@ -15,7 +16,8 @@ export class DialogueManager {
 	constructor(
 		private event: EventManager, 
 		private questManager: QuestManager,
-		private flagsManager: FlagsManager
+		private flagsManager: FlagsManager,
+		private affinityManager: AffinityManager
 	) {
 		this.setupEventHandlers()
 		this.loadDialogues()
@@ -102,6 +104,19 @@ export class DialogueManager {
 	}
 
 	/**
+	 * Apply an affinity effect
+	 */
+	private applyAffinityEffect(effect: AffinityEffect, client: EventClient) {
+		const { npcId, sentimentType, set, add } = effect
+		
+		if (set !== undefined) {
+			this.affinityManager.setAffinityValue(client.id, npcId, sentimentType, set, client)
+		} else if (add !== undefined) {
+			this.affinityManager.changeAffinityValue(client.id, npcId, sentimentType, add, client)
+		}
+	}
+
+	/**
 	 * Apply a dialogue effect
 	 */
 	private applyDialogueEffect(effect: DialogueEffect, client: EventClient) {
@@ -117,6 +132,10 @@ export class DialogueManager {
 
 		if (effect.quest) {
 			this.applyQuestEffect(effect.quest, client)
+		}
+
+		if (effect.affinity) {
+			this.applyAffinityEffect(effect.affinity, client)
 		}
 	}
 
@@ -168,6 +187,48 @@ export class DialogueManager {
 	}
 
 	/**
+	 * Check if an affinity condition is met
+	 */
+	private checkAffinityCondition(condition: AffinityCondition, client: EventClient): boolean {
+		const { npcId, sentimentType, minValue, maxValue } = condition
+		
+		// Get the current affinity value
+		const currentValue = this.affinityManager.getAffinityValue(client.id, npcId, sentimentType)
+		
+		// Check if the value is within the specified range
+		if (minValue !== undefined && currentValue < minValue) {
+			return false
+		}
+		
+		if (maxValue !== undefined && currentValue > maxValue) {
+			return false
+		}
+		
+		return true
+	}
+
+	/**
+	 * Check if an overall affinity condition is met
+	 */
+	private checkAffinityOverallCondition(condition: AffinityOverallCondition, client: EventClient): boolean {
+		const { npcId, minScore, maxScore } = condition
+		
+		// Get the current overall affinity score
+		const currentScore = this.affinityManager.calculateOverallScore(client.id, npcId)
+		
+		// Check if the score is within the specified range
+		if (minScore !== undefined && currentScore < minScore) {
+			return false
+		}
+		
+		if (maxScore !== undefined && currentScore > maxScore) {
+			return false
+		}
+		
+		return true
+	}
+
+	/**
 	 * Check if a dialogue condition is met
 	 */
 	private checkCondition(condition: DialogueCondition, client: EventClient): boolean {
@@ -179,6 +240,14 @@ export class DialogueManager {
 		
 		if (condition.quest) {
 			return this.checkQuestCondition(condition.quest, client)
+		}
+		
+		if (condition.affinity) {
+			return this.checkAffinityCondition(condition.affinity, client)
+		}
+		
+		if (condition.affinityOverall) {
+			return this.checkAffinityOverallCondition(condition.affinityOverall, client)
 		}
 		
 		return true
@@ -198,9 +267,7 @@ export class DialogueManager {
 			
 			// Check multiple conditions if present
 			if (option.conditions) {
-				return option.conditions.every(condition => 
-					this.checkCondition(condition, client)
-				)
+				return option.conditions.every(condition => this.checkCondition(condition, client))
 			}
 			
 			return true

@@ -4,6 +4,7 @@ import { NPCEvents } from './events'
 import { Receiver } from '../../Receiver'
 import { DialogueManager } from '../Dialogue'
 import { PlayerJoinData, PlayerTransitionData } from '../../types'
+import { AffinitySentimentType } from '../Affinity/types'
 
 // Example NPC data
 const EXAMPLE_NPC: NPC = {
