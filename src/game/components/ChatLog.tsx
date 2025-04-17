@@ -51,11 +51,11 @@ export function ChatLog() {
 
 		// Listen for both regular chat messages and system messages
 		EventBus.on(Event.Chat.SC.Receive, handleChatMessage)
-		EventBus.on(Event.Chat.SC.SystemMessage, handleSystemMessage)
+		EventBus.on(Event.Chat.SC.System, handleSystemMessage)
 
 		return () => {
 			EventBus.off(Event.Chat.SC.Receive, handleChatMessage)
-			EventBus.off(Event.Chat.SC.SystemMessage, handleSystemMessage)
+			EventBus.off(Event.Chat.SC.System, handleSystemMessage)
 		}
 	}, [])
 

@@ -24,6 +24,8 @@ export abstract class BasePlayerController {
 		// Subscribe to equipment events
 		EventBus.on(Event.Players.SC.Equip, this.handleItemEquipped, this)
 		EventBus.on(Event.Players.SC.Unequip, this.handleItemUnequipped, this)
+		// Subscribe to emoji events
+		EventBus.on(Event.Chat.SC.Emoji, this.handleEmoji, this)
 	}
 
 	/**
@@ -37,6 +39,12 @@ export abstract class BasePlayerController {
 		if (!this.shouldHandleEvent(data)) return
 		
 		this.view.displayMessage(data.message)
+	}
+
+	protected handleEmoji = (data: { sourcePlayerId: string, emoji: string }) => {
+		if (!this.shouldHandleEvent(data)) return
+		
+		this.view.displayEmoji(data.emoji)
 	}
 
 	protected handleItemEquipped = (data: { itemId: string, slotType: EquipmentSlotType, item: Item, sourcePlayerId: string }) => {

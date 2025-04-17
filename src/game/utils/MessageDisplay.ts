@@ -62,6 +62,9 @@ export function displayMessage(options: MessageDisplayOptions): GameObjects.Text
 	// Center the text horizontally
 	text.setOrigin(0.5, 0.5)
 	
+	// Set a very high depth to ensure text is always on top
+	text.setDepth(9999)
+	
 	// Add to container
 	container.add(text)
 	
@@ -115,6 +118,61 @@ export function displaySystemMessage(options: MessageDisplayOptions): GameObject
 	
 	// Center the text horizontally
 	text.setOrigin(0.5, 0.5)
+	
+	// Set a very high depth to ensure text is always on top
+	text.setDepth(9999)
+	
+	// Add to container
+	container.add(text)
+	
+	// Auto-remove after the specified duration
+	scene.time.delayedCall(duration, () => {
+		if (text && text.active) {
+			text.destroy()
+		}
+	})
+
+	return text
+}
+
+/**
+ * Displays an emoji above a game object
+ * @param options The message display options
+ * @returns The created text object
+ */
+export function displayEmoji(options: MessageDisplayOptions): GameObjects.Text {
+	const {
+		message,
+		scene,
+		container,
+		yOffset = -50,
+		fontSize = '26px',
+		color = '#ffffff',
+		backgroundColor = 'transparent',
+		padding = { x: 0, y: 0 },
+		duration = 2000,
+		existingText
+	} = options
+
+	// Remove existing message if any
+	if (existingText) {
+		existingText.destroy()
+	}
+
+	// Create new message text
+	const text = scene.add.text(0, yOffset, message, {
+		fontSize,
+		color,
+		backgroundColor,
+		padding,
+		align: 'center'
+	})
+	
+	// Center the text horizontally
+	text.setOrigin(0.5, 0.5)
+	
+	// Set a very high depth to ensure text is always on top
+	text.setDepth(9999)
 	
 	// Add to container
 	container.add(text)

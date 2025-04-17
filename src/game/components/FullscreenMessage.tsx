@@ -66,10 +66,10 @@ export const FullscreenMessage = () => {
             setState({ ...state, nextMessage: data })
 		}
 
-		EventBus.on(ChatEvents.SC.FullscreenMessage, handleFullscreenMessage)
+		EventBus.on(ChatEvents.SC.Fullscreen, handleFullscreenMessage)
 
 		return () => {
-			EventBus.off(ChatEvents.SC.FullscreenMessage, handleFullscreenMessage)
+			EventBus.off(ChatEvents.SC.Fullscreen, handleFullscreenMessage)
 		}
 	}, [state])
 

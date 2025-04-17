@@ -162,7 +162,7 @@ export class PlayersManager {
 
 			// Check if player has an empty slot in their inventory
 			if (!this.inventoryManager.hasEmptySlot(client.id)) {
-				client.emit(Receiver.Sender, Event.Chat.SC.SystemMessage, { 
+				client.emit(Receiver.Sender, Event.Chat.SC.System, { 
 					message: "Your inventory is full!" 
 				})
 				return
@@ -270,7 +270,7 @@ export class PlayersManager {
 				})
 			} else {
 				// Inventory is full, notify the client
-				client.emit(Receiver.Sender, Event.Chat.SC.SystemMessage, { 
+				client.emit(Receiver.Sender, Event.Chat.SC.System, { 
 					message: "Your inventory is full! Cannot unequip item." 
 				})
 			}

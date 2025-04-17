@@ -4,7 +4,8 @@ export const ChatEvents = {
 	},
 	SC: {
 		Receive: 'sc:chat:receive',
-		SystemMessage: 'sc:chat:system_message',
-		FullscreenMessage: 'sc:chat:fullscreen_message'
+		System: 'sc:chat:system',
+		Fullscreen: 'sc:chat:fullscreen',
+		Emoji: 'sc:chat:emoji'
 	}
 } as const 

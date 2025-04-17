@@ -1,5 +1,5 @@
 import { Scene, GameObjects, Physics } from 'phaser'
-import { displayMessage, displaySystemMessage } from '../../utils/MessageDisplay'
+import { displayMessage, displaySystemMessage, displayEmoji } from '../../utils/MessageDisplay'
 
 export enum Direction {
 	Down = 'down',
@@ -95,6 +95,18 @@ export class PlayerView2 extends GameObjects.Container {
 	public displayMessage(message: string): void {
 		this.messageText = displayMessage({
 			message,
+			scene: this.scene,
+			container: this,
+			existingText: this.messageText
+		})
+	}
+
+	/**
+	 * Displays an emoji above the player
+	 */
+	public displayEmoji(emoji: string): void {
+		this.messageText = displayEmoji({
+			message: emoji,
 			scene: this.scene,
 			container: this,
 			existingText: this.messageText

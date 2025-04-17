@@ -36,9 +36,9 @@ export class ChatManager {
 		}
 
 		if (targetGroup) {
-			this.event.emit(Receiver.Group, Event.Chat.SC.SystemMessage, messageData, targetGroup)
+			this.event.emit(Receiver.Group, Event.Chat.SC.System, messageData, targetGroup)
 		} else {
-			this.event.emit(Receiver.All, Event.Chat.SC.SystemMessage, messageData)
+			this.event.emit(Receiver.All, Event.Chat.SC.System, messageData)
 		}
 	}
 } 
