@@ -64,9 +64,10 @@ export class CutsceneManager {
 		const step = cutscene.steps[currentStep]
 		
 		// Execute the step by emitting the event directly
-		client.emit(Receiver.Sender, step.event, step.payload)
+		const payload = step.payload ? { duration: step.duration, ...step.payload } : { duration: step.duration }
+		client.emit(Receiver.Sender, step.event, payload)
 
-		// Move to the next step after the specified duration or default to 5000ms
+		// Move to the next step after the specified duration or default to 0ms
 		const duration = step.duration || 0
 		setTimeout(() => {
 			this.nextStep(client)

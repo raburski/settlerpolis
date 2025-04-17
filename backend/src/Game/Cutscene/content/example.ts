@@ -14,32 +14,22 @@ export const introCutscene: Cutscene = {
 		{ event: Event.FX.SC.Play, payload: { type: FXType.ShakeScreen }, duration: 1200 },
 		{
 			event: FXEvents.SC.Play,
-			payload: {
-				type: FXType.FadeToBlack
-			},
+			payload: { type: FXType.FadeToBlack },
 			duration: 1000
 		},
 		{
 			event: Event.Chat.SC.Fullscreen,
-			payload: {
-				message: 'Welcome to Rugtopolis',
-				duration: 2000
-			},
+			payload: { message: 'Welcome to Rugtopolis' },
 			duration: 2000
 		},
 		{
 			event: Event.Chat.SC.Fullscreen,
-			payload: {
-				message: 'A world of adventure awaits...',
-				duration: 1600
-			},
-			duration: 2000
+			payload: { message: 'A world of adventure awaits...' },
+			duration: 1600
 		},
 		{
 			event: FXEvents.SC.Play,
-			payload: {
-				type: FXType.FadeFromBlack
-			},
+			payload: { type: FXType.FadeFromBlack },
 			duration: 1000
 		},
 		{ event: Event.FX.SC.Play, payload: { type: FXType.DisplayUI, visible: true }},
