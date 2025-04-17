@@ -23,12 +23,7 @@ export const CollectMozgotrzepQuest: Quest = {
 				}
 			},
 			effect: {
-				event: {
-					type: Event.Chat.SC.System,
-					payload: {
-						message: "You've collected all 5 Mózgotrzep drinks! Return to the innkeeper to claim your reward."
-					}
-				}
+				chat: { system: "You've collected all 5 Mózgotrzep drinks! Return to the innkeeper to claim your reward." }
 			}
 		},
 		{

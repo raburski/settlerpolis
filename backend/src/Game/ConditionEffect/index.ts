@@ -1,11 +1,12 @@
 import { EventClient } from '../../events'
 import { Receiver } from '../../Receiver'
-import { Condition, Effect, FlagCondition, QuestCondition, AffinityCondition, AffinityOverallCondition, FlagEffect, QuestEffect, AffinityEffect, FXEffect, CutsceneEffect, EventEffect } from './types'
+import { Condition, Effect, FlagCondition, QuestCondition, AffinityCondition, AffinityOverallCondition, FlagEffect, QuestEffect, AffinityEffect, FXEffect, CutsceneEffect, EventEffect, ChatEffect } from './types'
 import { QuestManager } from "../Quest"
 import { FlagsManager } from "../Flags"
 import { AffinityManager } from "../Affinity"
 import { FXEvents } from "../FX/events"
 import { CutsceneEvents } from "../Cutscene/events"
+import { ChatEvents } from "../Chat/events"
 
 export class ConditionEffectManager {
 	constructor(
@@ -105,6 +106,43 @@ export class ConditionEffectManager {
 	}
 
 	/**
+	 * Apply a chat effect
+	 */
+	public applyChatEffect(effect: ChatEffect, client: EventClient) {
+		if (!effect) return
+
+		// Handle regular chat message
+		if (effect.message) {
+			client.emit(Receiver.All, ChatEvents.SC.Receive, {
+				message: effect.message,
+				type: 'local'
+			})
+		}
+
+		// Handle system message
+		if (effect.system) {
+			client.emit(Receiver.All, ChatEvents.SC.System, {
+				message: effect.system,
+				type: 'info'
+			})
+		}
+
+		// Handle fullscreen message
+		if (effect.fullscreen) {
+			client.emit(Receiver.All, ChatEvents.SC.Fullscreen, {
+				message: effect.fullscreen
+			})
+		}
+
+		// Handle emoji message
+		if (effect.emoji) {
+			client.emit(Receiver.All, ChatEvents.SC.Emoji, {
+				emoji: effect.emoji
+			})
+		}
+	}
+
+	/**
 	 * Apply a general effect
 	 */
 	public applyEffect(effect: Effect, client: EventClient, npcId: string) {
@@ -132,6 +170,10 @@ export class ConditionEffectManager {
 
 		if (effect.cutscene) {
 			this.applyCutsceneEffect(effect.cutscene, client)
+		}
+
+		if (effect.chat) {
+			this.applyChatEffect(effect.chat, client)
 		}
 	}
 

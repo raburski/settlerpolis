@@ -64,6 +64,13 @@ export interface EventEffect {
 	payload: Record<string, any>
 }
 
+export interface ChatEffect {
+	message?: string
+	system?: string
+	fullscreen?: string
+	emoji?: string
+}
+
 export interface Effect {
 	flag?: FlagEffect
 	event?: EventEffect
@@ -71,4 +78,5 @@ export interface Effect {
 	affinity?: AffinityEffect
 	fx?: FXEffect
 	cutscene?: CutsceneEffect
+	chat?: ChatEffect
 } 
