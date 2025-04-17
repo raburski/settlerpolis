@@ -13,6 +13,7 @@ import {
 } from './types'
 import { AllQuests } from './quests'
 import { InventoryManager } from "../Inventory"
+import { ConditionEffectManager } from "../ConditionEffect"
 
 export class QuestManager {
 	private quests: Map<string, Quest> = new Map()
@@ -20,10 +21,25 @@ export class QuestManager {
 	private eventToQuestSteps: Map<string, Array<{ questId: string, stepIndex: number }>> = new Map()
 	private globalQuestStates: Map<string, QuestProgress> = new Map()
 	private sharedQuestStates: Map<string, QuestProgress> = new Map()
+	private _conditionEffectManager: ConditionEffectManager | null = null
 
-	constructor(private event: EventManager, private inventoryManager: InventoryManager) {
+	constructor(
+		private event: EventManager, 
+		private inventoryManager: InventoryManager
+	) {
 		this.loadQuests()
 		this.setupEventHandlers()
+	}
+
+	set conditionEffectManager(manager: ConditionEffectManager) {
+		this._conditionEffectManager = manager
+	}
+
+	get conditionEffectManager(): ConditionEffectManager {
+		if (!this._conditionEffectManager) {
+			throw new Error('ConditionEffectManager not initialized')
+		}
+		return this._conditionEffectManager
 	}
 
 	private loadQuests() {
@@ -134,39 +150,30 @@ export class QuestManager {
 		step: Quest['steps'][number],
 		client: EventClient
 	) {
+		// Mark step as completed
 		progress.completedSteps.push(step.id)
+		progress.currentStep++
 
-		// Handle step completion effects
-		if (step.onComplete) {
-			if (step.onComplete.logMessage) {
-				client.emit(Receiver.Sender, 'ss:log:message', {
-					message: step.onComplete.logMessage,
-					playerId
-				})
-			}
+		// Apply effect if present
+		if (step.effect) {
+			this.conditionEffectManager.applyEffect(step.effect, client, step.npcId || '')
 		}
 
-		// Emit step completion event
-		client.emit(Receiver.Sender, QuestEvents.SC.StepComplete, {
-			questId: quest.id,
-			stepId: step.id,
-			playerId
-		})
-
-		// Check if this was the last step
-		if (progress.currentStep === quest.steps.length - 1) {
+		// Check if quest is complete
+		if (progress.currentStep >= quest.steps.length) {
 			this.completeQuest(playerId, progress, quest, client)
-		} else {
-			progress.currentStep++
-			const response: QuestUpdateResponse = {
-				questId: quest.id,
-				progress
-			}
-			client.emit(Receiver.Sender, QuestEvents.SC.Update, response)
+			return
 		}
 
-		const playerState = this.getOrCreatePlayerState(playerId)
-		this.savePlayerState(playerId, playerState)
+		// Update progress
+		this.savePlayerState(playerId, this.getOrCreatePlayerState(playerId))
+		
+		// Notify client
+		const response: QuestUpdateResponse = {
+			questId: quest.id,
+			progress
+		}
+		client.emit(Receiver.Sender, QuestEvents.SC.Update, response)
 	}
 
 	private completeQuest(

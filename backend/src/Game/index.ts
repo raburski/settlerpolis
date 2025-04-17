@@ -14,6 +14,7 @@ import { MapObjectsManager } from "./MapObjects"
 import { FlagsManager } from "./Flags"
 import { AffinityManager } from "./Affinity"
 import { CutsceneManager } from './Cutscene'
+import { ConditionEffectManager } from './ConditionEffect'
 
 export class GameManager {
 	private chatManager: ChatManager
@@ -30,6 +31,7 @@ export class GameManager {
 	private flagsManager: FlagsManager
 	private affinityManager: AffinityManager
 	private cutsceneManager: CutsceneManager
+	private conditionEffectManager: ConditionEffectManager
 
 	constructor(private event: EventManager) {
 		// Initialize managers in dependency order
@@ -38,16 +40,28 @@ export class GameManager {
 		this.systemManager = new SystemManager(event)
 		this.itemsManager = new ItemsManager(event)
 		this.inventoryManager = new InventoryManager(event, this.itemsManager)
-		this.questManager = new QuestManager(event, this.inventoryManager)
-		this.lootManager = new LootManager(event)
 		this.flagsManager = new FlagsManager(event)
 		this.affinityManager = new AffinityManager(event)
+		this.questManager = new QuestManager(event, this.inventoryManager)
+		this.lootManager = new LootManager(event)
 		this.cutsceneManager = new CutsceneManager(event)
-		this.dialogueManager = new DialogueManager(event, this.questManager, this.flagsManager, this.affinityManager)
+		this.dialogueManager = new DialogueManager(
+			event, 
+			this.questManager
+		)
+		
 		this.npcManager = new NPCManager(event, this.dialogueManager)
 		this.scheduler = new Scheduler(event)
 		this.mapObjectsManager = new MapObjectsManager(event, this.itemsManager, this.inventoryManager)
 		
+		this.conditionEffectManager = new ConditionEffectManager(
+			this.questManager,
+			this.flagsManager,
+			this.affinityManager
+		)
+		this.dialogueManager.conditionEffectManager = this.conditionEffectManager
+		this.questManager.conditionEffectManager = this.conditionEffectManager
+
 		// Initialize PlayersManager last since it depends on other managers
 		this.playersManager = new PlayersManager(
 			event, 

@@ -1,4 +1,5 @@
 import { Event } from "../../../../events"
+import { AffinitySentimentType } from "../../../Affinity/types"
 import { Quest, QuestScope } from '../../types'
 
 export const CollectMozgotrzepQuest: Quest = {
@@ -21,8 +22,13 @@ export const CollectMozgotrzepQuest: Quest = {
 					quantity: 5
 				}
 			},
-			onComplete: {
-				logMessage: "You've collected all 5 Mózgotrzep drinks! Return to the innkeeper to claim your reward."
+			effect: {
+				event: {
+					type: Event.Chat.SC.System,
+					payload: {
+						message: "You've collected all 5 Mózgotrzep drinks! Return to the innkeeper to claim your reward."
+					}
+				}
 			}
 		},
 		{
@@ -39,7 +45,10 @@ export const CollectMozgotrzepQuest: Quest = {
                     dialogueId: 'innkeeper_greeting',
                     choiceId: 'thank_innkeeper',
                 }
-            }
+            },
+			effect: {
+				affinity: { sentimentType: AffinitySentimentType.Trust, add: 300 },
+			}
 		}
 	],
 	reward: {

@@ -46,7 +46,7 @@ export function getOverallNPCApproach(sentiments: Record<AffinitySentimentType, 
 	if (empathy < 25 && trust < 25) return OverallNPCApproach.Indifferent
 
 	// Trust-based relationships
-	if (trust > 90 && curiosity > 75) return OverallNPCApproach.Confiding
+	if (trust > 90 && curiosity > 75) return OverallNPCApproach.Trusting
 	if (trust > 75 && devotion > 50) return OverallNPCApproach.Mentoring
 	if (trust > 50 && curiosity > 75) return OverallNPCApproach.Learning
 	if (trust > 75 && empathy > 75) return OverallNPCApproach.Protecting

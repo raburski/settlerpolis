@@ -149,7 +149,7 @@ export function Relationships() {
 		if (approach === OverallNPCApproach.Accompanying) return '👥'
 		
 		// Trust-based approaches
-		if (approach === OverallNPCApproach.Confiding) return '🤫'
+		if (approach === OverallNPCApproach.Trusting) return '🤝'
 		if (approach === OverallNPCApproach.Mentoring) return '📚'
 		if (approach === OverallNPCApproach.Learning) return '🧠'
 		if (approach === OverallNPCApproach.Protecting) return '🛡️'
@@ -196,7 +196,7 @@ export function Relationships() {
 		if (approach === OverallNPCApproach.Accompanying) return 'var(--color-accent-green)'
 		
 		// Trust-based approaches
-		if (approach === OverallNPCApproach.Confiding) return 'var(--color-accent-purple)'
+		if (approach === OverallNPCApproach.Trusting) return 'var(--color-accent-purple)'
 		if (approach === OverallNPCApproach.Mentoring) return 'var(--color-accent-blue)'
 		if (approach === OverallNPCApproach.Learning) return 'var(--color-accent-blue)'
 		if (approach === OverallNPCApproach.Protecting) return 'var(--color-accent-green)'

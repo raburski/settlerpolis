@@ -1,3 +1,5 @@
+import { Effect } from '../ConditionEffect/types'
+
 export enum QuestScope {
 	Player = 'player',
 	Global = 'global',
@@ -27,9 +29,7 @@ export interface QuestStep {
 		condition?: Record<string, any>
 		payload?: Record<string, any>
 	}
-	onComplete?: {
-		logMessage?: string
-	}
+	effect?: Effect
 }
 
 export interface QuestReward {

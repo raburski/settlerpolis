@@ -1,28 +1,37 @@
 import { EventManager, Event, EventClient } from '../../events'
 import { Receiver } from '../../Receiver'
-import { DialogueTree, DialogueNode, DialogueContinueData, DialogueChoiceData, DialogueEvent, DialogueItem, DialogueCondition, FlagCondition, DialogueEffect, FlagEffect, QuestEffect, DialogueOption, QuestCondition, AffinityCondition, AffinityEffect, AffinityOverallCondition, CutsceneEffect } from './types'
+import { DialogueNode, DialogueOption, DialogueTree, DialogueState, DialogueItem, DialogueEvent, DialogueContinueData, DialogueChoiceData } from './types'
 import { DialogueEvents } from './events'
 import { AllDialogues } from './content'
 import { QuestManager } from "../Quest"
-import { FlagsManager } from "../Flags"
-import { AffinityManager } from "../Affinity"
 import { v4 as uuidv4 } from 'uuid'
 import { FXEvents } from "../FX/events"
 import { CutsceneEvents } from "../Cutscene/events"
+import { ConditionEffectManager } from "../ConditionEffect"
 
 export class DialogueManager {
 	private dialogues = new Map<string, DialogueTree>()
 	private activeDialogues = new Map<string, string>() // clientId -> dialogueId
 	private currentNodes = new Map<string, string>() // clientId -> nodeId
+	private _conditionEffectManager: ConditionEffectManager | null = null
 
 	constructor(
 		private event: EventManager, 
-		private questManager: QuestManager,
-		private flagsManager: FlagsManager,
-		private affinityManager: AffinityManager
+		private questManager: QuestManager
 	) {
 		this.setupEventHandlers()
 		this.loadDialogues()
+	}
+
+	set conditionEffectManager(manager: ConditionEffectManager) {
+		this._conditionEffectManager = manager
+	}
+
+	get conditionEffectManager(): ConditionEffectManager {
+		if (!this._conditionEffectManager) {
+			throw new Error('ConditionEffectManager not initialized')
+		}
+		return this._conditionEffectManager
 	}
 
 	private loadDialogues() {
@@ -60,108 +69,6 @@ export class DialogueManager {
 	}
 
 	/**
-	 * Apply a flag effect
-	 */
-	private applyFlagEffect(effect: FlagEffect, client: EventClient) {
-		const { set, unset, scope, playerId, mapId } = effect
-		
-		// If playerId is not provided, use the client's ID
-		const targetPlayerId = playerId || client.id
-		
-		// Warning if scope is undefined
-		if (scope === undefined) {
-			console.warn('Flag effect scope is undefined. This may cause unexpected behavior.', set || unset)
-		}
-		
-		if (set) {
-			this.flagsManager.setFlag(client, {
-				name: set,
-				value: true,
-				scope,
-				playerId: targetPlayerId,
-				mapId
-			})
-		}
-		
-		if (unset) {
-			this.flagsManager.unsetFlag(client, {
-				name: unset,
-				scope,
-				playerId: targetPlayerId,
-				mapId
-			})
-		}
-	}
-
-	/**
-	 * Apply a quest effect
-	 */
-	private applyQuestEffect(effect: QuestEffect, client: EventClient) {
-		const { start } = effect
-		
-		if (start) {
-			// Use the QuestManager's startQuest method
-			this.questManager.startQuest(start, client.id, client)
-		}
-	}
-
-	/**
-	 * Apply an affinity effect
-	 */
-	private applyAffinityEffect(effect: AffinityEffect, client: EventClient, npcId: string) {
-		const { sentimentType, set, add } = effect
-		
-		if (set !== undefined) {
-			this.affinityManager.setAffinityValue(client.id, npcId, sentimentType, set, client)
-		} else if (add !== undefined) {
-			this.affinityManager.changeAffinityValue(client.id, npcId, sentimentType, add, client)
-		}
-	}
-
-	/**
-	 * Apply a cutscene effect
-	 */
-	private applyCutsceneEffect(effect: CutsceneEffect, client: EventClient) {
-		const { trigger } = effect
-		
-		if (trigger) {
-			// Trigger the cutscene
-			client.emit(Receiver.Sender, CutsceneEvents.SS.Trigger, { cutsceneId: trigger })
-		}
-	}
-
-	/**
-	 * Apply a dialogue effect
-	 */
-	private applyDialogueEffect(effect: DialogueEffect, client: EventClient, npcId: string) {
-		if (!effect) return
-		
-		if (effect.flag) {
-			this.applyFlagEffect(effect.flag, client)
-		}
-
-		if (effect.event) {
-			this.handleDialogueEvent(effect.event, client)
-		}
-
-		if (effect.quest) {
-			this.applyQuestEffect(effect.quest, client)
-		}
-
-		if (effect.affinity) {
-			this.applyAffinityEffect(effect.affinity, client, npcId)
-		}
-
-		if (effect.fx) {
-			client.emit(Receiver.Sender, FXEvents.SC.Play, effect.fx)
-		}
-
-		if (effect.cutscene) {
-			this.applyCutsceneEffect(effect.cutscene, client)
-		}
-	}
-
-	/**
 	 * Apply effects from a dialogue option
 	 */
 	private applyDialogueEffects(option: DialogueOption, client: EventClient, npcId: string) {
@@ -169,110 +76,13 @@ export class DialogueManager {
 		
 		// Apply single effect if present
 		if (option.effect) {
-			this.applyDialogueEffect(option.effect, client, npcId)
+			this.conditionEffectManager.applyEffect(option.effect, client, npcId)
 		}
 		
 		// Apply multiple effects if present
 		if (option.effects && option.effects.length > 0) {
-			option.effects.forEach(effect => {
-				this.applyDialogueEffect(effect, client, npcId)
-			})
+			this.conditionEffectManager.applyEffects(option.effects, client, npcId)
 		}
-	}
-
-	/**
-	 * Check if a flag condition is met
-	 */
-	private checkFlagCondition(condition: FlagCondition, client: EventClient): boolean {
-		const { exists, notExists, scope, playerId, mapId } = condition
-		
-		// If playerId is not provided, use the client's ID
-		const targetPlayerId = playerId || client.id
-		
-		if (exists) {
-			return this.flagsManager.hasFlag(exists, scope, targetPlayerId, mapId)
-		}
-		
-		if (notExists) {
-			return !this.flagsManager.hasFlag(notExists, scope, targetPlayerId, mapId)
-		}
-		
-		return true
-	}
-
-	/**
-	 * Check if a quest condition is met
-	 */
-	private checkQuestCondition(condition: QuestCondition, client: EventClient): boolean {
-		// Check with the Quest module if the player can start the quest
-		return this.questManager.canStartQuest(condition.canStart, client.id)
-	}
-
-	/**
-	 * Check if an affinity condition is met
-	 */
-	private checkAffinityCondition(condition: AffinityCondition, client: EventClient, npcId: string): boolean {
-		const { sentimentType, min, max } = condition
-		
-		// Get the current affinity value
-		const currentValue = this.affinityManager.getAffinityValue(client.id, npcId, sentimentType)
-		
-		// Check if the value is within the specified range
-		if (min !== undefined && currentValue < min) {
-			return false
-		}
-		
-		if (max !== undefined && currentValue > max) {
-			return false
-		}
-		
-		return true
-	}
-
-	/**
-	 * Check if an overall affinity condition is met
-	 */
-	private checkAffinityOverallCondition(condition: AffinityOverallCondition, client: EventClient, npcId: string): boolean {
-		const { minScore, maxScore } = condition
-		
-		// Get the current overall affinity score
-		const currentScore = this.affinityManager.calculateOverallScore(client.id, npcId)
-		
-		// Check if the score is within the specified range
-		if (minScore !== undefined && currentScore < minScore) {
-			return false
-		}
-		
-		if (maxScore !== undefined && currentScore > maxScore) {
-			return false
-		}
-		
-		return true
-	}
-
-	/**
-	 * Check if a dialogue condition is met
-	 */
-	private checkCondition(condition: DialogueCondition, client: EventClient, npcId: string): boolean {
-		if (!condition) return true
-		
-		if (condition.flag) {
-			return this.checkFlagCondition(condition.flag, client)
-		}
-		
-		if (condition.quest) {
-			return this.checkQuestCondition(condition.quest, client)
-		}
-		
-		if (condition.affinity) {
-			return this.checkAffinityCondition(condition.affinity, client, npcId)
-		}
-		
-		if (condition.affinityOverall) {
-			return this.checkAffinityOverallCondition(condition.affinityOverall, client, npcId)
-		}
-		
-		return true
 	}
 
 	/**
@@ -283,13 +93,13 @@ export class DialogueManager {
 		
 		const filteredOptions = node.options.filter(option => {
 			// Check single condition if present
-			if (option.condition && !this.checkCondition(option.condition, client, npcId)) {
+			if (option.condition && !this.conditionEffectManager.checkCondition(option.condition, client, npcId)) {
 				return false
 			}
 			
 			// Check multiple conditions if present
 			if (option.conditions) {
-				return option.conditions.every(condition => this.checkCondition(condition, client, npcId))
+				return this.conditionEffectManager.checkConditions(option.conditions, client, npcId)
 			}
 			
 			return true

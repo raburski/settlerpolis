@@ -42,7 +42,7 @@ export enum OverallNPCApproach {
 	Accompanying = 'accompanying', // Travels with player
 
 	// Trust-based approaches
-	Confiding = 'confiding',    // Shares secrets
+	Trusting = 'trusting',    // Shares secrets and trusts player
 	Mentoring = 'mentoring',    // Guides and teaches
 	Learning = 'learning',      // Learns from player
 	Protecting = 'protecting',  // Protects player

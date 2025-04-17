@@ -1,6 +1,7 @@
 import { FlagScope } from '../Flags/types'
 import { AffinitySentimentType } from '../Affinity/types'
 import { FXType } from '../FX/types'
+import { Condition, Effect } from '../ConditionEffect/types'
 
 export interface DialogueNode {
 	speaker?: string
@@ -15,11 +16,11 @@ export interface DialogueOption {
 	id: string
 	text: string
 	next?: string
+	condition?: Condition
+	conditions?: Condition[]
+	effect?: Effect
+	effects?: Effect[]
 	item?: DialogueItem
-	condition?: DialogueCondition
-	conditions?: DialogueCondition[]
-	effect?: DialogueEffect
-	effects?: DialogueEffect[]
 }
 
 export interface DialogueEvent {
@@ -59,68 +60,7 @@ export interface DialogueChoiceData {
 	choiceId: string
 }
 
-export interface FlagCondition {
-	exists?: string
-	notExists?: string
-	scope: FlagScope
-	playerId?: string
-	mapId?: string
-}
-
-export interface QuestCondition {
-	canStart: string
-}
-
-export interface AffinityCondition {
-	sentimentType: AffinitySentimentType
-	min?: number
-	max?: number
-}
-
-export interface AffinityOverallCondition {
-	minScore?: number
-	maxScore?: number
-}
-
-export interface DialogueCondition {
-	flag?: FlagCondition
-	quest?: QuestCondition
-	affinity?: AffinityCondition
-	affinityOverall?: AffinityOverallCondition
-}
-
-export interface FlagEffect {
-	set?: string
-	unset?: string
-	scope: FlagScope
-	playerId?: string
-	mapId?: string
-}
-
-export interface QuestEffect {
-	start: string
-}
-
-export interface AffinityEffect {
-	sentimentType: AffinitySentimentType
-	set?: number
-	add?: number
-}
-
-export interface FXEffect {
-	type: FXType
-	payload?: Record<string, any>
-}
-
-export interface CutsceneEffect {
-	trigger: string
-}
-
-export interface DialogueEffect {
-	flag?: FlagEffect
-	event?: DialogueEvent
-	quest?: QuestEffect
-	affinity?: AffinityEffect
-	fx?: FXEffect
-	cutscene?: CutsceneEffect
+export interface DialogueState {
+	currentNodeId: string | null
+	dialogueTreeId: string | null
 }
