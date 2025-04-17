@@ -16,10 +16,8 @@ export const UIContainer = () => {
 
 	useEffect(() => {
         const handleEvent = (data) => {
-            if (data.type === FXType.HideUI) {
-                setIsVisible(false)
-            } else if (data.type === FXType.ShowUI) {
-                setIsVisible(true)
+            if (data.type === FXType.DisplayUI) {
+                setIsVisible(data.visible ?? true)
             }
 		}
 		EventBus.on(Event.FX.SC.Play, handleEvent)

@@ -1,5 +1,7 @@
 import { Scene, Input } from 'phaser'
 import { EventBus } from "../EventBus"
+import { Event } from "../../../backend/src/events"
+import { FXType } from "../../../backend/src/Game/FX/types"
 
 export class Keyboard {
 	private cursors: Phaser.Types.Input.Keyboard.CursorKeys
@@ -40,6 +42,15 @@ export class Keyboard {
 
 		// Listen for chat input visibility changes
 		EventBus.on('ui:chat:toggle', this.handleChatInputVisible, this)
+
+		// Listen for EnableControls event
+		EventBus.on(Event.FX.SC.Play, this.handleFXEvent, this)
+	}
+
+	private handleFXEvent = (data: { type: FXType, enabled?: boolean }) => {
+		if (data.type === FXType.EnableControls) {
+			this.toggleKeys(data.enabled ?? true)
+		}
 	}
 
 	public update() {
@@ -98,11 +109,11 @@ export class Keyboard {
 	}
 
 	public isAnyMovementKeyPressed(): boolean {
-		return this.isMovingLeft() || this.isMovingRight() || 
-			   this.isMovingUp() || this.isMovingDown()
+		return this.isMovingLeft() || this.isMovingRight() || this.isMovingUp() || this.isMovingDown()
 	}
 
 	public destroy(): void {
-		EventBus.off('chat:inputVisible', this.handleChatInputVisible, this)
+		EventBus.off('ui:chat:toggle', this.handleChatInputVisible, this)
+		EventBus.off(Event.FX.SC.Play, this.handleFXEvent, this)
 	}
 } 

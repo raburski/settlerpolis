@@ -4,8 +4,8 @@ export enum FXType {
 	MoveCameraTo = 'moveCameraTo',
 	ShakeScreen = 'shakeScreen',
 	FocusOnNPC = 'focusOnNPC',
-    HideUI = 'hideUI',
-    ShowUI = 'showUI',
+    DisplayUI = 'displayUI',
+    EnableControls = 'enableControls',
 }
 
 export interface FXPlayEventData {

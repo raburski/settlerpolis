@@ -7,7 +7,8 @@ export const introCutscene: Cutscene = {
 	id: 'intro',
 	skippable: true,
 	steps: [
-		{ event: Event.FX.SC.Play, payload: { type: FXType.HideUI }},
+		{ event: Event.FX.SC.Play, payload: { type: FXType.DisplayUI, visible: false }},
+		{ event: Event.FX.SC.Play, payload: { type: FXType.EnableControls, enabled: false }},
 		{ event: Event.FX.SC.Play, payload: { type: FXType.ShakeScreen }, duration: 800 },
 		{ event: Event.Chat.SC.Emoji, payload: { emoji: '❗️' }, duration: 1000 },
 		{ event: Event.FX.SC.Play, payload: { type: FXType.ShakeScreen }, duration: 1200 },
@@ -41,6 +42,7 @@ export const introCutscene: Cutscene = {
 			},
 			duration: 1000
 		},
-		{ event: Event.FX.SC.Play, payload: { type: FXType.ShowUI }},
+		{ event: Event.FX.SC.Play, payload: { type: FXType.DisplayUI, visible: true }},
+		{ event: Event.FX.SC.Play, payload: { type: FXType.EnableControls, enabled: true }},
 	]
 } 
