@@ -1,4 +1,4 @@
-import { EventClient } from '../../events'
+import { EventClient, EventManager } from '../../events'
 import { Receiver } from '../../Receiver'
 import { Condition, Effect, FlagCondition, QuestCondition, AffinityCondition, AffinityOverallCondition, FlagEffect, QuestEffect, AffinityEffect, FXEffect, CutsceneEffect, EventEffect, ChatEffect } from './types'
 import { QuestManager } from "../Quest"
@@ -7,9 +7,11 @@ import { AffinityManager } from "../Affinity"
 import { FXEvents } from "../FX/events"
 import { CutsceneEvents } from "../Cutscene/events"
 import { ChatEvents } from "../Chat/events"
+import { NPCEvents } from '../NPC/events'
 
 export class ConditionEffectManager {
 	constructor(
+		private event: EventManager,
 		private questManager: QuestManager,
 		private flagsManager: FlagsManager,
 		private affinityManager: AffinityManager
@@ -175,6 +177,10 @@ export class ConditionEffectManager {
 		if (effect.chat) {
 			this.applyChatEffect(effect.chat, client)
 		}
+
+		if (effect.npc) {
+			this.handleNPCEffect(effect.npc, client)
+		}
 	}
 
 	/**
@@ -290,5 +296,15 @@ export class ConditionEffectManager {
 		if (!conditions || conditions.length === 0) return true
 		
 		return conditions.every(condition => this.checkCondition(condition, client, npcId))
+	}
+
+	private handleNPCEffect(effect: Effect['npc'], client: EventClient) {
+		if (!effect) return
+
+		const payload = typeof effect.goTo === 'string'
+			? { npcId: effect.npcId, spotName: effect.goTo }
+			: { npcId: effect.npcId, position: effect.goTo }
+
+		client.emit(Receiver.Sender, NPCEvents.SS.Go, payload)
 	}
 } 

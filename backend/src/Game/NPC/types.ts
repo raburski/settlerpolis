@@ -18,12 +18,11 @@ export interface NPCMessages {
 export interface NPC {
 	id: string
 	name: string
-	position: {
-		x: number
-		y: number
-	}
+	position: Position
 	scene: string
 	messages?: NPCMessages
+	path?: Position[]
+	speed: number
 }
 
 export interface NPCInteractData extends PlayerSourcedData {
@@ -33,4 +32,15 @@ export interface NPCInteractData extends PlayerSourcedData {
 export interface NPCMessageData {
 	npcId: string
 	message: string
-} 
+}
+
+export interface NPCGoData {
+	npcId: string
+	position?: Position
+	spotName?: string
+}
+
+export interface NPCGoResponseData {
+	npcId: string
+	position: Position
+}

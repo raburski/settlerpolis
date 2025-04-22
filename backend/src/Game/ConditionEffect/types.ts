@@ -1,6 +1,7 @@
 import { FlagScope } from '../Flags/types'
 import { AffinitySentimentType } from '../Affinity/types'
 import { FXType } from '../FX/types'
+import { Position } from '../../types'
 
 export interface FlagCondition {
 	exists?: string
@@ -71,6 +72,11 @@ export interface ChatEffect {
 	emoji?: string
 }
 
+export interface NPCEffect {
+	npcId: string
+	goTo: Position | string // string for spot name
+}
+
 export interface Effect {
 	flag?: FlagEffect
 	event?: EventEffect
@@ -79,4 +85,5 @@ export interface Effect {
 	fx?: FXEffect
 	cutscene?: CutsceneEffect
 	chat?: ChatEffect
+	npc?: NPCEffect
 } 

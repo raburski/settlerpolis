@@ -1,8 +1,8 @@
 import { DialogueTree } from '../types'
 import { dialogue as oldInnkeeperDialogue } from './innkeeper'
-import { dialogue as exampleDialogue } from './example'
+import { guardDialogue } from './guard'
 
 export const AllDialogues: DialogueTree[] = [
 	oldInnkeeperDialogue,
-	exampleDialogue,
+	guardDialogue,
 ] 

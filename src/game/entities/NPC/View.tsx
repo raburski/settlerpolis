@@ -19,11 +19,17 @@ export class NPCView extends GameObjects.Container {
 	protected systemMessageText: GameObjects.Text | null = null
 	protected direction: Direction = Direction.Down
 	protected currentState: PlayerState = PlayerState.Idle
-	protected speed: number = 160 // Default speed in pixels per second
+	protected speed: number
+	protected targetPosition: { x: number, y: number } | null = null
+	protected startPosition: { x: number, y: number } | null = null
+	protected movementStartTime: number = 0
+	protected movementDuration: number = 0
 
-	constructor(scene: Scene, x: number = 0, y: number = 0) {
+	constructor(scene: Scene, x: number = 0, y: number = 0, speed: number = 160) {
 		super(scene, x, y)
 		scene.add.existing(this)
+
+		this.speed = speed
 
 		// Create sprite for the player
 		this.sprite = scene.add.sprite(0, 0, 'hasha')
@@ -116,18 +122,78 @@ export class NPCView extends GameObjects.Container {
 	}
 
 	/**
+	 * Sets the target position for movement
+	 */
+	public setTargetPosition(x: number, y: number): void {
+		const currentX = this.x
+		const currentY = this.y
+		const dx = x - currentX
+		const dy = y - currentY
+		const distance = Math.sqrt(dx * dx + dy * dy)
+
+		if (distance < 1) {
+			// Already at target
+			this.targetPosition = null
+			this.startPosition = null
+			this.currentState = PlayerState.Idle
+			this.updateSpriteFrame()
+			return
+		}
+
+		this.startPosition = { x: currentX, y: currentY }
+		this.targetPosition = { x, y }
+		this.movementStartTime = Date.now()
+		this.movementDuration = (distance / this.speed) * 1000 // Convert to milliseconds
+		this.currentState = PlayerState.Walking
+		this.updateSpriteFrame()
+	}
+
+	/**
 	 * Updates the player position
 	 */
 	public updatePosition(x: number, y: number): void {
 		this.x = x
 		this.y = y
+		const physicsBody = this.body as Physics.Arcade.Body
+		if (physicsBody) {
+			physicsBody.reset(x, y)
+		}
 	}
 
 	/**
 	 * Called before the physics update
 	 */
 	public preUpdate(): void {
-		// This method is called by the controller before the physics update
+		if (!this.targetPosition || !this.startPosition) return
+
+		const currentTime = Date.now()
+		const elapsed = currentTime - this.movementStartTime
+		const progress = Math.min(elapsed / this.movementDuration, 1)
+
+		// Calculate new position using linear interpolation
+		const newX = this.startPosition.x + (this.targetPosition.x - this.startPosition.x) * progress
+		const newY = this.startPosition.y + (this.targetPosition.y - this.startPosition.y) * progress
+
+		// Update container and physics body position
+		this.updatePosition(newX, newY)
+
+		// Update direction based on movement
+		const dx = this.targetPosition.x - this.startPosition.x
+		const dy = this.targetPosition.y - this.startPosition.y
+		if (Math.abs(dx) > Math.abs(dy)) {
+			this.updateDirection(dx > 0 ? Direction.Right : Direction.Left)
+		} else {
+			this.updateDirection(dy > 0 ? Direction.Down : Direction.Up)
+		}
+		this.updateSpriteFrame()
+
+		// Check if movement is complete
+		if (progress >= 1) {
+			this.targetPosition = null
+			this.startPosition = null
+			this.currentState = PlayerState.Idle
+			this.updateSpriteFrame()
+		}
 	}
 
 	/**
@@ -144,7 +210,10 @@ export class NPCView extends GameObjects.Container {
 	 * Updates the player state
 	 */
 	public updateState(state: PlayerState): void {
-		this.currentState = state
+		if (this.currentState !== state) {
+			this.currentState = state
+			this.updateSpriteFrame()
+		}
 	}
 
 	/**
