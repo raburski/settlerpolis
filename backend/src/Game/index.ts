@@ -17,6 +17,7 @@ import { CutsceneManager } from './Cutscene'
 import { ConditionEffectManager } from './ConditionEffect'
 import { MapManager } from './Map'
 import { TriggerManager } from './Triggers'
+import { WorldManager } from "./World"
 
 export class GameManager {
 	private chatManager: ChatManager
@@ -36,10 +37,11 @@ export class GameManager {
 	private conditionEffectManager: ConditionEffectManager
 	private mapManager: MapManager
 	private triggerManager: TriggerManager
+	private worldManager: WorldManager
 
 	constructor(private event: EventManager) {
 		// Initialize managers in dependency order
-		
+		this.worldManager = new WorldManager(event)
 		this.chatManager = new ChatManager(event)
 		this.systemManager = new SystemManager(event)
 		this.mapManager = new MapManager(event)
@@ -56,7 +58,7 @@ export class GameManager {
 		)
 		
 		this.npcManager = new NPCManager(event, this.dialogueManager, this.mapManager)
-		this.scheduler = new Scheduler(event)
+		this.scheduler = new Scheduler(event, this.worldManager)
 		this.mapObjectsManager = new MapObjectsManager(event, this.itemsManager, this.inventoryManager)
 		this.triggerManager = new TriggerManager(
 			event,
@@ -79,12 +81,12 @@ export class GameManager {
 			this.flagsManager,
 			this.affinityManager,
 			this.npcManager,
-			this.playersManager
+			this.playersManager,
+			this.worldManager,
 		)
 		this.dialogueManager.conditionEffectManager = this.conditionEffectManager
 		this.questManager.conditionEffectManager = this.conditionEffectManager
 		this.triggerManager.conditionEffectManager = this.conditionEffectManager
-
 		
 		this.setupEventHandlers()
 	}

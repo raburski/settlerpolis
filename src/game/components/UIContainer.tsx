@@ -7,6 +7,7 @@ import { Quests } from './Quests'
 import { Relationships } from './Relationships'
 import { SidePanel } from './SidePanel'
 import { Settings } from './Settings'
+import { World } from './World'
 import { EventBus } from "../EventBus"
 import { Event } from "../events"
 import { FXType } from "../../../backend/src/Game/FX/types"
@@ -33,6 +34,7 @@ export const UIContainer = () => {
 
 	return (
 		<>
+			<World />
 			<Chat />
 			<Inventory />
 			<ChatLog />

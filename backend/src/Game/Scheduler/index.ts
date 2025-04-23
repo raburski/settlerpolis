@@ -1,148 +1,188 @@
 import { EventManager, EventClient } from '../../events'
-import { ScheduledEvent, ScheduleOptions } from './types'
+import { ScheduledEvent, ScheduleOptions, ScheduleType } from './types'
 import { SchedulerEvents } from './events'
-import { defaultSchedules } from './content'
+import { WorldManager } from '../World'
+import { WorldEvents } from '../World/events'
+import { WorldTimeUpdateEventData } from '../World/types'
+import { WorldTime } from '../World/types'
 import { CronExpressionParser } from 'cron-parser'
 import { v4 as uuidv4 } from 'uuid'
 import { Receiver } from "../../Receiver"
+import { defaultSchedules } from "./content"
 
 export class Scheduler {
 	private scheduledEvents: Map<string, ScheduledEvent> = new Map()
 	private timeouts: Map<string, NodeJS.Timeout> = new Map()
+	private worldManager: WorldManager
 
 	constructor(
 		private event: EventManager,
-		schedules: ScheduleOptions[] = []// = defaultSchedules
+		worldManager: WorldManager,
+		schedules: ScheduleOptions[] = defaultSchedules
 	) {
-		// Load provided schedules or defaults
-		this.loadSchedules(schedules)
+		this.worldManager = worldManager
 		this.setupEventHandlers()
+		this.loadSchedules(schedules)
 	}
 
 	private setupEventHandlers() {
-		// Handle external schedule requests
-		this.event.on(SchedulerEvents.SS.Schedule, (data: ScheduleOptions) => {
-			this.schedule(data)
+		// Handle schedule requests
+		this.event.on(SchedulerEvents.SS.Schedule, (data: ScheduleOptions, client: EventClient) => {
+			this.schedule(data, client)
 		})
 
-		// Handle external cancel requests
-		this.event.on(SchedulerEvents.SS.Cancel, (data: { id: string }) => {
-			this.cancel(data.id)
+		// Handle cancel requests
+		this.event.on(SchedulerEvents.SS.Cancel, (data: { id: string }, client: EventClient) => {
+			this.cancel(data.id, client)
+		})
+
+		// Handle time updates from WorldManager
+		this.event.on(WorldEvents.SC.Updated, (data: WorldTimeUpdateEventData) => {
+			this.checkGameTimeEvents(data.time)
 		})
 	}
 
-	loadSchedules(schedules: ScheduleOptions[]): string[] {
+	public loadSchedules(schedules: ScheduleOptions[]): string[] {
 		const scheduledIds: string[] = []
 		
 		for (const schedule of schedules) {
-			const id = this.schedule(schedule)
+			const id = this.schedule(schedule, null as any) // We use null as client since this is initialization
 			scheduledIds.push(id)
 		}
 
 		return scheduledIds
 	}
 
-	schedule(options: ScheduleOptions): string {
+	private checkGameTimeEvents(currentTime: WorldTime) {
+		for (const [id, event] of this.scheduledEvents) {
+			if (event.schedule.type === ScheduleType.GameTime && event.isActive) {
+				const [targetHours, targetMinutes] = (event.schedule.value as string).split(':').map(Number)
+				const { day, month, year } = event.schedule
+
+				// Check if the specified date matches (if provided)
+				if (day && day !== currentTime.day) continue
+				if (month && month !== currentTime.month) continue
+				if (year && year !== currentTime.year) continue
+
+				// Check if the time matches
+				if (currentTime.hours === targetHours && currentTime.minutes === targetMinutes) {
+					this.executeEvent(event)
+				}
+			}
+		}
+	}
+
+	private calculateNextRun(event: ScheduledEvent): Date {
+		const now = new Date()
+
+		switch (event.schedule.type) {
+			case ScheduleType.Interval:
+				return new Date(now.getTime() + (event.schedule.value as number))
+			case ScheduleType.Cron:
+				const interval = CronExpressionParser.parse(event.schedule.value as string)
+				return interval.next().toDate()
+			case ScheduleType.Once:
+				return new Date(event.schedule.value as number)
+			case ScheduleType.GameTime:
+				// For game-time events, we don't need to calculate next run
+				// as they are handled by checkGameTimeEvents
+				return now
+			default:
+				throw new Error(`Unsupported schedule type: ${event.schedule.type}`)
+		}
+	}
+
+	private schedule(options: ScheduleOptions, client: EventClient): string {
 		const id = options.id || uuidv4()
-		const scheduledEvent: ScheduledEvent = {
-			...options,
+		const event: ScheduledEvent = {
 			id,
-			isActive: true,
-			lastRun: undefined,
-			nextRun: this.calculateNextRun(options.schedule)
+			eventType: options.eventType,
+			payload: options.payload,
+			schedule: options.schedule,
+			isActive: true
 		}
 
-		this.scheduledEvents.set(id, scheduledEvent)
-		this.scheduleNext(scheduledEvent)
+		// Calculate next run time
+		event.nextRun = this.calculateNextRun(event)
 
-		this.event.emit(Receiver.All, SchedulerEvents.SS.Scheduled, {
-			eventId: id,
-			schedule: options.schedule
-		})
+		// Store the event
+		this.scheduledEvents.set(id, event)
+
+		// Set up timeout for non-game-time events
+		if (event.schedule.type !== ScheduleType.GameTime) {
+			const timeout = setTimeout(() => {
+				this.executeEvent(event)
+			}, event.nextRun.getTime() - Date.now())
+
+			this.timeouts.set(id, timeout)
+		}
+
+		// Notify client if provided
+		if (client) {
+			client.emit(Receiver.Sender, SchedulerEvents.SS.Scheduled, {
+				id,
+				eventType: event.eventType,
+				nextRun: event.nextRun
+			})
+		}
 
 		return id
 	}
 
-	cancel(eventId: string): boolean {
-		const event = this.scheduledEvents.get(eventId)
-		if (!event) return false
+	private executeEvent(event: ScheduledEvent): void {
+		// Emit the scheduled event
+		this.event.emit(Receiver.All, event.eventType, event.payload)
 
-		event.isActive = false
-		this.clearTimeout(eventId)
-		this.scheduledEvents.delete(eventId)
+		// Update last run time
+		event.lastRun = new Date()
 
-		this.event.emit(Receiver.All, SchedulerEvents.SS.Cancelled, { eventId })
-		return true
+		// Handle recurring events
+		if (event.schedule.type === ScheduleType.Interval || event.schedule.type === ScheduleType.Cron) {
+			event.nextRun = this.calculateNextRun(event)
+			const timeout = setTimeout(() => {
+				this.executeEvent(event)
+			}, event.nextRun.getTime() - Date.now())
+			this.timeouts.set(event.id, timeout)
+		} else if (event.schedule.type === ScheduleType.Once) {
+			// Remove one-time events after execution
+			this.scheduledEvents.delete(event.id)
+			this.timeouts.delete(event.id)
+		}
 	}
 
-	private scheduleNext(scheduledEvent: ScheduledEvent) {
-		if (!scheduledEvent.isActive) return
-
-		const now = Date.now()
-		const nextRun = scheduledEvent.nextRun?.getTime() || now
-
-		if (nextRun <= now) {
-			this.executeEvent(scheduledEvent)
+	private cancel(id: string, client: EventClient): void {
+		const event = this.scheduledEvents.get(id)
+		if (!event) {
+			client.emit(Receiver.Sender, SchedulerEvents.SS.Cancelled, {
+				success: false,
+				error: 'Event not found'
+			})
 			return
 		}
 
-		const timeout = setTimeout(() => {
-			this.executeEvent(scheduledEvent)
-		}, nextRun - now)
-
-		this.timeouts.set(scheduledEvent.id, timeout)
-	}
-
-	private executeEvent(scheduledEvent: ScheduledEvent) {
-		if (!scheduledEvent.isActive) return
-
-		this.event.emit(Receiver.All, scheduledEvent.eventType, scheduledEvent.payload)
-		this.event.emit(Receiver.All, SchedulerEvents.SS.Triggered, {
-			eventId: scheduledEvent.id,
-			eventType: scheduledEvent.eventType
-		})
-
-		scheduledEvent.lastRun = new Date()
-
-		if (scheduledEvent.schedule.type === 'once') {
-			this.cancel(scheduledEvent.id)
-			return
-		}
-
-		scheduledEvent.nextRun = this.calculateNextRun(scheduledEvent.schedule)
-		this.scheduleNext(scheduledEvent)
-	}
-
-	private calculateNextRun(schedule: ScheduleOptions['schedule']): Date {
-		const now = new Date()
-
-		switch (schedule.type) {
-			case 'interval':
-				return new Date(now.getTime() + Number(schedule.value))
-				
-			case 'cron':
-				const interval = CronExpressionParser.parse(schedule.value as string)
-				return interval.next().toDate()
-				
-			case 'once':
-				return new Date(Number(schedule.value))
-				
-			default:
-				throw new Error('Invalid schedule type')
-		}
-	}
-
-	private clearTimeout(eventId: string) {
-		const timeout = this.timeouts.get(eventId)
+		// Clear timeout if exists
+		const timeout = this.timeouts.get(id)
 		if (timeout) {
 			clearTimeout(timeout)
-			this.timeouts.delete(eventId)
+			this.timeouts.delete(id)
 		}
+
+		// Mark event as inactive
+		event.isActive = false
+		this.scheduledEvents.set(id, event)
+
+		// Notify client
+		client.emit(Receiver.Sender, SchedulerEvents.SS.Cancelled, {
+			success: true,
+			id
+		})
 	}
 
-	private cleanup() {
-		for (const [eventId] of this.timeouts) {
-			this.cancel(eventId)
-		}
+	public getScheduledEvents(): ScheduledEvent[] {
+		return Array.from(this.scheduledEvents.values())
+	}
+
+	public getEventById(id: string): ScheduledEvent | undefined {
+		return this.scheduledEvents.get(id)
 	}
 } 

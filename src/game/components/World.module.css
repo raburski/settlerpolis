@@ -1,0 +1,34 @@
+@import './variables.module.css';
+
+.worldContainer {
+	position: fixed;
+	top: var(--spacing-lg);
+	left: var(--spacing-lg);
+	z-index: var(--z-index-modal);
+}
+
+.timeDisplay {
+	composes: modal from './variables.module.css';
+	padding: var(--spacing-md);
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-md);
+}
+
+.date {
+	color: var(--color-text-secondary);
+	font-size: var(--font-size-sm);
+}
+
+.time {
+	color: var(--color-text-primary);
+	font-size: var(--font-size-xl);
+	font-weight: bold;
+}
+
+.paused {
+	color: var(--color-accent-red);
+	font-size: var(--font-size-xs);
+	margin-top: var(--spacing-xs);
+	text-align: center;
+} 

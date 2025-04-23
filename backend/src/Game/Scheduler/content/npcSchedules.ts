@@ -1,5 +1,6 @@
 import { Event } from '../../../events'
 import { ScheduleOptions } from '../types'
+import { ScheduleType } from '../types'
 
 // Guard shift changes throughout the day
 export const guardShiftSchedules: ScheduleOptions[] = [
@@ -11,7 +12,7 @@ export const guardShiftSchedules: ScheduleOptions[] = [
 			message: "Good morning! The town is starting to wake up. Stay safe!"
 		},
 		schedule: {
-			type: 'cron',
+			type: ScheduleType.Cron,
 			value: '0 6 * * *' // Every day at 6 AM
 		}
 	},
@@ -23,7 +24,7 @@ export const guardShiftSchedules: ScheduleOptions[] = [
 			message: "Afternoon patrol. All seems quiet in town."
 		},
 		schedule: {
-			type: 'cron',
+			type: ScheduleType.Cron,
 			value: '0 14 * * *' // Every day at 2 PM
 		}
 	},
@@ -35,7 +36,7 @@ export const guardShiftSchedules: ScheduleOptions[] = [
 			message: "It's getting dark. Be careful on the streets at night!"
 		},
 		schedule: {
-			type: 'cron',
+			type: ScheduleType.Cron,
 			value: '0 20 * * *' // Every day at 8 PM
 		}
 	}
@@ -51,7 +52,7 @@ export const innkeeperSchedules: ScheduleOptions[] = [
 			message: "Welcome! The inn is now open. Would you like a room?"
 		},
 		schedule: {
-			type: 'cron',
+			type: ScheduleType.Cron,
 			value: '0 7 * * *' // Every day at 7 AM
 		}
 	},
@@ -63,8 +64,36 @@ export const innkeeperSchedules: ScheduleOptions[] = [
 			message: "The inn will be closing soon. Last call for rooms!"
 		},
 		schedule: {
-			type: 'cron',
+			type: ScheduleType.Cron,
 			value: '0 22 * * *' // Every day at 10 PM
+		}
+	}
+]
+
+// Shop schedules
+export const shopSchedules: ScheduleOptions[] = [
+	{
+		id: 'general-store-open',
+		eventType: Event.NPC.SC.Message,
+		payload: {
+			npcId: 'shopkeeper',
+			message: "The general store is now open! Come on in and browse our wares."
+		},
+		schedule: {
+			type: ScheduleType.GameTime,
+			value: '09:00' // 9:00 AM in-game time
+		}
+	},
+	{
+		id: 'general-store-close',
+		eventType: Event.NPC.SC.Message,
+		payload: {
+			npcId: 'shopkeeper',
+			message: "We're closing up for the day. Please come back tomorrow!"
+		},
+		schedule: {
+			type: ScheduleType.GameTime,
+			value: '17:00' // 5:00 PM in-game time
 		}
 	}
 ] 

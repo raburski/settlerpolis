@@ -1,6 +1,6 @@
 import { EventClient, EventManager } from '../../events'
 import { Receiver } from '../../Receiver'
-import { Condition, Effect, FlagCondition, QuestCondition, FlagEffect, QuestEffect, AffinityEffect, FXEffect, CutsceneEffect, EventEffect, ChatEffect, NPCCondition, NPCAffinityCondition, NPCAffinityOverallCondition } from './types'
+import { Condition, Effect, FlagCondition, QuestCondition, FlagEffect, QuestEffect, AffinityEffect, FXEffect, CutsceneEffect, EventEffect, ChatEffect, NPCCondition, NPCAffinityCondition, NPCAffinityOverallCondition, TimeRange, DateRange } from './types'
 import { QuestManager } from "../Quest"
 import { FlagsManager } from "../Flags"
 import { AffinityManager } from "../Affinity"
@@ -11,6 +11,7 @@ import { NPCEvents } from '../NPC/events'
 import { NPCManager } from '../NPC'
 import { Position } from '../../types'
 import { PlayersManager } from '../Players'
+import { WorldManager } from '../World'
 
 export class ConditionEffectManager {
 	constructor(
@@ -19,7 +20,8 @@ export class ConditionEffectManager {
 		private flagsManager: FlagsManager,
 		private affinityManager: AffinityManager,
 		private npcManager: NPCManager,
-		private playersManager: PlayersManager
+		private playersManager: PlayersManager,
+		private worldManager: WorldManager
 	) {}
 
 	/**
@@ -353,23 +355,97 @@ export class ConditionEffectManager {
 	}
 
 	/**
+	 * Check if a time condition is met
+	 */
+	public checkTimeCondition(condition: TimeRange): boolean {
+		const { before, after } = condition
+		const currentTime = this.worldManager.getCurrentTime()
+		const currentTimeString = `${currentTime.hours.toString().padStart(2, '0')}:${currentTime.minutes.toString().padStart(2, '0')}`
+
+		if (before && currentTimeString >= before) {
+			return false
+		}
+
+		if (after && currentTimeString <= after) {
+			return false
+		}
+
+		return true
+	}
+
+	/**
+	 * Check if a date condition is met
+	 */
+	public checkDateCondition(condition: DateRange): boolean {
+		const { day, month, year, before, after } = condition
+		const currentTime = this.worldManager.getCurrentTime()
+
+		// Check exact date match
+		if (day !== undefined && currentTime.day !== day) {
+			return false
+		}
+		if (month !== undefined && currentTime.month !== month) {
+			return false
+		}
+		if (year !== undefined && currentTime.year !== year) {
+			return false
+		}
+
+		// Check before date
+		if (before) {
+			if (before.year !== undefined && currentTime.year >= before.year) {
+				return false
+			}
+			if (before.month !== undefined && currentTime.month >= before.month) {
+				return false
+			}
+			if (before.day !== undefined && currentTime.day >= before.day) {
+				return false
+			}
+		}
+
+		// Check after date
+		if (after) {
+			if (after.year !== undefined && currentTime.year <= after.year) {
+				return false
+			}
+			if (after.month !== undefined && currentTime.month <= after.month) {
+				return false
+			}
+			if (after.day !== undefined && currentTime.day <= after.day) {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	/**
 	 * Check if a condition is met
 	 */
 	public checkCondition(condition: Condition, client: EventClient): boolean {
 		if (!condition) return true
-		
-		if (condition.flag) {
-			return this.checkFlagCondition(condition.flag, client)
-		}
-		
-		if (condition.quest) {
-			return this.checkQuestCondition(condition.quest, client)
+
+		if (condition.flag && !this.checkFlagCondition(condition.flag, client)) {
+			return false
 		}
 
-		if (condition.npc) {
-			return this.checkNPCCondition(condition.npc, client)
+		if (condition.quest && !this.checkQuestCondition(condition.quest, client)) {
+			return false
 		}
-		
+
+		if (condition.npc && !this.checkNPCCondition(condition.npc, client)) {
+			return false
+		}
+
+		if (condition.time && !this.checkTimeCondition(condition.time)) {
+			return false
+		}
+
+		if (condition.date && !this.checkDateCondition(condition.date)) {
+			return false
+		}
+
 		return true
 	}
 

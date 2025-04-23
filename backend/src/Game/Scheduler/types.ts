@@ -1,10 +1,20 @@
+export enum ScheduleType {
+	Interval = 'interval',
+	Cron = 'cron',
+	Once = 'once',
+	GameTime = 'game-time'
+}
+
 export type ScheduledEvent = {
 	id: string
 	eventType: string
 	payload: any
 	schedule: {
-		type: 'interval' | 'cron' | 'once'
-		value: string | number // Interval in ms, cron expression, or timestamp
+		type: ScheduleType
+		value: string | number // Interval in ms, cron expression, timestamp, or game time string (HH:MM)
+		day?: number // Optional day of month for game-time
+		month?: number // Optional month for game-time
+		year?: number // Optional year for game-time
 	}
 	lastRun?: Date
 	nextRun?: Date
@@ -16,7 +26,10 @@ export type ScheduleOptions = {
 	eventType: string
 	payload: any
 	schedule: {
-		type: 'interval' | 'cron' | 'once'
+		type: ScheduleType
 		value: string | number
+		day?: number
+		month?: number
+		year?: number
 	}
 }

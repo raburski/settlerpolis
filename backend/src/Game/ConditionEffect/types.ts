@@ -3,6 +3,27 @@ import { AffinitySentimentType } from '../Affinity/types'
 import { FXType } from '../FX/types'
 import { Position } from '../../types'
 
+export interface TimeRange {
+	before?: string // format: "HH:MM"
+	after?: string // format: "HH:MM"
+}
+
+export interface DateRange {
+	day?: number
+	month?: number
+	year?: number
+	before?: {
+		day?: number
+		month?: number
+		year?: number
+	}
+	after?: {
+		day?: number
+		month?: number
+		year?: number
+	}
+}
+
 export interface FlagCondition {
 	exists?: string
 	notExists?: string
@@ -37,6 +58,8 @@ export interface Condition {
 	flag?: FlagCondition
 	quest?: QuestCondition
 	npc?: NPCCondition
+	time?: TimeRange
+	date?: DateRange
 }
 
 export interface FlagEffect {

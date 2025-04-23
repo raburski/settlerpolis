@@ -1,11 +1,11 @@
-import { ScheduleOptions } from '../types'
+import { ScheduleOptions, ScheduleType } from '../types'
 import { LootEvents } from '../../Loot/events'
 
 export const itemDropSchedules: ScheduleOptions[] = [
 	{
 		eventType: LootEvents.SS.Spawn,
 		schedule: {
-			type: 'interval',
+			type: ScheduleType.Interval,
 			value: 10000
 		},
 		payload: {
