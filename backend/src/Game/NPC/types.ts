@@ -22,8 +22,7 @@ export interface NPCRoutineStep {
 }
 
 export interface NPCRoutine {
-	npcId: string
-	routine: NPCRoutineStep[]
+	steps: NPCRoutineStep[]
 }
 
 export interface NPC {

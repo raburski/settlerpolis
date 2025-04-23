@@ -14,7 +14,7 @@ const freeDrinkDialogue: DialogueTreePartial = {
 					text: "I could use a drink.",
 					next: "drink_response",
 					condition: {
-						flag: { notExists: 'inkeeper.free_drink', scope: FlagScope.Player },
+						flag: { notExists: 'innkeeper.free_drink', scope: FlagScope.Player },
 					}
 				},
 			]
@@ -27,9 +27,9 @@ const freeDrinkDialogue: DialogueTreePartial = {
 					id: "accept_drink",
 					text: "Thanks!",
 					effect: { 
-						flag: { set: 'inkeeper.free_drink', scope: FlagScope.Player },
+						flag: { set: 'innkeeper.free_drink', scope: FlagScope.Player },
 						npc: {
-							id: 'inkeeper',
+							id: 'innkeeper',
 							affinity: {
 								sentimentType: AffinitySentimentType.Trust,
 								add: 5
@@ -82,7 +82,7 @@ const mozgotrzepQuestDialogue: DialogueTreePartial = {
 					next: "challenge_explanation",
 					effect: {
 						npc: {
-							id: 'inkeeper',
+							id: 'innkeeper',
 							affinity: {
 								sentimentType: AffinitySentimentType.Curiosity,
 								add: 300
@@ -107,7 +107,7 @@ const mozgotrzepQuestDialogue: DialogueTreePartial = {
 					effect: {
 						quest: { start: "collect_mozgotrzep" },
 						npc: {
-							id: 'inkeeper',
+							id: 'innkeeper',
 							affinity: {
 								sentimentType: AffinitySentimentType.Devotion,
 								add: 5

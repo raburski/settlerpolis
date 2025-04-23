@@ -196,6 +196,14 @@ export class DialogueManager {
 				node: filteredNode
 			})
 		})
+
+		// Handle dialogue end from client
+		this.event.on<DialogueContinueData>(DialogueEvents.CS.End, (data, client) => {
+			const dialogueId = this.activeDialogues.get(client.id)
+			if (!dialogueId || dialogueId !== data.dialogueId) return
+
+			this.endDialogue(client)
+		})
 	}
 
 	public registerDialogue(dialogue: DialogueTree) {
@@ -255,5 +263,19 @@ export class DialogueManager {
 		this.activeDialogues.delete(client.id)
 		this.currentNodes.delete(client.id)
 		client.emit(Receiver.Sender, DialogueEvents.SC.End, { dialogueId })
+	}
+
+	public getNPCActiveDialogues(npcId: string): string[] {
+		const activeDialogueIds: string[] = []
+		
+		// Iterate through all active dialogues
+		for (const [clientId, dialogueId] of this.activeDialogues.entries()) {
+			const dialogue = this.dialogues.get(dialogueId)
+			if (dialogue && dialogue.npcId === npcId) {
+				activeDialogueIds.push(clientId)
+			}
+		}
+		
+		return activeDialogueIds
 	}
 } 

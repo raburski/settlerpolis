@@ -5,6 +5,7 @@ export const DialogueEvents = {
 	},
 	CS: {
 		Continue: 'cs:dialogue:continue',
-		Choice: 'cs:dialogue:choice'
+		Choice: 'cs:dialogue:choice',
+		End: 'cs:dialogue:end'
 	}
 } as const 

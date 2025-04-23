@@ -7,6 +7,8 @@ import { PlayerJoinData, PlayerTransitionData, Position } from '../../types'
 import { AffinitySentimentType } from '../Affinity/types'
 import { MapManager } from '../Map'
 import { WorldManager } from '../World'
+import { DialogueEvents } from '../Dialogue/events'
+import { DialogueContinueData } from '../Dialogue/types'
 
 const TO_FIX_HARDODED_MAP_ID = 'test1'
 const MOVEMENT_STEP_LAG = 100
@@ -43,8 +45,7 @@ const GUARD_NPC: NPC = {
 		]
 	},
 	routine: {
-		npcId: 'guard',
-		routine: [
+		steps: [
 			{ time: '00:00', spot: 'stand1', action: 'stand' },
 			{ time: '01:00', spot: 'stand2', action: 'stand' },
 			{ time: '02:00', spot: 'stand1', action: 'stand' },
@@ -78,6 +79,7 @@ export class NPCManager {
 	private movementTimeouts: Map<string, NodeJS.Timeout> = new Map()
 	private routineTimeouts: Map<string, NodeJS.Timeout> = new Map()
 	private routineCheckInterval: NodeJS.Timeout | null = null
+	private pausedRoutines: Map<string, NPCRoutineStep> = new Map()
 
 	constructor(
 		private event: EventManager,
@@ -141,6 +143,22 @@ export class NPCManager {
 		// Handle NPC movement
 		this.event.on<NPCGoData>(NPCEvents.SS.Go, (data) => {
 			this.handleGoEvent(data)
+		})
+
+		// Handle dialogue end to resume routines
+		this.event.on<DialogueContinueData>(DialogueEvents.SC.End, (data, client) => {
+			const activeDialogues = this.dialogueManager.getNPCActiveDialogues(data.dialogueId)
+			if (activeDialogues.length === 0) {
+				const pausedStep = this.pausedRoutines.get(data.dialogueId)
+				if (pausedStep) {
+					// Check if we should execute the paused step now
+					const currentTime = this.worldManager.getFormattedTime()
+					if (currentTime === pausedStep.time) {
+						this.executeRoutineStep(data.dialogueId, pausedStep)
+					}
+					this.pausedRoutines.delete(data.dialogueId)
+				}
+			}
 		})
 	}
 
@@ -251,9 +269,16 @@ export class NPCManager {
 
 		for (const npc of this.npcs.values()) {
 			if (npc.routine) {
-				const currentStep = npc.routine.routine.find(step => step.time === currentTime)
+				const currentStep = npc.routine.steps.find(step => step.time === currentTime)
 				if (currentStep) {
-					this.executeRoutineStep(npc.id, currentStep)
+					// Check if NPC is in conversation
+					const activeDialogues = this.dialogueManager.getNPCActiveDialogues(npc.id)
+					if (activeDialogues.length > 0) {
+						// Pause the routine step for later
+						this.pausedRoutines.set(npc.id, currentStep)
+					} else {
+						this.executeRoutineStep(npc.id, currentStep)
+					}
 				}
 			}
 		}
@@ -279,13 +304,14 @@ export class NPCManager {
 		}
 	}
 
-	public setNPCRoutine(routine: NPCRoutine) {
-		const npc = this.npcs.get(routine.npcId)
+	public setNPCRoutine(npcId: string, routine: NPCRoutine) {
+		const npc = this.npcs.get(npcId)
 		if (!npc) return
 
 		npc.routine = routine
-		// Reset current action when setting new routine
+		// Reset current action and clear any paused routine
 		npc.currentAction = undefined
+		this.pausedRoutines.delete(npcId)
 		this.checkAllRoutines() // Check immediately to see if any steps should be executed
 	}
 
@@ -294,6 +320,7 @@ export class NPCManager {
 		if (npc) {
 			delete npc.routine
 			delete npc.currentAction
+			this.pausedRoutines.delete(npcId)
 		}
 	}
 
@@ -308,5 +335,8 @@ export class NPCManager {
 		if (this.routineCheckInterval) {
 			clearInterval(this.routineCheckInterval)
 		}
+
+		// Clear paused routines
+		this.pausedRoutines.clear()
 	}
 } 
