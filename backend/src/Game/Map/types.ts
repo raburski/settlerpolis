@@ -1,4 +1,5 @@
 import { Position } from '../../types'
+import { Trigger } from '../Triggers/types'
 
 export interface TiledMap {
 	width: number
@@ -56,6 +57,13 @@ export interface NPCSpots {
 	}
 }
 
+export interface MapTrigger {
+	id: string
+	position: Position
+	width: number
+	height: number
+}
+
 export interface MapData {
 	id: string
 	name: string
@@ -64,6 +72,7 @@ export interface MapData {
 	collision: CollisionData
 	npcSpots: NPCSpots
 	paths: PathData
+	triggers: MapTrigger[]
 }
 
 export interface MapLayer {

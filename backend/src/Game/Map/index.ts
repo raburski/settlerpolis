@@ -1,9 +1,10 @@
 import { EventManager, Event, EventClient } from '../../events'
-import { MapData, MapLayer, MapObjectLayer, MapLoadData, MapTransitionData, CollisionData, NPCSpots, NPCSpot, PathData } from './types'
+import { MapData, MapLayer, MapObjectLayer, MapLoadData, MapTransitionData, CollisionData, NPCSpots, NPCSpot, PathData, MapTrigger } from './types'
 import { MapEvents } from './events'
 import { Receiver } from '../../Receiver'
 import { PlayerJoinData, PlayerTransitionData } from '../Players/types'
 import { Position } from '../../types'
+import { Trigger, TriggerOption } from '../Triggers/types'
 import fs from 'fs'
 import path from 'path'
 import { Pathfinder } from './pathfinding'
@@ -47,7 +48,8 @@ export class MapManager {
 					spawnPoints: this.extractSpawnPoints(tiledMap),
 					collision: this.extractCollisionData(tiledMap),
 					npcSpots: this.extractNPCSpots(tiledMap),
-					paths: this.extractPathsData(tiledMap)
+					paths: this.extractPathsData(tiledMap),
+					triggers: this.extractTriggers(tiledMap)
 				}
 
 				this.maps.set(mapId, mapData)
@@ -75,7 +77,8 @@ export class MapManager {
 					spawnPoints: this.extractSpawnPoints(tiledMap),
 					collision: this.extractCollisionData(tiledMap),
 					npcSpots: this.extractNPCSpots(tiledMap),
-					paths: this.extractPathsData(tiledMap)
+					paths: this.extractPathsData(tiledMap),
+					triggers: this.extractTriggers(tiledMap)
 				}
 
 				this.maps.set(mapId, mapData)
@@ -161,6 +164,29 @@ export class MapManager {
 		return spawnPoints
 	}
 
+	private extractTriggers(tiledMap: any): MapTrigger[] {
+		const triggers: MapTrigger[] = []
+		const triggerLayer = tiledMap.layers.find((layer: any) => layer.name === 'triggers')
+		
+		if (triggerLayer && triggerLayer.objects) {
+			for (const obj of triggerLayer.objects) {
+				const trigger: MapTrigger = {
+					id: obj.name,
+					position: {
+						x: obj.x,
+						y: obj.y
+					},
+					width: obj.width || 32, // default to tile size if not specified
+					height: obj.height || 32
+				}
+
+				triggers.push(trigger)
+			}
+		}
+		
+		return triggers
+	}
+
 	private setupEventHandlers() {
 		// Handle map loading requests
 		this.event.on<MapLoadData>(Event.Map.CS.Load, async (data, client) => {
@@ -202,7 +228,8 @@ export class MapManager {
 			spawnPoints: mapData.spawnPoints,
 			collision: mapData.collision,
 			npcSpots: mapData.npcSpots,
-			paths: mapData.paths
+			paths: mapData.paths,
+			triggers: mapData.triggers
 		})
 	}
 
@@ -227,7 +254,8 @@ export class MapManager {
 			spawnPoints: toMap.spawnPoints,
 			collision: toMap.collision,
 			npcSpots: toMap.npcSpots,
-			paths: toMap.paths
+			paths: toMap.paths,
+			triggers: toMap.triggers
 		})
 	}
 
@@ -309,5 +337,17 @@ export class MapManager {
 		if (!map) return undefined
 
 		return map.npcSpots[npcId]
+	}
+
+	public getTriggersAtPosition(mapId: string, position: Position): MapTrigger[] {
+		const map = this.maps.get(mapId)
+		console.log('map triggers', mapId, map, position)
+		if (!map) return []
+
+		return map.triggers.filter(trigger => {
+			const isWithinX = position.x >= trigger.position.x && position.x <= trigger.position.x + trigger.width
+			const isWithinY = position.y >= trigger.position.y && position.y <= trigger.position.y + trigger.height
+			return isWithinX && isWithinY
+		})
 	}
 } 

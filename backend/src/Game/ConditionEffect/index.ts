@@ -147,7 +147,7 @@ export class ConditionEffectManager {
 	/**
 	 * Apply a general effect
 	 */
-	public applyEffect(effect: Effect, client: EventClient, npcId: string) {
+	public applyEffect(effect: Effect, client: EventClient, npcId?: string) {
 		if (!effect) return
 		
 		if (effect.flag) {
@@ -163,6 +163,7 @@ export class ConditionEffectManager {
 		}
 
 		if (effect.affinity) {
+			if (!npcId) return
 			this.applyAffinityEffect(effect.affinity, client, npcId)
 		}
 
@@ -186,7 +187,7 @@ export class ConditionEffectManager {
 	/**
 	 * Apply multiple effects
 	 */
-	public applyEffects(effects: Effect[], client: EventClient, npcId: string) {
+	public applyEffects(effects: Effect[], client: EventClient, npcId?: string) {
 		if (!effects || effects.length === 0) return
 		
 		effects.forEach(effect => {
@@ -267,7 +268,7 @@ export class ConditionEffectManager {
 	/**
 	 * Check if a condition is met
 	 */
-	public checkCondition(condition: Condition, client: EventClient, npcId: string): boolean {
+	public checkCondition(condition: Condition, client: EventClient, npcId?: string): boolean {
 		if (!condition) return true
 		
 		if (condition.flag) {
@@ -279,10 +280,12 @@ export class ConditionEffectManager {
 		}
 		
 		if (condition.affinity) {
+			if (!npcId) return false
 			return this.checkAffinityCondition(condition.affinity, client, npcId)
 		}
 		
 		if (condition.affinityOverall) {
+			if (!npcId) return false
 			return this.checkAffinityOverallCondition(condition.affinityOverall, client, npcId)
 		}
 		
@@ -292,7 +295,7 @@ export class ConditionEffectManager {
 	/**
 	 * Check if multiple conditions are met
 	 */
-	public checkConditions(conditions: Condition[], client: EventClient, npcId: string): boolean {
+	public checkConditions(conditions: Condition[], client: EventClient, npcId?: string): boolean {
 		if (!conditions || conditions.length === 0) return true
 		
 		return conditions.every(condition => this.checkCondition(condition, client, npcId))
@@ -301,10 +304,22 @@ export class ConditionEffectManager {
 	private handleNPCEffect(effect: Effect['npc'], client: EventClient) {
 		if (!effect) return
 
-		const payload = typeof effect.goTo === 'string'
-			? { npcId: effect.npcId, spotName: effect.goTo }
-			: { npcId: effect.npcId, position: effect.goTo }
+		// Handle NPC movement if goTo is provided
+		if (effect.goTo) {
+			const payload = typeof effect.goTo === 'string'
+				? { npcId: effect.npcId, spotName: effect.goTo }
+				: { npcId: effect.npcId, position: effect.goTo }
 
-		client.emit(Receiver.Sender, NPCEvents.SS.Go, payload)
+			client.emit(Receiver.Group, NPCEvents.SS.Go, payload)
+		}
+
+		// Handle NPC message if present
+		if (effect.message) {
+			client.emit(Receiver.Group, NPCEvents.SC.Message, {
+				npcId: effect.npcId,
+				message: effect.message,
+				emoji: effect.emoji
+			})
+		}
 	}
 } 

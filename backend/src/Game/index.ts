@@ -16,6 +16,7 @@ import { AffinityManager } from "./Affinity"
 import { CutsceneManager } from './Cutscene'
 import { ConditionEffectManager } from './ConditionEffect'
 import { MapManager } from './Map'
+import { TriggerManager } from './Triggers'
 
 export class GameManager {
 	private chatManager: ChatManager
@@ -34,6 +35,7 @@ export class GameManager {
 	private cutsceneManager: CutsceneManager
 	private conditionEffectManager: ConditionEffectManager
 	private mapManager: MapManager
+	private triggerManager: TriggerManager
 
 	constructor(private event: EventManager) {
 		// Initialize managers in dependency order
@@ -56,7 +58,11 @@ export class GameManager {
 		this.npcManager = new NPCManager(event, this.dialogueManager, this.mapManager)
 		this.scheduler = new Scheduler(event)
 		this.mapObjectsManager = new MapObjectsManager(event, this.itemsManager, this.inventoryManager)
-		
+		this.triggerManager = new TriggerManager(
+			event,
+			this.npcManager,
+			this.mapManager
+		)
 		
 		this.conditionEffectManager = new ConditionEffectManager(
 			event,
@@ -66,6 +72,7 @@ export class GameManager {
 		)
 		this.dialogueManager.conditionEffectManager = this.conditionEffectManager
 		this.questManager.conditionEffectManager = this.conditionEffectManager
+		this.triggerManager.conditionEffectManager = this.conditionEffectManager
 
 		// Initialize PlayersManager last since it depends on other managers
 		this.playersManager = new PlayersManager(
@@ -75,6 +82,7 @@ export class GameManager {
 			this.itemsManager,
 			this.mapObjectsManager,
 		)
+
 		
 		this.setupEventHandlers()
 	}

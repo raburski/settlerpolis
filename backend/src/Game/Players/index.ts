@@ -29,7 +29,7 @@ const INITIAL_POSITION = {
 	scene: 'FarmScene',  // Initial scene
 	position: {
 		x: 100,  // Initial x position
-		y: 300   // Initial y position
+		y: 400   // Initial y position
 	}
 }
 

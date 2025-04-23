@@ -74,7 +74,9 @@ export interface ChatEffect {
 
 export interface NPCEffect {
 	npcId: string
-	goTo: Position | string // string for spot name
+	goTo?: Position | string // string for spot name
+	message?: string
+	emoji?: string
 }
 
 export interface Effect {
