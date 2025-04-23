@@ -1,14 +1,16 @@
 import { EventManager, Event, EventClient } from '../../events'
-import { NPC, NPCInteractData, NPCGoData } from './types'
+import { NPC, NPCInteractData, NPCGoData, NPCRoutine, NPCRoutineStep } from './types'
 import { NPCEvents } from './events'
 import { Receiver } from '../../Receiver'
 import { DialogueManager } from '../Dialogue'
 import { PlayerJoinData, PlayerTransitionData, Position } from '../../types'
 import { AffinitySentimentType } from '../Affinity/types'
 import { MapManager } from '../Map'
+import { WorldManager } from '../World'
 
 const TO_FIX_HARDODED_MAP_ID = 'test1'
 const MOVEMENT_STEP_LAG = 100
+const ROUTINE_CHECK_INTERVAL = 60000 // Check routines every minute
 
 // Example NPC data
 const EXAMPLE_NPC: NPC = {
@@ -39,22 +41,55 @@ const GUARD_NPC: NPC = {
 				message: "It's dangerous to wander around at night. Be careful!"
 			}
 		]
+	},
+	routine: {
+		npcId: 'guard',
+		routine: [
+			{ time: '00:00', spot: 'stand1', action: 'stand' },
+			{ time: '01:00', spot: 'stand2', action: 'stand' },
+			{ time: '02:00', spot: 'stand1', action: 'stand' },
+			{ time: '03:00', spot: 'stand2', action: 'stand' },
+			{ time: '04:00', spot: 'stand1', action: 'stand' },
+			{ time: '05:00', spot: 'stand2', action: 'stand' },
+			{ time: '06:00', spot: 'stand1', action: 'stand' },
+			{ time: '07:00', spot: 'stand2', action: 'stand' },
+			{ time: '08:00', spot: 'stand1', action: 'stand' },
+			{ time: '09:00', spot: 'stand2', action: 'stand' },
+			{ time: '10:00', spot: 'stand1', action: 'stand' },
+			{ time: '11:00', spot: 'stand2', action: 'stand' },
+			{ time: '12:00', spot: 'stand1', action: 'stand' },
+			{ time: '13:00', spot: 'stand2', action: 'stand' },
+			{ time: '14:00', spot: 'stand1', action: 'stand' },
+			{ time: '15:00', spot: 'stand2', action: 'stand' },
+			{ time: '16:00', spot: 'stand1', action: 'stand' },
+			{ time: '17:00', spot: 'stand2', action: 'stand' },
+			{ time: '18:00', spot: 'stand1', action: 'stand' },
+			{ time: '19:00', spot: 'stand2', action: 'stand' },
+			{ time: '20:00', spot: 'stand1', action: 'stand' },
+			{ time: '21:00', spot: 'stand2', action: 'stand' },
+			{ time: '22:00', spot: 'stand1', action: 'stand' },
+			{ time: '23:00', spot: 'stand2', action: 'stand' }
+		]
 	}
 }
 
 export class NPCManager {
 	private npcs: Map<string, NPC> = new Map()
 	private movementTimeouts: Map<string, NodeJS.Timeout> = new Map()
+	private routineTimeouts: Map<string, NodeJS.Timeout> = new Map()
+	private routineCheckInterval: NodeJS.Timeout | null = null
 
 	constructor(
 		private event: EventManager,
 		private dialogueManager: DialogueManager,
-		private mapManager: MapManager
+		private mapManager: MapManager,
+		private worldManager: WorldManager
 	) {
 		// Add example NPCs
 		this.npcs.set(EXAMPLE_NPC.id, EXAMPLE_NPC)
 		this.npcs.set(GUARD_NPC.id, GUARD_NPC)
 		this.setupEventHandlers()
+		this.startRoutineCheck()
 	}
 
 	private setupEventHandlers() {
@@ -202,11 +237,76 @@ export class NPCManager {
 		return this.npcs.get(npcId)
 	}
 
+	private startRoutineCheck() {
+		if (this.routineCheckInterval) {
+			clearInterval(this.routineCheckInterval)
+		}
+		this.routineCheckInterval = setInterval(() => {
+			this.checkAllRoutines()
+		}, ROUTINE_CHECK_INTERVAL)
+	}
+
+	private checkAllRoutines() {
+		const currentTime = this.worldManager.getFormattedTime()
+
+		for (const npc of this.npcs.values()) {
+			if (npc.routine) {
+				const currentStep = npc.routine.routine.find(step => step.time === currentTime)
+				if (currentStep) {
+					this.executeRoutineStep(npc.id, currentStep)
+				}
+			}
+		}
+	}
+
+	private executeRoutineStep(npcId: string, step: NPCRoutineStep) {
+		const npc = this.npcs.get(npcId)
+		if (!npc) return
+
+		// Move NPC to the spot
+		this.handleGoEvent({
+			npcId,
+			spotName: step.spot
+		})
+
+		// Update current action and emit to clients
+		if (step.action) {
+			npc.currentAction = step.action
+			this.event.emit(Receiver.Group, NPCEvents.SC.Action, {
+				npcId,
+				action: step.action
+			}, npc.scene)
+		}
+	}
+
+	public setNPCRoutine(routine: NPCRoutine) {
+		const npc = this.npcs.get(routine.npcId)
+		if (!npc) return
+
+		npc.routine = routine
+		// Reset current action when setting new routine
+		npc.currentAction = undefined
+		this.checkAllRoutines() // Check immediately to see if any steps should be executed
+	}
+
+	public removeNPCRoutine(npcId: string) {
+		const npc = this.npcs.get(npcId)
+		if (npc) {
+			delete npc.routine
+			delete npc.currentAction
+		}
+	}
+
 	public cleanup() {
 		// Clear all movement timeouts
 		for (const timeout of this.movementTimeouts.values()) {
 			clearTimeout(timeout)
 		}
 		this.movementTimeouts.clear()
+
+		// Clear routine check interval
+		if (this.routineCheckInterval) {
+			clearInterval(this.routineCheckInterval)
+		}
 	}
 } 

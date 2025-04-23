@@ -57,7 +57,7 @@ export class GameManager {
 			this.questManager
 		)
 		
-		this.npcManager = new NPCManager(event, this.dialogueManager, this.mapManager)
+		this.npcManager = new NPCManager(event, this.dialogueManager, this.mapManager, this.worldManager)
 		this.scheduler = new Scheduler(event, this.worldManager)
 		this.mapObjectsManager = new MapObjectsManager(event, this.itemsManager, this.inventoryManager)
 		this.triggerManager = new TriggerManager(

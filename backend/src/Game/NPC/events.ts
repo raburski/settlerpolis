@@ -5,7 +5,8 @@ export const NPCEvents = {
     SC: {
         List: 'sc:npc:list',
         Message: 'sc:npc:message',
-        Go: 'sc:npc:go'
+        Go: 'sc:npc:go',
+        Action: 'sc:npc:action'
     },
     SS: {
         Go: 'ss:npc:go'

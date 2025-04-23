@@ -15,6 +15,17 @@ export interface NPCMessages {
 	}>
 }
 
+export interface NPCRoutineStep {
+	time: string // e.g. "08:00", "14:30"
+	spot: string // Named spot or tile reference from map
+	action?: string // Optional behavior
+}
+
+export interface NPCRoutine {
+	npcId: string
+	routine: NPCRoutineStep[]
+}
+
 export interface NPC {
 	id: string
 	name: string
@@ -23,6 +34,8 @@ export interface NPC {
 	messages?: NPCMessages
 	path?: Position[]
 	speed: number
+	routine?: NPCRoutine
+	currentAction?: string
 }
 
 export interface NPCInteractData extends PlayerSourcedData {
