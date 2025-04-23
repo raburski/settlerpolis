@@ -341,7 +341,6 @@ export class MapManager {
 
 	public getTriggersAtPosition(mapId: string, position: Position): MapTrigger[] {
 		const map = this.maps.get(mapId)
-		console.log('map triggers', mapId, map, position)
 		if (!map) return []
 
 		return map.triggers.filter(trigger => {
@@ -349,5 +348,12 @@ export class MapManager {
 			const isWithinY = position.y >= trigger.position.y && position.y <= trigger.position.y + trigger.height
 			return isWithinX && isWithinY
 		})
+	}
+
+	public getTriggerById(mapId: string, triggerId: string): any | undefined {
+		const map = this.maps.get(mapId)
+		if (!map) return undefined
+
+		return map.triggers.find(trigger => trigger.id === triggerId)
 	}
 } 

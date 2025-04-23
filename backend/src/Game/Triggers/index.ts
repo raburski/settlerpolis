@@ -17,6 +17,8 @@ export class TriggerManager {
 	private activeProximityTriggers: Set<string> = new Set()
 	private _conditionEffectManager: ConditionEffectManager | null = null
 	private usedTriggers: Set<string> = new Set()
+	private playerActiveTriggers: Map<string, Set<string>> = new Map() // playerId -> Set<triggerId>
+	private playerConditionTriggers: Map<string, Map<string, boolean>> = new Map() // playerId -> Map<triggerId, wasValid>
 
 	constructor(
 		private event: EventManager,
@@ -51,59 +53,128 @@ export class TriggerManager {
 		})
 	}
 
-	private checkTriggers(position: Position, client: EventClient) {
-		// First check if any active proximity triggers should be cleared
-		this.checkActiveProximityTriggers(position)
+	private getPlayerActiveTriggers(playerId: string): Set<string> {
+		let triggers = this.playerActiveTriggers.get(playerId)
+		if (!triggers) {
+			triggers = new Set()
+			this.playerActiveTriggers.set(playerId, triggers)
+		}
+		return triggers
+	}
 
-		// Check map triggers
+	private isTriggerActiveForPlayer(triggerId: string, playerId: string): boolean {
+		return this.getPlayerActiveTriggers(playerId).has(triggerId)
+	}
+
+	private setTriggerActiveForPlayer(triggerId: string, playerId: string, active: boolean) {
+		const triggers = this.getPlayerActiveTriggers(playerId)
+		if (active) {
+			triggers.add(triggerId)
+		} else {
+			triggers.delete(triggerId)
+		}
+	}
+
+	private getPlayerConditionTriggers(playerId: string): Map<string, boolean> {
+		let triggers = this.playerConditionTriggers.get(playerId)
+		if (!triggers) {
+			triggers = new Map()
+			this.playerConditionTriggers.set(playerId, triggers)
+		}
+		return triggers
+	}
+
+	private checkTriggers(position: Position, client: EventClient) {
+		const playerId = client.id
 		const mapId = TO_FIX_HARDODED_MAP_ID //client.currentGroup
+		
 		if (mapId) {
 			const mapTriggers = this.mapManager.getTriggersAtPosition(mapId, position)
+			const activeTriggers = this.getPlayerActiveTriggers(playerId)
+
+			// First check for triggers that should be deactivated
+			for (const triggerId of activeTriggers) {
+				const trigger = this.triggers.get(triggerId)
+				if (!trigger) continue
+
+				// Check if player is still in the trigger area
+				const mapTrigger = this.mapManager.getTriggerById(mapId, triggerId)
+				if (!mapTrigger) continue
+
+				const isInArea = this.isPositionInTriggerArea(position, mapTrigger)
+				if (!isInArea) {
+					this.setTriggerActiveForPlayer(triggerId, playerId, false)
+					// For OneTime triggers, mark them as used when player leaves
+					if (trigger.option === TriggerOption.OneTime) {
+						this.usedTriggers.add(triggerId)
+					}
+				}
+			}
+
+			// Then check for new triggers to activate
 			for (const mapTrigger of mapTriggers) {
 				const trigger = this.triggers.get(mapTrigger.id)
 				if (!trigger) continue
 
+				// Skip if trigger is already active for this player
+				if (this.isTriggerActiveForPlayer(trigger.id, playerId)) continue
+
+				// Skip if it's a OneTime trigger that has been used
+				if (trigger.option === TriggerOption.OneTime && this.usedTriggers.has(trigger.id)) continue
+
+				// Skip if it's a Random trigger and the random check fails
+				if (trigger.option === TriggerOption.Random && Math.random() > 0.5) continue
+
 				// For map triggers without conditions, we activate them directly
-				if (!trigger.condition && !trigger.conditions && !trigger.npcProximity) {
-					if (!this.shouldSkipTrigger(trigger, mapTrigger.id)) {
-						this.handleTrigger(trigger, client)
-					}
+				if (!trigger.condition && !trigger.conditions) {
+					this.handleTrigger(trigger, client, position)
+					this.setTriggerActiveForPlayer(trigger.id, playerId, true)
 					continue
 				}
 
-				// For triggers with conditions, we check if they should be skipped and if they're valid
-				if (!this.shouldSkipTrigger(trigger, mapTrigger.id) && this.isTriggerValid(trigger, position, client)) {
-					this.handleTrigger(trigger, client)
+				// For triggers with conditions, we check if they're valid
+				if (this.isTriggerValid(trigger, position, client)) {
+					this.handleTrigger(trigger, client, position)
+					this.setTriggerActiveForPlayer(trigger.id, playerId, true)
 				}
 			}
 		}
 
-		// Then check for other triggers
+		// Then check for other triggers (non-map triggers)
 		for (const [triggerId, trigger] of this.triggers) {
-			if (this.shouldSkipTrigger(trigger, triggerId)) continue
+			// Skip if it's a OneTime trigger that has been used
+			if (trigger.option === TriggerOption.OneTime && this.usedTriggers.has(triggerId)) continue
 
-			if (this.isTriggerValid(trigger, position, client)) {
-				this.handleTrigger(trigger, client)
+			// Skip if it's a Random trigger and the random check fails
+			if (trigger.option === TriggerOption.Random && Math.random() > 0.5) continue
+
+			const isTriggerValid = this.isTriggerValid(trigger, position, client)
+			const conditionTriggers = this.getPlayerConditionTriggers(playerId)
+			const wasValid = conditionTriggers.get(triggerId)
+
+			// If trigger is valid and wasn't valid before, activate it
+			if (isTriggerValid && !wasValid) {
+				this.handleTrigger(trigger, client, position)
+				this.setTriggerActiveForPlayer(triggerId, playerId, true)
+			}
+
+			// Update the condition state
+			conditionTriggers.set(triggerId, isTriggerValid)
+
+			// If trigger is no longer valid, deactivate it
+			if (!isTriggerValid && wasValid) {
+				this.setTriggerActiveForPlayer(triggerId, playerId, false)
 			}
 		}
 	}
 
-	private checkActiveProximityTriggers(position: Position) {
-		for (const triggerId of this.activeProximityTriggers) {
-			const trigger = this.triggers.get(triggerId)
-			if (!trigger || !trigger.npcProximity) continue
-
-			const npc = this.npcManager.getNPC(trigger.npcProximity.npcId)
-			if (!npc) continue
-
-			const dx = position.x - npc.position.x
-			const dy = position.y - npc.position.y
-			const distance = Math.sqrt(dx * dx + dy * dy)
-
-			if (distance > trigger.npcProximity.proximityRadius + PROXIMITY_DEACTIVATION_BUFFER) {
-				this.clearTrigger(triggerId)
-			}
-		}
+	private isPositionInTriggerArea(position: Position, mapTrigger: any): boolean {
+		return (
+			position.x >= mapTrigger.position.x &&
+			position.x <= mapTrigger.position.x + mapTrigger.width &&
+			position.y >= mapTrigger.position.y &&
+			position.y <= mapTrigger.position.y + mapTrigger.height
+		)
 	}
 
 	private clearTrigger(triggerId: string) {
@@ -126,62 +197,33 @@ export class TriggerManager {
 
 	private isTriggerValid(trigger: Trigger, position: Position, client: EventClient): boolean {
 		// If there are no conditions, return false by default
-		if (!trigger.condition && !trigger.conditions && !trigger.npcProximity) {
+		if (!trigger.condition && !trigger.conditions) {
 			return false
 		}
 
-		if (trigger.npcProximity) {
-			const npc = this.npcManager.getNPC(trigger.npcProximity.npcId)
-			
-			if (!npc) return false
-
-			const dx = position.x - npc.position.x
-			const dy = position.y - npc.position.y
-			const distance = Math.sqrt(dx * dx + dy * dy)
-
-			if (distance > trigger.npcProximity.proximityRadius) return false
-
-			// Check conditions with npcId
-			if (trigger.condition) {
-				if (!this.conditionEffectManager.checkCondition(trigger.condition, client, trigger.npcProximity.npcId)) {
-					return false
-				}
+		// Check conditions
+		if (trigger.condition) {
+			if (!this.conditionEffectManager.checkCondition(trigger.condition, client)) {
+				return false
 			}
-			if (trigger.conditions) {
-				if (!trigger.conditions.every(condition => 
-					this.conditionEffectManager.checkCondition(condition, client, trigger.npcProximity?.npcId)
-				)) {
-					return false
-				}
-			}
-		} else {
-			// Check conditions without npcId
-			if (trigger.condition) {
-				if (!this.conditionEffectManager.checkCondition(trigger.condition, client)) {
-					return false
-				}
-			}
-			if (trigger.conditions) {
-				if (!trigger.conditions.every(condition => 
-					this.conditionEffectManager.checkCondition(condition, client)
-				)) {
-					return false
-				}
+		}
+		if (trigger.conditions) {
+			if (!trigger.conditions.every(condition => 
+				this.conditionEffectManager.checkCondition(condition, client)
+			)) {
+				return false
 			}
 		}
 
 		return true
 	}
 
-	private handleTrigger(trigger: Trigger, client: EventClient) {
-		if (this.shouldSkipTrigger(trigger, trigger.id)) return
-
+	private handleTrigger(trigger: Trigger, client: EventClient, position: Position) {
 		// Check conditions
 		if (trigger.conditions) {
 			const conditionsMet = this.conditionEffectManager.checkConditions(
 				trigger.conditions,
-				client,
-				trigger.npcProximity?.npcId
+				client
 			)
 			if (!conditionsMet) return
 		}
@@ -190,8 +232,7 @@ export class TriggerManager {
 		if (trigger.effect) {
 			this.conditionEffectManager.applyEffect(
 				trigger.effect,
-				client,
-				trigger.npcProximity?.npcId
+				client
 			)
 		}
 
@@ -200,8 +241,7 @@ export class TriggerManager {
 			trigger.effects.forEach(effect => {
 				this.conditionEffectManager.applyEffect(
 					effect,
-					client,
-					trigger.npcProximity?.npcId
+					client
 				)
 			})
 		}
@@ -220,5 +260,7 @@ export class TriggerManager {
 		this.activeTriggers.clear()
 		this.activeProximityTriggers.clear()
 		this.usedTriggers.clear()
+		this.playerActiveTriggers.clear()
+		this.playerConditionTriggers.clear()
 	}
 } 

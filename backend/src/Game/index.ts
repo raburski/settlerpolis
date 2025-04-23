@@ -63,16 +63,6 @@ export class GameManager {
 			this.npcManager,
 			this.mapManager
 		)
-		
-		this.conditionEffectManager = new ConditionEffectManager(
-			event,
-			this.questManager,
-			this.flagsManager,
-			this.affinityManager
-		)
-		this.dialogueManager.conditionEffectManager = this.conditionEffectManager
-		this.questManager.conditionEffectManager = this.conditionEffectManager
-		this.triggerManager.conditionEffectManager = this.conditionEffectManager
 
 		// Initialize PlayersManager last since it depends on other managers
 		this.playersManager = new PlayersManager(
@@ -82,6 +72,18 @@ export class GameManager {
 			this.itemsManager,
 			this.mapObjectsManager,
 		)
+
+		this.conditionEffectManager = new ConditionEffectManager(
+			event,
+			this.questManager,
+			this.flagsManager,
+			this.affinityManager,
+			this.npcManager,
+			this.playersManager
+		)
+		this.dialogueManager.conditionEffectManager = this.conditionEffectManager
+		this.questManager.conditionEffectManager = this.conditionEffectManager
+		this.triggerManager.conditionEffectManager = this.conditionEffectManager
 
 		
 		this.setupEventHandlers()

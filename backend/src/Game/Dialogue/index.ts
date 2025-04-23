@@ -76,12 +76,12 @@ export class DialogueManager {
 		
 		// Apply single effect if present
 		if (option.effect) {
-			this.conditionEffectManager.applyEffect(option.effect, client, npcId)
+			this.conditionEffectManager.applyEffect(option.effect, client)
 		}
 		
 		// Apply multiple effects if present
 		if (option.effects && option.effects.length > 0) {
-			this.conditionEffectManager.applyEffects(option.effects, client, npcId)
+			this.conditionEffectManager.applyEffects(option.effects, client)
 		}
 	}
 
@@ -93,13 +93,13 @@ export class DialogueManager {
 		
 		const filteredOptions = node.options.filter(option => {
 			// Check single condition if present
-			if (option.condition && !this.conditionEffectManager.checkCondition(option.condition, client, npcId)) {
+			if (option.condition && !this.conditionEffectManager.checkCondition(option.condition, client)) {
 				return false
 			}
 			
 			// Check multiple conditions if present
 			if (option.conditions) {
-				return this.conditionEffectManager.checkConditions(option.conditions, client, npcId)
+				return this.conditionEffectManager.checkConditions(option.conditions, client)
 			}
 			
 			return true

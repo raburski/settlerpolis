@@ -13,10 +13,9 @@ export interface TriggerNPCProximity {
 
 export interface Trigger {
 	id: string
+	option: TriggerOption
 	condition?: Condition
 	conditions?: Condition[]
 	effect?: Effect
 	effects?: Effect[]
-	npcProximity?: TriggerNPCProximity
-	option?: TriggerOption
 } 

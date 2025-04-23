@@ -28,9 +28,12 @@ const freeDrinkDialogue: DialogueTreePartial = {
 					text: "Thanks!",
 					effect: { 
 						flag: { set: 'inkeeper.free_drink', scope: FlagScope.Player },
-						affinity: {
-							sentimentType: AffinitySentimentType.Trust,
-							add: 5
+						npc: {
+							id: 'inkeeper',
+							affinity: {
+								sentimentType: AffinitySentimentType.Trust,
+								add: 5
+							}
 						}
 					},
 					item: {
@@ -59,8 +62,11 @@ const mozgotrzepQuestDialogue: DialogueTreePartial = {
 					text: "Do you have any secret recipes you'd be willing to share?",
 					next: "secret_recipe",
 					condition: {
-						affinityOverall: {
-							minScore: 50
+						npc: {
+							id: 'innkeeper',
+							affinityOverall: {
+								minScore: 50
+							}
 						}
 					}
 				}
@@ -75,9 +81,12 @@ const mozgotrzepQuestDialogue: DialogueTreePartial = {
 					text: "Tell me more about this challenge.",
 					next: "challenge_explanation",
 					effect: {
-						affinity: {
-							sentimentType: AffinitySentimentType.Curiosity,
-							add: 300
+						npc: {
+							id: 'inkeeper',
+							affinity: {
+								sentimentType: AffinitySentimentType.Curiosity,
+								add: 300
+							}
 						}
 					}
 				},
@@ -97,10 +106,14 @@ const mozgotrzepQuestDialogue: DialogueTreePartial = {
 					text: "I'll take on your challenge!",
 					effect: {
 						quest: { start: "collect_mozgotrzep" },
-						affinity: {
-							sentimentType: AffinitySentimentType.Devotion,
-							add: 5
+						npc: {
+							id: 'inkeeper',
+							affinity: {
+								sentimentType: AffinitySentimentType.Devotion,
+								add: 5
+							}
 						}
+
 					},
 					next: "challenge_accepted"
 				},
@@ -129,9 +142,12 @@ const mozgotrzepQuestDialogue: DialogueTreePartial = {
 					id: "thank_innkeeper",
 					text: "Thank you! I'll display it proudly.",
 					effect: {
-						affinity: {
-							sentimentType: AffinitySentimentType.Trust,
-							add: 10
+						npc: {
+							id: 'innkeeper',
+							affinity: {
+								sentimentType: AffinitySentimentType.Trust,
+								add: 10
+							}
 						}
 					},
 					item: {
@@ -148,9 +164,12 @@ const mozgotrzepQuestDialogue: DialogueTreePartial = {
 					id: "promise_secret",
 					text: "Your secret is safe with me!",
 					effect: {
-						affinity: {
-							sentimentType: AffinitySentimentType.Trust,
-							add: 15
+						npc: {
+							id: 'innkeper',
+							affinity: {
+								sentimentType: AffinitySentimentType.Trust,
+								add: 15
+							}
 						}
 					},
 					next: "start"

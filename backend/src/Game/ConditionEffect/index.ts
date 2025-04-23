@@ -1,6 +1,6 @@
 import { EventClient, EventManager } from '../../events'
 import { Receiver } from '../../Receiver'
-import { Condition, Effect, FlagCondition, QuestCondition, AffinityCondition, AffinityOverallCondition, FlagEffect, QuestEffect, AffinityEffect, FXEffect, CutsceneEffect, EventEffect, ChatEffect } from './types'
+import { Condition, Effect, FlagCondition, QuestCondition, FlagEffect, QuestEffect, AffinityEffect, FXEffect, CutsceneEffect, EventEffect, ChatEffect, NPCCondition, NPCAffinityCondition, NPCAffinityOverallCondition } from './types'
 import { QuestManager } from "../Quest"
 import { FlagsManager } from "../Flags"
 import { AffinityManager } from "../Affinity"
@@ -8,13 +8,18 @@ import { FXEvents } from "../FX/events"
 import { CutsceneEvents } from "../Cutscene/events"
 import { ChatEvents } from "../Chat/events"
 import { NPCEvents } from '../NPC/events'
+import { NPCManager } from '../NPC'
+import { Position } from '../../types'
+import { PlayersManager } from '../Players'
 
 export class ConditionEffectManager {
 	constructor(
 		private event: EventManager,
 		private questManager: QuestManager,
 		private flagsManager: FlagsManager,
-		private affinityManager: AffinityManager
+		private affinityManager: AffinityManager,
+		private npcManager: NPCManager,
+		private playersManager: PlayersManager
 	) {}
 
 	/**
@@ -147,7 +152,7 @@ export class ConditionEffectManager {
 	/**
 	 * Apply a general effect
 	 */
-	public applyEffect(effect: Effect, client: EventClient, npcId?: string) {
+	public applyEffect(effect: Effect, client: EventClient) {
 		if (!effect) return
 		
 		if (effect.flag) {
@@ -160,11 +165,6 @@ export class ConditionEffectManager {
 
 		if (effect.quest) {
 			this.applyQuestEffect(effect.quest, client)
-		}
-
-		if (effect.affinity) {
-			if (!npcId) return
-			this.applyAffinityEffect(effect.affinity, client, npcId)
 		}
 
 		if (effect.fx) {
@@ -187,11 +187,11 @@ export class ConditionEffectManager {
 	/**
 	 * Apply multiple effects
 	 */
-	public applyEffects(effects: Effect[], client: EventClient, npcId?: string) {
+	public applyEffects(effects: Effect[], client: EventClient) {
 		if (!effects || effects.length === 0) return
 		
 		effects.forEach(effect => {
-			this.applyEffect(effect, client, npcId)
+			this.applyEffect(effect, client)
 		})
 	}
 
@@ -226,7 +226,7 @@ export class ConditionEffectManager {
 	/**
 	 * Check if an affinity condition is met
 	 */
-	public checkAffinityCondition(condition: AffinityCondition, client: EventClient, npcId: string): boolean {
+	public checkAffinityCondition(condition: NPCAffinityCondition, client: EventClient, npcId: string): boolean {
 		const { sentimentType, min, max } = condition
 		
 		// Get the current affinity value
@@ -247,7 +247,7 @@ export class ConditionEffectManager {
 	/**
 	 * Check if an overall affinity condition is met
 	 */
-	public checkAffinityOverallCondition(condition: AffinityOverallCondition, client: EventClient, npcId: string): boolean {
+	public checkAffinityOverallCondition(condition: NPCAffinityOverallCondition, client: EventClient, npcId: string): boolean {
 		const { minScore, maxScore } = condition
 		
 		// Get the current overall affinity score
@@ -266,9 +266,96 @@ export class ConditionEffectManager {
 	}
 
 	/**
+	 * Check if an NPC affinity condition is met
+	 */
+	public checkNPCAffinityCondition(condition: NPCAffinityCondition, client: EventClient, npcId: string): boolean {
+		const { sentimentType, min, max } = condition
+		
+		// Get the current affinity value
+		const currentValue = this.affinityManager.getAffinityValue(client.id, npcId, sentimentType)
+		
+		// Check if the value is within the specified range
+		if (min !== undefined && currentValue < min) {
+			return false
+		}
+		
+		if (max !== undefined && currentValue > max) {
+			return false
+		}
+		
+		return true
+	}
+
+	/**
+	 * Check if an NPC affinity overall condition is met
+	 */
+	public checkNPCAffinityOverallCondition(condition: NPCAffinityOverallCondition, client: EventClient, npcId: string): boolean {
+		const { minScore, maxScore } = condition
+		
+		// Get the current overall affinity score
+		const currentScore = this.affinityManager.calculateOverallScore(client.id, npcId)
+		
+		// Check if the score is within the specified range
+		if (minScore !== undefined && currentScore < minScore) {
+			return false
+		}
+		
+		if (maxScore !== undefined && currentScore > maxScore) {
+			return false
+		}
+		
+		return true
+	}
+
+	/**
+	 * Check if an NPC condition is met
+	 */
+	public checkNPCCondition(condition: NPCCondition, client: EventClient): boolean {
+		const { id, proximity, affinity, affinityOverall } = condition
+		
+		// Get player position from PlayersManager
+		const player = this.playersManager.getPlayer(client.id)
+		console.log('get player', player)
+		if (!player) return false
+		
+		// Check proximity if specified
+		if (proximity !== undefined) {
+			if (!this.npcManager) {
+				console.warn('NPCManager not initialized')
+				return false
+			}
+
+			const npc = this.npcManager.getNPC(id)
+			if (!npc) return false
+
+			const dx = player.position.x - npc.position.x
+			const dy = player.position.y - npc.position.y
+			const distance = Math.sqrt(dx * dx + dy * dy)
+
+			if (distance > proximity) return false
+		}
+
+		// Check affinity if specified
+		if (affinity) {
+			if (!this.checkNPCAffinityCondition(affinity, client, id)) {
+				return false
+			}
+		}
+
+		// Check affinity overall if specified
+		if (affinityOverall) {
+			if (!this.checkNPCAffinityOverallCondition(affinityOverall, client, id)) {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	/**
 	 * Check if a condition is met
 	 */
-	public checkCondition(condition: Condition, client: EventClient, npcId?: string): boolean {
+	public checkCondition(condition: Condition, client: EventClient): boolean {
 		if (!condition) return true
 		
 		if (condition.flag) {
@@ -278,15 +365,9 @@ export class ConditionEffectManager {
 		if (condition.quest) {
 			return this.checkQuestCondition(condition.quest, client)
 		}
-		
-		if (condition.affinity) {
-			if (!npcId) return false
-			return this.checkAffinityCondition(condition.affinity, client, npcId)
-		}
-		
-		if (condition.affinityOverall) {
-			if (!npcId) return false
-			return this.checkAffinityOverallCondition(condition.affinityOverall, client, npcId)
+
+		if (condition.npc) {
+			return this.checkNPCCondition(condition.npc, client)
 		}
 		
 		return true
@@ -295,10 +376,10 @@ export class ConditionEffectManager {
 	/**
 	 * Check if multiple conditions are met
 	 */
-	public checkConditions(conditions: Condition[], client: EventClient, npcId?: string): boolean {
+	public checkConditions(conditions: Condition[], client: EventClient): boolean {
 		if (!conditions || conditions.length === 0) return true
 		
-		return conditions.every(condition => this.checkCondition(condition, client, npcId))
+		return conditions.every(condition => this.checkCondition(condition, client))
 	}
 
 	private handleNPCEffect(effect: Effect['npc'], client: EventClient) {
@@ -307,8 +388,8 @@ export class ConditionEffectManager {
 		// Handle NPC movement if goTo is provided
 		if (effect.goTo) {
 			const payload = typeof effect.goTo === 'string'
-				? { npcId: effect.npcId, spotName: effect.goTo }
-				: { npcId: effect.npcId, position: effect.goTo }
+				? { npcId: effect.id, spotName: effect.goTo }
+				: { npcId: effect.id, position: effect.goTo }
 
 			client.emit(Receiver.Group, NPCEvents.SS.Go, payload)
 		}
@@ -316,10 +397,15 @@ export class ConditionEffectManager {
 		// Handle NPC message if present
 		if (effect.message) {
 			client.emit(Receiver.Group, NPCEvents.SC.Message, {
-				npcId: effect.npcId,
+				npcId: effect.id,
 				message: effect.message,
 				emoji: effect.emoji
 			})
+		}
+
+		// Handle NPC affinity if present
+		if (effect.affinity) {
+			this.applyAffinityEffect(effect.affinity, client, effect.id)
 		}
 	}
 } 

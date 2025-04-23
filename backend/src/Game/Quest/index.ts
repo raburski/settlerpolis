@@ -156,7 +156,7 @@ export class QuestManager {
 
 		// Apply effect if present
 		if (step.effect) {
-			this.conditionEffectManager.applyEffect(step.effect, client, step.npcId || '')
+			this.conditionEffectManager.applyEffect(step.effect, client)
 		}
 
 		// Check if quest is complete

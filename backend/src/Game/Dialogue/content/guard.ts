@@ -15,7 +15,7 @@ export const guardDialogue: DialogueTree = {
 					effects: [
 						{
 							npc: {
-								npcId: 'guard',
+								id: 'guard',
 								goTo: 'stand2'
 							}
 						}

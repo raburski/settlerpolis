@@ -15,22 +15,28 @@ export interface QuestCondition {
 	canStart: string
 }
 
-export interface AffinityCondition {
+export interface NPCAffinityCondition {
 	sentimentType: AffinitySentimentType
 	min?: number
 	max?: number
 }
 
-export interface AffinityOverallCondition {
+export interface NPCAffinityOverallCondition {
 	minScore?: number
 	maxScore?: number
+}
+
+export interface NPCCondition {
+	proximity?: number
+	id: string
+	affinity?: NPCAffinityCondition
+	affinityOverall?: NPCAffinityOverallCondition
 }
 
 export interface Condition {
 	flag?: FlagCondition
 	quest?: QuestCondition
-	affinity?: AffinityCondition
-	affinityOverall?: AffinityOverallCondition
+	npc?: NPCCondition
 }
 
 export interface FlagEffect {
@@ -73,17 +79,17 @@ export interface ChatEffect {
 }
 
 export interface NPCEffect {
-	npcId: string
+	id: string
 	goTo?: Position | string // string for spot name
 	message?: string
 	emoji?: string
+	affinity?: AffinityEffect
 }
 
 export interface Effect {
 	flag?: FlagEffect
 	event?: EventEffect
 	quest?: QuestEffect
-	affinity?: AffinityEffect
 	fx?: FXEffect
 	cutscene?: CutsceneEffect
 	chat?: ChatEffect

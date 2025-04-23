@@ -42,7 +42,10 @@ export const CollectMozgotrzepQuest: Quest = {
                 }
             },
 			effect: {
-				affinity: { sentimentType: AffinitySentimentType.Trust, add: 300 },
+				npc: {
+					id: 'innkeeper',
+					affinity: { sentimentType: AffinitySentimentType.Trust, add: 300 },
+				}
 			}
 		}
 	],
