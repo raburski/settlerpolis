@@ -1,10 +1,10 @@
 import { EventManager, EventClient } from '../../events'
 import { ScheduledEvent, ScheduleOptions, ScheduleType } from './types'
 import { SchedulerEvents } from './events'
-import { WorldManager } from '../World'
-import { WorldEvents } from '../World/events'
-import { WorldTimeUpdateEventData } from '../World/types'
-import { WorldTime } from '../World/types'
+import { TimeManager } from '../Time'
+import { TimeEvents } from '../Time/events'
+import { TimeUpdateEventData } from '../Time/types'
+import { Time } from '../Time/types'
 import { CronExpressionParser } from 'cron-parser'
 import { v4 as uuidv4 } from 'uuid'
 import { Receiver } from "../../Receiver"
@@ -13,14 +13,14 @@ import { defaultSchedules } from "./content"
 export class Scheduler {
 	private scheduledEvents: Map<string, ScheduledEvent> = new Map()
 	private timeouts: Map<string, NodeJS.Timeout> = new Map()
-	private worldManager: WorldManager
+	private timeManager: TimeManager
 
 	constructor(
 		private event: EventManager,
-		worldManager: WorldManager,
+		timeManager: TimeManager,
 		schedules: ScheduleOptions[] = defaultSchedules
 	) {
-		this.worldManager = worldManager
+		this.timeManager = timeManager
 		this.setupEventHandlers()
 		this.loadSchedules(schedules)
 	}
@@ -36,8 +36,8 @@ export class Scheduler {
 			this.cancel(data.id, client)
 		})
 
-		// Handle time updates from WorldManager
-		this.event.on(WorldEvents.SC.Updated, (data: WorldTimeUpdateEventData) => {
+		// Handle time updates from TimeManager
+		this.event.on(TimeEvents.SC.Updated, (data: TimeUpdateEventData) => {
 			this.checkGameTimeEvents(data.time)
 		})
 	}
@@ -53,7 +53,7 @@ export class Scheduler {
 		return scheduledIds
 	}
 
-	private checkGameTimeEvents(currentTime: WorldTime) {
+	private checkGameTimeEvents(currentTime: Time) {
 		for (const [id, event] of this.scheduledEvents) {
 			if (event.schedule.type === ScheduleType.GameTime && event.isActive) {
 				const [targetHours, targetMinutes] = (event.schedule.value as string).split(':').map(Number)
@@ -99,7 +99,8 @@ export class Scheduler {
 			eventType: options.eventType,
 			payload: options.payload,
 			schedule: options.schedule,
-			isActive: true
+			isActive: true,
+			createdAt: this.timeManager.getCurrentTime()
 		}
 
 		// Calculate next run time

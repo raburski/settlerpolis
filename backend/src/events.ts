@@ -14,7 +14,7 @@ import { AffinityEvents } from "./Game/Affinity/events"
 import { FXEvents } from "./Game/FX/events"
 import { CutsceneEvents } from "./Game/Cutscene/events"
 import { MapEvents } from "./Game/Map/events"
-import { WorldEvents } from "./Game/World/events"
+import { TimeEvents } from './Game/Time/events'
 
 // Interface for client operations
 export interface EventClient {
@@ -52,5 +52,5 @@ export const Event = {
 	FX: FXEvents,
 	Cutscene: CutsceneEvents,
 	Map: MapEvents,
-	World: WorldEvents,
+	Time: TimeEvents,
 }

@@ -1,10 +1,6 @@
 import { guardShiftSchedules, innkeeperSchedules, shopSchedules } from './npcSchedules'
 import { itemDropSchedules } from './itemDrops'
-import {
-	worldMaintenanceSchedules,
-	specialEventSchedules,
-	weatherSchedules
-} from './worldSchedules'
+import { timeSchedules } from './timeSchedules'
 import { ScheduleOptions } from '../types'
 
 // Combine all schedules
@@ -13,9 +9,7 @@ export const defaultSchedules: ScheduleOptions[] = [
 	...innkeeperSchedules,
 	...shopSchedules,
 	...itemDropSchedules,
-	...worldMaintenanceSchedules,
-	...specialEventSchedules,
-	...weatherSchedules
+	...timeSchedules
 ]
 
 // Export individual schedule groups for more granular control
@@ -24,7 +18,5 @@ export {
 	innkeeperSchedules,
 	shopSchedules,
 	itemDropSchedules,
-	worldMaintenanceSchedules,
-	specialEventSchedules,
-	weatherSchedules
+	timeSchedules
 } 

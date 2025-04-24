@@ -1,3 +1,5 @@
+import { Time } from '../Time/types'
+
 export enum ScheduleType {
 	Interval = 'interval',
 	Cron = 'cron',
@@ -19,6 +21,7 @@ export type ScheduledEvent = {
 	lastRun?: Date
 	nextRun?: Date
 	isActive: boolean
+	createdAt: Time
 }
 
 export type ScheduleOptions = {

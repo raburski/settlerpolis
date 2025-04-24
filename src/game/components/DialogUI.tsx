@@ -64,7 +64,7 @@ export function DialogUI() {
 
 	const handleClose = () => {
 		if (dialogueId) {
-			EventBus.emit(DialogueEvents.SC.End, { dialogueId })
+			EventBus.emit(DialogueEvents.CS.End, { dialogueId })
 		}
 	}
 

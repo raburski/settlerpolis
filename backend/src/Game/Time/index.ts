@@ -1,10 +1,10 @@
 import { EventManager, Event, EventClient } from '../../events'
-import { WorldEvents } from './events'
-import { WorldTime, WorldTimeData, WorldTimeUpdateEventData, WorldTimeSpeedUpdateEventData, WorldTimePauseEventData, WorldTimeSyncEventData, MONTHS_IN_YEAR, DAYS_IN_MONTH } from './types'
+import { TimeEvents } from './events'
+import { Time, TimeData, TimeUpdateEventData, TimeSpeedUpdateEventData, TimePauseEventData, TimeSyncEventData, MONTHS_IN_YEAR, DAYS_IN_MONTH } from './types'
 import { Receiver } from '../../Receiver'
 
-export class WorldManager {
-	private timeData: WorldTimeData = {
+export class TimeManager {
+	private timeData: TimeData = {
 		time: { 
 			hours: 8, 
 			minutes: 0,
@@ -27,21 +27,21 @@ export class WorldManager {
 
 	private setupEventHandlers() {
 		// Handle time updates
-		this.event.on(WorldEvents.SS.Update, (data: WorldTimeUpdateEventData, client: EventClient) => {
+		this.event.on(TimeEvents.SS.Update, (data: TimeUpdateEventData, client: EventClient) => {
 			this.setTime(data.time, client)
 		})
 
 		// Handle time speed updates
-		this.event.on(WorldEvents.SS.SetSpeed, (data: WorldTimeSpeedUpdateEventData, client: EventClient) => {
+		this.event.on(TimeEvents.SS.SetSpeed, (data: TimeSpeedUpdateEventData, client: EventClient) => {
 			this.setTimeSpeed(data.timeSpeed, client)
 		})
 
 		// Handle pause/resume
-		this.event.on(WorldEvents.SS.Pause, (_, client: EventClient) => {
+		this.event.on(TimeEvents.SS.Pause, (_, client: EventClient) => {
 			this.pause(client)
 		})
 
-		this.event.on(WorldEvents.SS.Resume, (_, client: EventClient) => {
+		this.event.on(TimeEvents.SS.Resume, (_, client: EventClient) => {
 			this.resume(client)
 		})
 
@@ -104,12 +104,12 @@ export class WorldManager {
 	}
 
 	private broadcastTimeUpdate() {
-		this.event.emit(Receiver.All, WorldEvents.SC.Updated, {
+		this.event.emit(Receiver.All, TimeEvents.SC.Updated, {
 			time: this.timeData.time
-		} as WorldTimeUpdateEventData)
+		} as TimeUpdateEventData)
 	}
 
-	public setTime(time: WorldTime, client: EventClient) {
+	public setTime(time: Time, client: EventClient) {
 		this.timeData.time = {
 			hours: Math.max(0, Math.min(23, time.hours)),
 			minutes: Math.max(0, Math.min(59, time.minutes)),
@@ -119,43 +119,43 @@ export class WorldManager {
 		}
 		this.lastBroadcastHour = this.timeData.time.hours
 
-		client.emit(Receiver.All, WorldEvents.SC.TimeSet, {
+		client.emit(Receiver.All, TimeEvents.SC.TimeSet, {
 			time: this.timeData.time
-		} as WorldTimeUpdateEventData)
+		} as TimeUpdateEventData)
 	}
 
 	public setTimeSpeed(timeSpeed: number, client: EventClient) {
 		this.timeData.timeSpeed = Math.max(100, timeSpeed) // Minimum 100ms per game minute
 		this.startTime()
 
-		client.emit(Receiver.All, WorldEvents.SC.SpeedSet, {
+		client.emit(Receiver.All, TimeEvents.SC.SpeedSet, {
 			timeSpeed: this.timeData.timeSpeed
-		} as WorldTimeSpeedUpdateEventData)
+		} as TimeSpeedUpdateEventData)
 	}
 
 	public pause(client: EventClient) {
 		this.timeData.isPaused = true
-		client.emit(Receiver.All, WorldEvents.SC.Paused, {
+		client.emit(Receiver.All, TimeEvents.SC.Paused, {
 			isPaused: true
-		} as WorldTimePauseEventData)
+		} as TimePauseEventData)
 	}
 
 	public resume(client: EventClient) {
 		this.timeData.isPaused = false
-		client.emit(Receiver.All, WorldEvents.SC.Resumed, {
+		client.emit(Receiver.All, TimeEvents.SC.Resumed, {
 			isPaused: false
-		} as WorldTimePauseEventData)
+		} as TimePauseEventData)
 	}
 
 	private syncTime(client: EventClient) {
-		client.emit(Receiver.Sender, WorldEvents.SC.Sync, {
+		client.emit(Receiver.Sender, TimeEvents.SC.Sync, {
 			time: this.timeData.time,
 			isPaused: this.timeData.isPaused,
 			timeSpeed: this.timeData.timeSpeed
-		} as WorldTimeSyncEventData)
+		} as TimeSyncEventData)
 	}
 
-	public getCurrentTime(): WorldTime {
+	public getCurrentTime(): Time {
 		return { ...this.timeData.time }
 	}
 

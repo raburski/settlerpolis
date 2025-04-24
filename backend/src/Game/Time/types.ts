@@ -1,4 +1,4 @@
-export interface WorldTime {
+export interface Time {
 	hours: number
 	minutes: number
 	day: number
@@ -6,26 +6,26 @@ export interface WorldTime {
 	year: number
 }
 
-export interface WorldTimeData {
-	time: WorldTime
+export interface TimeData {
+	time: Time
 	isPaused: boolean
 	timeSpeed: number // real ms to ingame minute
 }
 
-export interface WorldTimeUpdateEventData {
-	time: WorldTime
+export interface TimeUpdateEventData {
+	time: Time
 }
 
-export interface WorldTimeSpeedUpdateEventData {
+export interface TimeSpeedUpdateEventData {
 	timeSpeed: number
 }
 
-export interface WorldTimePauseEventData {
+export interface TimePauseEventData {
 	isPaused: boolean
 }
 
-export interface WorldTimeSyncEventData {
-	time: WorldTime
+export interface TimeSyncEventData {
+	time: Time
 	isPaused: boolean
 	timeSpeed: number
 }

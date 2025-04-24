@@ -11,7 +11,8 @@ import { NPCEvents } from '../NPC/events'
 import { NPCManager } from '../NPC'
 import { Position } from '../../types'
 import { PlayersManager } from '../Players'
-import { WorldManager } from '../World'
+import { TimeManager } from '../Time'
+import { Time } from '../Time/types'
 
 export class ConditionEffectManager {
 	constructor(
@@ -21,7 +22,7 @@ export class ConditionEffectManager {
 		private affinityManager: AffinityManager,
 		private npcManager: NPCManager,
 		private playersManager: PlayersManager,
-		private worldManager: WorldManager
+		private timeManager: TimeManager
 	) {}
 
 	/**
@@ -359,7 +360,7 @@ export class ConditionEffectManager {
 	 */
 	public checkTimeCondition(condition: TimeRange): boolean {
 		const { before, after } = condition
-		const currentTime = this.worldManager.getCurrentTime()
+		const currentTime = this.timeManager.getCurrentTime()
 		const currentTimeString = `${currentTime.hours.toString().padStart(2, '0')}:${currentTime.minutes.toString().padStart(2, '0')}`
 
 		if (before && currentTimeString >= before) {
@@ -378,7 +379,7 @@ export class ConditionEffectManager {
 	 */
 	public checkDateCondition(condition: DateRange): boolean {
 		const { day, month, year, before, after } = condition
-		const currentTime = this.worldManager.getCurrentTime()
+		const currentTime = this.timeManager.getCurrentTime()
 
 		// Check exact date match
 		if (day !== undefined && currentTime.day !== day) {

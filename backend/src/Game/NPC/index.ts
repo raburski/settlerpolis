@@ -6,7 +6,7 @@ import { DialogueManager } from '../Dialogue'
 import { PlayerJoinData, PlayerTransitionData, Position } from '../../types'
 import { AffinitySentimentType } from '../Affinity/types'
 import { MapManager } from '../Map'
-import { WorldManager } from '../World'
+import { TimeManager } from '../Time'
 import { DialogueEvents } from '../Dialogue/events'
 import { DialogueContinueData } from '../Dialogue/types'
 
@@ -85,7 +85,7 @@ export class NPCManager {
 		private event: EventManager,
 		private dialogueManager: DialogueManager,
 		private mapManager: MapManager,
-		private worldManager: WorldManager
+		private timeManager: TimeManager
 	) {
 		// Add example NPCs
 		this.npcs.set(EXAMPLE_NPC.id, EXAMPLE_NPC)
@@ -152,7 +152,7 @@ export class NPCManager {
 				const pausedStep = this.pausedRoutines.get(data.dialogueId)
 				if (pausedStep) {
 					// Check if we should execute the paused step now
-					const currentTime = this.worldManager.getFormattedTime()
+					const currentTime = this.timeManager.getFormattedTime()
 					if (currentTime === pausedStep.time) {
 						this.executeRoutineStep(data.dialogueId, pausedStep)
 					}
@@ -265,7 +265,7 @@ export class NPCManager {
 	}
 
 	private checkAllRoutines() {
-		const currentTime = this.worldManager.getFormattedTime()
+		const currentTime = this.timeManager.getFormattedTime()
 
 		for (const npc of this.npcs.values()) {
 			if (npc.routine) {
