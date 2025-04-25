@@ -1,9 +1,12 @@
 import { GameManager, EventManager } from '@rugged/game'
 import { LocalManager } from "./LocalManager"
 import { NetworkEventManager, NetworkManager } from "./NetworkManager"
-import * as content from '../../../../backend/src/content'
 
 const IS_REMOTE_GAME = false
+const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT
+
+const contentModules = import.meta.glob('../../../../../content/*/index.ts', { eager: true })
+const content = contentModules[`../../../../../content/${CONTENT_FOLDER}/index.ts`]
 
 function getNetworkManager(): NetworkEventManager {
     if (IS_REMOTE_GAME) {

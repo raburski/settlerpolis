@@ -6,7 +6,8 @@ import dotenv from 'dotenv'
 import { NetworkManager } from './NetworkManager'
 import { GameManager, GameContent } from '@rugged/game'
 import { EventBusManager } from './EventBusManager'
-import { cutscenes, flags, items, npcs, quests, schedules, triggers } from './content'
+import path from 'path'
+import fs from 'fs'
 
 process.on('uncaughtException', (err) => {
 	console.error('Uncaught Exception:', err)
@@ -40,16 +41,17 @@ const network = new NetworkManager(io)
 // Create event bus manager instance that wraps network manager
 const eventBus = new EventBusManager(network)
 
-// Load content statically
-const content: GameContent = {
-	items,
-	quests,
-	npcs,
-	cutscenes,
-	flags,
-	schedules,
-	triggers
+// Load content based on environment variable
+const CONTENT_FOLDER = process.env.GAME_CONTENT || 'debug'
+const contentPath = path.join(__dirname, '..', '..', '..', 'content', CONTENT_FOLDER)
+
+if (!fs.existsSync(contentPath)) {
+	console.error(`Content folder "${CONTENT_FOLDER}" not found at path: ${contentPath}`)
+	console.error('Please make sure the content folder exists and GAME_CONTENT environment variable is set correctly')
+	process.exit(1)
 }
+
+const content: GameContent = require(path.join(contentPath, 'index.ts'))
 
 // Create game manager instance with event bus and content
 const game = new GameManager(eventBus, content)

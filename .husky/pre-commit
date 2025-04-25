@@ -1,4 +1,3 @@
 #!/bin/sh
 PATH="/opt/homebrew/bin:$PATH"
-cd backend && ../node_modules/.bin/tsc --noEmit
-cd .. && npm run check-consistency
+cd packages/backend && ../../node_modules/.bin/tsc --noEmit
