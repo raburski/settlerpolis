@@ -1,8 +1,7 @@
 import { EventManager, Event, EventClient } from '../../events'
-import { AffinitySentimentType, AffinityData, AffinityUpdateEventData, AffinityUpdatedEventData, AffinityListEventData, AffinitySCUpdateEventData } from './types'
+import { AffinitySentimentType, AffinityData, AffinityUpdateEventData, AffinityUpdatedEventData, AffinityListEventData, AffinitySCUpdateEventData, AffinitySentiments } from './types'
 import { AffinityEvents } from './events'
 import { Receiver } from '../../Receiver'
-import { NPCSentimentWeights } from './content'
 import { getOverallNPCApproach } from './utils'
 
 export class AffinityManager {
@@ -12,7 +11,6 @@ export class AffinityManager {
 	constructor(
 		private event: EventManager
 	) {
-		this.loadAffinityWeights()
 		this.setupEventHandlers()
 	}
 
@@ -35,9 +33,9 @@ export class AffinityManager {
 		})
 	}
 
-	private loadAffinityWeights() {
+	public loadAffinityWeights(affinityWeights: Record<string, AffinitySentiments>) {
 		// Load weights from content file into the private map
-		Object.entries(NPCSentimentWeights).forEach(([npcId, weights]) => {
+		Object.entries(affinityWeights).forEach(([npcId, weights]) => {
 			this.npcWeights.set(npcId, weights)
 		})
 	}

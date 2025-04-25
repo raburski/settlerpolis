@@ -4,16 +4,17 @@ import { execSync } from 'child_process'
 
 // Configuration
 const GAME_MODULES_PATH = path.resolve(__dirname, '../src/Game')
+const CONTENT_PATH = path.resolve(__dirname, '../src/content')
 const OUTPUT_FILE_PATH = path.resolve(__dirname, './defs.ts')
 
 const allEvents: Record<string, Record<string, Record<string, string>>> = {}
 const allTypes: string[] = []
 
-// Function to get all subdirectories in the Game folder
-function getGameModules(): string[] {
-	const modules = fs.readdirSync(GAME_MODULES_PATH)
+// Function to get all subdirectories in a folder
+function getSubdirectories(folderPath: string): string[] {
+	const modules = fs.readdirSync(folderPath)
 		.filter(item => {
-			const itemPath = path.join(GAME_MODULES_PATH, item)
+			const itemPath = path.join(folderPath, item)
 			return fs.statSync(itemPath).isDirectory() && item !== 'node_modules'
 		})
 	
@@ -22,7 +23,22 @@ function getGameModules(): string[] {
 
 // Function to extract types and events from a module
 function extractTypesAndEvents(rootPath: string) {
-	const modules = getGameModules()
+	// First check for types.ts in the root directory
+	const rootTypesPath = path.join(rootPath, 'types.ts')
+	if (fs.existsSync(rootTypesPath)) {
+		try {
+			const content = fs.readFileSync(rootTypesPath, 'utf8')
+			// Remove import statements
+			const contentWithoutImports = content.replace(/^import.*$/gm, '').trim()
+			if (contentWithoutImports) {
+				allTypes.push(contentWithoutImports)
+			}
+		} catch (err) {
+			console.error(`Error reading ${rootTypesPath}:`, err)
+		}
+	}
+
+	const modules = getSubdirectories(rootPath)
 	
 	// Function to recursively process files
 	function processDirectory(dirPath: string) {
@@ -41,7 +57,11 @@ function extractTypesAndEvents(rootPath: string) {
 				if (fs.existsSync(typesPath)) {
 					try {
 						const content = fs.readFileSync(typesPath, 'utf8')
-						allTypes.push(content)
+						// Remove import statements
+						const contentWithoutImports = content.replace(/^import.*$/gm, '').trim()
+						if (contentWithoutImports) {
+							allTypes.push(contentWithoutImports)
+						}
 					} catch (err) {
 						console.error(`Error reading ${typesPath}:`, err)
 					}
@@ -132,7 +152,11 @@ function objectToTypeScript(obj: Record<string, any>, indent: number = 0): strin
 
 // Main function to generate the consolidated file
 function generateDefsFile() {
+	// Extract types and events from Game modules
 	extractTypesAndEvents(GAME_MODULES_PATH)
+	
+	// Extract types from Content directory
+	extractTypesAndEvents(CONTENT_PATH)
 	
 	// Remove duplicates from types
 	const uniqueTypes = [...new Set(allTypes)]
@@ -153,7 +177,6 @@ export const Event = ${objectToTypeScript(allEvents)}
 	// Write to file
 	fs.writeFileSync(OUTPUT_FILE_PATH, outputContent)
 	console.log(`Generated definitions file at: ${OUTPUT_FILE_PATH}`)
-	console.log('Events:', JSON.stringify(allEvents, null, 2))
 }
 
 // Execute the script

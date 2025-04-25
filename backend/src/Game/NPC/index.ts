@@ -14,66 +14,6 @@ const TO_FIX_HARDODED_MAP_ID = 'test1'
 const MOVEMENT_STEP_LAG = 100
 const ROUTINE_CHECK_INTERVAL = 60000 // Check routines every minute
 
-// Example NPC data
-const EXAMPLE_NPC: NPC = {
-	id: 'innkeeper',
-	name: 'Innkeeper',
-	position: { x: 100, y: 400 },
-	scene: 'FarmScene',
-	speed: 120,
-	messages: {
-		default: "Welcome to the inn!"
-	}
-}
-
-const GUARD_NPC: NPC = {
-	id: 'guard',
-	name: 'Guard',
-	position: { x: 300, y: 400 },
-	scene: 'FarmScene',
-	speed: 160,
-	messages: {
-		default: "Move along, citizen. Nothing to see here.",
-		conditions: [
-			{
-				check: () => {
-					const hour = new Date().getHours()
-					return hour >= 20 || hour < 6
-				},
-				message: "It's dangerous to wander around at night. Be careful!"
-			}
-		]
-	},
-	routine: {
-		steps: [
-			{ time: '00:00', spot: 'stand1', action: 'stand' },
-			{ time: '01:00', spot: 'stand2', action: 'stand' },
-			{ time: '02:00', spot: 'stand1', action: 'stand' },
-			{ time: '03:00', spot: 'stand2', action: 'stand' },
-			{ time: '04:00', spot: 'stand1', action: 'stand' },
-			{ time: '05:00', spot: 'stand2', action: 'stand' },
-			{ time: '06:00', spot: 'stand1', action: 'stand' },
-			{ time: '07:00', spot: 'stand2', action: 'stand' },
-			{ time: '08:00', spot: 'stand1', action: 'stand' },
-			{ time: '09:00', spot: 'stand2', action: 'stand' },
-			{ time: '10:00', spot: 'stand1', action: 'stand' },
-			{ time: '11:00', spot: 'stand2', action: 'stand' },
-			{ time: '12:00', spot: 'stand1', action: 'stand' },
-			{ time: '13:00', spot: 'stand2', action: 'stand' },
-			{ time: '14:00', spot: 'stand1', action: 'stand' },
-			{ time: '15:00', spot: 'stand2', action: 'stand' },
-			{ time: '16:00', spot: 'stand1', action: 'stand' },
-			{ time: '17:00', spot: 'stand2', action: 'stand' },
-			{ time: '18:00', spot: 'stand1', action: 'stand' },
-			{ time: '19:00', spot: 'stand2', action: 'stand' },
-			{ time: '20:00', spot: 'stand1', action: 'stand' },
-			{ time: '21:00', spot: 'stand2', action: 'stand' },
-			{ time: '22:00', spot: 'stand1', action: 'stand' },
-			{ time: '23:00', spot: 'stand2', action: 'stand' }
-		]
-	}
-}
-
 export class NPCManager {
 	private npcs: Map<string, NPC> = new Map()
 	private movementTimeouts: Map<string, NodeJS.Timeout> = new Map()
@@ -87,11 +27,14 @@ export class NPCManager {
 		private mapManager: MapManager,
 		private timeManager: TimeManager
 	) {
-		// Add example NPCs
-		this.npcs.set(EXAMPLE_NPC.id, EXAMPLE_NPC)
-		this.npcs.set(GUARD_NPC.id, GUARD_NPC)
 		this.setupEventHandlers()
 		this.startRoutineCheck()
+	}
+
+	public loadNPCs(npcs: NPC[]) {
+		npcs.forEach(npc => {
+			this.npcs.set(npc.id, npc)
+		})
 	}
 
 	private setupEventHandlers() {

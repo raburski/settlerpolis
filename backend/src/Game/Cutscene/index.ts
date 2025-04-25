@@ -4,19 +4,16 @@ import { CutsceneEvents } from './events'
 import { Cutscene, CutsceneTriggerEventData } from './types'
 import { FXEvents } from '../FX/events'
 import { FXType } from '../FX/types'
-import { cutscenes } from './content'
 
 export class CutsceneManager {
 	private cutscenes: Map<string, Cutscene> = new Map()
 	private activeCutscenes: Map<string, { cutscene: Cutscene, currentStep: number }> = new Map()
 
 	constructor(private eventManager: EventManager) {
-		this.initializeCutscenes()
 		this.setupEventListeners()
 	}
 
-	private initializeCutscenes() {
-		// Load cutscenes from content directory
+	public loadCutscenes(cutscenes: Cutscene[]) {
 		cutscenes.forEach(cutscene => {
 			this.cutscenes.set(cutscene.id, cutscene)
 		})

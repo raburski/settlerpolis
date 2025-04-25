@@ -2,12 +2,13 @@ import { EventManager, Event, EventClient } from '../../events'
 import { Receiver } from '../../Receiver'
 import { DialogueNode, DialogueOption, DialogueTree, DialogueState, DialogueItem, DialogueEvent, DialogueContinueData, DialogueChoiceData } from './types'
 import { DialogueEvents } from './events'
-import { AllDialogues } from './content'
 import { QuestManager } from "../Quest"
 import { v4 as uuidv4 } from 'uuid'
 import { FXEvents } from "../FX/events"
 import { CutsceneEvents } from "../Cutscene/events"
 import { ConditionEffectManager } from "../ConditionEffect"
+
+const DEFAULT_START_NODE = 'start'
 
 export class DialogueManager {
 	private dialogues = new Map<string, DialogueTree>()
@@ -20,7 +21,6 @@ export class DialogueManager {
 		private questManager: QuestManager
 	) {
 		this.setupEventHandlers()
-		this.loadDialogues()
 	}
 
 	set conditionEffectManager(manager: ConditionEffectManager) {
@@ -34,10 +34,9 @@ export class DialogueManager {
 		return this._conditionEffectManager
 	}
 
-	private loadDialogues() {
+	public loadDialogues(dialogues: DialogueTree[]) {
 		try {
-			// Load dialogues from the content directory
-			AllDialogues.forEach(dialogue => {
+			dialogues.forEach(dialogue => {
 				this.registerDialogue(dialogue)
 			})
 		} catch (error) {
@@ -223,7 +222,7 @@ export class DialogueManager {
 		if (!dialogue) return false
 
 		// Use quest-specific node if available, otherwise use default start node
-		const startNodeId = questDialogue?.nodeId || dialogue.startNode
+		const startNodeId = questDialogue?.nodeId || dialogue.startNode || DEFAULT_START_NODE
 		const startNode = dialogue.nodes[startNodeId]
 		if (!startNode) return false
 
@@ -250,10 +249,10 @@ export class DialogueManager {
 		const dialogue = this.dialogues.get(dialogueId)
 		if (!dialogue) return
 
-		const currentNodeId = this.currentNodes.get(clientId)
-		if (!currentNodeId) return dialogue.nodes[dialogue.startNode]
+		const nodeId = this.currentNodes.get(clientId)
+		if (!nodeId) return
 
-		return dialogue.nodes[currentNodeId]
+		return dialogue.nodes[nodeId]
 	}
 
 	private endDialogue(client: EventClient) {
@@ -262,20 +261,15 @@ export class DialogueManager {
 
 		this.activeDialogues.delete(client.id)
 		this.currentNodes.delete(client.id)
-		client.emit(Receiver.Sender, DialogueEvents.SC.End, { dialogueId })
+
+		client.emit(Receiver.Sender, DialogueEvents.SC.End, {
+			dialogueId
+		})
 	}
 
 	public getNPCActiveDialogues(npcId: string): string[] {
-		const activeDialogueIds: string[] = []
-		
-		// Iterate through all active dialogues
-		for (const [clientId, dialogueId] of this.activeDialogues.entries()) {
-			const dialogue = this.dialogues.get(dialogueId)
-			if (dialogue && dialogue.npcId === npcId) {
-				activeDialogueIds.push(clientId)
-			}
-		}
-		
-		return activeDialogueIds
+		return Array.from(this.dialogues.values())
+			.filter(dialogue => dialogue.npcId === npcId)
+			.map(dialogue => dialogue.id)
 	}
 } 

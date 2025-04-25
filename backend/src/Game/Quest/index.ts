@@ -11,7 +11,6 @@ import {
 	QuestCompleteResponse,
 	QuestScope
 } from './types'
-import { AllQuests } from './quests'
 import { InventoryManager } from "../Inventory"
 import { ConditionEffectManager } from "../ConditionEffect"
 
@@ -27,7 +26,6 @@ export class QuestManager {
 		private event: EventManager, 
 		private inventoryManager: InventoryManager
 	) {
-		this.loadQuests()
 		this.setupEventHandlers()
 	}
 
@@ -42,8 +40,8 @@ export class QuestManager {
 		return this._conditionEffectManager
 	}
 
-	private loadQuests() {
-		for (const quest of AllQuests) {
+	public loadQuests(quests: Quest[]) {
+		for (const quest of quests) {
 			this.quests.set(quest.id, quest)
 			
 			// Index quest steps by their trigger events

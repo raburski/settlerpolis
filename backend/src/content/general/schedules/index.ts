@@ -1,6 +1,6 @@
-import { Event } from '../../../events'
-import { ScheduleOptions } from '../types'
-import { ScheduleType } from '../types'
+import { Event } from "../../../events"
+import { ScheduleOptions } from "../../../Game/Scheduler/types"
+import { ScheduleType } from "../../../Game/Scheduler/types"
 
 // Guard shift changes throughout the day
 export const guardShiftSchedules: ScheduleOptions[] = [
@@ -96,4 +96,50 @@ export const shopSchedules: ScheduleOptions[] = [
 			value: '17:00' // 5:00 PM in-game time
 		}
 	}
+]
+
+export const itemDropSchedules: ScheduleOptions[] = [
+	{
+		eventType: Event.Loot.SS.Spawn,
+		schedule: {
+			type: ScheduleType.Interval,
+			value: 10000
+		},
+		payload: {
+			itemType: 'mozgotrzep',
+			position: {
+				x: { min: 100, max: 300 },
+				y: { min: 300, max: 500 }
+			},
+			scene: 'FarmScene'
+		}
+	}
 ] 
+
+
+// Time-based schedules
+export const timeSchedules: ScheduleOptions[] = [
+	{
+		id: 'day-night-cycle',
+		eventType: Event.Time.SC.Updated,
+		payload: {
+			time: {
+				hours: 0,
+				minutes: 0
+			}
+		},
+		schedule: {
+			type: ScheduleType.GameTime,
+			value: '00:00' // Midnight in-game time
+		}
+	}
+]
+
+// Combine all schedules
+export const schedules: ScheduleOptions[] = [
+	...guardShiftSchedules,
+	...innkeeperSchedules,
+	...shopSchedules,
+	...itemDropSchedules,
+	...timeSchedules
+]

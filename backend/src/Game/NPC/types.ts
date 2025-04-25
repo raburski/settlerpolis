@@ -1,6 +1,6 @@
 import { Position } from '../../types'
 import { PlayerSourcedData } from '../Players/types'
-import { AffinitySentimentType } from '../Affinity/types'
+import { AffinityData, AffinitySentiments, AffinitySentimentType } from '../Affinity/types'
 
 export interface NPCMessageCondition {
 	check: () => boolean

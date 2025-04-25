@@ -23,7 +23,6 @@ export type ScheduledEvent = {
 	isActive: boolean
 	createdAt: Time
 }
-
 export type ScheduleOptions = {
 	id?: string // Optional - will be auto-generated if not provided
 	eventType: string
@@ -36,3 +35,4 @@ export type ScheduleOptions = {
 		year?: number
 	}
 }
+

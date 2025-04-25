@@ -1,51 +1,7 @@
-import { Event } from "../../../events"
-import { FlagScope } from "../../Flags/types"
-import { DialogueTree, DialogueTreePartial } from '../types'
-import { dialogueCompose } from '../utils'
-import { AffinitySentimentType } from '../../Affinity/types'
-import { FXType } from '../../FX/types'
+import { AffinitySentimentType } from "../../../../../Game/Affinity/types";
+import { DialogueTreePartial } from "../../../../../types";
 
-const freeDrinkDialogue: DialogueTreePartial = {
-	nodes: {
-		start: {
-			options: [
-				{
-					id: "ask_drink",
-					text: "I could use a drink.",
-					next: "drink_response",
-					condition: {
-						flag: { notExists: 'innkeeper.free_drink', scope: FlagScope.Player },
-					}
-				},
-			]
-		},
-		drink_response: {
-			speaker: "Innkeeper",
-			text: "Here's our finest mozgotrzep! That'll be... oh wait, first one's on the house!",
-			options: [
-				{
-					id: "accept_drink",
-					text: "Thanks!",
-					effect: { 
-						flag: { set: 'innkeeper.free_drink', scope: FlagScope.Player },
-						npc: {
-							id: 'innkeeper',
-							affinity: {
-								sentimentType: AffinitySentimentType.Trust,
-								add: 5
-							}
-						}
-					},
-					item: {
-						itemType: "mozgotrzep"
-					},
-				}
-			]
-		},
-	}
-}
-
-const mozgotrzepQuestDialogue: DialogueTreePartial = {
+export const mozgotrzepQuestDialogue: DialogueTreePartial = {
 	nodes: {
 		start: {
 			options: [
@@ -178,54 +134,3 @@ const mozgotrzepQuestDialogue: DialogueTreePartial = {
 		}
 	}
 }
-
-const dialogueDefault: DialogueTreePartial = {
-	nodes: {
-		start: {
-			speaker: "Innkeeper",
-			text: "Welcome to my inn, traveler! How can I help you today?",
-			options: [
-				{
-					id: "ask_room",
-					text: "Do you have any rooms available?",
-					next: "room_response"
-				},
-				{
-					id: "goodbye",
-					text: "Nothing, just looking around.",
-					next: "goodbye_response"
-				},
-				{
-					id: "try_fx",
-					text: "FX Testing",
-					effect: {
-						cutscene: { trigger: 'intro' }
-					}
-				},
-			]
-		},
-		room_response: {
-			speaker: "Innkeeper",
-			text: "We do have rooms available, but they are all currently under renovation. Check back later!",
-			options: [
-				{
-					id: "back_to_greeting",
-					text: "Let me ask you something else.",
-					next: "start"
-				}
-			]
-		},
-		goodbye_response: {
-			speaker: "Innkeeper",
-			text: "Feel free to look around. Let me know if you need anything!"
-		}
-	},
-	startNode: "start"
-} 
-
-export const dialogue = dialogueCompose(
-	{ id: 'innkeeper_greeting', npcId: 'innkeeper' }, 
-	dialogueDefault, 
-	mozgotrzepQuestDialogue, 
-	freeDrinkDialogue
-)

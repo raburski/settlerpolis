@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { EventBus } from '../EventBus'
-import { WorldEvents } from '../../../backend/src/Game/World/events'
-import { WorldTime } from '../../../backend/src/Game/World/types'
+import { EventBus } from '../../game/EventBus'
+import { TimeEvents } from '../../../backend/src/Game/Time/events'
+import { Time } from '../../../backend/src/Game/Time/types'
 import styles from './World.module.css'
 
 export const World = () => {
-	const [time, setTime] = useState<WorldTime>({
-		hours: 8,
+	const [time, setTime] = useState<Time>({
+		hours: 0,
 		minutes: 0,
 		day: 1,
 		month: 1,
@@ -15,11 +15,11 @@ export const World = () => {
 	const [isPaused, setIsPaused] = useState(false)
 
 	useEffect(() => {
-		const handleTimeUpdate = (data: { time: WorldTime }) => {
+		const handleTimeUpdate = (data: { time: Time }) => {
 			setTime(data.time)
 		}
 
-		const handleTimeSync = (data: { time: WorldTime, isPaused: boolean }) => {
+		const handleTimeSync = (data: { time: Time, isPaused: boolean }) => {
 			setTime(data.time)
 			setIsPaused(data.isPaused)
 		}
@@ -28,16 +28,16 @@ export const World = () => {
 			setIsPaused(data.isPaused)
 		}
 
-		EventBus.on(WorldEvents.SC.Updated, handleTimeUpdate)
-		EventBus.on(WorldEvents.SC.Sync, handleTimeSync)
-		EventBus.on(WorldEvents.SC.Paused, handlePause)
-		EventBus.on(WorldEvents.SC.Resumed, handlePause)
+		EventBus.on(TimeEvents.SC.Updated, handleTimeUpdate)
+		EventBus.on(TimeEvents.SC.Sync, handleTimeSync)
+		EventBus.on(TimeEvents.SC.Paused, handlePause)
+		EventBus.on(TimeEvents.SC.Resumed, handlePause)
 
 		return () => {
-			EventBus.off(WorldEvents.SC.Updated, handleTimeUpdate)
-			EventBus.off(WorldEvents.SC.Sync, handleTimeSync)
-			EventBus.off(WorldEvents.SC.Paused, handlePause)
-			EventBus.off(WorldEvents.SC.Resumed, handlePause)
+			EventBus.off(TimeEvents.SC.Updated, handleTimeUpdate)
+			EventBus.off(TimeEvents.SC.Sync, handleTimeSync)
+			EventBus.off(TimeEvents.SC.Paused, handlePause)
+			EventBus.off(TimeEvents.SC.Resumed, handlePause)
 		}
 	}, [])
 

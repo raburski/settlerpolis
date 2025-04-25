@@ -128,4 +128,8 @@ export class FlagsManager {
 		const flag = this.getFlag(name, scope, playerId, mapId)
 		return flag ? flag.value : undefined
 	}
+
+	public loadFlags() {
+		// TODO: Implement flag loading from content
+	}
 } 

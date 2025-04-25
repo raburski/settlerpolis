@@ -18,6 +18,7 @@ import { ConditionEffectManager } from './ConditionEffect'
 import { MapManager } from './Map'
 import { TriggerManager } from './Triggers'
 import { TimeManager } from "./Time"
+import { ContentLoader } from './ContentLoader'
 
 export class GameManager {
 	private chatManager: ChatManager
@@ -38,6 +39,7 @@ export class GameManager {
 	private mapManager: MapManager
 	private triggerManager: TriggerManager
 	private timeManager: TimeManager
+	private contentLoader: ContentLoader
 
 	constructor(private event: EventManager) {
 		// Initialize managers in dependency order
@@ -87,6 +89,20 @@ export class GameManager {
 		this.dialogueManager.conditionEffectManager = this.conditionEffectManager
 		this.questManager.conditionEffectManager = this.conditionEffectManager
 		this.triggerManager.conditionEffectManager = this.conditionEffectManager
+
+		// Initialize ContentLoader with all required dependencies
+		this.contentLoader = new ContentLoader(
+			this.cutsceneManager,
+			this.dialogueManager,
+			this.flagsManager,
+			this.itemsManager,
+			this.mapManager,
+			this.npcManager,
+			this.questManager,
+			this.scheduler,
+			this.triggerManager,
+			this.affinityManager
+		)
 		
 		this.setupEventHandlers()
 	}

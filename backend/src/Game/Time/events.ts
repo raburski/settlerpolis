@@ -1,5 +1,3 @@
-import { Event } from '../../events'
-
 export const TimeEvents = {
 	SS: {
 		Update: 'time:ss:update',

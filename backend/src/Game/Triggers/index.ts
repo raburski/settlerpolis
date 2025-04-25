@@ -6,7 +6,6 @@ import { NPCManager } from '../NPC'
 import { ConditionEffectManager } from '../ConditionEffect'
 import { Position } from '../../types'
 import { MapManager } from '../Map'
-import { triggers } from './content'
 
 const PROXIMITY_DEACTIVATION_BUFFER = 50 // pixels
 const TO_FIX_HARDODED_MAP_ID = 'test1'
@@ -23,11 +22,13 @@ export class TriggerManager {
 	constructor(
 		private event: EventManager,
 		private npcManager: NPCManager,
-		private mapManager: MapManager,
-		triggersToLoad: Trigger[] = triggers
+		private mapManager: MapManager
 	) {
-		this.initializeTriggers(triggersToLoad)
 		this.setupEventHandlers()
+	}
+
+	public loadTriggers(triggers: Trigger[]): void {
+		this.initializeTriggers(triggers)
 	}
 
 	set conditionEffectManager(manager: ConditionEffectManager) {

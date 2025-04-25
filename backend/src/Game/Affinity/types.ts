@@ -59,11 +59,12 @@ export enum OverallNPCApproach {
 	Hateful = 'hateful'         // Hates player deeply
 }
 
+export type AffinitySentiments = Record<AffinitySentimentType, number>
 // Define the structure for affinity data
 export interface AffinityData {
 	playerId: string
 	npcId: string
-	sentiments: Record<AffinitySentimentType, number>
+	sentiments: AffinitySentiments
 	lastUpdated: number
 	overallScore?: number
 	approach?: OverallNPCApproach

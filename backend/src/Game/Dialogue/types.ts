@@ -42,7 +42,7 @@ export interface DialogueTreePartial {
 
 export interface DialogueTree extends DialogueTreePartial {
 	id: string
-	startNode: string
+	startNode?: string
 	npcId: string
 }
 

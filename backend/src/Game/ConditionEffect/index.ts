@@ -318,7 +318,6 @@ export class ConditionEffectManager {
 		
 		// Get player position from PlayersManager
 		const player = this.playersManager.getPlayer(client.id)
-		console.log('get player', player)
 		if (!player) return false
 		
 		// Check proximity if specified

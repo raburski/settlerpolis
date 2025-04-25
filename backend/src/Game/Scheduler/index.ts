@@ -8,7 +8,6 @@ import { Time } from '../Time/types'
 import { CronExpressionParser } from 'cron-parser'
 import { v4 as uuidv4 } from 'uuid'
 import { Receiver } from "../../Receiver"
-import { defaultSchedules } from "./content"
 
 export class Scheduler {
 	private scheduledEvents: Map<string, ScheduledEvent> = new Map()
@@ -18,11 +17,9 @@ export class Scheduler {
 	constructor(
 		private event: EventManager,
 		timeManager: TimeManager,
-		schedules: ScheduleOptions[] = defaultSchedules
 	) {
 		this.timeManager = timeManager
 		this.setupEventHandlers()
-		this.loadSchedules(schedules)
 	}
 
 	private setupEventHandlers() {

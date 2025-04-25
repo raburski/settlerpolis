@@ -1,5 +1,5 @@
-import { Trigger, TriggerOption } from './types'
-import { AffinitySentimentType } from '../Affinity/types'
+import { AffinitySentimentType } from "../../../Game/Affinity/types";
+import { Trigger, TriggerOption } from "../../../Game/Triggers/types";
 
 export const triggers: Trigger[] = [
 	{
