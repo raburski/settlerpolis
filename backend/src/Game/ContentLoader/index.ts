@@ -8,13 +8,13 @@ import { NPCManager } from "../NPC"
 import { QuestManager } from "../Quest"
 import { Scheduler } from "../Scheduler"
 import { TriggerManager } from "../Triggers"
-
-import { cutscenes, flags, items, npcs, quests, schedules, triggers } from '../../content'
 import { dialogueCompose } from "../Dialogue/utils"
 import { DialogueTree } from "../Dialogue/types"
+import { GameContent } from "../types"
 
 export class ContentLoader {
 	constructor(
+		private content: GameContent,
 		private cutscene: CutsceneManager,
 		private dialogue: DialogueManager,
 		private flag: FlagsManager,
@@ -27,7 +27,7 @@ export class ContentLoader {
 		private affinity: AffinityManager,
 		private debug: boolean = true
 	) {
-        this.loadAllContent()
+		this.loadAllContent()
 	}
 
 	public async loadAllContent() {
@@ -39,7 +39,7 @@ export class ContentLoader {
 			this.loadItems(),
 			this.loadQuests(),
 			this.loadNPCs(),
-            this.loadDialogues(),
+			this.loadDialogues(),
 			this.loadCutscenes(),
 			this.loadFlags(),
 			this.loadSchedules(),
@@ -64,29 +64,29 @@ export class ContentLoader {
 
 	private async loadItems() {
 		if (this.debug) {
-			console.log('[ContentLoader] Loading items:', items)
+			console.log('[ContentLoader] Loading items:', this.content.items)
 		}
-		await this.item.loadItems(items)
+		await this.item.loadItems(this.content.items)
 	}
 
 	private async loadQuests() {
 		if (this.debug) {
-			console.log('[ContentLoader] Loading quests:', quests)
+			console.log('[ContentLoader] Loading quests:', this.content.quests)
 		}
-		await this.quest.loadQuests(quests)
+		await this.quest.loadQuests(this.content.quests)
 	}
 
 	private async loadNPCs() {
 		if (this.debug) {
-			console.log('[ContentLoader] Loading NPCs:', npcs)
+			console.log('[ContentLoader] Loading NPCs:', this.content.npcs)
 		}
-		await this.npc.loadNPCs(npcs)
+		await this.npc.loadNPCs(this.content.npcs)
 	}
 
-    private async loadDialogues() {
-        const dialogues: DialogueTree[] = npcs
-            .map((npc) => npc.dialogues ? dialogueCompose({ id: `${npc.id}_dialogues`, npcId: npc.id }, ...npc.dialogues) : undefined)
-            .filter(Boolean) as DialogueTree[]
+	private async loadDialogues() {
+		const dialogues: DialogueTree[] = this.content.npcs
+			.map((npc) => npc.dialogues ? dialogueCompose({ id: `${npc.id}_dialogues`, npcId: npc.id }, ...npc.dialogues) : undefined)
+			.filter(Boolean) as DialogueTree[]
 
 		if (this.debug) {
 			console.log('[ContentLoader] Loading dialogues:', dialogues)
@@ -96,34 +96,34 @@ export class ContentLoader {
 
 	private async loadCutscenes() {
 		if (this.debug) {
-			console.log('[ContentLoader] Loading cutscenes:', cutscenes)
+			console.log('[ContentLoader] Loading cutscenes:', this.content.cutscenes)
 		}
-		await this.cutscene.loadCutscenes(cutscenes)
+		await this.cutscene.loadCutscenes(this.content.cutscenes)
 	}
 
 	private async loadFlags() {
 		if (this.debug) {
-			console.log('[ContentLoader] Loading flags:', flags)
+			console.log('[ContentLoader] Loading flags:', this.content.flags)
 		}
 		await this.flag.loadFlags()
 	}
 
 	private async loadSchedules() {
 		if (this.debug) {
-			console.log('[ContentLoader] Loading schedules:', schedules)
+			console.log('[ContentLoader] Loading schedules:', this.content.schedules)
 		}
-		await this.scheduler.loadSchedules(schedules)
+		await this.scheduler.loadSchedules(this.content.schedules)
 	}
 
 	private async loadTriggers() {
 		if (this.debug) {
-			console.log('[ContentLoader] Loading triggers:', triggers)
+			console.log('[ContentLoader] Loading triggers:', this.content.triggers)
 		}
-		await this.trigger.loadTriggers(triggers)
+		await this.trigger.loadTriggers(this.content.triggers)
 	}
 
 	private async loadAffinityWeights() {
-        const sentiments = npcs.reduce((acc, npc) => npc.sentiments ? {...acc, [npc.id]: npc.sentiments} : acc, {})
+		const sentiments = this.content.npcs.reduce((acc, npc) => npc.sentiments ? {...acc, [npc.id]: npc.sentiments} : acc, {})
 		if (this.debug) {
 			console.log('[ContentLoader] Loading affinity weights:', sentiments)
 		}

@@ -1,4 +1,4 @@
-import { NPCContent } from "../../types"
+import { NPCContent } from "../../../Game/types"
 import innkeeper from './innkeeper'
 import guard from './guard'
 

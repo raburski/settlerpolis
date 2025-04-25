@@ -1,7 +1,7 @@
 import { ItemMetadata, ItemCategory } from '../../../Game/Items/types'
 
-export const items: Record<string, ItemMetadata> = {
-	'mozgotrzep': {
+export const items: ItemMetadata[] = [
+    {
 		id: 'mozgotrzep',
 		name: 'Mózgotrzep',
 		emoji: '🍺',
@@ -10,7 +10,7 @@ export const items: Record<string, ItemMetadata> = {
 		stackable: true,
 		maxStackSize: 5,
 	},
-	'chainfolk_rug': {
+	{
 		id: 'chainfolk_rug',
 		name: 'Chainfolk Rug',
 		emoji: '🧶',
@@ -26,7 +26,7 @@ export const items: Record<string, ItemMetadata> = {
 			blocksPlacement: false
 		}
 	},
-	'mysterious_stone': {
+	{
 		id: 'mysterious_stone',
 		name: 'Mysterious Stone',
 		emoji: '💎',
@@ -35,4 +35,4 @@ export const items: Record<string, ItemMetadata> = {
 		stackable: true,
 		maxStackSize: 3
 	}
-} 
+]

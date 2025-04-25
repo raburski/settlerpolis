@@ -19,6 +19,7 @@ import { MapManager } from './Map'
 import { TriggerManager } from './Triggers'
 import { TimeManager } from "./Time"
 import { ContentLoader } from './ContentLoader'
+import { GameContent } from './types'
 
 export class GameManager {
 	private chatManager: ChatManager
@@ -41,7 +42,10 @@ export class GameManager {
 	private timeManager: TimeManager
 	private contentLoader: ContentLoader
 
-	constructor(private event: EventManager) {
+	constructor(
+		private event: EventManager,
+		private content: GameContent
+	) {
 		// Initialize managers in dependency order
 		this.timeManager = new TimeManager(event)
 		this.chatManager = new ChatManager(event)
@@ -92,6 +96,7 @@ export class GameManager {
 
 		// Initialize ContentLoader with all required dependencies
 		this.contentLoader = new ContentLoader(
+			this.content,
 			this.cutsceneManager,
 			this.dialogueManager,
 			this.flagsManager,

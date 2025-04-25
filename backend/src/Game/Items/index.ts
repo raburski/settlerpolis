@@ -9,8 +9,11 @@ export class ItemsManager {
 		this.setupEventHandlers()
 	}
 
-	public loadItems(items: Record<string, ItemMetadata>) {
-		this.itemsMetadata = items
+	public loadItems(items: ItemMetadata[]) {
+		this.itemsMetadata = items.reduce((acc, item) => {
+			acc[item.id] = item
+			return acc
+		}, {} as Record<string, ItemMetadata>)
 	}
 
 	private setupEventHandlers() {

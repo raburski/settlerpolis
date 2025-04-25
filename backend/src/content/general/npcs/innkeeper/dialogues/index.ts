@@ -44,12 +44,10 @@ const dialogueDefault: DialogueTreePartial = {
 		}
 	},
 	startNode: "start"
-} 
+}
 
-const dialogues = [
+export default [
     dialogueDefault,
     freeDrinkDialogue,
     mozgotrzepQuestDialogue,
 ]
-
-export default dialogues

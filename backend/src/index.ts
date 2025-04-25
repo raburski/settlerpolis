@@ -6,6 +6,8 @@ import dotenv from 'dotenv'
 import { NetworkManager } from './NetworkManager'
 import { GameManager } from './Game'
 import { EventBusManager } from './EventBusManager'
+import { cutscenes, flags, items, npcs, quests, schedules, triggers } from './content'
+import { GameContent } from './Game/types'
 
 process.on('uncaughtException', (err) => {
 	console.error('Uncaught Exception:', err)
@@ -39,8 +41,19 @@ const network = new NetworkManager(io)
 // Create event bus manager instance that wraps network manager
 const eventBus = new EventBusManager(network)
 
-// Create game manager instance with event bus
-const game = new GameManager(eventBus)
+// Load content statically
+const content: GameContent = {
+	items,
+	quests,
+	npcs,
+	cutscenes,
+	flags,
+	schedules,
+	triggers
+}
+
+// Create game manager instance with event bus and content
+const game = new GameManager(eventBus, content)
 
 // Add base path for API routes
 const apiRouter = express.Router()
