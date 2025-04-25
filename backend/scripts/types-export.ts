@@ -21,6 +21,27 @@ function getSubdirectories(folderPath: string): string[] {
 	return modules
 }
 
+// Function to get folder structure as a string
+function getFolderStructure(folderPath: string, indent: number = 0): string {
+	const items = fs.readdirSync(folderPath)
+	let structure = ''
+	const spaces = ' '.repeat(indent)
+	
+	for (const item of items) {
+		const itemPath = path.join(folderPath, item)
+		const stat = fs.statSync(itemPath)
+		
+		if (stat.isDirectory()) {
+			structure += `${spaces}${item}/\n`
+			structure += getFolderStructure(itemPath, indent + 2)
+		} else if (item.endsWith('.ts')) {
+			structure += `${spaces}${item}\n`
+		}
+	}
+	
+	return structure
+}
+
 // Function to extract types and events from a module
 function extractTypesAndEvents(rootPath: string) {
 	// First check for types.ts in the root directory
@@ -161,10 +182,18 @@ function generateDefsFile() {
 	// Remove duplicates from types
 	const uniqueTypes = [...new Set(allTypes)]
 	
+	// Get content folder structure
+	const contentStructure = getFolderStructure(CONTENT_PATH)
+	
 	// Generate the output file content
 	const outputContent = `/**
  * Auto-generated types and events definitions
  * Generated on: ${new Date().toISOString()}
+ */
+
+/**
+ * Content folder structure:
+${contentStructure}
  */
 
 // Types
