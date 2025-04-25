@@ -1,0 +1,112 @@
+{
+    "Map/SizeTest": {
+        "height": 4300,
+        "width": 2
+    },
+    "activeFile": "test1.tmx",
+    "expandedProjectPaths": [
+    ],
+    "fileStates": {
+        "": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "#props": {
+            "scaleInDock": 1
+        },
+        "#tileset-grass": {
+            "dynamicWrapping": false,
+            "scaleInDock": 1
+        },
+        "test1.tmx": {
+            "scale": 1.11,
+            "selectedLayer": 2,
+            "viewCenter": {
+                "x": 959.9099099099099,
+                "y": 634.6846846846846
+            }
+        },
+        "test1.tmx#objects": {
+            "dynamicWrapping": true,
+            "scaleInDock": 0.2117,
+            "scaleInEditor": 1
+        },
+        "test1.tmx#props": {
+            "dynamicWrapping": false,
+            "scaleInDock": 1
+        },
+        "test1.tmx#struct": {
+            "dynamicWrapping": false,
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "test1.tmx#temple-tiles": {
+            "dynamicWrapping": false
+        },
+        "test1.tmx#temple1": {
+            "scaleInDock": 1
+        },
+        "test1.tmx#tileset-grass": {
+            "scaleInDock": 1
+        },
+        "test1.tmx#tileset-wall": {
+            "dynamicWrapping": false,
+            "scaleInDock": 1
+        },
+        "test2.tmx": {
+            "expandedObjectLayers": [
+                3
+            ],
+            "scale": 0.8121,
+            "selectedLayer": 1,
+            "viewCenter": {
+                "x": 959.8571604482207,
+                "y": 959.8571604482206
+            }
+        },
+        "test2.tmx#props": {
+            "dynamicWrapping": false,
+            "scaleInDock": 1
+        },
+        "test2.tmx#tileset-grass": {
+            "scaleInDock": 1
+        },
+        "test3.tmx": {
+            "expandedObjectLayers": [
+                3
+            ],
+            "scale": 0.7478,
+            "selectedLayer": 1,
+            "viewCenter": {
+                "x": 320.272800213961,
+                "y": 479.40625835784965
+            }
+        },
+        "test3.tmx#props": {
+            "scaleInDock": 1
+        },
+        "test3.tmx#tileset-grass": {
+            "scaleInDock": 1
+        }
+    },
+    "last.exportedFilePath": "/Users/marcin/Developer/react/rugtopolis/public/assets/maps",
+    "last.imagePath": "/Users/marcin/Developer/react/rugtopolis/public/assets/objects",
+    "map.height": 30,
+    "map.lastUsedExportFilter": "JSON map files (*.tmj *.json)",
+    "map.lastUsedFormat": "tmx",
+    "map.width": 320,
+    "openFiles": [
+        "test1.tmx",
+        "test2.tmx",
+        "test3.tmx"
+    ],
+    "project": "untitled.tiled-project",
+    "property.type": "bool",
+    "recentFiles": [
+        "test3.tmx",
+        "test2.tmx",
+        "test1.tmx"
+    ],
+    "tileset.embedInMap": true,
+    "tileset.type": 0
+}

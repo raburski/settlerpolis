@@ -16,7 +16,10 @@ export default defineConfig({
     },
     resolve: {
         alias: {
+            '@rugged/backend': path.resolve(__dirname, '../packages/backend/src'),
+            '@rugged/game': path.resolve(__dirname, '../packages/game/src')
         }
     },
-    assetsInclude: ['**/*.json']
+    assetsInclude: ['**/*.json'],
+    root: path.resolve(__dirname, '../packages/frontend')
 })
