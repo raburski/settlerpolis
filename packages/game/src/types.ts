@@ -7,6 +7,7 @@ import { ScheduledEvent, ScheduleOptions } from './Scheduler/types'
 import { Trigger } from './Triggers/types'
 import { NPC } from "./NPC/types"
 import { DialogueTreePartial } from './Dialogue/types'
+import { TiledMap } from "./types"
 
 export interface NPCContent extends NPC {
 	sentiments?: AffinitySentiments
@@ -21,6 +22,7 @@ export interface GameContent {
 	flags: Flag[]
 	schedules: ScheduleOptions[]
 	triggers: Trigger[]
+	maps: Record<string, TiledMap>,
 }
 
 export interface Position {

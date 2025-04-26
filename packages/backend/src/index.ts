@@ -64,6 +64,19 @@ apiRouter.get('/health', (req: Request, res: Response) => {
 	res.json({ status: 'ok' })
 })
 
+// Map JSON endpoint
+apiRouter.get('/maps/:mapName.json', (req: Request, res: Response) => {
+	const { mapName } = req.params
+	const mapData = content.maps[mapName]
+	
+	if (!mapData) {
+		res.status(404).json({ error: 'Map not found' })
+		return
+	}
+	
+	res.json(mapData)
+})
+
 // Use the API router with /api prefix
 app.use('/api', apiRouter)
 
