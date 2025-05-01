@@ -21,6 +21,7 @@ import { ContentLoader } from './ContentLoader'
 import { GameContent } from './types'
 import { EventManager } from "./events"
 import { EquipmentSlot, EquipmentSlotType } from './Players/types'
+import { MapUrlService } from './Map/types'
 
 // Export types and events
 export * from './types'
@@ -52,13 +53,14 @@ export class GameManager {
 
 	constructor(
 		private event: EventManager,
-		private content: GameContent
+		private content: GameContent,
+		private readonly mapUrlService: MapUrlService
 	) {
 		// Initialize managers in dependency order
 		this.timeManager = new TimeManager(event)
 		this.chatManager = new ChatManager(event)
 		this.systemManager = new SystemManager(event)
-		this.mapManager = new MapManager(event)
+		this.mapManager = new MapManager(event, this.mapUrlService)
 		this.itemsManager = new ItemsManager(event)
 		this.inventoryManager = new InventoryManager(event, this.itemsManager)
 		this.flagsManager = new FlagsManager(event)
@@ -87,6 +89,7 @@ export class GameManager {
 			this.lootManager, 
 			this.itemsManager,
 			this.mapObjectsManager,
+			this.mapManager
 		)
 
 		this.conditionEffectManager = new ConditionEffectManager(

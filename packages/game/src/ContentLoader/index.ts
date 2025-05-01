@@ -55,11 +55,15 @@ export class ContentLoader {
 		if (this.debug) {
 			console.log('[ContentLoader] Loading maps')
 		}
-		// Merge general and chapter maps
-		// const allMaps = {
-		// 	...generalMaps
-		// }
-		// await this.map.loadMaps(allMaps)
+		await this.map.loadMaps(this.content.maps)
+		
+		// If content specifies a default map, set it after maps are loaded
+		if (this.content.defaultMap) {
+			if (this.debug) {
+				console.log(`[ContentLoader] Setting default map to: ${this.content.defaultMap}`)
+			}
+			this.map.setDefaultMapId(this.content.defaultMap)
+		}
 	}
 
 	private async loadItems() {

@@ -1,6 +1,7 @@
 import { GameManager, EventManager } from '@rugged/game'
 import { LocalManager } from "./LocalManager"
 import { NetworkEventManager, NetworkManager } from "./NetworkManager"
+import { FrontendMapUrlService } from '../services/MapUrlService'
 
 const IS_REMOTE_GAME = false
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT
@@ -13,7 +14,8 @@ function getNetworkManager(): NetworkEventManager {
         return new NetworkManager('https://hearty-rejoicing-production.up.railway.app')
     } else {
         const localManager = new LocalManager()
-        const gameManager = new GameManager(localManager.server, content)
+        const mapUrlService = new FrontendMapUrlService()
+        const gameManager = new GameManager(localManager.server, content, mapUrlService)
         return localManager.client
     }
 }

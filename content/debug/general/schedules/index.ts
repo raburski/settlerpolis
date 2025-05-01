@@ -109,7 +109,7 @@ export const itemDropSchedules: ScheduleOptions[] = [
 				x: { min: 100, max: 300 },
 				y: { min: 300, max: 500 }
 			},
-			scene: 'FarmScene'
+			mapId: 'test1'
 		}
 	}
 ] 

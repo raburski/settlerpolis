@@ -9,6 +9,7 @@ import { playerService } from "../services/PlayerService"
 import { NPCView } from "../entities/NPC/View"
 import { PlayerView3 } from "../entities/Player/View3"
 import { itemTextureService } from '../services/ItemTextureService'
+import { sceneManager } from '../services/SceneManager'
 
 export class PreloadScene extends Scene {
 	private fontsLoaded: boolean = false
@@ -42,21 +43,22 @@ export class PreloadScene extends Scene {
 	}
 
 	create() {
+		// Initialize the SceneManager with the game instance
+		sceneManager.init(this.game)
+		
 		// Wait for scene to be fully ready
 		this.events.once('preupdate', function() {
+			// Connect to the game server
 			networkManager.connect(() => {
+				console.log('[PreloadScene] Connected to game server, sending connect event')
 				EventBus.emit(Event.Players.CS.Connect)
 			})
 			
 			// Set up connection response handler
-			EventBus.once(Event.Players.SC.Connected, (data: { playerId: string, scene: string, position: { x: number, y: number }}) => {
+			EventBus.once(Event.Players.SC.Connected, (data: { playerId: string }) => {
 				this.isConnected = true
 				playerService.playerId = data.playerId
-				this.scene.start(data.scene, {
-					x: data.position.x,
-					y: data.position.y,
-					isTransition: false
-				})
+				console.log('[PreloadScene] Player connected with ID:', data.playerId)
 			})
 		}, this)
 	}

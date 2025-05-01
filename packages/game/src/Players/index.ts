@@ -9,10 +9,12 @@ import { MapObjectsManager } from '../MapObjects'
 import { PlaceObjectData } from '../MapObjects/types'
 import { Position } from '../types'
 import { v4 as uuidv4 } from 'uuid'
+import { MapManager } from '../Map'
+import { MapEvents } from '../Map/events'
 
 // Define missing types
 interface PlayerTransitionData {
-	scene: string
+	mapId: string
 	position: Position
 }
 
@@ -23,14 +25,6 @@ interface DropItemData {
 
 interface PickupItemData {
 	itemId: string
-}
-
-const INITIAL_POSITION = {
-	scene: 'FarmScene',  // Initial scene
-	position: {
-		x: 100,  // Initial x position
-		y: 400   // Initial y position
-	}
 }
 
 const INITIAL_EQUIPMENT: Record<EquipmentSlotType, null> = {
@@ -45,7 +39,8 @@ export class PlayersManager {
 		private inventoryManager: InventoryManager,
 		private lootManager: LootManager,
 		private itemsManager: ItemsManager,
-		private mapObjectsManager: MapObjectsManager
+		private mapObjectsManager: MapObjectsManager,
+		private mapManager: MapManager
 	) {
 		this.setupEventHandlers()
 	}
@@ -58,12 +53,15 @@ export class PlayersManager {
 		// Handle initial connection
 		this.event.on(Event.Players.CS.Connect, (_, client) => {
 			console.log('[PLAYERS] on CONNECT', client.id)
-			// Send initial scene and position data
+			
+			// Only send player ID initially
 			const playerInit = {
-				...INITIAL_POSITION,
 				playerId: client.id,
 			}
 			client.emit(Receiver.Sender, Event.Players.SC.Connected, playerInit)
+			
+			// Let the map manager handle everything about map loading and initial position
+			this.mapManager.loadPlayerMap(client)
 		})
 
 		// Handle client lifecycle
@@ -83,20 +81,28 @@ export class PlayersManager {
 		// Handle player join
 		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
 			const playerId = client.id
-			client.setGroup(data.scene)
+			
+			// Use mapId from the data, or get default from MapManager
+			const mapId = data.mapId || this.mapManager.getDefaultMapId()
+			client.setGroup(mapId)
 
 			this.players.set(playerId, {
 				playerId,
 				position: data.position,
-				scene: data.scene,
+				mapId,  // Use mapId instead of scene
 				appearance: data.appearance,
 				equipment: { ...INITIAL_EQUIPMENT }
 			})
 
 			// Send existing players to new player
-			this.sendPlayers(data.scene, client)
+			this.sendPlayers(mapId, client)
 			
-			client.emit(Receiver.NoSenderGroup, Event.Players.SC.Joined, { playerId, ...data })
+			client.emit(Receiver.NoSenderGroup, Event.Players.SC.Joined, { 
+				playerId, 
+				position: data.position,
+				mapId,
+				appearance: data.appearance 
+			})
 		})
 
 		// Handle player movement
@@ -115,13 +121,16 @@ export class PlayersManager {
 
 			if (player) {
 				client.emit(Receiver.NoSenderGroup, Event.Players.SC.Left, {})
-				client.setGroup(data.scene)
+				client.setGroup(data.mapId)
 
-				player.scene = data.scene
+				player.mapId = data.mapId
 				player.position = data.position
 
-				// Send existing players in new scene to transitioning player
-				this.sendPlayers(data.scene, client)
+				// Use map manager to load the new map with the provided position
+				this.mapManager.loadPlayerMap(client, data.mapId, data.position)
+
+				// Send existing players in new map to transitioning player
+				this.sendPlayers(data.mapId, client)
 
 				client.emit(Receiver.NoSenderGroup, Event.Players.SC.Joined, { playerId, ...data })
 			}
@@ -322,12 +331,12 @@ export class PlayersManager {
 
 	/**
 	 * Sends player data and equipment information to a client for all players in a scene
-	 * @param scene The scene to get players from
+	 * @param mapId The map ID to get players from
 	 * @param client The client to send data to
 	 */
-	private sendPlayers(scene: string, client: EventClient) {
-		const scenePlayers = Array.from(this.players.values())
-			.filter(p => p.scene === scene && p.playerId !== client.id)
+	private sendPlayers(mapId: string, client: EventClient) {
+		const mapPlayers = Array.from(this.players.values())
+			.filter(p => p.mapId === mapId && p.playerId !== client.id)
 			.forEach(player => {
 				client.emit(Receiver.Sender, Event.Players.SC.Joined, player)
 				

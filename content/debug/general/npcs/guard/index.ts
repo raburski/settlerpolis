@@ -6,7 +6,7 @@ export default {
     id: 'guard',
     name: 'Guard',
     position: { x: 300, y: 400 },
-    scene: 'FarmScene',
+    mapId: 'test1',
     speed: 160,
     messages: {
         default: "Move along, citizen. Nothing to see here.",

@@ -10,7 +10,7 @@ export const usePlayerId = () => {
 	const [playerId, setPlayerId] = useState<string | null>(null)
 
 	useEffect(() => {
-		const handlePlayerConnected = (data: { playerId: string, scene: string, position: { x: number, y: number }}) => {
+		const handlePlayerConnected = (data: { playerId: string, mapId?: string, position?: { x: number, y: number }}) => {
 			setPlayerId(data.playerId)
 		}
 

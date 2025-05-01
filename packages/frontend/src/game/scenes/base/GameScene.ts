@@ -27,8 +27,8 @@ export abstract class GameScene extends MapScene {
 	protected itemPlacementManager: ItemPlacementManager | null = null
 	protected fx: FX | null = null
 
-	constructor(key: string, mapKey: string, mapPath: string) {
-		super(key, mapKey, mapPath)
+	constructor(config: { key: string, mapKey: string, mapPath: string }) {
+		super(config.key, config.mapKey, config.mapPath)
 	}
 
     protected initializeScene(): void {
@@ -75,8 +75,8 @@ export abstract class GameScene extends MapScene {
 		if (!isTransition) {
 			EventBus.emit(Event.Players.CS.Join, { 
 				position: { x: playerX, y: playerY}, 
-				scene: this.scene.key, 
-				appareance: {}
+				mapId: this.mapKey,
+				appearance: {}
 			})
 		}
     }
@@ -157,9 +157,13 @@ export abstract class GameScene extends MapScene {
 	}
 
 	private handleAddItems = (data: { item: DroppedItem }) => {
+		console.log('[CLIENT DEBUG] handleAddItems called with item:', data.item)
 		if (this.player) {
 			const loot = createLoot(this, data.item, this.player.view)
 			this.droppedItems.set(data.item.id, loot)
+			console.log('[CLIENT DEBUG] Added item to droppedItems. Current items:',
+				Array.from(this.droppedItems.keys())
+			)
 		}
 	}
 
@@ -190,7 +194,7 @@ export abstract class GameScene extends MapScene {
 
 	private handleMapObjectSpawn = (data: { object: any }) => {
 		// Only add objects for the current map
-		if (data.object.mapName === this.scene.key) {
+		if (data.object.mapId === this.mapKey) {
 			const mapObject = createMapObject(this, data.object)
 			this.mapObjects.set(data.object.id, mapObject)
 			
@@ -230,14 +234,14 @@ export abstract class GameScene extends MapScene {
 		
 		// Wait for the fade to complete before transitioning
 		this.cameras.main.once('camerafadeoutcomplete', () => {
-			// Start the new scene with the player's position and the current scene name
+			// Start the new scene with the player's position and the current map ID
 			this.scene.start(targetScene, { 
 				x: targetX, 
 				y: targetY,
 				playerX: playerX,
 				playerY: playerY,
 				isTransition: true,
-				fromScene: this.scene.key // Pass the current scene name
+				fromMapId: this.mapKey
 			})
 		})
 	}

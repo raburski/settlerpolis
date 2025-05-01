@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 export class LootManager {
 	private droppedItems = new Map<string, DroppedItem[]>()
-	private itemIdToScene = new Map<string, string>()
+	private itemIdToMapId = new Map<string, string>()
 	private readonly DROPPED_ITEM_LIFESPAN = 5 * 60 * 1000 // 5 minutes in milliseconds
 	private readonly ITEM_CLEANUP_INTERVAL = 30 * 1000 // Check every 30 seconds
 
@@ -32,22 +32,34 @@ export class LootManager {
 	}
 
 	private setupEventHandlers() {
-		// Handle player join and scene transition to send items
+		// Handle player join and map transition to send items
 		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
-			const sceneDroppedItems = this.droppedItems.get(data.scene) || []
-			if (sceneDroppedItems.length > 0) {
+			const mapId = data.mapId
+			if (!mapId) {
+				console.warn('[WARNING] Received Join event with undefined mapId. Ignoring event.')
+				return
+			}
+			
+			const mapDroppedItems = this.droppedItems.get(mapId) || []
+			if (mapDroppedItems.length > 0) {
 				// Send each item individually
-				sceneDroppedItems.forEach(item => {
+				mapDroppedItems.forEach(item => {
 					client.emit(Receiver.Sender, Event.Loot.SC.Spawn, { item } as LootSpawnEventPayload)
 				})
 			}
 		})
 
 		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
-			const sceneDroppedItems = this.droppedItems.get(data.scene) || []
-			if (sceneDroppedItems.length > 0) {
+			const mapId = data.mapId
+			if (!mapId) {
+				console.warn('[WARNING] Received TransitionTo event with undefined mapId. Ignoring event.')
+				return
+			}
+			
+			const mapDroppedItems = this.droppedItems.get(mapId) || []
+			if (mapDroppedItems.length > 0) {
 				// Send each item individually
-				sceneDroppedItems.forEach(item => {
+				mapDroppedItems.forEach(item => {
 					client.emit(Receiver.Sender, Event.Loot.SC.Spawn, { item } as LootSpawnEventPayload)
 				})
 			}
@@ -55,6 +67,11 @@ export class LootManager {
 
 		// Handle scheduled item spawns
 		this.event.on(LootEvents.SS.Spawn, (data: LootSpawnPayload) => {
+			if (!data.mapId) {
+				console.warn('[WARNING] Received SS.Spawn event with undefined mapId. Ignoring event.')
+				return
+			}
+			
 			const item: Item = {
 				id: uuidv4(),
 				itemType: data.itemType
@@ -66,94 +83,131 @@ export class LootManager {
 				droppedAt: Date.now()
 			}
 
-			const sceneDroppedItems = this.droppedItems.get(data.scene) || []
-			sceneDroppedItems.push(droppedItem)
-			this.droppedItems.set(data.scene, sceneDroppedItems)
-			this.itemIdToScene.set(item.id, data.scene)
+			const mapDroppedItems = this.droppedItems.get(data.mapId) || []
+			mapDroppedItems.push(droppedItem)
+			this.droppedItems.set(data.mapId, mapDroppedItems)
+			this.itemIdToMapId.set(item.id, data.mapId)
 
-			// Broadcast to all players in the scene that an item was spawned
-			this.event.emit(Receiver.Group, Event.Loot.SC.Spawn, { item: droppedItem } as LootSpawnEventPayload, data.scene)
+			// Broadcast to all players in the map that an item was spawned
+			this.event.emit(Receiver.Group, Event.Loot.SC.Spawn, { item: droppedItem } as LootSpawnEventPayload, data.mapId)
 		})
 	}
 
 	dropItem(item: Item, position: Position, client: EventClient) {
-		const scene = client.currentGroup
-		const sceneDroppedItems = this.droppedItems.get(scene) || []
+		const mapId = client.currentGroup
+		
+		// Handle undefined mapId
+		if (!mapId || mapId === 'undefined') {
+			console.warn('[WARNING] dropItem received undefined or invalid mapId. Ignoring drop request.')
+			return
+		}
+		
+		const mapDroppedItems = this.droppedItems.get(mapId) || []
 		const droppedItem = {
 			...item,
 			position: position,
 			droppedAt: Date.now()
 		}
-		sceneDroppedItems.push(droppedItem)
-		this.droppedItems.set(scene, sceneDroppedItems)
-		this.itemIdToScene.set(item.id, scene)
+		mapDroppedItems.push(droppedItem)
+		this.droppedItems.set(mapId, mapDroppedItems)
+		this.itemIdToMapId.set(item.id, mapId)
 
-		// Broadcast to all players in the scene that an item was dropped
+		// Broadcast to all players in the map that an item was dropped
 		client.emit(Receiver.Group, Event.Loot.SC.Spawn, { item: droppedItem } as LootSpawnEventPayload)
 	}
 
 	pickItem(itemId: string, client: EventClient): DroppedItem | undefined {
-		const scene = client.currentGroup
-		const sceneItems = this.getSceneItems(scene)
-		const itemIndex = sceneItems.findIndex(item => item.id === itemId)
+		// Get the correct mapId from our mapping, not from client's current group
+		const mapId = this.itemIdToMapId.get(itemId)
 		
-		if (itemIndex === -1) return undefined
+		if (!mapId) {
+			return undefined
+		}
+		
+		const mapItems = this.getMapItems(mapId)
+		const itemIndex = mapItems.findIndex(item => item.id === itemId)
+		
+		if (itemIndex === -1) {
+			return undefined
+		}
 
-		const [removedItem] = sceneItems.splice(itemIndex, 1)
-		this.droppedItems.set(scene, sceneItems)
-		this.itemIdToScene.delete(itemId)
+		const [removedItem] = mapItems.splice(itemIndex, 1)
+		this.droppedItems.set(mapId, mapItems)
+		this.itemIdToMapId.delete(itemId)
 
-		// Broadcast to all players in the scene that an item was picked up
+		// Broadcast to all players in the map that an item was picked up
 		client.emit(Receiver.Group, Event.Loot.SC.Despawn, { itemId } as LootDespawnEventPayload)
 
 		return removedItem
 	}
 
-	getSceneItems(scene: string): DroppedItem[] {
-		return this.droppedItems.get(scene) || []
+	getMapItems(mapId: string): DroppedItem[] {
+		return this.droppedItems.get(mapId) || []
 	}
 
 	private startItemCleanupInterval() {
 		setInterval(() => {
 			const now = Date.now()
-			this.droppedItems.forEach((items, scene) => {
+			this.droppedItems.forEach((items, mapId) => {
 				const expiredItemIds = items
 					.filter(item => now - item.droppedAt > this.DROPPED_ITEM_LIFESPAN)
 					.map(item => item.id)
 
 				if (expiredItemIds.length > 0) {
-					this.removeExpiredItems(scene, expiredItemIds)
+					this.removeExpiredItems(mapId, expiredItemIds)
 				}
 			})
 		}, this.ITEM_CLEANUP_INTERVAL)
 	}
 
-	private removeExpiredItems(scene: string, expiredItemIds: string[]) {
+	private removeExpiredItems(mapId: string, expiredItemIds: string[]) {
 		if (expiredItemIds.length === 0) return
 
-		const sceneItems = this.droppedItems.get(scene)
-		if (sceneItems) {
+		const mapItems = this.droppedItems.get(mapId)
+		if (mapItems) {
 			// Remove expired items
 			this.droppedItems.set(
-				scene,
-				sceneItems.filter(item => !expiredItemIds.includes(item.id))
+				mapId,
+				mapItems.filter(item => !expiredItemIds.includes(item.id))
 			)
 
-			// Clean up the itemIdToScene map
-			expiredItemIds.forEach(id => this.itemIdToScene.delete(id))
+			// Clean up the itemIdToMapId map
+			expiredItemIds.forEach(id => this.itemIdToMapId.delete(id))
 
 			// Send individual despawn events for each expired item
 			expiredItemIds.forEach(itemId => {
-				this.event.emit(Receiver.Group, Event.Loot.SC.Despawn, { itemId } as LootDespawnEventPayload, scene)
+				this.event.emit(Receiver.Group, Event.Loot.SC.Despawn, { itemId } as LootDespawnEventPayload, mapId)
 			})
 		}
 	}
 
 	getItem(id: string): DroppedItem | undefined {
-		const scene = this.itemIdToScene.get(id)
-		if (!scene) return undefined
+		let mapId = this.itemIdToMapId.get(id)
+		
+		// Fix for "undefined" mapId
+		if (mapId === 'undefined') {
+			this.itemIdToMapId.delete(id)
+			mapId = undefined
+		}
+		
+		// If we don't have the map ID, try to find the item in all maps
+		if (!mapId) {
+			for (const [currentMapId, items] of this.droppedItems.entries()) {
+				const item = items.find(item => item.id === id)
+				if (item) {
+					this.itemIdToMapId.set(id, currentMapId)
+					mapId = currentMapId
+					break
+				}
+			}
+			
+			if (!mapId) {
+				return undefined
+			}
+		}
 
-		const sceneItems = this.droppedItems.get(scene)
-		return sceneItems?.find(item => item.id === id)
+		const mapItems = this.droppedItems.get(mapId)
+		const foundItem = mapItems?.find(item => item.id === id)
+		return foundItem
 	}
 } 

@@ -23,6 +23,7 @@ export interface GameContent {
 	schedules: ScheduleOptions[]
 	triggers: Trigger[]
 	maps: Record<string, TiledMap>,
+	defaultMap?: string // Optional default map ID to load initially
 }
 
 export interface Position {

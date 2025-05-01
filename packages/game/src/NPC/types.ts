@@ -29,7 +29,7 @@ export interface NPC {
 	id: string
 	name: string
 	position: Position
-	scene: string
+	mapId: string
 	messages?: NPCMessages
 	path?: Position[]
 	speed: number

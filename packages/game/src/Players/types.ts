@@ -28,20 +28,20 @@ export interface UnequipItemData extends PlayerSourcedData {
 export interface Player {
 	playerId: string
 	position: WorldPosition
-	scene: string
+	mapId: string        // Changed from scene to mapId
 	appearance?: any // TODO: Define appearance type
 	equipment?: Record<EquipmentSlotType, Item | null> // Full item object or null for each slot
 }
 
 export interface PlayerJoinData extends PlayerSourcedData {
 	position: WorldPosition
-	scene: string
+	mapId: string        // This is the primary property now
 	appearance?: any
 }
 
 export interface PlayerTransitionData extends PlayerSourcedData {
 	position: WorldPosition
-	scene: string
+	mapId: string        // Changed from scene to mapId
 }
 
 export interface PlayerMoveData extends PlayerSourcedData {

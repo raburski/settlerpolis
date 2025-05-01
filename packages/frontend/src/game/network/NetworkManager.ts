@@ -150,11 +150,11 @@ export class NetworkManager implements EventManager {
 
 		this.socket.on(event, (data: any) => {
 			if (this.client) {
-				// Update client's current group based on scene events
+				// Update client's current group based on map events
 				if (event === Event.Players.CS.Join || event === Event.Players.CS.TransitionTo) {
-					const sceneData = data as any
-					if (sceneData.scene) {
-						this.client.setGroup(sceneData.scene)
+					const mapData = data as any
+					if (mapData.mapId) {
+						this.client.setGroup(mapData.mapId)
 					}
 				}
 

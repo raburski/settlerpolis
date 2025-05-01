@@ -19,7 +19,7 @@ export type SpawnPosition = {
 export type LootSpawnPayload = {
 	itemType: string
 	position: SpawnPosition
-	scene: string
+	mapId: string
 }
 
 export type LootSpawnEventPayload = {

@@ -148,12 +148,12 @@ export class PortalManager {
 				zone.setData('portalName', portalName)
 
                 const sceneData = this.scene.scene.settings.data
-                const fromScene = sceneData?.fromScene
+                const fromMapId = sceneData?.fromMapId
         
-                // Find a portal that matches the previous scene name
-                const matchingPortal = fromScene ? portalsLayer.objects.find(obj => {
+                // Find a portal that matches the previous map ID
+                const matchingPortal = fromMapId ? portalsLayer.objects.find(obj => {
                     const portalData = obj.properties?.find(prop => prop.name === 'target')
-                    return portalData?.value === fromScene
+                    return portalData?.value === fromMapId
                 }) : null
         
                 // If a matching portal is found, position the player at that portal's location

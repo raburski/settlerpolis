@@ -38,18 +38,18 @@ export class NPCManager {
 	}
 
 	private setupEventHandlers() {
-		// Send NPCs list when player joins or transitions to a scene
+		// Send NPCs list when player joins or transitions to a map
 		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data: PlayerJoinData, client: EventClient) => {
-			const sceneNPCs = this.getSceneNPCs(data.scene)
-			if (sceneNPCs.length > 0) {
-				client.emit(Receiver.Sender, NPCEvents.SC.List, { npcs: sceneNPCs })
+			const mapNPCs = this.getMapNPCs(data.mapId)
+			if (mapNPCs.length > 0) {
+				client.emit(Receiver.Sender, NPCEvents.SC.List, { npcs: mapNPCs })
 			}
 		})
 
 		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data: PlayerTransitionData, client: EventClient) => {
-			const sceneNPCs = this.getSceneNPCs(data.scene)
-			if (sceneNPCs.length > 0) {
-				client.emit(Receiver.Sender, NPCEvents.SC.List, { npcs: sceneNPCs })
+			const mapNPCs = this.getMapNPCs(data.mapId)
+			if (mapNPCs.length > 0) {
+				client.emit(Receiver.Sender, NPCEvents.SC.List, { npcs: mapNPCs })
 			}
 		})
 
@@ -105,8 +105,8 @@ export class NPCManager {
 		})
 	}
 
-	private getSceneNPCs(scene: string): NPC[] {
-		return Array.from(this.npcs.values()).filter(npc => npc.scene === scene)
+	private getMapNPCs(mapId: string): NPC[] {
+		return Array.from(this.npcs.values()).filter(npc => npc.mapId === mapId)
 	}
 
 	private scheduleNPCMovement(npcId: string, delay: number) {
@@ -149,7 +149,7 @@ export class NPCManager {
 		this.event.emit(Receiver.Group, NPCEvents.SC.Go, {
 			npcId: npc.id,
 			position: npc.position
-		}, npc.scene)
+		}, npc.mapId)
 
 		// If there's more path, schedule next movement
 		if (npc.path.length > 0) {
@@ -243,7 +243,7 @@ export class NPCManager {
 			this.event.emit(Receiver.Group, NPCEvents.SC.Action, {
 				npcId,
 				action: step.action
-			}, npc.scene)
+			}, npc.mapId)
 		}
 	}
 

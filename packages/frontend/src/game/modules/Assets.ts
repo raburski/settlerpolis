@@ -38,6 +38,8 @@ export class AssetManager {
 	preload(): void {
 		this.isLoading = true
 		
+		// Load map using the provided mapPath
+		console.log(`[AssetManager] Loading map from: ${this.mapPath}`)
 		this.scene.load.tilemapTiledJSON(this.mapKey, this.mapPath)
 
 		this.scene.load.once('complete', () => {

@@ -8,6 +8,7 @@ import { GameManager, GameContent } from '@rugged/game'
 import { EventBusManager } from './EventBusManager'
 import path from 'path'
 import fs from 'fs'
+import { BackendMapUrlService } from './services/MapUrlService'
 
 process.on('uncaughtException', (err) => {
 	console.error('Uncaught Exception:', err)
@@ -53,8 +54,10 @@ if (!fs.existsSync(contentPath)) {
 
 const content: GameContent = require(path.join(contentPath, 'index.ts'))
 
-// Create game manager instance with event bus and content
-const game = new GameManager(eventBus, content)
+// Create game manager instance with event bus, content, and map URL service
+const HOST_URL = process.env.PUBLIC_URL || process.env.RAILWAY_PUBLIC_URL || 'http://localhost:3000'
+const mapUrlService = new BackendMapUrlService('/api/maps/', HOST_URL)
+const game = new GameManager(eventBus, content, mapUrlService)
 
 // Add base path for API routes
 const apiRouter = express.Router()
@@ -74,7 +77,14 @@ apiRouter.get('/maps/:mapName.json', (req: Request, res: Response) => {
 		return
 	}
 	
-	res.json(mapData)
+	try {
+		// Ensure the response is properly formatted JSON
+		res.setHeader('Content-Type', 'application/json')
+		res.json(mapData)
+	} catch (error) {
+		console.error(`Error serving map ${mapName}:`, error)
+		res.status(500).json({ error: 'Failed to serve map data' })
+	}
 })
 
 // Use the API router with /api prefix

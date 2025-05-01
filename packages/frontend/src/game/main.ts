@@ -1,6 +1,3 @@
-import { FarmScene } from './scenes/FarmScene'
-import { FountainScene } from './scenes/FountainScene'
-import { TempleScene } from './scenes/TempleScene'
 import { PreloadScene } from './scenes/PreloadScene'
 import { AUTO, Game, Types, Scale, Physics } from 'phaser'
 import { MultiplayerService } from './services/MultiplayerService'
@@ -31,10 +28,7 @@ const config: Types.Core.GameConfig = {
 	pixelArt: true,
 	roundPixels: true,
 	scene: [
-		PreloadScene,
-		FarmScene,
-		FountainScene,
-		TempleScene
+		PreloadScene
 	]
 }
 

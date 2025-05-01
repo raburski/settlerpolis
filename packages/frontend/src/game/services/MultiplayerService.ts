@@ -18,7 +18,7 @@ export interface PlayerData extends PlayerSourcedData {
 	id: string
 	x: number
 	y: number
-	scene: string
+	mapId: string
 	appearance: PlayerAppearance
 }
 

@@ -29,12 +29,12 @@ export class MapObjectsManager {
 
 		// Handle player joining a map to send existing objects
 		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
-			this.sendMapObjectsToClient(client, data.scene)
+			this.sendMapObjectsToClient(client, data.mapId)
 		})
 
 		// Handle player transitioning to a new scene
 		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
-			this.sendMapObjectsToClient(client, data.scene)
+			this.sendMapObjectsToClient(client, data.mapId)
 		})
 	}
 
