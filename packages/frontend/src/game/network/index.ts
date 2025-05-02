@@ -3,7 +3,7 @@ import { LocalManager } from "./LocalManager"
 import { NetworkEventManager, NetworkManager } from "./NetworkManager"
 import { FrontendMapUrlService } from '../services/MapUrlService'
 
-const IS_REMOTE_GAME = false
+const IS_REMOTE_GAME = true
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT
 
 const contentModules = import.meta.glob('../../../../../content/*/index.ts', { eager: true })
