@@ -14,6 +14,7 @@ export class LocalPlayerController extends BasePlayerController {
 	protected lastPositionUpdate: { x: number, y: number } | null = null
 	protected lastPositionUpdateTime: number = 0
 	protected readonly POSITION_UPDATE_THROTTLE = 50 // 50ms
+	private debug: boolean = false // Enable debug output
 
 	constructor(
 		view: PlayerViewType,
@@ -42,41 +43,53 @@ export class LocalPlayerController extends BasePlayerController {
 		const body = this.view.body as Physics.Arcade.Body
 		
 		// Add a null check to prevent errors if the body is null
-		if (!body) {
-			console.error('Player physics body is null in update method. This might happen during scene transitions.')
-			return
-		}
+		if (!body) return
 		
-		body.setVelocity(0)
+		// Reset velocity
+		body.setVelocity(0, 0)
+		
+		const speed = this.view.speed
 
-		// Check for left movement
+		// Get input and update player state
 		if (this.keyboard.isMovingLeft()) {
-			body.setVelocityX(-this.view.speed)
+			body.setVelocityX(-speed)
 			this.view.updateDirection(Direction.Left)
 			this.view.updateState(PlayerState.Walking)
-		} 
-		// Check for right movement
-		else if (this.keyboard.isMovingRight()) {
-			body.setVelocityX(this.view.speed)
+		} else if (this.keyboard.isMovingRight()) {
+			body.setVelocityX(speed)
 			this.view.updateDirection(Direction.Right)
 			this.view.updateState(PlayerState.Walking)
 		}
 
-		// Check for up movement
 		if (this.keyboard.isMovingUp()) {
-			body.setVelocityY(-this.view.speed)
+			body.setVelocityY(-speed)
 			this.view.updateDirection(Direction.Up)
 			this.view.updateState(PlayerState.Walking)
-		} 
-		// Check for down movement
-		else if (this.keyboard.isMovingDown()) {
-			body.setVelocityY(this.view.speed)
+		} else if (this.keyboard.isMovingDown()) {
+			body.setVelocityY(speed)
 			this.view.updateDirection(Direction.Down)
 			this.view.updateState(PlayerState.Walking)
 		}
 
 		// If no movement keys are pressed, set state to idle
 		if (!this.keyboard.isAnyMovementKeyPressed()) {
+			this.view.updateState(PlayerState.Idle)
+		}
+		
+		// Check if we're blocked by collision and update state accordingly
+		if (body.blocked.up || body.blocked.down || body.blocked.left || body.blocked.right) {
+			if (this.debug) {
+				console.log('Built-in physics detecting blocked:', {
+					up: body.blocked.up,
+					down: body.blocked.down,
+					left: body.blocked.left,
+					right: body.blocked.right,
+					position: { x: body.x, y: body.y },
+					velocity: { x: body.velocity.x, y: body.velocity.y }
+				})
+			}
+			
+			// If we're blocked, set player to idle state
 			this.view.updateState(PlayerState.Idle)
 		}
 	}

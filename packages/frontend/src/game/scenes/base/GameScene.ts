@@ -43,10 +43,13 @@ export abstract class GameScene extends MapScene {
 		const playerY = sceneData?.y || 300
 		const isTransition = sceneData?.isTransition || false
 		
+		// Create player
 		this.player = createLocalPlayer(this, playerX, playerY, playerService.playerId)
+		
 		// Position the player
 		this.player.view.updatePosition(playerX, playerY)
-        // Set up multiplayer
+        
+		// Set up multiplayer
 		this.setupMultiplayer()
 
         // Set up camera to follow player
@@ -69,6 +72,7 @@ export abstract class GameScene extends MapScene {
 		// Initialize FX
 		this.fx = new FX(this)
 
+		// Set up collision for the player
 		this.initializeCollision([this.player.view])
 
 		// Only emit join event if this is not a scene transition

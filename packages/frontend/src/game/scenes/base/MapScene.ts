@@ -12,7 +12,7 @@ export abstract class MapScene extends Scene {
 	protected assetManager: AssetManager
 	protected map: Phaser.Tilemaps.Tilemap
 	protected collisionLayer: Phaser.Tilemaps.TilemapLayer | null = null
-	private debug: boolean = true
+	private debug: boolean = false // Temporarily enable for diagnosis
 
 	constructor(key: string, mapKey: string, mapPath: string) {
 		super(key)
@@ -36,7 +36,20 @@ export abstract class MapScene extends Scene {
 
 	create() {
 		this.transitioning = false
+		
+		// Configure physics world before loading assets
+		this.configurePhysicsWorld()
+		
 		this.assetManager.create()
+	}
+	
+	/**
+	 * Configure physics world settings
+	 */
+	private configurePhysicsWorld(): void {
+		// Ensure arcade physics is correctly configured
+		this.physics.world.setBounds(0, 0, 2000, 2000) // Set reasonable bounds 
+		this.physics.world.setFPS(60) // Set physics FPS
 	}
 	
 	protected initializeScene() {
@@ -81,14 +94,26 @@ export abstract class MapScene extends Scene {
 					// Set collision for the dedicated collision layer
 					if (layerName === 'collision') {
 						// Set collision for all non-zero tiles
-						createdLayer.setCollisionByExclusion([-1]);
-						// Make the collision layer invisible
-						// createdLayer.setVisible(false)
+						createdLayer.setCollisionByExclusion([-1])
+						
+						// Make the collision layer slightly visible for debugging
+						if (this.debug) {
+							createdLayer.setAlpha(0.3)
+						} else {
+							createdLayer.setVisible(false)
+						}
+						
 						// Store the collision layer
 						this.collisionLayer = createdLayer
-						this.collisionLayer.alpha = 0
-						// Enable physics on the collision layer
-						this.physics.world.enable(this.collisionLayer)
+						
+						// Make sure layer is correctly positioned
+						if (createdLayer.x !== 0 || createdLayer.y !== 0) {
+							console.warn('Repositioning collision layer to (0,0)')
+							createdLayer.setPosition(0, 0)
+						}
+						
+						// Debug: Check tiles in collision layer
+						this.debugCollisionTiles(createdLayer)
 					}
 				}
 			})
@@ -124,17 +149,6 @@ export abstract class MapScene extends Scene {
 			})
 		}
 		
-		// Set up collision between player and layers that have collision enabled
-		// layers.forEach((layer, layerName) => {
-		// 	const hasCollision = mapData.layers.find(l => l.name === layerName)?.properties?.some(prop => 
-		// 		prop.name === 'collision' && prop.value === true
-		// 	)
-			
-		// 	if (hasCollision) {
-		// 		this.player.setCollisionWith(layer)
-		// 	}
-		// })
-		
 		// Calculate the offset to center the map if it's smaller than the window
 		const windowWidth = this.scale.width
 		const windowHeight = this.scale.height
@@ -158,12 +172,13 @@ export abstract class MapScene extends Scene {
 			this.cameras.main.fadeIn(500)
 		}
 
-		if (this.debug) {
-			const debugGraphics = this.add.graphics().setAlpha(0.75)
+		// If debug mode is enabled, show debug graphics for the collision layer
+		if (this.debug && this.collisionLayer) {
+			const debugGraphics = this.add.graphics().setAlpha(0.5)
 			this.collisionLayer.renderDebug(debugGraphics, {
-				tileColor: null,
-				collidingTileColor: new Phaser.Display.Color(255, 0, 0, 255),
-				faceColor: new Phaser.Display.Color(0, 255, 0, 255),
+				tileColor: null, // Color of non-colliding tiles
+				collidingTileColor: new Phaser.Display.Color(255, 0, 0, 200), // Color of colliding tiles (bright red)
+				faceColor: new Phaser.Display.Color(0, 255, 0, 150), // Color of colliding tile faces
 			})
 		}
 	}
@@ -197,6 +212,32 @@ export abstract class MapScene extends Scene {
 	}
 
 	/**
+	 * Debug collision tiles to ensure they are properly set
+	 */
+	private debugCollisionTiles(layer: Phaser.Tilemaps.TilemapLayer): void {
+		if (!this.debug) return
+		
+		const width = layer.layer.width
+		const height = layer.layer.height
+		let collidingTiles = 0
+		
+		// Check each tile in the layer
+		for (let y = 0; y < height; y++) {
+			for (let x = 0; x < width; x++) {
+				const tile = layer.getTileAt(x, y)
+				if (tile && tile.collides) {
+					collidingTiles++
+				}
+			}
+		}
+		
+		// If no colliding tiles, that's a problem!
+		if (collidingTiles === 0) {
+			console.warn('WARNING: No colliding tiles found in collision layer! Collisions will not work.')
+		}
+	}
+
+	/**
 	 * Initialize collision between sprites and the collision layer
 	 * @param sprites Array of sprites or containers to set up collision with
 	 */
@@ -205,18 +246,20 @@ export abstract class MapScene extends Scene {
 			console.warn('No collision layer found in the map')
 			return
 		}
-
+		
+		// For each sprite, ensure its physics body is enabled
 		sprites.forEach(sprite => {
-
 			// Make sure the sprite has physics enabled
 			if (!sprite.body) {
 				this.physics.world.enable(sprite)
 			}
-			this.physics.add.collider(sprites, this.collisionLayer, () => {
-				// console.log('COLLISION HIT!');
-			  });
-			// Set up collision with the collision layer
-			// this.physics.add.collider(sprite, this.collisionLayer)
+			
+			// Create a collider between the sprite and collision layer
+			const collider = this.physics.add.collider(sprite, this.collisionLayer)
+			
+			if (this.debug) {
+				console.log('Added collider between sprite and collision layer')
+			}
 		})
 	}
 } 
