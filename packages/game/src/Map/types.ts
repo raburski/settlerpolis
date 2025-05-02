@@ -103,4 +103,16 @@ export interface PathData {
 	width: number
 	height: number
 	data: number[]
+}
+
+/**
+ * Interface for generating map URLs based on map names
+ */
+export interface MapUrlService {
+	/**
+	 * Generate a URL for a given map name
+	 * @param mapName The name of the map
+	 * @returns The complete URL to the map
+	 */
+	getMapUrl(mapName: string): string
 } 

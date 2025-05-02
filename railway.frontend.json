@@ -1,0 +1,11 @@
+{
+    "build": {
+      "install": "npm install",
+      "build": "npm run build:frontend"
+    },
+    "deploy": {
+      "static": {
+        "dir": "packages/frontend/dist"
+      }
+    }
+  }
