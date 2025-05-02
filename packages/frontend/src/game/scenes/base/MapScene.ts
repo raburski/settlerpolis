@@ -4,6 +4,22 @@ import { Event, PICKUP_RANGE } from "@rugged/game"
 import { AssetManager, TilesetInfo } from '../../modules/Assets'
 import { NPCSprite } from '../../sprites/NPCSprite'
 
+/**
+ * Layer Depth System:
+ * 
+ * The game uses a layered approach for rendering entities in the correct order:
+ * 
+ * - Base layers (ground, etc.): depth 0
+ * - Collision layer: depth 10
+ * - Object layers (player can walk behind): depth 50
+ * - Player/NPC layer: depth 100 + y-position*0.1 (for correct sorting)
+ * - Overlay layers (render above players): depth 150
+ * 
+ * This system ensures that:
+ * 1. Players can walk behind certain map objects
+ * 2. Players are sorted correctly based on y-position (lower = in front)
+ * 3. Overlay layers (like treetops, roofs) always render above players
+ */
 export abstract class MapScene extends Scene {
 	protected assetsLoaded: boolean = false
 	protected mapKey: string
@@ -80,6 +96,15 @@ export abstract class MapScene extends Scene {
 		// Create layers dynamically from the map data
 		const layers = new Map<string, Phaser.Tilemaps.TilemapLayer>()
 		
+		// Define depth values for different layer types
+		const LAYER_DEPTHS = {
+			base: 0,           // Base layers (ground, etc.)
+			collision: 10,     // Collision layer
+			object: 50,        // Object layers that player can walk behind
+			player: 100,       // Player depth base value (will be adjusted based on y-position)
+			overlay: 1000       // Overlay layers (render above players)
+		}
+		
 		if (mapData && mapData.layers) {
 			mapData.layers.forEach(layer => {
 				// Skip object layers as they are handled separately
@@ -91,7 +116,7 @@ export abstract class MapScene extends Scene {
 				if (createdLayer) {
 					layers.set(layerName, createdLayer)
 					
-					// Set collision for the dedicated collision layer
+					// Set special properties based on layer name
 					if (layerName === 'collision') {
 						// Set collision for all non-zero tiles
 						createdLayer.setCollisionByExclusion([-1])
@@ -114,6 +139,20 @@ export abstract class MapScene extends Scene {
 						
 						// Debug: Check tiles in collision layer
 						this.debugCollisionTiles(createdLayer)
+					} 
+					// Handle overlay layers - these should be rendered above players
+					else if (layerName === 'overlay' || layerName.startsWith('overlay-')) {
+						// Set a high depth value to render above players
+						createdLayer.setDepth(LAYER_DEPTHS.overlay)
+						
+						if (this.debug) {
+							console.log(`Set overlay layer ${layerName} with depth ${LAYER_DEPTHS.overlay}`)
+						}
+					} 
+					// Other standard layers
+					else {
+						// Set appropriate depth based on rendering order
+						createdLayer.setDepth(LAYER_DEPTHS.base)
 					}
 				}
 			})

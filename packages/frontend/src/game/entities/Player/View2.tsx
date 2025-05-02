@@ -48,7 +48,7 @@ export class PlayerView2 extends GameObjects.Container {
 		if (physicsBody) {
 			// Set a collision box for the character that's reasonable for collisions
 			physicsBody.setSize(20, 18) // Collision box dimensions
-			physicsBody.setOffset(-10, 20) // Center horizontally, position near feet
+			physicsBody.setOffset(-10, 12) // Center horizontally, position near feet
 			
 			// Configure physics properties for movement and collision
 			physicsBody.setCollideWorldBounds(true)
@@ -166,16 +166,25 @@ export class PlayerView2 extends GameObjects.Container {
 			body.y = y
 		}
 		// Update depth based on y position
-		this.setDepth(y)
+		this.updateDepth()
+	}
+
+	/**
+	 * Updates the depth of the player to ensure proper rendering order
+	 */
+	private updateDepth(): void {
+		// Player depth is 100 (base) + y-position (for sorting)
+		// This ensures players standing lower on the screen appear in front
+		const PLAYER_BASE_DEPTH = 100
+		this.setDepth(PLAYER_BASE_DEPTH + this.y * 0.1)
 	}
 
 	/**
 	 * Called before the physics update
 	 */
 	public preUpdate(): void {
-		// This method is called by the controller before the physics update
 		// Update depth based on current y position
-		this.setDepth(this.y)
+		this.updateDepth()
 		
 		// Debug drawing the physics body
 		this.updateDebugGraphics()

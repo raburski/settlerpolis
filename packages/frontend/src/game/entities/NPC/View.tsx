@@ -158,6 +158,19 @@ export class NPCView extends GameObjects.Container {
 		if (physicsBody) {
 			physicsBody.reset(x, y)
 		}
+		
+		// Update depth based on y position
+		this.updateDepth()
+	}
+
+	/**
+	 * Updates the depth of the NPC to ensure proper rendering order
+	 */
+	private updateDepth(): void {
+		// NPC depth is 100 (base) + y-position (for sorting)
+		// This ensures NPCs standing lower on the screen appear in front
+		const NPC_BASE_DEPTH = 100
+		this.setDepth(NPC_BASE_DEPTH + this.y * 0.1)
 	}
 
 	/**
@@ -194,6 +207,9 @@ export class NPCView extends GameObjects.Container {
 			this.currentState = PlayerState.Idle
 			this.updateSpriteFrame()
 		}
+		
+		// Update depth in case y position changed
+		this.updateDepth()
 	}
 
 	/**
