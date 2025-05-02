@@ -6,11 +6,6 @@ export enum TriggerOption {
 	Always = 'always'
 }
 
-export interface TriggerNPCProximity {
-	npcId: string
-	proximityRadius: number
-}
-
 export interface Trigger {
 	id: string
 	option: TriggerOption
@@ -18,4 +13,5 @@ export interface Trigger {
 	conditions?: Condition[]
 	effect?: Effect
 	effects?: Effect[]
+	mapId?: string
 } 

@@ -10,7 +10,6 @@ import { TimeManager } from '../Time'
 import { DialogueEvents } from '../Dialogue/events'
 import { DialogueContinueData } from '../Dialogue/types'
 
-const TO_FIX_HARDODED_MAP_ID = 'test1'
 const MOVEMENT_STEP_LAG = 100
 const ROUTINE_CHECK_INTERVAL = 60000 // Check routines every minute
 
@@ -33,6 +32,16 @@ export class NPCManager {
 
 	public loadNPCs(npcs: NPC[]) {
 		npcs.forEach(npc => {
+			// Check if NPC has an initialSpot defined
+			if (npc.initialSpot) {
+				// Try to get the spot from the map manager
+				const spot = this.mapManager.getNPCSpot(npc.mapId, npc.id, npc.initialSpot)
+				if (spot) {
+					// Update the NPC's position with the spot position
+					npc.position = { ...spot.position }
+				}
+			}
+			
 			this.npcs.set(npc.id, npc)
 		})
 	}
@@ -41,6 +50,7 @@ export class NPCManager {
 		// Send NPCs list when player joins or transitions to a map
 		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data: PlayerJoinData, client: EventClient) => {
 			const mapNPCs = this.getMapNPCs(data.mapId)
+			console.log('ON PLAYER JOIN', this.npcs)
 			if (mapNPCs.length > 0) {
 				client.emit(Receiver.Sender, NPCEvents.SC.List, { npcs: mapNPCs })
 			}
@@ -167,7 +177,7 @@ export class NPCManager {
 		let targetPosition: Position | undefined
 
 		if (data.spotName) {
-			const spot = this.mapManager.getNPCSpot(TO_FIX_HARDODED_MAP_ID, data.npcId, data.spotName)
+			const spot = this.mapManager.getNPCSpot(npc.mapId, data.npcId, data.spotName)
 			if (spot) {
 				targetPosition = spot.position
 			}
@@ -177,7 +187,7 @@ export class NPCManager {
 
 		if (!targetPosition) return
 
-		const path = this.mapManager.findPath(TO_FIX_HARDODED_MAP_ID, npc.position, targetPosition)
+		const path = this.mapManager.findPath(npc.mapId, npc.position, targetPosition)
 		if (path) {
 			npc.path = path
 			// Schedule immediate movement

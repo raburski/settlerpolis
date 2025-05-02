@@ -86,6 +86,7 @@ export abstract class MapScene extends Scene {
 						// createdLayer.setVisible(false)
 						// Store the collision layer
 						this.collisionLayer = createdLayer
+						this.collisionLayer.alpha = 0
 						// Enable physics on the collision layer
 						this.physics.world.enable(this.collisionLayer)
 					}

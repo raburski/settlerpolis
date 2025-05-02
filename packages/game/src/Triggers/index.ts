@@ -8,7 +8,6 @@ import { Position } from '../types'
 import { MapManager } from '../Map'
 
 const PROXIMITY_DEACTIVATION_BUFFER = 50 // pixels
-const TO_FIX_HARDODED_MAP_ID = 'test1'
 
 export class TriggerManager {
 	private triggers: Map<string, Trigger> = new Map()
@@ -87,7 +86,7 @@ export class TriggerManager {
 
 	private checkTriggers(position: Position, client: EventClient) {
 		const playerId = client.id
-		const mapId = TO_FIX_HARDODED_MAP_ID //client.currentGroup
+		const mapId = client.currentGroup
 		
 		if (mapId) {
 			const mapTriggers = this.mapManager.getTriggersAtPosition(mapId, position)
@@ -103,6 +102,7 @@ export class TriggerManager {
 				if (!mapTrigger) continue
 
 				const isInArea = this.isPositionInTriggerArea(position, mapTrigger)
+				
 				if (!isInArea) {
 					this.setTriggerActiveForPlayer(triggerId, playerId, false)
 					// For OneTime triggers, mark them as used when player leaves
@@ -134,27 +134,41 @@ export class TriggerManager {
 				}
 
 				// For triggers with conditions, we check if they're valid
-				if (this.isTriggerValid(trigger, position, client)) {
+				const isValid = this.isTriggerValid(trigger, position, client)
+				if (isValid) {
 					this.handleTrigger(trigger, client, position)
 					this.setTriggerActiveForPlayer(trigger.id, playerId, true)
 				}
 			}
 		}
 
-		// Then check for other triggers (non-map triggers)
+		// Then check for non-map triggers only - these are triggers without a mapId property
+		let nonMapTriggersCount = 0
+		
 		for (const [triggerId, trigger] of this.triggers) {
+			// Skip map-bound triggers
+			if (trigger.mapId) {
+				continue
+			}
+			
+			nonMapTriggersCount++
+
 			// Skip if it's a OneTime trigger that has been used
-			if (trigger.option === TriggerOption.OneTime && this.usedTriggers.has(triggerId)) continue
+			if (trigger.option === TriggerOption.OneTime && this.usedTriggers.has(triggerId)) {
+				continue
+			}
 
 			// Skip if it's a Random trigger and the random check fails
-			if (trigger.option === TriggerOption.Random && Math.random() > 0.5) continue
+			if (trigger.option === TriggerOption.Random && Math.random() > 0.5) {
+				continue
+			}
 
 			const isTriggerValid = this.isTriggerValid(trigger, position, client)
 			const conditionTriggers = this.getPlayerConditionTriggers(playerId)
 			const wasValid = conditionTriggers.get(triggerId)
 
 			// If trigger is valid and wasn't valid before, activate it
-			if (isTriggerValid && !wasValid) {
+			if (isTriggerValid && wasValid === false) {
 				this.handleTrigger(trigger, client, position)
 				this.setTriggerActiveForPlayer(triggerId, playerId, true)
 			}

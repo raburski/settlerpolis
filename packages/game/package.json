@@ -2,10 +2,12 @@
     "name": "@rugged/game",
     "version": "1.0.0",
     "private": true,
+    "type": "module",
     "main": "src/index.ts",
     "scripts": {
         "build": "tsc",
-        "check-types": "tsc --noEmit"
+        "check-types": "tsc --noEmit",
+        "export-maps": "node scripts/export-maps.js"
     },
     "dependencies": {
         "cron-parser": "^5.1.1",

@@ -30,6 +30,7 @@ export interface NPC {
 	name: string
 	position: Position
 	mapId: string
+	initialSpot?: string
 	messages?: NPCMessages
 	path?: Position[]
 	speed: number

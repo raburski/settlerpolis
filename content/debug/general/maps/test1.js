@@ -1,4 +1,4 @@
-{ "compressionlevel":-1,
+export default { "compressionlevel":-1,
  "height":40,
  "infinite":false,
  "layers":[

@@ -70,39 +70,40 @@ export class ContentLoader {
 		if (this.debug) {
 			console.log('[ContentLoader] Loading items:', this.content.items)
 		}
-		await this.item.loadItems(this.content.items)
+		await this.item.loadItems(this.content.items || [])
 	}
 
 	private async loadQuests() {
 		if (this.debug) {
 			console.log('[ContentLoader] Loading quests:', this.content.quests)
 		}
-		await this.quest.loadQuests(this.content.quests)
+		await this.quest.loadQuests(this.content.quests || [])
 	}
 
 	private async loadNPCs() {
 		if (this.debug) {
 			console.log('[ContentLoader] Loading NPCs:', this.content.npcs)
 		}
-		await this.npc.loadNPCs(this.content.npcs)
+		await this.npc.loadNPCs(this.content.npcs || [])
 	}
 
 	private async loadDialogues() {
-		const dialogues: DialogueTree[] = this.content.npcs
+		const npcs = this.content.npcs || []
+		const dialogues: DialogueTree[] = npcs
 			.map((npc) => npc.dialogues ? dialogueCompose({ id: `${npc.id}_dialogues`, npcId: npc.id }, ...npc.dialogues) : undefined)
 			.filter(Boolean) as DialogueTree[]
 
 		if (this.debug) {
 			console.log('[ContentLoader] Loading dialogues:', dialogues)
 		}
-		await this.dialogue.loadDialogues(dialogues)
+		await this.dialogue.loadDialogues(dialogues || [])
 	}
 
 	private async loadCutscenes() {
 		if (this.debug) {
 			console.log('[ContentLoader] Loading cutscenes:', this.content.cutscenes)
 		}
-		await this.cutscene.loadCutscenes(this.content.cutscenes)
+		await this.cutscene.loadCutscenes(this.content.cutscenes || [])
 	}
 
 	private async loadFlags() {
@@ -116,21 +117,22 @@ export class ContentLoader {
 		if (this.debug) {
 			console.log('[ContentLoader] Loading schedules:', this.content.schedules)
 		}
-		await this.scheduler.loadSchedules(this.content.schedules)
+		await this.scheduler.loadSchedules(this.content.schedules || [])
 	}
 
 	private async loadTriggers() {
 		if (this.debug) {
 			console.log('[ContentLoader] Loading triggers:', this.content.triggers)
 		}
-		await this.trigger.loadTriggers(this.content.triggers)
+		await this.trigger.loadTriggers(this.content.triggers || [])
 	}
 
 	private async loadAffinityWeights() {
-		const sentiments = this.content.npcs.reduce((acc, npc) => npc.sentiments ? {...acc, [npc.id]: npc.sentiments} : acc, {})
+		const npcs = this.content.npcs || []
+		const sentiments = npcs.reduce((acc, npc) => npc.sentiments ? {...acc, [npc.id]: npc.sentiments} : acc, {})
 		if (this.debug) {
 			console.log('[ContentLoader] Loading affinity weights:', sentiments)
 		}
-		await this.affinity.loadAffinityWeights(sentiments)
+		await this.affinity.loadAffinityWeights(sentiments || {})
 	}
 } 

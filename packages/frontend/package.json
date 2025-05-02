@@ -4,7 +4,9 @@
 	"version": "1.0.0",
 	"type": "module",
 	"scripts": {
+		"predev": "node --env-file=.env.development ./scripts/load-content.js",
 		"dev": "vite --config ../../vite/config.dev.mjs",
+		"prebuild": "node --env-file=.env.production ./scripts/load-content.js",
 		"build": "vite build --config ../../vite/config.prod.mjs",
 		"lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
 		"preview": "vite preview"
@@ -23,6 +25,7 @@
 		"@typescript-eslint/eslint-plugin": "^7.13.1",
 		"@typescript-eslint/parser": "^7.13.1",
 		"@vitejs/plugin-react": "^4.3.1",
+		"dotenv": "^16.4.5",
 		"eslint": "^8.57.0",
 		"eslint-plugin-react-hooks": "^4.6.2",
 		"eslint-plugin-react-refresh": "^0.4.7",

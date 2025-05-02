@@ -1,5 +1,5 @@
 import { EventManager, Event, EventClient } from '../events'
-import { MapData, MapLayer, MapObjectLayer, MapLoadData, MapTransitionData, CollisionData, NPCSpots, NPCSpot, PathData, MapTrigger, TiledMap } from './types'
+import { MapData, MapLayer, MapObjectLayer, MapLoadData, MapTransitionData, CollisionData, NPCSpots, NPCSpot, PathData, MapTrigger, TiledMap, MapUrlService } from './types'
 import { MapEvents } from './events'
 import { Receiver } from '../Receiver'
 import { PlayerJoinData, PlayerTransitionData } from '../Players/types'
@@ -9,83 +9,19 @@ import fs from 'fs'
 import path from 'path'
 import { Pathfinder } from './pathfinding'
 
-const FETCH = false//typeof window !== 'undefined'
+const FETCH = true//typeof window !== 'undefined'
 
 export class MapManager {
 	private maps: Map<string, MapData> = new Map()
-	private readonly MAPS_DIR = FETCH ? '/assets/maps/' : path.join(__dirname, '../../../assets/maps')
+	private readonly MAPS_DIR = '/assets/maps/'//FETCH ? '/assets/maps/' : path.join(__dirname, '../../../assets/maps')
+	private debug = true
+	private defaultMapId: string = 'town' // Default starting map
 
-	constructor(private event: EventManager) {
-		if (FETCH) {
-			this.loadMapsFromUrl()
-		} else {
-			this.loadMapsFromFiles()
-		}
+	constructor(
+		private event: EventManager,
+		private mapUrlService?: MapUrlService
+	) {
 		this.setupEventHandlers()
-	}
-
-	private async loadMapsFromUrl() {
-		try {
-			const response = await fetch(`${this.MAPS_DIR}index.json`)
-			if (!response.ok) {
-				console.error('Failed to load maps index')
-				return
-			}
-
-			const mapList = await response.json() as any
-			for (const mapId of mapList) {
-				const mapResponse = await fetch(`${this.MAPS_DIR}${mapId}.json`)
-				if (!mapResponse.ok) {
-					console.error(`Failed to load map: ${mapId}`)
-					continue
-				}
-
-				const tiledMap = await mapResponse.json()
-				const mapData: MapData = {
-					id: mapId,
-					name: mapId,
-					tiledMap: tiledMap as TiledMap,
-					spawnPoints: this.extractSpawnPoints(tiledMap),
-					collision: this.extractCollisionData(tiledMap),
-					npcSpots: this.extractNPCSpots(tiledMap),
-					paths: this.extractPathsData(tiledMap),
-					triggers: this.extractTriggers(tiledMap)
-				}
-
-				this.maps.set(mapId, mapData)
-			}
-			console.log('maps?', this.maps)
-		} catch (error) {
-			console.error('Error loading maps:', error)
-		}
-	}
-
-	private loadMapsFromFiles() {
-		try {
-			const mapFiles = fs.readdirSync(this.MAPS_DIR)
-				.filter(file => file.endsWith('.json'))
-
-			for (const file of mapFiles) {
-				const mapId = path.basename(file, '.json')
-				const mapPath = path.join(this.MAPS_DIR, file)
-				const tiledMap = JSON.parse(fs.readFileSync(mapPath, 'utf-8'))
-
-				const mapData: MapData = {
-					id: mapId,
-					name: mapId,
-					tiledMap,
-					spawnPoints: this.extractSpawnPoints(tiledMap),
-					collision: this.extractCollisionData(tiledMap),
-					npcSpots: this.extractNPCSpots(tiledMap),
-					paths: this.extractPathsData(tiledMap),
-					triggers: this.extractTriggers(tiledMap)
-				}
-
-				this.maps.set(mapId, mapData)
-			}
-		} catch (error) {
-			console.error('Error loading maps:', error)
-		}
 	}
 
 	private extractPathsData(tiledMap: any): PathData {
@@ -118,10 +54,14 @@ export class MapManager {
 					npcSpots[npcId] = {}
 				}
 
+				// Calculate center position using width and height
+				const centerX = obj.x + (obj.width || 0) / 2
+				const centerY = obj.y + (obj.height || 0) / 2
+
 				npcSpots[npcId][spotName] = {
 					position: {
-						x: obj.x,
-						y: obj.y
+						x: centerX,
+						y: centerY
 					},
 					properties: obj.properties || []
 				}
@@ -154,9 +94,13 @@ export class MapManager {
 		
 		if (spawnLayer && spawnLayer.objects) {
 			for (const obj of spawnLayer.objects) {
+				// Calculate center position using width and height
+				const centerX = obj.x + (obj.width || 0) / 2
+				const centerY = obj.y + (obj.height || 0) / 2
+				
 				spawnPoints.push({
-					x: obj.x,
-					y: obj.y
+					x: centerX,
+					y: centerY
 				})
 			}
 		}
@@ -189,49 +133,53 @@ export class MapManager {
 
 	private setupEventHandlers() {
 		// Handle map loading requests
-		this.event.on<MapLoadData>(Event.Map.CS.Load, async (data, client) => {
-			await this.loadMapForClient(data.mapId, client)
-		})
+		// this.event.on<MapLoadData>(Event.Map.CS.Load, async (data, client) => {
+		// 	await this.loadMapForClient(data.mapId, client)
+		// })
 
 		// Handle map transitions
-		this.event.on<MapTransitionData>(Event.Map.CS.Transition, async (data, client) => {
-			await this.handleMapTransition(data, client)
-		})
+		// this.event.on<MapTransitionData>(Event.Map.CS.Transition, async (data, client) => {
+		// 	await this.handleMapTransition(data, client)
+		// })
 
 		// Handle player joining to send initial map
-		this.event.on<PlayerJoinData>(Event.Players.CS.Join, async (data, client) => {
-			await this.loadMapForClient(data.scene, client)
-		})
+		// this.event.on<PlayerJoinData>(Event.Players.CS.Join, async (data, client) => {
+		// 	await this.loadMapForClient(data.scene, client)
+		// })
 
 		// Handle player scene transitions
-		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, async (data, client) => {
-			await this.loadMapForClient(data.scene, client)
-		})
+		// this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, async (data, client) => {
+		// 	await this.loadMapForClient(data.scene, client)
+		// })
 	}
 
-	private async loadMapForClient(mapId: string, client: EventClient) {
-		const mapData = this.maps.get(mapId)
-		if (!mapData) {
-			console.error(`Map not found: ${mapId}`)
-			return
-		}
+	// private async loadMapForClient(mapId: string, client: EventClient) {
+	// 	const mapData = this.maps.get(mapId)
+	// 	if (!mapData) {
+	// 		console.error(`Map not found: ${mapId}`)
+	// 		return
+	// 	}
 
-		// Filter and structure layers
-		const tileLayers = this.getTileLayers(mapData.tiledMap)
-		const objectLayers = this.getObjectLayers(mapData.tiledMap)
+	// 	// Filter and structure layers
+	// 	const tileLayers = this.getTileLayers(mapData.tiledMap)
+	// 	const objectLayers = this.getObjectLayers(mapData.tiledMap)
 
-		client.emit(Receiver.Sender, MapEvents.SC.Load, {
-			mapId,
-			name: mapData.name,
-			tileLayers,
-			objectLayers,
-			spawnPoints: mapData.spawnPoints,
-			collision: mapData.collision,
-			npcSpots: mapData.npcSpots,
-			paths: mapData.paths,
-			triggers: mapData.triggers
-		})
-	}
+	// 	// Add mapUrl if we have the service
+	// 	const mapUrl = this.mapUrlService ? this.mapUrlService.getMapUrl(mapId) : undefined
+
+	// 	client.emit(Receiver.Sender, MapEvents.SC.Load, {
+	// 		mapId,
+	// 		name: mapData.name,
+	// 		tileLayers,
+	// 		objectLayers,
+	// 		spawnPoints: mapData.spawnPoints,
+	// 		collision: mapData.collision,
+	// 		npcSpots: mapData.npcSpots,
+	// 		paths: mapData.paths,
+	// 		triggers: mapData.triggers,
+	// 		mapUrl // Include the map URL
+	// 	})
+	// }
 
 	private async handleMapTransition(data: MapTransitionData, client: EventClient) {
 		const { toMapId, position } = data
@@ -246,6 +194,9 @@ export class MapManager {
 		const tileLayers = this.getTileLayers(toMap.tiledMap)
 		const objectLayers = this.getObjectLayers(toMap.tiledMap)
 
+		// Add mapUrl if we have the service
+		const mapUrl = this.mapUrlService ? this.mapUrlService.getMapUrl(toMapId) : undefined
+
 		client.emit(Receiver.Sender, MapEvents.SC.Transition, {
 			toMapId,
 			position,
@@ -255,7 +206,8 @@ export class MapManager {
 			collision: toMap.collision,
 			npcSpots: toMap.npcSpots,
 			paths: toMap.paths,
-			triggers: toMap.triggers
+			triggers: toMap.triggers,
+			mapUrl // Include the map URL
 		})
 	}
 
@@ -355,5 +307,113 @@ export class MapManager {
 		if (!map) return undefined
 
 		return map.triggers.find(trigger => trigger.id === triggerId)
+	}
+
+	public async loadMaps(maps: Record<string, TiledMap>) {
+		if (this.debug) {
+			console.log('[MapManager] Loading maps from content')
+		}
+
+		for (const [mapId, tiledMap] of Object.entries(maps)) {
+			try {
+				// Validate required map properties
+				if (!tiledMap || !tiledMap.layers || !Array.isArray(tiledMap.layers)) {
+					console.error(`Invalid map data for ${mapId}`)
+					continue
+				}
+
+				const mapData: MapData = {
+					id: mapId,
+					name: mapId,
+					tiledMap,
+					spawnPoints: this.extractSpawnPoints(tiledMap),
+					collision: this.extractCollisionData(tiledMap),
+					npcSpots: this.extractNPCSpots(tiledMap),
+					paths: this.extractPathsData(tiledMap),
+					triggers: this.extractTriggers(tiledMap)
+				}
+
+				this.maps.set(mapId, mapData)
+			} catch (error) {
+				console.error(`Error loading map ${mapId}:`, error)
+			}
+		}
+
+		if (this.debug) {
+			console.log('[MapManager] Loaded maps:', Array.from(this.maps.keys()))
+		}
+	}
+
+	/**
+	 * Get the URL for a map
+	 * @param mapId The ID of the map
+	 * @returns The URL to load the map, or undefined if not available
+	 */
+	public getMapUrl(mapId: string): string | undefined {
+		return this.mapUrlService ? this.mapUrlService.getMapUrl(mapId) : undefined
+	}
+
+	/**
+	 * Load a map for a player and send the necessary events
+	 * @param client The client to send map data to
+	 * @param mapId Optional map ID, defaults to defaultMapId if not provided
+	 * @param position Optional position, defaults to map's spawn point if not provided
+	 */
+	public loadPlayerMap(client: EventClient, mapId?: string, position?: Position): void {
+		// Use provided mapId or default
+		const targetMapId = mapId || this.defaultMapId
+		
+		// Get map URL if available
+		const mapUrl = this.getMapUrl(targetMapId)
+		
+		// Determine position - use provided position or get a spawn point from the map
+		let playerPosition = position
+		if (!playerPosition) {
+			// Try to get a random spawn point from the map
+			playerPosition = this.getRandomSpawnPoint(targetMapId)
+			
+			// Fall back to a default position if no spawn point is available
+			if (!playerPosition) {
+				playerPosition = {
+					x: 100,
+					y: 400
+				}
+			}
+		}
+		
+		if (this.debug) {
+			console.log(`[MapManager] Loading map for player: ${targetMapId} with URL: ${mapUrl || 'N/A'}`)
+			console.log(`[MapManager] Initial position: x=${playerPosition.x}, y=${playerPosition.y}`)
+		}
+		
+		// Send map load event with URL and position
+		client.emit(Receiver.Sender, Event.Map.SC.Load, {
+			mapId: targetMapId,
+			mapUrl,
+			position: playerPosition // Always include position
+		})
+	}
+
+	/**
+	 * Get the default map ID
+	 * @returns The default map ID
+	 */
+	public getDefaultMapId(): string {
+		return this.defaultMapId
+	}
+
+	/**
+	 * Set the default map ID to use when no specific map is requested
+	 * @param mapId The map ID to use as the default
+	 */
+	public setDefaultMapId(mapId: string): void {
+		if (this.debug) {
+			console.log(`[MapManager] Setting default map ID to ${mapId}`)
+		}
+		if (this.maps.has(mapId)) {
+			this.defaultMapId = mapId
+		} else {
+			console.warn(`[MapManager] Could not set default map ID to ${mapId} as it doesn't exist`)
+		}
 	}
 } 
