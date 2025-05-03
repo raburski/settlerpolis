@@ -9,8 +9,7 @@
 		"dev": "nodemon src/index.ts",
 		"build": "tsc",
 		"test": "jest",
-		"check-types": "tsc --noEmit",
-		"ci-build": "cd ../..; npm run build --workspace=@rugged/backend;"
+		"check-types": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@rugged/game": "1.0.0",
