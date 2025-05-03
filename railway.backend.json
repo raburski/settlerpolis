@@ -1,7 +1,0 @@
-{
-    "build": {
-      "install": "npm install",
-      "build": "npm run build:backend"
-    },
-    "start": "cd packages/backend; npm start"
-}
