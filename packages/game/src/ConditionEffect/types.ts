@@ -49,11 +49,21 @@ export interface NPCAffinityOverallCondition {
 	maxScore?: number
 }
 
+export interface NPCAttributeCondition {
+	[attributeName: string]: {
+		min?: number
+		max?: number
+		equals?: any
+		exists?: boolean
+	}
+}
+
 export interface NPCCondition {
 	proximity?: number
 	id: string
 	affinity?: NPCAffinityCondition
 	affinityOverall?: NPCAffinityOverallCondition
+	attributes?: NPCAttributeCondition
 }
 
 export interface Condition {
@@ -103,12 +113,22 @@ export interface ChatEffect {
 	emoji?: string
 }
 
+export interface NPCAttributeEffect {
+	[attributeName: string]: {
+		set?: any
+		add?: number
+		subtract?: number
+		remove?: boolean
+	}
+}
+
 export interface NPCEffect {
 	id: string
-	goTo?: Position | string // string for spot name
+	goTo?: Position | string | string[] // string for spot name, string[] for random selection from multiple spots
 	message?: string
 	emoji?: string
 	affinity?: AffinityEffect
+	attributes?: NPCAttributeEffect
 }
 
 export interface Effect {

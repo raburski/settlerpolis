@@ -64,38 +64,13 @@ export class NPCManager {
 		})
 
 		// Handle NPC interactions
-		this.event.on<NPCInteractData>(Event.NPC.CS.Interact, (data, client) => {
-			const npc = this.npcs.get(data.npcId)
-			if (!npc) return
-
-			// Try to trigger dialogue first
-			const didTriggerDialogue = this.dialogueManager.triggerDialogue(client, npc.id)
-			if (didTriggerDialogue) return
-
-			// If no dialogue was triggered, fall back to messages
-			if (npc.messages) {
-				let message = npc.messages.default
-				
-				// Check conditions in order
-				if (npc.messages.conditions) {
-					for (const condition of npc.messages.conditions) {
-						if (condition.check()) {
-							message = condition.message
-							break
-						}
-					}
-				}
-				
-				client.emit(Receiver.Sender, Event.NPC.SC.Message, {
-					npcId: npc.id,
-					message
-				})
-			}
+		this.event.on<NPCInteractData>(NPCEvents.CS.Interact, (data, client) => {
+			this.handleNPCInteraction(data, client)
 		})
 
 		// Handle NPC movement
 		this.event.on<NPCGoData>(NPCEvents.SS.Go, (data) => {
-			this.handleGoEvent(data)
+			this.handleNPCGo(data)
 		})
 
 		// Handle dialogue end to resume routines
@@ -112,6 +87,30 @@ export class NPCManager {
 					this.pausedRoutines.delete(data.dialogueId)
 				}
 			}
+		})
+		
+		// Handle NPC attribute set event
+		this.event.on(NPCEvents.SS.SetAttribute, (data: { npcId: string, name: string, value: any }, client: EventClient) => {
+			this.setNPCAttribute(data.npcId, data.name, data.value)
+			
+			// Notify clients about attribute update
+			client.emit(Receiver.Group, NPCEvents.SC.AttributeUpdate, {
+				npcId: data.npcId,
+				attributeName: data.name,
+				value: data.value
+			})
+		})
+		
+		// Handle NPC attribute remove event
+		this.event.on(NPCEvents.SS.RemoveAttribute, (data: { npcId: string, name: string }, client: EventClient) => {
+			this.removeNPCAttribute(data.npcId, data.name)
+			
+			// Notify clients about attribute removal
+			client.emit(Receiver.Group, NPCEvents.SC.AttributeUpdate, {
+				npcId: data.npcId,
+				attributeName: data.name,
+				removed: true
+			})
 		})
 	}
 
@@ -291,5 +290,93 @@ export class NPCManager {
 
 		// Clear paused routines
 		this.pausedRoutines.clear()
+	}
+
+	public updateNPC(npcId: string, updates: Partial<NPC>) {
+		const npc = this.npcs.get(npcId)
+		if (!npc) return
+		
+		// Apply updates, handling complex objects like attributes properly
+		Object.entries(updates).forEach(([key, value]) => {
+			if (key === 'attributes' && npc.attributes) {
+				// Ensure value is a non-null object before spreading
+				if (value && typeof value === 'object') {
+					// Merge attributes rather than replace
+					npc.attributes = { ...npc.attributes, ...value }
+				} else {
+					console.warn(`Attempted to spread non-object value for NPC ${npcId} attributes`)
+				}
+			} else {
+				// @ts-ignore - Generic update
+				npc[key] = value
+			}
+		})
+	}
+	
+	/**
+	 * Get NPC attribute value
+	 */
+	public getNPCAttribute(npcId: string, attributeName: string): any | undefined {
+		const npc = this.npcs.get(npcId)
+		if (!npc || !npc.attributes) return undefined
+		return npc.attributes[attributeName]
+	}
+	
+	/**
+	 * Set NPC attribute value
+	 */
+	public setNPCAttribute(npcId: string, attributeName: string, value: any) {
+		const npc = this.npcs.get(npcId)
+		if (!npc) return
+		
+		// Initialize attributes if not present
+		if (!npc.attributes) {
+			npc.attributes = {}
+		}
+		
+		npc.attributes[attributeName] = value
+	}
+	
+	/**
+	 * Remove NPC attribute
+	 */
+	public removeNPCAttribute(npcId: string, attributeName: string) {
+		const npc = this.npcs.get(npcId)
+		if (!npc || !npc.attributes) return
+		
+		delete npc.attributes[attributeName]
+	}
+
+	private handleNPCInteraction(data: NPCInteractData, client: EventClient) {
+		const npc = this.npcs.get(data.npcId)
+		if (!npc) return
+
+		// Try to trigger dialogue first
+		const didTriggerDialogue = this.dialogueManager.triggerDialogue(client, npc.id)
+		if (didTriggerDialogue) return
+
+		// If no dialogue was triggered, fall back to messages
+		if (npc.messages) {
+			let message = npc.messages.default
+			
+			// Check conditions in order
+			if (npc.messages.conditions) {
+				for (const condition of npc.messages.conditions) {
+					if (condition.check()) {
+						message = condition.message
+						break
+					}
+				}
+			}
+			
+			client.emit(Receiver.Sender, NPCEvents.SC.Message, {
+				npcId: npc.id,
+				message
+			})
+		}
+	}
+	
+	private handleNPCGo(data: NPCGoData) {
+		this.handleGoEvent(data)
 	}
 } 

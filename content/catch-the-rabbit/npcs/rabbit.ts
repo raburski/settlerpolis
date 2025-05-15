@@ -14,6 +14,9 @@ const rabbit: NPCContent = {
     //   { time: "08:00", spot: "hilda_gate" }
     // ]
 //   },
+  attributes: {
+    stamina: 6,
+  },
   messages: {
     default: "*The rabbit twitches its ears.*",
   },

@@ -1,5 +1,5 @@
 import { EventClient, EventManager } from '../events'
-import { Condition, Effect, FlagCondition, QuestCondition, FlagEffect, QuestEffect, AffinityEffect, FXEffect, CutsceneEffect, EventEffect, ChatEffect, NPCCondition, NPCAffinityCondition, NPCAffinityOverallCondition, TimeRange, DateRange } from './types'
+import { Condition, Effect, FlagCondition, QuestCondition, FlagEffect, QuestEffect, AffinityEffect, FXEffect, CutsceneEffect, EventEffect, ChatEffect, NPCCondition, NPCAffinityCondition, NPCAffinityOverallCondition, TimeRange, DateRange, NPCAttributeCondition, NPCAttributeEffect } from './types'
 import { QuestManager } from "../Quest"
 import { FlagsManager } from "../Flags"
 import { AffinityManager } from "../Affinity"
@@ -324,10 +324,54 @@ export class ConditionEffectManager {
 	}
 
 	/**
+	 * Check NPC attribute condition
+	 */
+	public checkNPCAttributeCondition(attributes: NPCCondition['attributes'], npcId: string): boolean {
+		if (!attributes) return true
+		
+		// Get the NPC
+		if (!this.npcManager) {
+			console.warn('NPCManager not initialized')
+			return false
+		}
+
+		// Check each attribute condition
+		for (const [attrName, condition] of Object.entries(attributes)) {
+			const value = this.npcManager.getNPCAttribute(npcId, attrName)
+			
+			// Check if attribute exists when required
+			if (condition.exists !== undefined) {
+				const exists = value !== undefined
+				if (condition.exists !== exists) return false
+			}
+			
+			// Skip other checks if attribute doesn't exist
+			if (value === undefined) return false
+			
+			// Check min value
+			if (condition.min !== undefined && typeof value === 'number') {
+				if (value < condition.min) return false
+			}
+			
+			// Check max value
+			if (condition.max !== undefined && typeof value === 'number') {
+				if (value > condition.max) return false
+			}
+			
+			// Check equals value
+			if (condition.equals !== undefined) {
+				if (value !== condition.equals) return false
+			}
+		}
+		
+		return true
+	}
+
+	/**
 	 * Check if an NPC condition is met
 	 */
 	public checkNPCCondition(condition: NPCCondition, client: EventClient): boolean {
-		const { id, proximity, affinity, affinityOverall } = condition
+		const { id, proximity, affinity, affinityOverall, attributes } = condition
 		
 		// Get player position from PlayersManager
 		const player = this.playersManager.getPlayer(client.id)
@@ -360,6 +404,13 @@ export class ConditionEffectManager {
 		// Check affinity overall if specified
 		if (affinityOverall) {
 			if (!this.checkNPCAffinityOverallCondition(affinityOverall, client, id)) {
+				return false
+			}
+		}
+		
+		// Check attributes if specified
+		if (attributes) {
+			if (!this.checkNPCAttributeCondition(attributes, id)) {
 				return false
 			}
 		}
@@ -471,16 +522,74 @@ export class ConditionEffectManager {
 		return conditions.every(condition => this.checkCondition(condition, client))
 	}
 
+	/**
+	 * Apply NPC attribute effect
+	 */
+	public applyNPCAttributeEffect(npcId: string, attributeEffect: NPCAttributeEffect) {
+		if (!attributeEffect || !this.npcManager) return
+		
+		// Apply each attribute effect
+		for (const [attrName, effect] of Object.entries(attributeEffect)) {
+			// Remove attribute if specified
+			if (effect.remove) {
+				this.npcManager.removeNPCAttribute(npcId, attrName)
+				continue
+			}
+			
+			// Set value if specified
+			if (effect.set !== undefined) {
+				this.npcManager.setNPCAttribute(npcId, attrName, effect.set)
+				continue
+			}
+			
+			// Get current value for numeric operations
+			const currentValue = this.npcManager.getNPCAttribute(npcId, attrName)
+			
+			// Handle numeric operations
+			if (typeof currentValue === 'number' || currentValue === undefined) {
+				const numValue = typeof currentValue === 'number' ? currentValue : 0
+				
+				// Add to value if specified
+				if (effect.add !== undefined) {
+					this.npcManager.setNPCAttribute(npcId, attrName, numValue + effect.add)
+				}
+				
+				// Subtract from value if specified
+				if (effect.subtract !== undefined) {
+					this.npcManager.setNPCAttribute(npcId, attrName, numValue - effect.subtract)
+				}
+			}
+		}
+	}
+
 	private handleNPCEffect(effect: Effect['npc'], client: EventClient) {
 		if (!effect) return
 
 		// Handle NPC movement if goTo is provided
 		if (effect.goTo) {
-			const payload = typeof effect.goTo === 'string'
-				? { npcId: effect.id, spotName: effect.goTo }
-				: { npcId: effect.id, position: effect.goTo }
+			let payload;
+			
+			if (typeof effect.goTo === 'string') {
+				// Single spot name
+				payload = { npcId: effect.id, spotName: effect.goTo }
+			} else if (Array.isArray(effect.goTo)) {
+				// Array of spot names - randomly select one
+				if (effect.goTo.length > 0) {
+					const randomIndex = Math.floor(Math.random() * effect.goTo.length)
+					const randomSpot = effect.goTo[randomIndex]
+					payload = { npcId: effect.id, spotName: randomSpot }
+				} else {
+					// Empty array, don't move
+					payload = null
+				}
+			} else {
+				// Position object
+				payload = { npcId: effect.id, position: effect.goTo }
+			}
 
-			client.emit(Receiver.Group, NPCEvents.SS.Go, payload)
+			if (payload) {
+				client.emit(Receiver.Group, NPCEvents.SS.Go, payload)
+			}
 		}
 
 		// Handle NPC message if present
@@ -490,11 +599,21 @@ export class ConditionEffectManager {
 				message: effect.message,
 				emoji: effect.emoji
 			})
+		} else if (effect.emoji) {
+			client.emit(Receiver.Group, NPCEvents.SC.Message, {
+				npcId: effect.id,
+				emoji: effect.emoji
+			})
 		}
 
 		// Handle NPC affinity if present
 		if (effect.affinity) {
 			this.applyAffinityEffect(effect.affinity, client, effect.id)
+		}
+		
+		// Handle NPC attributes if present
+		if (effect.attributes) {
+			this.applyNPCAttributeEffect(effect.id, effect.attributes)
 		}
 	}
 } 

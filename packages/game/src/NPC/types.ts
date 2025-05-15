@@ -36,6 +36,7 @@ export interface NPC {
 	speed: number
 	routine?: NPCRoutine
 	currentAction?: string
+	attributes?: Record<string, any>
 }
 
 export interface NPCInteractData extends PlayerSourcedData {
@@ -44,7 +45,8 @@ export interface NPCInteractData extends PlayerSourcedData {
 
 export interface NPCMessageData {
 	npcId: string
-	message: string
+	message?: string
+	emoji?: string
 }
 
 export interface NPCGoData {

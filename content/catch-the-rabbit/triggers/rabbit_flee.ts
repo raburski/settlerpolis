@@ -1,19 +1,18 @@
-import { Trigger } from "@my/engine"
+import { Trigger, TriggerOption } from "@rugged/game"
 
 const rabbitFlee: Trigger = {
   id: "rabbit_flee",
-  option: "oneTime",
+  option: TriggerOption.Always,
   conditions: [
-    {
-      flag: {
-        exists: "rabbit_escape_triggered",
-        scope: "global"
-      }
-    },
     {
       npc: {
         id: "rabbit",
-        proximity: 3
+        proximity: 100,
+        attributes: {
+          stamina: {
+            min: 1,
+          }
+        }
       }
     }
   ],
@@ -21,18 +20,18 @@ const rabbitFlee: Trigger = {
     {
       npc: {
         id: "rabbit",
-        goTo: "spot2"
+        goTo: ["spot0", "spot1", "spot2", "spot2", "spot3", "spot4", "spot5", "spot6", "spot7"],
+        emoji: "💨",
+        attributes: {
+          stamina: {
+            subtract: 1
+          }
+        }
       }
     },
     {
       chat: {
-        system: "🐇 The rabbit darts toward the old well!"
-      }
-    },
-    {
-      flag: {
-        set: "rabbit_fled_to_well",
-        scope: "player"
+        system: "🐇 The rabbit darts away in a panic!"
       }
     }
   ]

@@ -22,10 +22,16 @@ export class NPCController {
 		EventBus.emit(Event.NPC.CS.Interact, { npcId: this.npcId })
 	}
 
-	private handleNPCMessage = (data: { npcId: string, message: string }) => {
+	private handleNPCMessage = (data: { npcId: string, message?: string, emoji?: string }) => {
 		// Only show message if it's from our NPC
 		if (data.npcId === this.npcId) {
-			this.view.displayMessage(data.message)
+			if (data.emoji && !data.message) {
+				// Emoji-only message
+				this.view.displayEmoji(data.emoji)
+			} else if (data.message) {
+				// Regular message (with or without emoji)
+				this.view.displayMessage(data.message)
+			}
 		}
 	}
 

@@ -120,7 +120,7 @@ export function displaySystemMessage(options: MessageDisplayOptions): GameObject
 	text.setOrigin(0.5, 0.5)
 	
 	// Set a very high depth to ensure text is always on top
-	text.setDepth(9999)
+	text.setDepth(1009999)
 	
 	// Add to container
 	container.add(text)
@@ -172,7 +172,7 @@ export function displayEmoji(options: MessageDisplayOptions): GameObjects.Text {
 	text.setOrigin(0.5, 0.5)
 	
 	// Set a very high depth to ensure text is always on top
-	text.setDepth(9999)
+	text.setDepth(1009999)
 	
 	// Add to container
 	container.add(text)

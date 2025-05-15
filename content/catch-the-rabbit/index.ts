@@ -1,14 +1,3 @@
-export {
-    // cutscenes,
-    // items,
-    // npcs,
-    // maps,
-    // quests,
-    // schedules,
-    // triggers,
-    // flags
-} from './general'
-
 export { maps } from './maps'
 export { cutscenes } from './cutscenes'
 export { triggers } from './triggers'
