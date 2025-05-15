@@ -131,6 +131,11 @@ export interface NPCEffect {
 	attributes?: NPCAttributeEffect
 }
 
+export interface ScheduleEffect {
+	id: string            // ID of the scheduled event to target
+	enabled: boolean      // Set to true to enable the event, false to disable
+}
+
 export interface Effect {
 	flag?: FlagEffect
 	event?: EventEffect
@@ -139,4 +144,5 @@ export interface Effect {
 	cutscene?: CutsceneEffect
 	chat?: ChatEffect
 	npc?: NPCEffect
+	schedule?: ScheduleEffect
 } 

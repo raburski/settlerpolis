@@ -1,4 +1,5 @@
 import { Time } from '../Time/types'
+import { Condition, Effect } from '../ConditionEffect/types'
 
 export enum ScheduleType {
 	Interval = 'interval',
@@ -7,26 +8,8 @@ export enum ScheduleType {
 	GameTime = 'game-time'
 }
 
-export type ScheduledEvent = {
-	id: string
-	eventType: string
-	payload: any
-	schedule: {
-		type: ScheduleType
-		value: string | number // Interval in ms, cron expression, timestamp, or game time string (HH:MM)
-		day?: number // Optional day of month for game-time
-		month?: number // Optional month for game-time
-		year?: number // Optional year for game-time
-	}
-	lastRun?: Date
-	nextRun?: Date
-	isActive: boolean
-	createdAt: Time
-}
 export type ScheduleOptions = {
 	id?: string // Optional - will be auto-generated if not provided
-	eventType: string
-	payload: any
 	schedule: {
 		type: ScheduleType
 		value: string | number
@@ -34,5 +17,18 @@ export type ScheduleOptions = {
 		month?: number
 		year?: number
 	}
+	condition?: Condition
+	conditions?: Condition[]
+	effect?: Effect
+	effects?: Effect[]
+	isActive?: boolean // Optional - defaults to true if not specified
+}
+
+export type ScheduledEvent = ScheduleOptions & {
+	id: string // Make id required for ScheduledEvent
+	lastRun?: Date
+	nextRun?: Date
+	isActive: boolean // Required in ScheduledEvent (will be set to true if not specified in options)
+	createdAt: Time
 }
 

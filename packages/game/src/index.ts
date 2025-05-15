@@ -104,6 +104,7 @@ export class GameManager {
 		this.dialogueManager.conditionEffectManager = this.conditionEffectManager
 		this.questManager.conditionEffectManager = this.conditionEffectManager
 		this.triggerManager.conditionEffectManager = this.conditionEffectManager
+		this.scheduler.conditionEffectManager = this.conditionEffectManager
 
 		// Initialize ContentLoader with all required dependencies
 		this.contentLoader = new ContentLoader(

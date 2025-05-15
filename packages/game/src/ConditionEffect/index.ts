@@ -1,5 +1,5 @@
 import { EventClient, EventManager } from '../events'
-import { Condition, Effect, FlagCondition, QuestCondition, FlagEffect, QuestEffect, AffinityEffect, FXEffect, CutsceneEffect, EventEffect, ChatEffect, NPCCondition, NPCAffinityCondition, NPCAffinityOverallCondition, TimeRange, DateRange, NPCAttributeCondition, NPCAttributeEffect } from './types'
+import { Condition, Effect, FlagCondition, QuestCondition, FlagEffect, QuestEffect, AffinityEffect, FXEffect, CutsceneEffect, EventEffect, ChatEffect, NPCCondition, NPCAffinityCondition, NPCAffinityOverallCondition, TimeRange, DateRange, NPCAttributeCondition, NPCAttributeEffect, ScheduleEffect } from './types'
 import { QuestManager } from "../Quest"
 import { FlagsManager } from "../Flags"
 import { AffinityManager } from "../Affinity"
@@ -12,6 +12,7 @@ import { Receiver, Position } from '../types'
 import { PlayersManager } from '../Players'
 import { TimeManager } from '../Time'
 import { Time } from '../Time/types'
+import { SchedulerEvents } from '../Scheduler/events'
 
 export class ConditionEffectManager {
 	constructor(
@@ -152,6 +153,21 @@ export class ConditionEffectManager {
 	}
 
 	/**
+	 * Apply a schedule effect
+	 */
+	public applyScheduleEffect(effect: ScheduleEffect, client: EventClient) {
+		if (!effect || !effect.id) return
+
+		// Determine which scheduler event to emit based on the enabled property
+		const eventType = effect.enabled 
+			? SchedulerEvents.SS.Enable 
+			: SchedulerEvents.SS.Disable
+
+		// Emit the event to enable or disable the scheduled event
+		client.emit(Receiver.All, eventType, { id: effect.id })
+	}
+
+	/**
 	 * Apply a general effect
 	 */
 	public applyEffect(effect: Effect, client: EventClient) {
@@ -183,6 +199,10 @@ export class ConditionEffectManager {
 
 		if (effect.npc) {
 			this.handleNPCEffect(effect.npc, client)
+		}
+		
+		if (effect.schedule) {
+			this.applyScheduleEffect(effect.schedule, client)
 		}
 	}
 
@@ -324,10 +344,14 @@ export class ConditionEffectManager {
 	}
 
 	/**
-	 * Check NPC attribute condition
+	 * Check NPC attribute conditions
 	 */
 	public checkNPCAttributeCondition(attributes: NPCCondition['attributes'], npcId: string): boolean {
-		if (!attributes) return true
+		// Add a null/undefined check for both parameters
+		if (!attributes || !npcId) {
+			console.warn('Missing attributes or NPC ID in checkNPCAttributeCondition')
+			return false
+		}
 		
 		// Get the NPC
 		if (!this.npcManager) {
@@ -371,11 +395,34 @@ export class ConditionEffectManager {
 	 * Check if an NPC condition is met
 	 */
 	public checkNPCCondition(condition: NPCCondition, client: EventClient): boolean {
+		// Ensure condition is provided
+		if (!condition) return false;
+		
 		const { id, proximity, affinity, affinityOverall, attributes } = condition
 		
-		// Get player position from PlayersManager
-		const player = this.playersManager.getPlayer(client.id)
-		if (!player) return false
+		// Ensure id is provided
+		if (!id) {
+			console.warn('NPC condition missing required id property')
+			return false
+		}
+		
+		// Check attributes first - this doesn't require a client
+		if (attributes) {
+			if (!this.checkNPCAttributeCondition(attributes, id)) {
+				return false
+			}
+		}
+		
+		// If we only needed to check attributes, we're done
+		if (!proximity && !affinity && !affinityOverall) {
+			return true
+		}
+		
+		// For the rest of the checks, we need a client
+		if (!client) {
+			console.warn('Client required for NPC proximity or affinity conditions')
+			return false
+		}
 		
 		// Check proximity if specified
 		if (proximity !== undefined) {
@@ -386,6 +433,9 @@ export class ConditionEffectManager {
 
 			const npc = this.npcManager.getNPC(id)
 			if (!npc) return false
+
+			const player = this.playersManager.getPlayer(client.id)
+			if (!player) return false
 
 			const dx = player.position.x - npc.position.x
 			const dy = player.position.y - npc.position.y
@@ -404,13 +454,6 @@ export class ConditionEffectManager {
 		// Check affinity overall if specified
 		if (affinityOverall) {
 			if (!this.checkNPCAffinityOverallCondition(affinityOverall, client, id)) {
-				return false
-			}
-		}
-		
-		// Check attributes if specified
-		if (attributes) {
-			if (!this.checkNPCAttributeCondition(attributes, id)) {
 				return false
 			}
 		}
@@ -488,20 +531,39 @@ export class ConditionEffectManager {
 	 * Check if a condition is met
 	 */
 	public checkCondition(condition: Condition, client: EventClient): boolean {
+		// Return true if condition is null/undefined
 		if (!condition) return true
-
-		if (condition.flag && !this.checkFlagCondition(condition.flag, client)) {
-			return false
+		
+		// Check if flag condition requires client
+		if (condition.flag) {
+			if (!client) {
+				console.warn('Client required for flag conditions')
+				return false
+			}
+			if (!this.checkFlagCondition(condition.flag, client)) {
+				return false
+			}
 		}
 
-		if (condition.quest && !this.checkQuestCondition(condition.quest, client)) {
-			return false
+		// Check if quest condition requires client
+		if (condition.quest) {
+			if (!client) {
+				console.warn('Client required for quest conditions')
+				return false
+			}
+			if (!this.checkQuestCondition(condition.quest, client)) {
+				return false
+			}
 		}
 
-		if (condition.npc && !this.checkNPCCondition(condition.npc, client)) {
-			return false
+		// NPC condition may not require client (for attribute-only checks)
+		if (condition.npc) {
+			if (!this.checkNPCCondition(condition.npc, client)) {
+				return false
+			}
 		}
 
+		// Time and date conditions don't require client
 		if (condition.time && !this.checkTimeCondition(condition.time)) {
 			return false
 		}
