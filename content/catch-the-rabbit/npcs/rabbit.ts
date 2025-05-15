@@ -1,4 +1,4 @@
-import { NPCContent } from "@my/engine"
+import { NPCContent } from "@rugged/game"
 
 const rabbit: NPCContent = {
   id: "rabbit",

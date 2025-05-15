@@ -33,7 +33,9 @@ export interface FlagCondition {
 }
 
 export interface QuestCondition {
-	canStart: string
+	canStart?: string
+	inProgress?: string
+	completed?: string
 }
 
 export interface NPCAffinityCondition {

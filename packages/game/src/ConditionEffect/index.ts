@@ -221,8 +221,22 @@ export class ConditionEffectManager {
 	 * Check if a quest condition is met
 	 */
 	public checkQuestCondition(condition: QuestCondition, client: EventClient): boolean {
-		// Check with the Quest module if the player can start the quest
-		return this.questManager.canStartQuest(condition.canStart, client.id)
+		// Check if quest can be started
+		if (condition.canStart) {
+			return this.questManager.canStartQuest(condition.canStart, client.id)
+		}
+		
+		// Check if quest is in progress
+		if (condition.inProgress) {
+			return this.questManager.hasActiveQuest(condition.inProgress, client.id)
+		}
+		
+		// Check if quest has been completed
+		if (condition.completed) {
+			return this.questManager.hasCompletedQuest(condition.completed, client.id)
+		}
+		
+		return false
 	}
 
 	/**

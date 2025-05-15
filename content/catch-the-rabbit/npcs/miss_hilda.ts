@@ -24,28 +24,34 @@ const missHilda: NPCContent = {
       nodes: {
         start: {
           speaker: "Miss Hilda",
-          text: "Well look who finally got up! That rabbit has been hopping all over the yard since dawn!",
+          text: "Oh, it's you again. Have you seen my rabbit?",
           options: [
             {
-              id: "volunteer",
+              id: "start_quest",
               text: "I'll catch it for you, don't worry!",
               next: "thankyou",
-              conditions: [
-                {
-                  flag: {
-                    exists: "rabbit_escape_triggered",
-                    scope: "global"
-                  }
-                }
-              ],
+              condition: {
+                quest: { canStart: "catch_the_rabbit" }
+              },
               effect: {
                 quest: { start: "catch_the_rabbit" }
               }
             },
             {
-              id: "nope",
-              text: "Sorry, not my problem...",
-              next: "grumble"
+              id: "reminder",
+              text: "Still chasing the rabbit...",
+              next: "already_helping",
+              condition: {
+                quest: { inProgress: "catch_the_rabbit"}
+              }
+            },
+            {
+              id: "completed",
+              text: "I caught the rabbit, by the way.",
+              next: "gratitude",
+              condition: {
+                quest: { completed: "catch_the_rabbit" }
+              }
             }
           ]
         },
@@ -53,9 +59,17 @@ const missHilda: NPCContent = {
           speaker: "Miss Hilda",
           text: "Finally, someone responsible! Be quick, it’s already chewed through my herbs."
         },
-        grumble: {
+        already_helping: {
           speaker: "Miss Hilda",
-          text: "Hmph. Kids these days..."
+          text: "What are you waiting for? That rabbit won't catch itself!"
+        },
+        gratitude: {
+          speaker: "Miss Hilda",
+          text: "You caught him? You’re a miracle, dear. He’s grounded for a week."
+        },
+        default_idle: {
+          speaker: "Miss Hilda",
+          text: "The weather’s fine, but I feel trouble in the air..."
         }
       }
     }

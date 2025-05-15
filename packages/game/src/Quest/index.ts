@@ -241,7 +241,12 @@ export class QuestManager {
 		this.savePlayerState(playerId, playerState)
 	}
 
-	private getOrCreatePlayerState(playerId: string): PlayerQuestState {
+	private savePlayerState(playerId: string, state: PlayerQuestState) {
+		this.playerQuestStates.set(playerId, state)
+		// TODO: Persist to database
+	}
+
+	public getOrCreatePlayerState(playerId: string): PlayerQuestState {
 		if (!this.playerQuestStates.has(playerId)) {
 			this.playerQuestStates.set(playerId, {
 				activeQuests: [],
@@ -249,11 +254,6 @@ export class QuestManager {
 			})
 		}
 		return this.playerQuestStates.get(playerId)!
-	}
-
-	private savePlayerState(playerId: string, state: PlayerQuestState) {
-		this.playerQuestStates.set(playerId, state)
-		// TODO: Persist to database
 	}
 
 	public findDialogueFor(npcId: string, playerId: string): { dialogueId: string, nodeId: string } | undefined {
@@ -277,6 +277,96 @@ export class QuestManager {
 		}
 		
 		return undefined
+	}
+
+	/**
+	 * Check if a player has a specific quest active/in progress
+	 * @param questId The ID of the quest to check
+	 * @param playerId The ID of the player
+	 * @returns true if the player has the quest active, false otherwise
+	 */
+	public hasActiveQuest(questId: string, playerId: string): boolean {
+		// First check if the quest exists
+		const quest = this.quests.get(questId)
+		if (!quest) return false
+		
+		// Get default settings if not provided
+		const settings = quest.settings || { repeatable: false, scope: QuestScope.Player }
+		
+		// Get player state
+		const playerState = this.getOrCreatePlayerState(playerId)
+		console.log('hasActiveQuest, playerState', playerState)
+		
+		// Check player's active quests first (applies to all scopes)
+		const isActiveForPlayer = playerState.activeQuests.some(quest => 
+			quest.questId === questId && !quest.completed
+		)
+		
+		if (isActiveForPlayer) return true
+		
+		// For shared quests, also check the shared quest state
+		if (settings.scope === QuestScope.Shared) {
+			const sharedQuestState = this.sharedQuestStates.get(questId)
+			if (sharedQuestState && !sharedQuestState.completed) {
+				return true
+			}
+		}
+		
+		// For global quests, check the global quest state
+		if (settings.scope === QuestScope.Global) {
+			const globalQuestState = this.globalQuestStates.get(questId)
+			if (globalQuestState && !globalQuestState.completed) {
+				return true
+			}
+		}
+		
+		return false
+	}
+
+	/**
+	 * Check if a player has completed a specific quest
+	 * @param questId The ID of the quest to check
+	 * @param playerId The ID of the player
+	 * @returns true if the player has completed the quest, false otherwise
+	 */
+	public hasCompletedQuest(questId: string, playerId: string): boolean {
+		// First check if the quest exists
+		const quest = this.quests.get(questId)
+		if (!quest) return false
+		
+		// Get default settings if not provided
+		const settings = quest.settings || { repeatable: false, scope: QuestScope.Player }
+		
+		// Get player state
+		const playerState = this.getOrCreatePlayerState(playerId)
+		
+		// Check player's completed quests
+		const isCompletedByPlayer = playerState.completedQuests.includes(questId)
+		
+		// For player-scoped quests, just check the player's completed quests
+		if (settings.scope === QuestScope.Player) {
+			return isCompletedByPlayer
+		}
+		
+		// For shared quests, check if either the player has completed it
+		// or the shared quest is marked as completed
+		if (settings.scope === QuestScope.Shared) {
+			if (isCompletedByPlayer) return true
+			
+			const sharedQuestState = this.sharedQuestStates.get(questId)
+			return sharedQuestState?.completed || false
+		}
+		
+		// For global quests, check if either the player has completed it
+		// or the global quest is marked as completed
+		if (settings.scope === QuestScope.Global) {
+			if (isCompletedByPlayer) return true
+			
+			const globalQuestState = this.globalQuestStates.get(questId)
+			return globalQuestState?.completed || false
+		}
+		
+		return isCompletedByPlayer
 	}
 
 	/**
