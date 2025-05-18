@@ -1,4 +1,4 @@
-import { Effect } from '../ConditionEffect/types'
+import { Effect, Condition } from '../ConditionEffect/types'
 
 export enum QuestScope {
 	Player = 'player',
@@ -48,6 +48,8 @@ export interface Quest {
 	settings?: QuestSettings
 	steps: QuestStep[]
 	reward?: QuestReward
+	startCondition?: Condition // Condition that must be met to start the quest
+	startEffect?: Effect // Effect that is applied when the quest starts
 }
 
 export interface QuestProgress {

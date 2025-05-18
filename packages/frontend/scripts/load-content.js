@@ -64,13 +64,19 @@ async function runExportMapsScript() {
 // Define content paths
 const contentDir = path.join(rootDir, 'content', gameContent);
 const mapsAssetsDir = path.join(contentDir, 'maps');
-const targetDir = path.join(frontendDir, 'public/assets/maps');
+const npcsAssetsDir = path.join(contentDir, 'npcs');
+const itemsAssetsDir = path.join(contentDir, 'items');
+const mapsTargetDir = path.join(frontendDir, 'public/assets/maps');
+const npcsTargetDir = path.join(frontendDir, 'public/assets/npcs');
+const itemsTargetDir = path.join(frontendDir, 'public/assets/items');
 
-// Create target directory if it doesn't exist
-if (!fs.existsSync(targetDir)) {
-  fs.mkdirSync(targetDir, { recursive: true });
-  console.log(`Created directory: ${targetDir}`);
-}
+// Create target directories if they don't exist
+;[mapsTargetDir, npcsTargetDir, itemsTargetDir].forEach(dir => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+    console.log(`Created directory: ${dir}`);
+  }
+});
 
 // Function to copy files from source to target
 function copyFiles(sourceDir, targetDir, extensions) {
@@ -123,9 +129,18 @@ function copyFiles(sourceDir, targetDir, extensions) {
     // First run the export-maps script
     await runExportMapsScript();
     
-    // Then copy assets to frontend
-    console.log(`Copying assets from ${mapsAssetsDir} to ${targetDir}`);
-    copyFiles(mapsAssetsDir, targetDir, ['.png', '.json']);
+    // Then copy map assets to frontend
+    console.log(`Copying map assets from ${mapsAssetsDir} to ${mapsTargetDir}`);
+    copyFiles(mapsAssetsDir, mapsTargetDir, ['.png', '.json']);
+    
+    // Copy NPC assets to frontend
+    console.log(`Copying NPC assets from ${npcsAssetsDir} to ${npcsTargetDir}`);
+    copyFiles(npcsAssetsDir, npcsTargetDir, ['.png', '.json']);
+    
+    // Copy items assets to frontend
+    console.log(`Copying items assets from ${itemsAssetsDir} to ${itemsTargetDir}`);
+    copyFiles(itemsAssetsDir, itemsTargetDir, ['.png', '.json']);
+    
     console.log('Content loading completed successfully');
   } catch (error) {
     console.error('Error:', error.message);

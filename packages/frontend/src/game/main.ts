@@ -10,11 +10,14 @@ let multiplayerService = new MultiplayerService(networkManager)
 const config: Types.Core.GameConfig = {
 	type: AUTO,
 	scale: {
-		mode: Scale.RESIZE,
+		mode: Scale.CENTER_BOTH,
 		parent: 'game-container',
-		// width: '100%',
-		// height: '100%',
-		autoCenter: Scale.CENTER_BOTH
+		width: '100%',
+		height: '100%',
+		autoCenter: Scale.CENTER_BOTH,
+		zoom: 1, // Set zoom to 2 for 2x pixel density
+		// width: 800, // Base width
+		// height: 600, // Base height
 	},
 	backgroundColor: '#000000',
 	physics: {

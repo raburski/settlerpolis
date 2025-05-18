@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { DialogueNode } from '@rugged/game'
 import styles from './DialogUI.module.css'
 import { EventBus } from '../EventBus'
@@ -6,24 +6,49 @@ import { Event } from '@rugged/game'
 import { itemService } from '../services/ItemService'
 import { ItemTexture } from './ItemTexture'
 
+const DEFAULT_AVATAR = '/assets/npcs/avatar1.jpg'
+
 export function DialogUI() {
 	const [activeNode, setActiveNode] = useState<DialogueNode | null>(null)
 	const [dialogueId, setDialogueId] = useState<string | null>(null)
 	const [, setUpdateCounter] = useState(0)
+	const [displayedText, setDisplayedText] = useState('')
+	const [isAnimating, setIsAnimating] = useState(false)
+	const [showResponses, setShowResponses] = useState(false)
+	const [predictedHeight, setPredictedHeight] = useState<number | undefined>(undefined)
+	const measureRef = useRef<HTMLDivElement>(null)
+	const dialogTextRef = useRef<HTMLDivElement>(null)
 
 	useEffect(() => {
 		const handleDialogueTrigger = (data: { dialogueId: string, node: DialogueNode }) => {
 			setDialogueId(data.dialogueId)
 			setActiveNode(data.node)
+			setDisplayedText('')
+			setIsAnimating(true)
+			setShowResponses(false)
 		}
 
 		const handleDialogueEnd = (data: { dialogueId: string }) => {
 			setDialogueId(null)
 			setActiveNode(null)
+			setDisplayedText('')
+			setIsAnimating(false)
+			setShowResponses(false)
 		}
 
 		const handleItemUpdate = () => {
 			setUpdateCounter(c => c + 1)
+		}
+
+		const handleKeyPress = (event: KeyboardEvent) => {
+			if (event.code === 'Space' && activeNode && isAnimating) {
+				event.preventDefault()
+				setDisplayedText(activeNode.text)
+				setIsAnimating(false)
+				setTimeout(() => {
+					setShowResponses(true)
+				}, 200)
+			}
 		}
 
 		// Listen for dialogue events
@@ -33,12 +58,49 @@ export function DialogUI() {
 		// Listen for item type updates
 		const unsubscribe = itemService.onUpdate(handleItemUpdate)
 
+		// Add keyboard listener
+		window.addEventListener('keydown', handleKeyPress)
+
 		return () => {
 			EventBus.off(Event.Dialogue.SC.Trigger, handleDialogueTrigger)
 			EventBus.off(Event.Dialogue.SC.End, handleDialogueEnd)
 			unsubscribe()
+			window.removeEventListener('keydown', handleKeyPress)
 		}
-	}, [])
+	}, [activeNode, isAnimating])
+
+	useEffect(() => {
+		if (!activeNode || !isAnimating) return
+
+		let currentIndex = 0
+		const text = activeNode.text
+		const interval = setInterval(() => {
+			if (currentIndex < text.length) {
+				setDisplayedText(text.slice(0, currentIndex + 1))
+				currentIndex++
+			} else {
+				clearInterval(interval)
+				setIsAnimating(false)
+				// Add a small delay before showing responses
+				setTimeout(() => {
+					setShowResponses(true)
+				}, 200)
+			}
+		}, 40) // Slightly slower for better readability
+
+		return () => clearInterval(interval)
+	}, [activeNode, isAnimating])
+
+	// Predict the height of the full text and set minHeight
+	useEffect(() => {
+		if (!activeNode) return
+		if (!dialogTextRef.current || !measureRef.current) return
+		// Set the full text in the hidden measure element
+		measureRef.current.innerText = activeNode.text
+		// Get the height of the measure element
+		const height = measureRef.current.offsetHeight
+		setPredictedHeight(height)
+	}, [activeNode])
 
 	if (!activeNode) {
 		return null
@@ -107,46 +169,82 @@ export function DialogUI() {
 					×
 				</button>
 
-				<div className={styles.speakerName}>
-					{activeNode.speaker}
-				</div>
+				{DEFAULT_AVATAR && (
+					<div className={styles.avatarContainer}>
+						<img 
+							src={DEFAULT_AVATAR} 
+							alt={activeNode.speaker}
+							className={styles.avatar}
+						/>
+					</div>
+				)}
 
-				<div className={styles.dialogText}>
-					<p>{activeNode.text}</p>
-					{activeNode.item && renderItem(activeNode.item)}
-				</div>
+				<div className={styles.dialogMain}>
+					<div className={styles.speakerName}>
+						{activeNode.speaker}
+					</div>
 
-				<div className={styles.responsesList}>
-					{activeNode.options?.map((option) => (
-						<div key={option.id} className={styles.responseWrapper}>
+					<div
+						className={styles.dialogText}
+						ref={dialogTextRef}
+						style={predictedHeight ? { minHeight: predictedHeight } : {}}
+					>
+						<p>
+							{displayedText.split('').map((char, index) => (
+								<span key={index}>{char}</span>
+							))}
+						</p>
+						{activeNode.item && renderItem(activeNode.item)}
+						{/* Hidden element for measuring full text height */}
+						<div
+							ref={measureRef}
+							style={{
+								position: 'absolute',
+								visibility: 'hidden',
+								pointerEvents: 'none',
+								zIndex: -1,
+								whiteSpace: 'pre-wrap',
+								width: '100%',
+								fontFamily: 'inherit',
+								fontSize: 'inherit',
+								fontWeight: 'inherit',
+								lineHeight: 'inherit',
+							}}
+						/>
+					</div>
+
+					<div className={`${styles.responsesList} ${showResponses ? styles.visible : ''}`}>
+						{activeNode.options?.map((option) => (
+							<div key={option.id} className={styles.responseWrapper}>
+								<button
+									className={styles.responseButton}
+									onClick={() => handleOptionSelect(option.id)}
+								>
+									{option.text}
+								</button>
+								{option.item && renderItem(option.item)}
+							</div>
+						))}
+
+						{(!activeNode.options && activeNode.next) && (
 							<button
-								className={styles.responseButton}
-								onClick={() => handleOptionSelect(option.id)}
+								className={styles.continueButton}
+								onClick={handleContinue}
 							>
-								{option.text}
+								Continue
 							</button>
-							{option.item && renderItem(option.item)}
-						</div>
-					))}
+						)}
+
+						{(!activeNode.options && !activeNode.next) && (
+							<button
+								className={styles.closeButton}
+								onClick={handleClose}
+							>
+								Close
+							</button>
+						)}
+					</div>
 				</div>
-
-				{(!activeNode.options && activeNode.next) && (
-					<button
-						className={styles.continueButton}
-						onClick={handleContinue}
-					>
-						Continue
-					</button>
-				)}
-
-				{(!activeNode.options && !activeNode.next) && (
-					<button
-						className={styles.closeButton}
-						onClick={handleClose}
-					>
-						Close
-					</button>
-				)}
 			</div>
 		</div>
 	)

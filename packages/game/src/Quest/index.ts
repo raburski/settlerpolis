@@ -372,10 +372,10 @@ export class QuestManager {
 	/**
 	 * Check if a player can start a specific quest
 	 * @param questId The ID of the quest to check
-	 * @param playerId The ID of the player
+	 * @param client The client to check for
 	 * @returns true if the player can start the quest, false otherwise
 	 */
-	public canStartQuest(questId: string, playerId: string): boolean {
+	public canStartQuest(questId: string, client: EventClient): boolean {
 		const quest = this.quests.get(questId)
 		if (!quest) return false
 
@@ -383,7 +383,7 @@ export class QuestManager {
 		const settings = quest.settings || { repeatable: false, scope: QuestScope.Player }
 		
 		// Get player state
-		const playerState = this.getOrCreatePlayerState(playerId)
+		const playerState = this.getOrCreatePlayerState(client.id)
 		
 		// Check if quest is already completed by the player
 		const isCompleted = playerState.completedQuests.includes(questId)
@@ -398,8 +398,6 @@ export class QuestManager {
 			
 			// If quest is already active, can't start again
 			if (isActive) return false
-			
-			return true
 		}
 		
 		// For global quests (one instance for everyone)
@@ -410,8 +408,6 @@ export class QuestManager {
 			
 			// If quest is not repeatable and already completed globally, can't start
 			if (!settings.repeatable && globalQuestState?.completed) return false
-			
-			return true
 		}
 		
 		// For shared quests (many players can take it and progress is communal)
@@ -425,11 +421,15 @@ export class QuestManager {
 				// If quest is already active, player can join it
 				return true
 			}
-			
-			return true
+		}
+
+		// Check start condition if present
+		if (quest.startCondition && this.conditionEffectManager) {
+			if (!this.conditionEffectManager.checkCondition(quest.startCondition, client)) {
+				return false
+			}
 		}
 		
-		// Default case
 		return true
 	}
 
@@ -442,6 +442,9 @@ export class QuestManager {
 	public startQuest(questId: string, playerId: string, client: EventClient): void {
 		const quest = this.quests.get(questId)
 		if (!quest) return
+
+		// Check if quest can be started
+		if (!this.canStartQuest(questId, client)) return
 		
 		// Get default settings if not provided
 		const settings = quest.settings || { repeatable: false, scope: QuestScope.Player }
@@ -501,6 +504,11 @@ export class QuestManager {
 				playerState.activeQuests.push(progress)
 				this.savePlayerState(playerId, playerState)
 			}
+		}
+
+		// Apply start effect if present
+		if (quest.startEffect && this.conditionEffectManager) {
+			this.conditionEffectManager.applyEffect(quest.startEffect, client)
 		}
 		
 		// Send sanitized quest details and progress

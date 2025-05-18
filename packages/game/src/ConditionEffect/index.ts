@@ -287,7 +287,7 @@ export class ConditionEffectManager {
 	public checkQuestCondition(condition: QuestCondition, client: EventClient): boolean {
 		// Check if quest can be started
 		if (condition.canStart) {
-			return this.questManager.canStartQuest(condition.canStart, client.id)
+			return this.questManager.canStartQuest(condition.canStart, client)
 		}
 		
 		// Check if quest is in progress
@@ -440,9 +440,9 @@ export class ConditionEffectManager {
 	 */
 	public checkNPCCondition(condition: NPCCondition, client: EventClient): boolean {
 		// Ensure condition is provided
-		if (!condition) return false;
+		if (!condition) return false
 		
-		const { id, proximity, affinity, affinityOverall, attributes, state } = condition
+		const { id, proximity, affinity, affinityOverall, attributes, state, active } = condition
 		
 		// Ensure id is provided
 		if (!id) {
@@ -458,6 +458,11 @@ export class ConditionEffectManager {
 
 		const npc = this.npcManager.getNPC(id)
 		if (!npc) return false
+		
+		// Check active state if specified
+		if (active !== undefined && npc.active !== active) {
+			return false
+		}
 		
 		// Check state if specified - does not require a client
 		if (state !== undefined) {

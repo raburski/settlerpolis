@@ -122,7 +122,7 @@ export class NPCManager {
 	}
 
 	private getMapNPCs(mapId: string): NPC[] {
-		return Array.from(this.npcs.values()).filter(npc => npc.mapId === mapId)
+		return Array.from(this.npcs.values()).filter(npc => npc.mapId === mapId && npc.active !== false)
 	}
 
 	private scheduleNPCMovement(npcId: string, delay: number) {

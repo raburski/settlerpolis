@@ -66,6 +66,7 @@ export interface NPCCondition {
 	affinityOverall?: NPCAffinityOverallCondition
 	attributes?: NPCAttributeCondition
 	state?: NPCState
+	active?: boolean
 }
 
 export interface Condition {
