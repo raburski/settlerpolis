@@ -1,17 +1,18 @@
-import { ScheduleOptions, ScheduleType } from "@rugged/game"
+import { NPCState, ScheduleOptions, ScheduleType } from "@rugged/game"
 
 const rabbitStaminaRegen: ScheduleOptions = {
   id: "regen_rabbit_stamina",
   schedule: {
     type: ScheduleType.Interval,
-    value: 10000 // every 30 seconds real-time
+    value: 5000 // every 30 seconds real-time
   },
   conditions: [
     {
       npc: {
         id: "rabbit",
+        state: NPCState.Idle,
         attributes: {
-          stamina: { max: 6 } // only regenerate if stamina < 5
+          stamina: { min: 1, max: 6 } // only regenerate if stamina < 5
         }
       }
     }
@@ -28,7 +29,7 @@ const rabbitStaminaRegen: ScheduleOptions = {
         }
       },
       chat: {
-        system: '🐰 gains some energy back!'
+        system: '🐰 The rabbit gains some energy back!'
       }
     }
   ],

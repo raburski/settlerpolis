@@ -2,6 +2,11 @@ import { Position } from '../types'
 import { PlayerSourcedData } from '../Players/types'
 import { AffinityData, AffinitySentiments, AffinitySentimentType } from '../Affinity/types'
 
+export enum NPCState {
+	Idle = 'idle',
+	Moving = 'moving'
+}
+
 export interface NPCMessageCondition {
 	check: () => boolean
 	message: string
@@ -31,12 +36,15 @@ export interface NPC {
 	position: Position
 	mapId: string
 	initialSpot?: string
+	currentSpot?: string
 	messages?: NPCMessages
 	path?: Position[]
 	speed: number
 	routine?: NPCRoutine
 	currentAction?: string
 	attributes?: Record<string, any>
+	state?: NPCState
+	active?: boolean // defaults to true, if false NPC is disabled
 }
 
 export interface NPCInteractData extends PlayerSourcedData {

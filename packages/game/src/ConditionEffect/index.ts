@@ -1,5 +1,5 @@
 import { EventClient, EventManager } from '../events'
-import { Condition, Effect, FlagCondition, QuestCondition, FlagEffect, QuestEffect, AffinityEffect, FXEffect, CutsceneEffect, EventEffect, ChatEffect, NPCCondition, NPCAffinityCondition, NPCAffinityOverallCondition, TimeRange, DateRange, NPCAttributeCondition, NPCAttributeEffect, ScheduleEffect } from './types'
+import { Condition, Effect, FlagCondition, QuestCondition, FlagEffect, QuestEffect, AffinityEffect, FXEffect, CutsceneEffect, EventEffect, ChatEffect, NPCCondition, NPCAffinityCondition, NPCAffinityOverallCondition, TimeRange, DateRange, NPCAttributeCondition, NPCAttributeEffect, ScheduleEffect, InventoryEffect } from './types'
 import { QuestManager } from "../Quest"
 import { FlagsManager } from "../Flags"
 import { AffinityManager } from "../Affinity"
@@ -8,11 +8,15 @@ import { CutsceneEvents } from "../Cutscene/events"
 import { ChatEvents } from "../Chat/events"
 import { NPCEvents } from '../NPC/events'
 import { NPCManager } from '../NPC'
+import { NPCState } from '../NPC/types'
 import { Receiver, Position } from '../types'
 import { PlayersManager } from '../Players'
 import { TimeManager } from '../Time'
 import { Time } from '../Time/types'
 import { SchedulerEvents } from '../Scheduler/events'
+import { InventoryManager } from '../Inventory'
+import { InventoryEvents } from '../Inventory/events'
+import { v4 as uuidv4 } from 'uuid'
 
 export class ConditionEffectManager {
 	constructor(
@@ -22,7 +26,8 @@ export class ConditionEffectManager {
 		private affinityManager: AffinityManager,
 		private npcManager: NPCManager,
 		private playersManager: PlayersManager,
-		private timeManager: TimeManager
+		private timeManager: TimeManager,
+		private inventoryManager: InventoryManager
 	) {}
 
 	/**
@@ -63,11 +68,16 @@ export class ConditionEffectManager {
 	 * Apply a quest effect
 	 */
 	public applyQuestEffect(effect: QuestEffect, client: EventClient) {
-		const { start } = effect
+		const { start, completeStep } = effect
 		
 		if (start) {
 			// Use the QuestManager's startQuest method
 			this.questManager.startQuest(start, client.id, client)
+		}
+		
+		if (completeStep) {
+			// Use the QuestManager to complete a specific step
+			this.questManager.completeSpecificStep(completeStep.questId, completeStep.stepId, client.id, client)
 		}
 	}
 
@@ -168,6 +178,36 @@ export class ConditionEffectManager {
 	}
 
 	/**
+	 * Apply an inventory effect
+	 */
+	public applyInventoryEffect(effect: InventoryEffect, client: EventClient) {
+		if (!effect) return
+		
+		// Handle adding items to inventory
+		if (effect.add) {
+			const { itemType, quantity = 1, playerId } = effect.add
+			const targetPlayerId = playerId || client.id
+			
+			// Create and add the specified quantity of items
+			for (let i = 0; i < quantity; i++) {
+				const item = {
+					id: uuidv4(),
+					itemType
+				}
+				
+				// Use the event system to add the item to ensure proper handling
+				client.emit(Receiver.Sender, InventoryEvents.SS.Add, item)
+			}
+		}
+		
+		// Handle removing items from inventory (for future implementation)
+		if (effect.remove) {
+			// This could be implemented in the future to remove items by type
+			console.warn('Remove items by type not yet implemented')
+		}
+	}
+
+	/**
 	 * Apply a general effect
 	 */
 	public applyEffect(effect: Effect, client: EventClient) {
@@ -203,6 +243,10 @@ export class ConditionEffectManager {
 		
 		if (effect.schedule) {
 			this.applyScheduleEffect(effect.schedule, client)
+		}
+		
+		if (effect.inventory) {
+			this.applyInventoryEffect(effect.inventory, client)
 		}
 	}
 
@@ -398,7 +442,7 @@ export class ConditionEffectManager {
 		// Ensure condition is provided
 		if (!condition) return false;
 		
-		const { id, proximity, affinity, affinityOverall, attributes } = condition
+		const { id, proximity, affinity, affinityOverall, attributes, state } = condition
 		
 		// Ensure id is provided
 		if (!id) {
@@ -406,14 +450,30 @@ export class ConditionEffectManager {
 			return false
 		}
 		
-		// Check attributes first - this doesn't require a client
+		// Get the NPC first for state and attribute checks
+		if (!this.npcManager) {
+			console.warn('NPCManager not initialized')
+			return false
+		}
+
+		const npc = this.npcManager.getNPC(id)
+		if (!npc) return false
+		
+		// Check state if specified - does not require a client
+		if (state !== undefined) {
+			if (npc.state !== state) {
+				return false
+			}
+		}
+		
+		// Check attributes - does not require a client
 		if (attributes) {
 			if (!this.checkNPCAttributeCondition(attributes, id)) {
 				return false
 			}
 		}
 		
-		// If we only needed to check attributes, we're done
+		// If we only needed to check attributes and state, we're done
 		if (!proximity && !affinity && !affinityOverall) {
 			return true
 		}
@@ -426,14 +486,6 @@ export class ConditionEffectManager {
 		
 		// Check proximity if specified
 		if (proximity !== undefined) {
-			if (!this.npcManager) {
-				console.warn('NPCManager not initialized')
-				return false
-			}
-
-			const npc = this.npcManager.getNPC(id)
-			if (!npc) return false
-
 			const player = this.playersManager.getPlayer(client.id)
 			if (!player) return false
 
@@ -627,6 +679,15 @@ export class ConditionEffectManager {
 	private handleNPCEffect(effect: Effect['npc'], client: EventClient) {
 		if (!effect) return
 
+		// Handle active state if provided
+		if (effect.active !== undefined) {
+			this.npcManager.setNPCActive(effect.id, effect.active)
+		}
+
+		// Skip movement and other effects if NPC is not active
+		const npc = this.npcManager.getNPC(effect.id)
+		if (!npc || !npc.active) return
+
 		// Handle NPC movement if goTo is provided
 		if (effect.goTo) {
 			let payload;
@@ -637,8 +698,24 @@ export class ConditionEffectManager {
 			} else if (Array.isArray(effect.goTo)) {
 				// Array of spot names - randomly select one
 				if (effect.goTo.length > 0) {
-					const randomIndex = Math.floor(Math.random() * effect.goTo.length)
-					const randomSpot = effect.goTo[randomIndex]
+					// Get current NPC to check its current spot
+					const npc = this.npcManager.getNPC(effect.id)
+					const currentSpot = npc?.currentSpot
+					
+					// Filter out the current spot to avoid picking the same one
+					let availableSpots = effect.goTo
+					
+					if (currentSpot && availableSpots.includes(currentSpot)) {
+						// If there's only one spot and it's the current one, we'll still use it
+						if (availableSpots.length > 1) {
+							availableSpots = availableSpots.filter(spot => spot !== currentSpot)
+						}
+					}
+					
+					// Randomly select from available spots
+					const randomIndex = Math.floor(Math.random() * availableSpots.length)
+					const randomSpot = availableSpots[randomIndex]
+					
 					payload = { npcId: effect.id, spotName: randomSpot }
 				} else {
 					// Empty array, don't move

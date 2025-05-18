@@ -32,6 +32,18 @@ const catchTheRabbit: Quest = {
           scope: "player"
         }
       }
+    },
+    {
+      id: "return",
+      label: "Return the rabbit to Miss Hilda",
+      npcId: "miss_hilda",
+      effect: {
+        chat: { system: "You returned the rabbit to Miss Hilda!" },
+        event: {
+          type: "cs:inventory:consume",
+          payload: { itemId: "rabbit" }
+        }
+      }
     }
   ],
   reward: {

@@ -2,6 +2,7 @@ import { FlagScope } from '../Flags/types'
 import { AffinitySentimentType } from '../Affinity/types'
 import { FXType } from '../FX/types'
 import { Position } from '../types'
+import { NPCState } from '../NPC/types'
 
 export interface TimeRange {
 	before?: string // format: "HH:MM"
@@ -64,6 +65,7 @@ export interface NPCCondition {
 	affinity?: NPCAffinityCondition
 	affinityOverall?: NPCAffinityOverallCondition
 	attributes?: NPCAttributeCondition
+	state?: NPCState
 }
 
 export interface Condition {
@@ -83,7 +85,11 @@ export interface FlagEffect {
 }
 
 export interface QuestEffect {
-	start: string
+	start?: string
+	completeStep?: {
+		questId: string
+		stepId: string
+	}
 }
 
 export interface AffinityEffect {
@@ -129,11 +135,25 @@ export interface NPCEffect {
 	emoji?: string
 	affinity?: AffinityEffect
 	attributes?: NPCAttributeEffect
+	active?: boolean // can be used to enable/disable NPC
 }
 
 export interface ScheduleEffect {
 	id: string            // ID of the scheduled event to target
 	enabled: boolean      // Set to true to enable the event, false to disable
+}
+
+export interface InventoryEffect {
+	add?: {
+		itemType: string
+		quantity?: number // Default to 1 if not provided
+		playerId?: string // Optional, defaults to the current player
+	}
+	remove?: {
+		itemType: string
+		quantity?: number // Default to 1 if not provided
+		playerId?: string // Optional, defaults to the current player
+	}
 }
 
 export interface Effect {
@@ -145,4 +165,5 @@ export interface Effect {
 	chat?: ChatEffect
 	npc?: NPCEffect
 	schedule?: ScheduleEffect
+	inventory?: InventoryEffect
 } 

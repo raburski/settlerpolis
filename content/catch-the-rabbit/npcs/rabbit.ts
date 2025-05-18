@@ -15,7 +15,7 @@ const rabbit: NPCContent = {
     // ]
 //   },
   attributes: {
-    stamina: 6,
+    stamina: 2,
   },
   messages: {
     default: "*The rabbit twitches its ears.*",

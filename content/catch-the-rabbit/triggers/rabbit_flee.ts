@@ -1,4 +1,4 @@
-import { Trigger, TriggerOption } from "@rugged/game"
+import { Trigger, TriggerOption, NPCState } from "@rugged/game"
 
 const rabbitFlee: Trigger = {
   id: "rabbit_flee",

@@ -9,6 +9,7 @@ import { MapManager } from '../Map'
 import { TimeManager } from '../Time'
 import { DialogueEvents } from '../Dialogue/events'
 import { DialogueContinueData } from '../Dialogue/types'
+import { NPCState } from './types'
 
 const MOVEMENT_STEP_LAG = 100
 const ROUTINE_CHECK_INTERVAL = 60000 // Check routines every minute
@@ -32,6 +33,16 @@ export class NPCManager {
 
 	public loadNPCs(npcs: NPC[]) {
 		npcs.forEach(npc => {
+			// Set default state to Idle if not provided
+			if (npc.state === undefined) {
+				npc.state = NPCState.Idle
+			}
+			
+			// Set default active state to true if not provided
+			if (npc.active === undefined) {
+				npc.active = true
+			}
+			
 			// Check if NPC has an initialSpot defined
 			if (npc.initialSpot) {
 				// Try to get the spot from the map manager
@@ -39,6 +50,8 @@ export class NPCManager {
 				if (spot) {
 					// Update the NPC's position with the spot position
 					npc.position = { ...spot.position }
+					// Set the currentSpot based on initialSpot
+					npc.currentSpot = npc.initialSpot
 				}
 			}
 			
@@ -86,6 +99,8 @@ export class NPCManager {
 					}
 					this.pausedRoutines.delete(data.dialogueId)
 				}
+				
+				// No longer setting NPC state after dialogue ends
 			}
 		})
 		
@@ -93,24 +108,16 @@ export class NPCManager {
 		this.event.on(NPCEvents.SS.SetAttribute, (data: { npcId: string, name: string, value: any }, client: EventClient) => {
 			this.setNPCAttribute(data.npcId, data.name, data.value)
 			
-			// Notify clients about attribute update
-			client.emit(Receiver.Group, NPCEvents.SC.AttributeUpdate, {
-				npcId: data.npcId,
-				attributeName: data.name,
-				value: data.value
-			})
+			// Note: Instead of sending a specific attribute update event,
+			// clients will get updated attributes when they refresh NPCs
+			// or through other existing events
 		})
 		
 		// Handle NPC attribute remove event
 		this.event.on(NPCEvents.SS.RemoveAttribute, (data: { npcId: string, name: string }, client: EventClient) => {
 			this.removeNPCAttribute(data.npcId, data.name)
 			
-			// Notify clients about attribute removal
-			client.emit(Receiver.Group, NPCEvents.SC.AttributeUpdate, {
-				npcId: data.npcId,
-				attributeName: data.name,
-				removed: true
-			})
+			// No specific attribute update event
 		})
 	}
 
@@ -166,12 +173,20 @@ export class NPCManager {
 		} else {
 			// No more path, clear movement timeout
 			this.clearNPCMovement(npcId)
+			
+			// Update state to Idle when movement is complete
+			if (npc.state === NPCState.Moving) {
+				npc.state = NPCState.Idle
+				
+				// State changes are now part of the NPC data structure
+				// Clients will see the updated state when refreshing NPCs
+			}
 		}
 	}
 
 	private handleGoEvent(data: NPCGoData) {
 		const npc = this.npcs.get(data.npcId)
-		if (!npc) return
+		if (!npc || !npc.active) return
 
 		let targetPosition: Position | undefined
 
@@ -179,9 +194,13 @@ export class NPCManager {
 			const spot = this.mapManager.getNPCSpot(npc.mapId, data.npcId, data.spotName)
 			if (spot) {
 				targetPosition = spot.position
+				// Save the current spot name for future reference
+				npc.currentSpot = data.spotName
 			}
 		} else if (data.position) {
 			targetPosition = data.position
+			// Clear the current spot name as we're moving to a raw position
+			npc.currentSpot = undefined
 		}
 
 		if (!targetPosition) return
@@ -189,6 +208,9 @@ export class NPCManager {
 		const path = this.mapManager.findPath(npc.mapId, npc.position, targetPosition)
 		if (path) {
 			npc.path = path
+			// Update NPC state to Moving
+			npc.state = NPCState.Moving
+			
 			// Schedule immediate movement
 			this.scheduleNPCMovement(npc.id, 0)
 		}
@@ -220,7 +242,7 @@ export class NPCManager {
 		const currentTime = this.timeManager.getFormattedTime()
 
 		for (const npc of this.npcs.values()) {
-			if (npc.routine) {
+			if (npc.routine && npc.active) {
 				const currentStep = npc.routine.steps.find(step => step.time === currentTime)
 				if (currentStep) {
 					// Check if NPC is in conversation
@@ -349,7 +371,7 @@ export class NPCManager {
 
 	private handleNPCInteraction(data: NPCInteractData, client: EventClient) {
 		const npc = this.npcs.get(data.npcId)
-		if (!npc) return
+		if (!npc || !npc.active) return
 
 		// Try to trigger dialogue first
 		const didTriggerDialogue = this.dialogueManager.triggerDialogue(client, npc.id)
@@ -378,5 +400,41 @@ export class NPCManager {
 	
 	private handleNPCGo(data: NPCGoData) {
 		this.handleGoEvent(data)
+	}
+
+	/**
+	 * Set an NPC's state
+	 */
+	public setNPCState(npcId: string, state: NPCState) {
+		const npc = this.npcs.get(npcId)
+		if (!npc) return
+		
+		// Only accept Idle or Moving states for now
+		if (state !== NPCState.Idle && state !== NPCState.Moving) return
+		
+		// Update state
+		npc.state = state
+	}
+
+	/**
+	 * Set NPC active state and notify all players in the map
+	 */
+	public setNPCActive(npcId: string, active: boolean) {
+		const npc = this.npcs.get(npcId)
+		if (!npc) return
+
+		// Update active state
+		npc.active = active
+
+		// If NPC is being deactivated, clear any ongoing movement or routines
+		if (!active) {
+			this.clearNPCMovement(npcId)
+			this.pausedRoutines.delete(npcId)
+		}
+
+		// Notify all players in the map about the NPC state change
+		this.event.emit(Receiver.Group, active ? NPCEvents.SC.Spawn : NPCEvents.SC.Despawn, { 
+			npc 
+		}, npc.mapId)
 	}
 } 

@@ -129,6 +129,8 @@ export abstract class GameScene extends MapScene {
 		EventBus.on(Event.Loot.SC.Spawn, this.handleAddItems, this)
 		EventBus.on(Event.Loot.SC.Despawn, this.handleRemoveItems, this)
 		EventBus.on(Event.NPC.SC.List, this.handleNPCList, this)
+		EventBus.on(Event.NPC.SC.Spawn, this.handleNPCSpawn, this)
+		EventBus.on(Event.NPC.SC.Despawn, this.handleNPCDespawn, this)
 
 		// Set up map objects event listeners
 		EventBus.on(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn, this)
@@ -176,6 +178,24 @@ export abstract class GameScene extends MapScene {
 		if (loot) {
 			loot.controller.destroy()
 			this.droppedItems.delete(data.itemId)
+		}
+	}
+
+	private handleNPCSpawn = (data: { npc: NPC }) => {
+		const npc = createNPC(this, data.npc.position.x, data.npc.position.y, data.npc)
+		this.npcs.set(data.npc.id, npc)
+
+		// If we have a player, set up collision with the new NPC
+		if (this.player) {
+			this.physics.add.collider(this.player.view, npc.view)
+		}
+	}
+
+	private handleNPCDespawn = (data: { npc: NPC }) => {
+		const npc = this.npcs.get(data.npc.id)
+		if (npc) {
+			npc.controller.destroy()
+			this.npcs.delete(data.npc.id)
 		}
 	}
 
@@ -311,6 +331,8 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems)
 		EventBus.off(Event.Loot.SC.Despawn, this.handleRemoveItems)
 		EventBus.off(Event.NPC.SC.List, this.handleNPCList)
+		EventBus.off(Event.NPC.SC.Spawn, this.handleNPCSpawn)
+		EventBus.off(Event.NPC.SC.Despawn, this.handleNPCDespawn)
 		EventBus.off(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn)
 		EventBus.off(Event.MapObjects.SC.Despawn, this.handleMapObjectDespawn)
 	}
@@ -322,6 +344,8 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems)
 		EventBus.off(Event.Loot.SC.Despawn, this.handleRemoveItems)
 		EventBus.off(Event.NPC.SC.List, this.handleNPCList)
+		EventBus.off(Event.NPC.SC.Spawn, this.handleNPCSpawn)
+		EventBus.off(Event.NPC.SC.Despawn, this.handleNPCDespawn)
 		EventBus.off(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn)
 		EventBus.off(Event.MapObjects.SC.Despawn, this.handleMapObjectDespawn)
 		

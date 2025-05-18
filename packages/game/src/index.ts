@@ -100,6 +100,7 @@ export class GameManager {
 			this.npcManager,
 			this.playersManager,
 			this.timeManager,
+			this.inventoryManager
 		)
 		this.dialogueManager.conditionEffectManager = this.conditionEffectManager
 		this.questManager.conditionEffectManager = this.conditionEffectManager

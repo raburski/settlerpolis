@@ -50,7 +50,7 @@ export class NPCController {
 	public destroy(): void {
 		// Clean up event listeners
 		EventBus.off(Event.NPC.SC.Message, this.handleNPCMessage, this)
-		EventBus.off(NPCEvents.SC.Go, this.handleNPCGo, this)
+		EventBus.off(Event.NPC.SC.Go, this.handleNPCGo, this)
 		this.view.off('pointerdown', this.handleClick)
 		// Destroy the view
 		this.view.destroy()

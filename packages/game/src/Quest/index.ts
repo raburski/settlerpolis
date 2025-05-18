@@ -528,4 +528,79 @@ export class QuestManager {
 			})
 		}
 	}
+
+	/**
+	 * Complete a specific step for a quest
+	 * @param questId The ID of the quest
+	 * @param stepId The ID of the step to complete
+	 * @param playerId The ID of the player
+	 * @param client The client to emit events to
+	 */
+	public completeSpecificStep(questId: string, stepId: string, playerId: string, client: EventClient): void {
+		// Get the quest
+		const quest = this.quests.get(questId)
+		if (!quest) {
+			console.warn(`Cannot complete step: Quest ${questId} not found`)
+			return
+		}
+		
+		// Get default settings if not provided
+		const settings = quest.settings || { repeatable: false, scope: QuestScope.Player }
+		
+		// Get quest progress based on scope
+		let questProgress: QuestProgress | undefined
+		
+		if (settings.scope === QuestScope.Global) {
+			// For global quests, get the global state
+			questProgress = this.globalQuestStates.get(questId)
+		} else if (settings.scope === QuestScope.Shared) {
+			// For shared quests, get the shared state
+			questProgress = this.sharedQuestStates.get(questId)
+		}
+		
+		// If no global/shared progress found, or this is a player quest,
+		// get the player's personal quest progress
+		if (!questProgress) {
+			const playerState = this.getOrCreatePlayerState(playerId)
+			questProgress = playerState.activeQuests.find(q => q.questId === questId)
+		}
+		
+		// If no quest progress found at all
+		if (!questProgress) {
+			console.warn(`Cannot complete step: Quest ${questId} is not active`)
+			return
+		}
+		
+		// If quest is already completed
+		if (questProgress.completed) {
+			console.warn(`Cannot complete step: Quest ${questId} is already completed`)
+			return
+		}
+		
+		// Find the step in the quest
+		const stepIndex = quest.steps.findIndex(step => step.id === stepId)
+		if (stepIndex === -1) {
+			console.warn(`Cannot complete step: Step ${stepId} not found in quest ${questId}`)
+			return
+		}
+		
+		// Get the step
+		const step = quest.steps[stepIndex]
+		
+		// If step is already completed
+		if (questProgress.completedSteps.includes(stepId)) {
+			console.warn(`Step ${stepId} is already completed for quest ${questId}`)
+			return
+		}
+		
+		// Complete the step
+		this.completeStep(playerId, questProgress, quest, step, client)
+		
+		// For global and shared quests, we need to update the specific state maps
+		if (settings.scope === QuestScope.Global) {
+			this.globalQuestStates.set(questId, questProgress)
+		} else if (settings.scope === QuestScope.Shared) {
+			this.sharedQuestStates.set(questId, questProgress)
+		}
+	}
 } 
