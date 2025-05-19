@@ -10,7 +10,7 @@ import { Scheduler } from "../Scheduler"
 import { TriggerManager } from "../Triggers"
 import { dialogueCompose } from "../Dialogue/utils"
 import { DialogueTree } from "../Dialogue/types"
-import { GameContent } from "../types"
+import { GameContent, ScheduleOptions, Trigger } from "../types"
 
 export class ContentLoader {
 	constructor(
@@ -85,6 +85,40 @@ export class ContentLoader {
 			console.log('[ContentLoader] Loading NPCs:', this.content.npcs)
 		}
 		await this.npc.loadNPCs(this.content.npcs || [])
+
+		// Load NPC-specific triggers and schedules
+		const npcs = this.content.npcs || []
+		const npcTriggers: Trigger[] = []
+		const npcSchedules: ScheduleOptions[] = []
+
+		npcs.forEach(npc => {
+			// Add NPC ID to triggers and schedules for reference
+			if (npc.triggers) {
+				npcTriggers.push(...npc.triggers.map(trigger => ({
+					...trigger,
+					mapId: npc.mapId // Ensure triggers are associated with the NPC's map
+				})))
+			}
+			if (npc.schedules) {
+				npcSchedules.push(...npc.schedules)
+			}
+		})
+
+		// Load NPC-specific triggers
+		if (npcTriggers.length > 0) {
+			if (this.debug) {
+				console.log('[ContentLoader] Loading NPC-specific triggers:', npcTriggers)
+			}
+			await this.trigger.loadTriggers(npcTriggers)
+		}
+
+		// Load NPC-specific schedules
+		if (npcSchedules.length > 0) {
+			if (this.debug) {
+				console.log('[ContentLoader] Loading NPC-specific schedules:', npcSchedules)
+			}
+			await this.scheduler.loadSchedules(npcSchedules)
+		}
 	}
 
 	private async loadDialogues() {

@@ -6,6 +6,7 @@ import { EventBus } from "../../EventBus"
 import { EquipmentSlot } from '@rugged/game'
 import { Item } from '@rugged/game'
 import { itemTextureService } from '../../services/ItemTextureService'
+import { GameScene } from '../../scenes/base/GameScene'
 
 // Define a union type for both view classes
 type PlayerViewType = PlayerView | PlayerView2
@@ -16,7 +17,7 @@ export abstract class BasePlayerController {
 
 	constructor(
 		protected view: PlayerViewType,
-		protected scene: Scene,
+		protected scene: GameScene,
 		public playerId: string
 	) {
 		// Subscribe to chat messages
@@ -38,13 +39,27 @@ export abstract class BasePlayerController {
 	protected handleChatMessage = (data: { sourcePlayerId: string, message: string, playerId: string }) => {
 		if (!this.shouldHandleEvent(data)) return
 		
-		this.view.displayMessage(data.message)
+		if (!this.scene.textDisplayService) return
+
+		this.scene.textDisplayService.displayMessage({
+			message: data.message,
+			scene: this.scene,
+			worldPosition: { x: this.view.x, y: this.view.y },
+			entityId: this.playerId
+		})
 	}
 
 	protected handleEmoji = (data: { sourcePlayerId: string, emoji: string }) => {
 		if (!this.shouldHandleEvent(data)) return
 		
-		this.view.displayEmoji(data.emoji)
+		if (!this.scene.textDisplayService) return
+
+		this.scene.textDisplayService.displayEmoji({
+			message: data.emoji,
+			scene: this.scene,
+			worldPosition: { x: this.view.x, y: this.view.y },
+			entityId: this.playerId
+		})
 	}
 
 	protected handleItemEquipped = (data: { itemId: string, slotType: EquipmentSlotType, item: Item, sourcePlayerId: string }) => {

@@ -1,30 +1,15 @@
 import { Scene, GameObjects, Physics } from 'phaser'
-import { displayMessage, displaySystemMessage, displayEmoji } from '../../utils/MessageDisplay'
 import { npcAssetsService } from '../../services/NPCAssetsService'
-import { NPCAssets, Direction } from '@rugged/game'
+import { NPCAssets, Direction, isHorizontalDirection, getMirroredDirection, isDirectionalAnimation } from '@rugged/game'
+import { GameScene } from '../../scenes/base/GameScene'
 
 export enum PlayerState {
 	Idle = 'idle',
 	Walking = 'walking'
 }
 
-function isHorizontalDirection(direction) {
-	return direction === Direction.Left || direction === Direction.Right
-}
-
-function getMirroredDirection(direction) {
-	switch (direction) {
-		case Direction.Down: return Direction.Up
-		case Direction.Left: return Direction.Right
-		case Direction.Right: return Direction.Left
-		case Direction.Up: return Direction.Down
-	}
-}
-
 export class NPCView extends GameObjects.Container {
 	protected sprite: GameObjects.Sprite | null = null
-	protected messageText: GameObjects.Text | null = null
-	protected systemMessageText: GameObjects.Text | null = null
 	protected direction: Direction = Direction.Down
 	protected currentState: PlayerState = PlayerState.Idle
 	protected speed: number
@@ -36,31 +21,24 @@ export class NPCView extends GameObjects.Container {
 	protected assets: NPCAssets | null = null
 	protected currentAnimation: string | null = null
 	protected lastHorizontalDirection: Direction = Direction.Right
+	private debug: boolean = false
+	private debugGraphics: Phaser.GameObjects.Graphics
 
-	constructor(scene: Scene, x: number = 0, y: number = 0, speed: number = 160, npcId: string) {
+	constructor(scene: GameScene, x: number = 0, y: number = 0, speed: number = 160, npcId: string) {
 		super(scene, x, y)
 		scene.add.existing(this)
 
 		this.speed = speed
 		this.npcId = npcId
 
+		// Initialize debug graphics if debug mode is enabled
+		if (this.debug) {
+			this.debugGraphics = scene.add.graphics()
+			this.debugGraphics.setDepth(10000) // Extreme depth to ensure it's always visible
+		}
+
 		// Enable physics on the container
 		scene.physics.add.existing(this)
-		const physicsBody = this.body as Physics.Arcade.Body
-		
-		// Add a null check to prevent errors if the body is null
-		if (physicsBody) {
-			// Set a collision box for the bottom half of the character
-			physicsBody.setSize(16, 4) // Width: half of the sprite width, Height: small portion of the sprite height
-			physicsBody.setOffset(-8, 28) // Center horizontally, align to bottom
-			// Make sure the player can't go out of bounds
-			physicsBody.setCollideWorldBounds(true)
-
-			// Make it immovable
-			physicsBody.setImmovable(true)
-		} else {
-			console.error('NPC physics body is null. This might happen during scene transitions.')
-		}
 
 		// Load NPC assets
 		this.loadAssets()
@@ -84,6 +62,27 @@ export class NPCView extends GameObjects.Container {
 		// Add sprite to container
 		this.add(this.sprite)
 
+		// Set up physics body based on frame size
+		const physicsBody = this.body as Physics.Arcade.Body
+		const { frameWidth, frameHeight } = this.assets
+		if (physicsBody && frameWidth && frameHeight) {
+			physicsBody.setSize(frameWidth/2, frameHeight/4)
+			physicsBody.setOffset(-frameWidth/4, frameHeight/4)
+			physicsBody.setCollideWorldBounds(true)
+			physicsBody.setImmovable(true)
+		}
+
+		// Offset sprite vertically if it's taller than a tile (32px)
+		if (frameHeight > 32) {
+			const verticalOffset = -(frameHeight - 32)/2
+			// Move sprite up
+			this.sprite.setY(verticalOffset)
+			// Move physics body up by the same amount
+			if (physicsBody) {
+				physicsBody.setOffset(physicsBody.offset.x, physicsBody.offset.y + verticalOffset)
+			}
+		}
+
 		// Set initial frame based on direction
 		this.updateSpriteFrame()
 	}
@@ -100,20 +99,20 @@ export class NPCView extends GameObjects.Container {
 	 * Gets the appropriate animation key based on current state and direction
 	 */
 	protected getAnimationKey(): { animationKey: string, flipX?: boolean, flipY?: boolean } {
-		if (!this.assets) return ''
+		if (!this.assets) return { animationKey: '' }
 
 		const animation = this.assets.animations[this.currentState.toLowerCase()]
 		if (!animation) {
 			// If animation doesn't exist, use idle animation as fallback
 			const fallbackAnimation = this.assets.animations['idle']
 			if (!fallbackAnimation) {
-				return { animation: 'npc-placeholder-idle-down' }
+				return { animationKey: 'npc-placeholder-idle-down' }
 			}
 			return { animationKey: `npc-${this.npcId}-idle-${this.lastHorizontalDirection}` }
 		}
 
 		// If animation has specific directions
-		if (this.isDirectionalAnimation(animation)) {
+		if (isDirectionalAnimation(animation)) {
 			// Check if we have a specific animation for this direction
 			if (animation[this.direction]) {
 				return { animationKey: `npc-${this.npcId}-${this.currentState.toLowerCase()}-${this.direction}` }
@@ -148,7 +147,6 @@ export class NPCView extends GameObjects.Container {
 
 		// Get animation key and flip configuration
 		const { animationKey, flipX, flipY } = this.getAnimationKey()
-		// const { flipX, flipY } = npcAssetsService.getFlipConfig(this.direction, this.npcId)
 
 		// Update sprite if animation changed
 		if (this.currentAnimation !== animationKey) {
@@ -158,42 +156,6 @@ export class NPCView extends GameObjects.Container {
 
 		// Update flip
 		this.sprite.setFlip(flipX, flipY)
-	}
-
-	/**
-	 * Displays a message above the player
-	 */
-	public displayMessage(message: string): void {
-		this.messageText = displayMessage({
-			message,
-			scene: this.scene,
-			container: this,
-			existingText: this.messageText
-		})
-	}
-
-	/**
-	 * Displays an emoji above the player
-	 */
-	public displayEmoji(emoji: string): void {
-		this.messageText = displayEmoji({
-			message: emoji,
-			scene: this.scene,
-			container: this,
-			existingText: this.messageText
-		})
-	}
-
-	/**
-	 * Displays a system message above the player
-	 */
-	public displaySystemMessage(message: string | null): void {
-		this.systemMessageText = displaySystemMessage({
-			message,
-			scene: this.scene,
-			container: this,
-			existingText: this.systemMessageText
-		})
 	}
 
 	/**
@@ -234,10 +196,6 @@ export class NPCView extends GameObjects.Container {
 	public updatePosition(x: number, y: number): void {
 		this.x = x
 		this.y = y
-		const physicsBody = this.body as Physics.Arcade.Body
-		if (physicsBody) {
-			physicsBody.reset(x, y)
-		}
 		
 		// Update depth based on y position
 		this.updateDepth()
@@ -294,6 +252,14 @@ export class NPCView extends GameObjects.Container {
 		
 		// Update depth in case y position changed
 		this.updateDepth()
+
+		// Update text display service with current position
+		if (this.scene.textDisplayService) {
+			this.scene.textDisplayService.updateEntityPosition(this.npcId, { x: this.x, y: this.y })
+		}
+
+		// Debug drawing the physics body
+		this.updateDebugGraphics()
 	}
 
 	/**
@@ -326,5 +292,101 @@ export class NPCView extends GameObjects.Container {
 	 */
 	public static preload(scene: Scene, npcId: string): void {
 		npcAssetsService.loadNPCAssets(scene, npcId)
+	}
+
+	/**
+	 * Update debug graphics to show the physics body
+	 */
+	private updateDebugGraphics(): void {
+		// Only proceed if debug is enabled and graphics are initialized
+		if (!this.debug || !this.debugGraphics) return
+		
+		const body = this.body as Physics.Arcade.Body
+		if (!body) return
+		
+		this.debugGraphics.clear()
+		
+		// Draw the actual collision box in bright green with thicker line
+		this.debugGraphics.lineStyle(3, 0x00ff00, 1)
+		this.debugGraphics.strokeRect(
+			body.x, 
+			body.y, 
+			body.width, 
+			body.height
+		)
+		
+		// Draw a fill with transparency to better visualize the collision area
+		this.debugGraphics.fillStyle(0x00ff00, 0.2)
+		this.debugGraphics.fillRect(
+			body.x, 
+			body.y, 
+			body.width, 
+			body.height
+		)
+		
+		// Draw container position as a larger, more visible cross
+		this.debugGraphics.lineStyle(2, 0xff0000, 1)
+		this.debugGraphics.beginPath()
+		this.debugGraphics.moveTo(this.x - 10, this.y)
+		this.debugGraphics.lineTo(this.x + 10, this.y)
+		this.debugGraphics.moveTo(this.x, this.y - 10)
+		this.debugGraphics.lineTo(this.x, this.y + 10)
+		this.debugGraphics.closePath()
+		this.debugGraphics.strokePath()
+		
+		// Add a circle around the cross for better visibility
+		this.debugGraphics.lineStyle(1, 0xff0000, 0.8)
+		this.debugGraphics.strokeCircle(this.x, this.y, 8)
+
+		// Debug logs for sprite and assets
+		console.log('Debug Graphics State:', {
+			hasSprite: !!this.sprite,
+			spritePosition: this.sprite ? { x: this.sprite.x, y: this.sprite.y } : null,
+			hasAssets: !!this.assets,
+			frameSize: this.assets ? { width: this.assets.frameWidth, height: this.assets.frameHeight } : null,
+			npcId: this.npcId
+		})
+
+		// Draw sprite bounds if sprite exists
+		if (this.sprite) {
+			this.debugGraphics.lineStyle(2, 0x0000ff, 1)
+			this.debugGraphics.strokeRect(
+				this.sprite.x - this.sprite.width/2,
+				this.sprite.y - this.sprite.height/2,
+				this.sprite.width,
+				this.sprite.height
+			)
+		}
+
+		// Draw whole sprite border using asset frame size (orange)
+		if (this.assets && this.sprite) {
+			const { frameWidth, frameHeight } = this.assets
+			console.log('Drawing orange border with dimensions:', { frameWidth, frameHeight })
+			
+			// Draw debug points at the corners where we're drawing the border
+			this.debugGraphics.fillStyle(0xff0000, 1)
+			const corners = [
+				{ x: this.sprite.x - frameWidth/2, y: this.sprite.y - frameHeight/2 },
+				{ x: this.sprite.x + frameWidth/2, y: this.sprite.y - frameHeight/2 },
+				{ x: this.sprite.x - frameWidth/2, y: this.sprite.y + frameHeight/2 },
+				{ x: this.sprite.x + frameWidth/2, y: this.sprite.y + frameHeight/2 }
+			]
+			corners.forEach(corner => {
+				this.debugGraphics.fillCircle(corner.x, corner.y, 3)
+			})
+
+			// Draw the border with thicker, more opaque lines
+			this.debugGraphics.lineStyle(4, 0xffa500, 0.8) // orange, thicker, more opaque
+			this.debugGraphics.strokeRect(
+				this.sprite.x - frameWidth/2,
+				this.sprite.y - frameHeight/2,
+				frameWidth,
+				frameHeight
+			)
+
+			// Draw a center point for the sprite
+			this.debugGraphics.fillStyle(0x00ff00, 1)
+			this.debugGraphics.fillCircle(this.sprite.x, this.sprite.y, 4)
+		}
 	}
 } 

@@ -20,16 +20,14 @@ const rabbitFlee: Trigger = {
     {
       npc: {
         id: "rabbit",
-        goTo: ["spot0", "spot1", "spot2", "spot2", "spot3", "spot4", "spot5", "spot6", "spot7"],
+        goTo: ["spot0", "spot1", "spot2", "spot2", "spot3", "spot4", "spot5", "spot6", "spot7", "spot8", "spot9"],
         emoji: "💨",
         attributes: {
           stamina: {
             subtract: 1
           }
         }
-      }
-    },
-    {
+      },
       chat: {
         system: "🐇 The rabbit darts away in a panic!"
       }

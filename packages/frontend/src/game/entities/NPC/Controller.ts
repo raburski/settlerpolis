@@ -2,11 +2,12 @@ import { Scene } from 'phaser'
 import { NPCView, PlayerState } from './View'
 import { Event } from "@rugged/game"
 import { EventBus } from '../../EventBus'
+import { GameScene } from '../../scenes/base/GameScene'
 
 export class NPCController {
 	constructor(
 		private view: NPCView,
-		private scene: Scene,
+		private scene: GameScene,
 		private npcId: string
 	) {
 		// Subscribe to NPC events
@@ -25,12 +26,24 @@ export class NPCController {
 	private handleNPCMessage = (data: { npcId: string, message?: string, emoji?: string }) => {
 		// Only show message if it's from our NPC
 		if (data.npcId === this.npcId) {
+			if (!this.scene.textDisplayService) return
+
 			if (data.emoji && !data.message) {
 				// Emoji-only message
-				this.view.displayEmoji(data.emoji)
+				this.scene.textDisplayService.displayEmoji({
+					message: data.emoji,
+					scene: this.scene,
+					worldPosition: { x: this.view.x, y: this.view.y },
+					entityId: this.npcId
+				})
 			} else if (data.message) {
 				// Regular message (with or without emoji)
-				this.view.displayMessage(data.message)
+				this.scene.textDisplayService.displayMessage({
+					message: data.message,
+					scene: this.scene,
+					worldPosition: { x: this.view.x, y: this.view.y },
+					entityId: this.npcId
+				})
 			}
 		}
 	}
@@ -39,6 +52,10 @@ export class NPCController {
 		// Only move if it's our NPC
 		if (data.npcId === this.npcId) {
 			this.view.setTargetPosition(data.position.x, data.position.y)
+			// Update text display service with new position
+			if (this.scene.textDisplayService) {
+				this.scene.textDisplayService.updateEntityPosition(this.npcId, data.position)
+			}
 		}
 	}
 

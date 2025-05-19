@@ -13,6 +13,8 @@ export interface NPCContent extends NPC {
 	sentiments?: AffinitySentiments
 	dialogues?: DialogueTreePartial[]
 	assets?: NPCAssets // Required assets for the NPC
+	triggers?: Trigger[] // Optional triggers specific to this NPC
+	schedules?: ScheduleOptions[] // Optional schedules specific to this NPC
 }
 
 export interface GameContent {

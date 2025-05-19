@@ -15,6 +15,7 @@ import { playerService } from "../../services/PlayerService";
 import { createMapObject, MapObjectEntity } from '../../entities/MapObject'
 import { ItemPlacementManager } from '../../modules/ItemPlacement'
 import { FX } from '../../modules/FX'
+import { TextDisplayService } from '../../services/TextDisplayService'
 
 export abstract class GameScene extends MapScene {
     protected player: LocalPlayer | null = null
@@ -26,6 +27,7 @@ export abstract class GameScene extends MapScene {
     protected portalManager: PortalManager | null = null
 	protected itemPlacementManager: ItemPlacementManager | null = null
 	protected fx: FX | null = null
+	protected textDisplayService: TextDisplayService | null = null
 
 	constructor(config: { key: string, mapKey: string, mapPath: string }) {
 		super(config.key, config.mapKey, config.mapPath)
@@ -36,6 +38,9 @@ export abstract class GameScene extends MapScene {
 		
 		// Initialize keyboard
 		this.keyboard = new Keyboard(this)
+
+        // Initialize text display service
+		this.textDisplayService = new TextDisplayService(this)
 
         // Get scene data passed during transition
 		const sceneData = this.scene.settings.data
@@ -117,6 +122,8 @@ export abstract class GameScene extends MapScene {
 		if (this.itemPlacementManager) {
 			this.itemPlacementManager.update()
 		}
+
+		this.textDisplayService?.update()
     }
 
     private setupMultiplayer() {
@@ -282,6 +289,12 @@ export abstract class GameScene extends MapScene {
 		if (this.fx) {
 			this.fx.destroy()
 			this.fx = null
+		}
+
+		// Clean up text display service
+		if (this.textDisplayService) {
+			this.textDisplayService.destroy()
+			this.textDisplayService = null
 		}
 
 		// Clean up player

@@ -4,12 +4,19 @@ const rabbitEscapeCutscene: Cutscene = {
   id: "cutscene:rabbit_escape",
   skippable: true,
   steps: [
+    // {
+    //   event: "sc:chat:fullscreen",
+    //   payload: {
+    //     message: "🐇 The rabbit darts out from the bushes..."
+    //   },
+    //   duration: 2000
+    // },
     {
-      event: "sc:chat:fullscreen",
+      event: "sc:chat:system",
       payload: {
-        message: "🐇 *The rabbit darts out from the bushes...*"
+        message: "🐇 The rabbit darts out from the bushes..."
       },
-      duration: 1500
+      duration: 1200
     },
     {
       event: "ss:npc:go",

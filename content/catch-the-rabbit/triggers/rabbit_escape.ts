@@ -13,18 +13,19 @@ const rabbitEscapeTrigger: Trigger = {
     {
       cutscene: {
         trigger: "cutscene:rabbit_escape"
-      }
-    },
-    {
+      },
       npc: {
         id: 'miss_hilda',
-        message: "Oh no! My rabbit!! Someone stop him!"
-      }
-    },
-    {
+        message: "Oh no! My rabbit! Someone stop him!"
+      },
       flag: {
         set: "rabbit_escape_triggered",
         scope: FlagScope.Global
+      }
+    }, {
+      npc: {
+        id: 'rabbit',
+        active: true,
       }
     }
   ]

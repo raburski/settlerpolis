@@ -9,7 +9,7 @@ const rabbit: NPCContent = {
   initialSpot: 'spot0',
   speed: 222, // slightly faster than average player
   attributes: {
-    stamina: 2,
+    stamina: 4,
   },
   messages: {
     default: "*The rabbit twitches its ears.*",

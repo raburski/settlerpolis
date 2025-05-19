@@ -9,6 +9,17 @@ const catchTheRabbit: Quest = {
     repeatable: true,
     scope: "global"
   },
+  startEffect: {
+    npc: {
+      id: 'rabbit',
+      active: true,
+      attributes: {
+        stamina: {
+          set: 4
+        }
+      }
+    }
+  },
   steps: [
     {
       id: "catch",

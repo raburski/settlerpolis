@@ -1,17 +1,10 @@
 import { Scene } from 'phaser'
-import { NPCAssets, Direction, DirectionalAnimations, NPCAnimation } from '@rugged/game'
-
-type DirectionConfig = {
-	type: 'single' | 'horizontal' | 'vertical' | 'full'
-	defaultDirection?: Direction
-}
+import { NPCAssets, Direction, DirectionalAnimations, NPCAnimation, isDirectionalAnimation } from '@rugged/game'
 
 class NPCAssetsService {
 	private loadedAssets: Map<string, NPCAssets> = new Map()
 	private loadingPromises: Map<string, Promise<NPCAssets>> = new Map()
-	private directionConfigs: Map<string, DirectionConfig> = new Map()
 	private readonly basePath = 'assets/npcs/'
-	private lastHorizontalDirection: Map<string, Direction> = new Map()
 
 	// Default placeholder assets
 	private readonly defaultAssets: NPCAssets = {
@@ -35,10 +28,6 @@ class NPCAssetsService {
 	constructor() {
 		// Preload default assets
 		this.loadedAssets.set('placeholder', this.defaultAssets)
-		this.directionConfigs.set('placeholder', {
-			type: 'single',
-			defaultDirection: Direction.Down
-		})
 	}
 
 	/**
@@ -53,87 +42,11 @@ class NPCAssetsService {
 	}
 
 	/**
-	 * Infers the direction configuration based on available animations
-	 */
-	private inferDirectionConfig(assets: NPCAssets): DirectionConfig {
-		// Get all unique directions from all animations
-		const directions = new Set<Direction>()
-		Object.values(assets.animations).forEach(animation => {
-			if (this.isDirectionalAnimation(animation)) {
-				Object.keys(animation).forEach(dir => {
-					directions.add(dir as Direction)
-				})
-			}
-		})
-
-		// If no directions found, it's a single-direction sprite
-		if (directions.size === 0) {
-			return {
-				type: 'single',
-				defaultDirection: Direction.Down
-			}
-		}
-
-		// If we only have 'right' direction, it's a horizontal sprite
-		if (directions.size === 1 && directions.has(Direction.Right)) {
-			return {
-				type: 'horizontal',
-				defaultDirection: Direction.Right
-			}
-		}
-
-		// If we only have 'down' direction, it's a vertical sprite
-		if (directions.size === 1 && directions.has(Direction.Down)) {
-			return {
-				type: 'vertical',
-				defaultDirection: Direction.Down
-			}
-		}
-
-		// Check if we have all four directions
-		if (directions.size === 4) {
-			return {
-				type: 'full'
-			}
-		}
-
-		// Check if we have horizontal directions (left/right)
-		if (directions.has(Direction.Left) && directions.has(Direction.Right)) {
-			return {
-				type: 'horizontal'
-			}
-		}
-
-		// Check if we have vertical directions (up/down)
-		if (directions.has(Direction.Up) && directions.has(Direction.Down)) {
-			return {
-				type: 'vertical'
-			}
-		}
-
-		// Default to single direction with down as default
-		return {
-			type: 'single',
-			defaultDirection: Direction.Down
-		}
-	}
-
-	/**
-	 * Gets the direction configuration for an NPC
-	 */
-	private getDirectionConfig(npcId: string): DirectionConfig {
-		return this.directionConfigs.get(npcId) || {
-			type: 'single',
-			defaultDirection: Direction.Down
-		}
-	}
-
-	/**
 	 * Creates animations based on the asset configuration
 	 */
 	private createAnimations(scene: Scene, npcId: string, assets: NPCAssets): void {
 		Object.entries(assets.animations).forEach(([name, animation]) => {
-			if (this.isDirectionalAnimation(animation)) {
+			if (isDirectionalAnimation(animation)) {
 				// Handle directional animations
 				Object.entries(animation).forEach(([dir, anim]) => {
 					const direction = dir as Direction
@@ -167,39 +80,6 @@ class NPCAssetsService {
 	}
 
 	/**
-	 * Type guard to check if animation is directional
-	 */
-	private isDirectionalAnimation(animation: DirectionalAnimations | NPCAnimation | undefined): animation is DirectionalAnimations {
-		if (!animation) return false
-		return 'down' in animation || 'up' in animation || 'left' in animation || 'right' in animation
-	}
-
-	/**
-	 * Gets the flip configuration for a direction
-	 */
-	public getFlipConfig(direction: Direction, npcId: string): { flipX: boolean, flipY: boolean } {
-		const directionConfig = this.getDirectionConfig(npcId)
-		
-		switch (directionConfig.type) {
-			case 'horizontal':
-				return {
-					flipX: direction === Direction.Left,
-					flipY: false
-				}
-			case 'vertical':
-				return {
-					flipX: false,
-					flipY: direction === Direction.Up
-				}
-			default:
-				return {
-					flipX: false,
-					flipY: false
-				}
-		}
-	}
-
-	/**
 	 * Loads NPC assets for a given NPC ID
 	 */
 	public async loadNPCAssets(scene: Scene, npcId: string): Promise<NPCAssets> {
@@ -223,9 +103,6 @@ class NPCAssetsService {
 			scene.load.once('complete', () => {
 				try {
 					const assets = scene.cache.json.get(`npc-assets-${npcId}`) as NPCAssets
-					
-					// Infer and store direction config
-					this.directionConfigs.set(npcId, this.inferDirectionConfig(assets))
 					
 					// Load the spritesheet
 					scene.load.spritesheet(
@@ -253,7 +130,6 @@ class NPCAssetsService {
 					console.warn(`Failed to load assets for NPC ${npcId}, using placeholder:`, error)
 					this.loadingPromises.delete(npcId)
 					this.loadedAssets.set(npcId, this.defaultAssets)
-					this.directionConfigs.set(npcId, this.getDirectionConfig('placeholder'))
 					resolve(this.defaultAssets)
 				}
 			})
@@ -262,7 +138,6 @@ class NPCAssetsService {
 				console.warn(`Failed to load assets for NPC ${npcId}, using placeholder:`, file.src)
 				this.loadingPromises.delete(npcId)
 				this.loadedAssets.set(npcId, this.defaultAssets)
-				this.directionConfigs.set(npcId, this.getDirectionConfig('placeholder'))
 				resolve(this.defaultAssets)
 			})
 
@@ -289,17 +164,11 @@ class NPCAssetsService {
 		if (npcId) {
 			this.loadedAssets.delete(npcId)
 			this.loadingPromises.delete(npcId)
-			this.directionConfigs.delete(npcId)
 		} else {
 			this.loadedAssets.clear()
 			this.loadingPromises.clear()
-			this.directionConfigs.clear()
 			// Restore default assets
 			this.loadedAssets.set('placeholder', this.defaultAssets)
-			this.directionConfigs.set('placeholder', {
-				type: 'single',
-				defaultDirection: Direction.Down
-			})
 		}
 	}
 }

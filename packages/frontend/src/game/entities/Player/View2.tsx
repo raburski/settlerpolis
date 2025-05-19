@@ -1,4 +1,5 @@
 import { Scene, GameObjects, Physics } from 'phaser'
+import { GameScene } from '../../scenes/base/GameScene'
 import { displayMessage, displaySystemMessage, displayEmoji } from '../../utils/MessageDisplay'
 
 export enum Direction {
@@ -24,7 +25,7 @@ export class PlayerView2 extends GameObjects.Container {
 	private debugGraphics: Phaser.GameObjects.Graphics
 	private _overlapOnly: boolean = false
 
-	constructor(scene: Scene, x: number = 0, y: number = 0, isNPC: boolean = false) {
+	constructor(scene: GameScene, x: number = 0, y: number = 0, isNPC: boolean = false) {
 		super(scene, x, y)
 		scene.add.existing(this)
 
@@ -111,43 +112,7 @@ export class PlayerView2 extends GameObjects.Container {
 		
 		this.sprite.setFrame(frameIndex)
 	}
-
-	/**
-	 * Displays a message above the player
-	 */
-	public displayMessage(message: string): void {
-		this.messageText = displayMessage({
-			message,
-			scene: this.scene,
-			container: this,
-			existingText: this.messageText
-		})
-	}
-
-	/**
-	 * Displays an emoji above the player
-	 */
-	public displayEmoji(emoji: string): void {
-		this.messageText = displayEmoji({
-			message: emoji,
-			scene: this.scene,
-			container: this,
-			existingText: this.messageText
-		})
-	}
-
-	/**
-	 * Displays a system message above the player
-	 */
-	public displaySystemMessage(message: string | null): void {
-		this.systemMessageText = displaySystemMessage({
-			message,
-			scene: this.scene,
-			container: this,
-			existingText: this.systemMessageText
-		})
-	}
-
+	
 	/**
 	 * Sets collision with a tilemap layer
 	 */

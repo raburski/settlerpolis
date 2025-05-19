@@ -57,6 +57,11 @@ export class RemotePlayerController extends BasePlayerController {
 	update(): void {
 		// Update view
 		this.view.preUpdate()
+
+		// Update text display service with current position
+		if (this.scene.textDisplayService) {
+			this.scene.textDisplayService.updateEntityPosition(this.playerId, { x: this.view.x, y: this.view.y })
+		}
 	}
 
 	public destroy(): void {

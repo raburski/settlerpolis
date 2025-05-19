@@ -27,6 +27,7 @@ import { MapUrlService } from './Map/types'
 export * from './types'
 export * from './events'
 export * from './consts'
+export * from './utils'
 export { EquipmentSlot, EquipmentSlotType }
 // export { Event } from './events' 
 

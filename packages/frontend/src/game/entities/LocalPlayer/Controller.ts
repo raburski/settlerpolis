@@ -37,6 +37,11 @@ export class LocalPlayerController extends BasePlayerController {
 		this.updateServerPosition()
 		this.view.preUpdate()
 		this.updateEquippedItemPosition()
+
+		// Update text display service with current position
+		if (this.scene.textDisplayService) {
+			this.scene.textDisplayService.updateEntityPosition(this.playerId, { x: this.view.x, y: this.view.y })
+		}
 	}
 
 	private updateLocalPosition() {
