@@ -423,6 +423,9 @@ export class NPCManager {
 		const npc = this.npcs.get(npcId)
 		if (!npc) return
 
+		// Only proceed if the active state is actually changing
+		if (npc.active === active) return
+
 		// Update active state
 		npc.active = active
 

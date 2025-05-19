@@ -134,6 +134,10 @@ export abstract class BasePlayerController {
 		EventBus.off(Event.Chat.SC.Receive, this.handleChatMessage, this)
 		EventBus.off(Event.Players.SC.Equip, this.handleItemEquipped, this)
 		EventBus.off(Event.Players.SC.Unequip, this.handleItemUnequipped, this)
+		// Clean up text displays
+		if (this.scene.textDisplayService) {
+			this.scene.textDisplayService.cleanupEntityTexts(this.playerId)
+		}
 		if (this.equippedItemSprite) {
 			this.equippedItemSprite.destroy()
 		}

@@ -200,6 +200,27 @@ export class TextDisplayService {
 		})
 	}
 
+	/**
+	 * Cleans up all text displays associated with an entity
+	 * @param entityId The ID of the entity whose text displays should be cleaned up
+	 */
+	cleanupEntityTexts(entityId: string): void {
+		const textIds = this.entityTexts.get(entityId)
+		if (!textIds) return
+
+		// Destroy all texts associated with this entity
+		textIds.forEach(textId => {
+			const text = this.activeTexts.get(textId)
+			if (text && text.active) {
+				text.destroy()
+				this.activeTexts.delete(textId)
+			}
+		})
+
+		// Remove entity from tracking
+		this.entityTexts.delete(entityId)
+	}
+
 	destroy() {
 		this.textContainer.destroy()
 		this.activeTexts.clear()

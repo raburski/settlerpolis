@@ -69,6 +69,10 @@ export class NPCController {
 		EventBus.off(Event.NPC.SC.Message, this.handleNPCMessage, this)
 		EventBus.off(Event.NPC.SC.Go, this.handleNPCGo, this)
 		this.view.off('pointerdown', this.handleClick)
+		// Clean up text displays
+		if (this.scene.textDisplayService) {
+			this.scene.textDisplayService.cleanupEntityTexts(this.npcId)
+		}
 		// Destroy the view
 		this.view.destroy()
 	}

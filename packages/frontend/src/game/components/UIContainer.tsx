@@ -8,6 +8,7 @@ import { Relationships } from './Relationships'
 import { SidePanel } from './SidePanel'
 import { Settings } from './Settings'
 import { World } from './World'
+import { SystemMessages } from './SystemMessages'
 import { EventBus } from "../EventBus"
 import { Event, FXType } from '@rugged/game'
 
@@ -42,6 +43,7 @@ export const UIContainer = () => {
 			<Relationships />
 			<Settings />
 			<SidePanel />
+			<SystemMessages />
 		</>
 	)
 } 

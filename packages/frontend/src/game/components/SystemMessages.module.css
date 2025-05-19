@@ -1,0 +1,71 @@
+@import './variables.module.css';
+
+.container {
+	position: absolute;
+	top: var(--spacing-xl);
+	left: 50%;
+	transform: translateX(-50%);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--spacing-sm);
+	pointer-events: none;
+	z-index: 1000;
+}
+
+.message {
+	padding: var(--spacing-sm) var(--spacing-md);
+	background: var(--dialog-bg);
+	border: var(--dialog-border-width) solid var(--dialog-border);
+	border-radius: var(--dialog-border-radius);
+	box-shadow: var(--dialog-shadow);
+	font-family: 'Press Start 2P', monospace;
+	font-size: var(--font-size-sm);
+	text-align: center;
+	white-space: nowrap;
+	animation: slideIn 0.3s ease-out forwards, fadeOut 0.3s ease-in 1.7s forwards;
+}
+
+@keyframes slideIn {
+	from {
+		transform: translateY(-100%);
+		opacity: 0;
+	}
+	to {
+		transform: translateY(0);
+		opacity: 1;
+	}
+}
+
+@keyframes fadeOut {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+
+/* Message types */
+.system {
+	color: var(--dialog-speaker);
+	font-style: italic;
+}
+
+.warning {
+	color: var(--dialog-button-close-bg);
+	font-weight: bold;
+}
+
+.error {
+	color: var(--dialog-button-close-bg);
+	font-weight: bold;
+}
+
+.success {
+	color: var(--dialog-button-continue-bg);
+}
+
+.info {
+	color: var(--dialog-item-type);
+} 
