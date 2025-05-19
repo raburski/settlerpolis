@@ -1,20 +1,28 @@
 import { Scene, GameObjects, Physics } from 'phaser'
 import { displayMessage, displaySystemMessage, displayEmoji } from '../../utils/MessageDisplay'
-
-export enum Direction {
-	Down = 'down',
-	Up = 'up',
-	Left = 'left',
-	Right = 'right'
-}
+import { npcAssetsService } from '../../services/NPCAssetsService'
+import { NPCAssets, Direction } from '@rugged/game'
 
 export enum PlayerState {
 	Idle = 'idle',
 	Walking = 'walking'
 }
 
+function isHorizontalDirection(direction) {
+	return direction === Direction.Left || direction === Direction.Right
+}
+
+function getMirroredDirection(direction) {
+	switch (direction) {
+		case Direction.Down: return Direction.Up
+		case Direction.Left: return Direction.Right
+		case Direction.Right: return Direction.Left
+		case Direction.Up: return Direction.Down
+	}
+}
+
 export class NPCView extends GameObjects.Container {
-	protected sprite: GameObjects.Sprite
+	protected sprite: GameObjects.Sprite | null = null
 	protected messageText: GameObjects.Text | null = null
 	protected systemMessageText: GameObjects.Text | null = null
 	protected direction: Direction = Direction.Down
@@ -24,18 +32,17 @@ export class NPCView extends GameObjects.Container {
 	protected startPosition: { x: number, y: number } | null = null
 	protected movementStartTime: number = 0
 	protected movementDuration: number = 0
+	protected npcId: string
+	protected assets: NPCAssets | null = null
+	protected currentAnimation: string | null = null
+	protected lastHorizontalDirection: Direction = Direction.Right
 
-	constructor(scene: Scene, x: number = 0, y: number = 0, speed: number = 160) {
+	constructor(scene: Scene, x: number = 0, y: number = 0, speed: number = 160, npcId: string) {
 		super(scene, x, y)
 		scene.add.existing(this)
 
 		this.speed = speed
-
-		// Create sprite for the player
-		this.sprite = scene.add.sprite(0, 0, 'hasha')
-		
-		// Add sprite to container
-		this.add(this.sprite)
+		this.npcId = npcId
 
 		// Enable physics on the container
 		scene.physics.add.existing(this)
@@ -44,50 +51,113 @@ export class NPCView extends GameObjects.Container {
 		// Add a null check to prevent errors if the body is null
 		if (physicsBody) {
 			// Set a collision box for the bottom half of the character
-			// The character sprite is 32x64 pixels (each frame)
 			physicsBody.setSize(16, 4) // Width: half of the sprite width, Height: small portion of the sprite height
 			physicsBody.setOffset(-8, 28) // Center horizontally, align to bottom
 			// Make sure the player can't go out of bounds
 			physicsBody.setCollideWorldBounds(true)
 
-			// If this is an NPC, make it immovable
+			// Make it immovable
 			physicsBody.setImmovable(true)
 		} else {
-			console.error('Player physics body is null. This might happen during scene transitions.')
+			console.error('NPC physics body is null. This might happen during scene transitions.')
 		}
+
+		// Load NPC assets
+		this.loadAssets()
+	}
+
+	private async loadAssets() {
+		try {
+			this.assets = await npcAssetsService.loadNPCAssets(this.scene, this.npcId)
+			this.setupSprite()
+		} catch (error) {
+			console.error(`Failed to load assets for NPC ${this.npcId}:`, error)
+		}
+	}
+
+	private setupSprite() {
+		if (!this.assets) return
+
+		// Create sprite for the NPC
+		this.sprite = this.scene.add.sprite(0, 0, `npc-spritesheet-${this.npcId}`)
+		
+		// Add sprite to container
+		this.add(this.sprite)
 
 		// Set initial frame based on direction
 		this.updateSpriteFrame()
 	}
 
 	/**
-	 * Updates the sprite frame based on current direction
+	 * Type guard to check if animation is directional
+	 */
+	protected isDirectionalAnimation(animation: DirectionalAnimations | NPCAnimation | undefined): animation is DirectionalAnimations {
+		if (!animation) return false
+		return 'down' in animation || 'up' in animation || 'left' in animation || 'right' in animation
+	}
+
+	/**
+	 * Gets the appropriate animation key based on current state and direction
+	 */
+	protected getAnimationKey(): { animationKey: string, flipX?: boolean, flipY?: boolean } {
+		if (!this.assets) return ''
+
+		const animation = this.assets.animations[this.currentState.toLowerCase()]
+		if (!animation) {
+			// If animation doesn't exist, use idle animation as fallback
+			const fallbackAnimation = this.assets.animations['idle']
+			if (!fallbackAnimation) {
+				return { animation: 'npc-placeholder-idle-down' }
+			}
+			return { animationKey: `npc-${this.npcId}-idle-${this.lastHorizontalDirection}` }
+		}
+
+		// If animation has specific directions
+		if (this.isDirectionalAnimation(animation)) {
+			// Check if we have a specific animation for this direction
+			if (animation[this.direction]) {
+				return { animationKey: `npc-${this.npcId}-${this.currentState.toLowerCase()}-${this.direction}` }
+			}
+
+			// If no specific direction animation, check if we have horizontal animations
+			if (animation[Direction.Right] || animation[Direction.Left]) {
+				// For vertical movements or missing horizontal direction, use last horizontal direction
+				const finalHorizontalDirection = this.direction === Direction.Left || this.direction === Direction.Right 
+					? this.direction 
+					: this.lastHorizontalDirection
+				
+				const horizontalDirection = animation[finalHorizontalDirection] ? finalHorizontalDirection : getMirroredDirection(finalHorizontalDirection)
+				const flipX = animation[finalHorizontalDirection] ? false : true
+				const flipY = false // not supporting this yet
+				
+				return { animationKey: `npc-${this.npcId}-${this.currentState.toLowerCase()}-${horizontalDirection}`, flipX, flipY }
+			}
+		}
+
+		// Single animation for all directions - use last horizontal direction
+		return { animationKey: `npc-${this.npcId}-${this.currentState.toLowerCase()}` }
+	}
+
+	/**
+	 * Updates the sprite frame based on current direction and state
 	 */
 	protected updateSpriteFrame(): void {
-		// The sprite sheet is 256x128 pixels
-		// It contains 4 frames in a row (left to right)
-		// Frame 0: Down
-		// Frame 1: Up (was Left)
-		// Frame 2: Right
-		// Frame 3: Left (was Up)
-		let frameIndex = 0
-		
-		switch (this.direction) {
-			case Direction.Down:
-				frameIndex = 0
-				break
-			case Direction.Left:
-				frameIndex = 3
-				break
-			case Direction.Right:
-				frameIndex = 2
-				break
-			case Direction.Up:
-				frameIndex = 1
-				break
+		if (!this.sprite || !this.assets) return
+
+		console.log('updateSpriteFrame state', this.currentState)
+
+		// Get animation key and flip configuration
+		const { animationKey, flipX, flipY } = this.getAnimationKey()
+		// const { flipX, flipY } = npcAssetsService.getFlipConfig(this.direction, this.npcId)
+
+		// Update sprite if animation changed
+		if (this.currentAnimation !== animationKey) {
+			this.currentAnimation = animationKey
+			this.sprite.play(animationKey)
 		}
-		
-		this.sprite.setFrame(frameIndex)
+
+		// Update flip
+		this.sprite.setFlip(flipX, flipY)
 	}
 
 	/**
@@ -147,8 +217,7 @@ export class NPCView extends GameObjects.Container {
 			// Already at target
 			this.targetPosition = null
 			this.startPosition = null
-			this.currentState = PlayerState.Idle
-			this.updateSpriteFrame()
+			this.updateState(PlayerState.Idle)
 			return
 		}
 
@@ -156,8 +225,7 @@ export class NPCView extends GameObjects.Container {
 		this.targetPosition = { x, y }
 		this.movementStartTime = Date.now()
 		this.movementDuration = (distance / this.speed) * 1000 // Convert to milliseconds
-		this.currentState = PlayerState.Walking
-		this.updateSpriteFrame()
+		this.updateState(PlayerState.Walking)
 	}
 
 	/**
@@ -206,18 +274,22 @@ export class NPCView extends GameObjects.Container {
 		const dx = this.targetPosition.x - this.startPosition.x
 		const dy = this.targetPosition.y - this.startPosition.y
 		if (Math.abs(dx) > Math.abs(dy)) {
-			this.updateDirection(dx > 0 ? Direction.Right : Direction.Left)
+			const newDirection = dx > 0 ? Direction.Right : Direction.Left
+			this.updateDirection(newDirection)
+			// Store last horizontal direction when moving horizontally
+			this.lastHorizontalDirection = newDirection
 		} else {
-			this.updateDirection(dy > 0 ? Direction.Down : Direction.Up)
+			const newDirection = dy > 0 ? Direction.Down : Direction.Up
+			this.updateDirection(newDirection)
 		}
-		this.updateSpriteFrame()
 
 		// Check if movement is complete
 		if (progress >= 1) {
 			this.targetPosition = null
 			this.startPosition = null
-			this.currentState = PlayerState.Idle
-			this.updateSpriteFrame()
+			this.updateState(PlayerState.Idle)
+		} else {
+			this.updateState(PlayerState.Walking)
 		}
 		
 		// Update depth in case y position changed
@@ -229,6 +301,9 @@ export class NPCView extends GameObjects.Container {
 	 */
 	public updateDirection(direction: Direction): void {
 		if (this.direction !== direction) {
+			if (!isHorizontalDirection(direction) && isHorizontalDirection(this.direction)) {
+				this.lastHorizontalDirection = this.direction
+			}
 			this.direction = direction
 			this.updateSpriteFrame()
 		}
@@ -239,21 +314,17 @@ export class NPCView extends GameObjects.Container {
 	 */
 	public updateState(state: PlayerState): void {
 		if (this.currentState !== state) {
+			// Store the current direction before state change
+			const previousDirection = this.direction
 			this.currentState = state
 			this.updateSpriteFrame()
 		}
 	}
 
 	/**
-	 * Preloads the player assets
+	 * Preloads the NPC assets
 	 */
-	public static preload(scene: Scene): void {
-		// Load the player sprite
-		// The sprite sheet is 128x64 pixels
-		// It contains 4 frames in a row (left to right), each 32x64 pixels
-		scene.load.spritesheet('hasha', 'assets/characters/npc/hasha.png', {
-			frameWidth: 32,
-			frameHeight: 64
-		})
+	public static preload(scene: Scene, npcId: string): void {
+		npcAssetsService.loadNPCAssets(scene, npcId)
 	}
 } 

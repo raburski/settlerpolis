@@ -7,6 +7,33 @@ export enum NPCState {
 	Moving = 'moving'
 }
 
+export enum Direction {
+	Down = 'down',
+	Up = 'up',
+	Left = 'left',
+	Right = 'right'
+}
+
+export interface NPCAnimation {
+	frames: number[] // Frame indices for animation
+	frameRate: number
+	repeat: number // -1 for infinite
+}
+
+export type DirectionalAnimations = {
+	[key in Direction]?: NPCAnimation
+}
+
+export interface NPCAssets {
+	avatar?: string // Path to the avatar image
+	spritesheet: string // Path to the spritesheet containing all animation frames
+	animations: {
+		[idle: string]: DirectionalAnimations | NPCAnimation // Can be directional or single animation
+	}
+	frameWidth: number // Width of each frame in the spritesheet
+	frameHeight: number // Height of each frame in the spritesheet
+}
+
 export interface NPCMessageCondition {
 	check: () => boolean
 	message: string

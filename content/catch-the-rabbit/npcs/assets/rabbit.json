@@ -1,0 +1,33 @@
+{
+  "spritesheet": "animals.png",
+  "frameWidth": 64,
+  "frameHeight": 64,
+  "animations": {
+    "rest": {
+      "right": {
+        "frames": [72, 73],
+        "frameRate": 4,
+        "repeat": -1
+      }
+    },
+    "idle": {
+      "right": {
+        "frames": [74, 75],
+        "frameRate": 6,
+        "repeat": -1
+      }
+    },
+    "walking": {
+      "right": {
+        "frames": [78, 79, 80],
+        "frameRate": 12,
+        "repeat": -1
+      }
+    },
+    "death": {
+      "frames": [81, 82, 83],
+      "frameRate": 8,
+      "repeat": 0
+    }
+  }
+} 

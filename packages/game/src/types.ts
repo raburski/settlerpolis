@@ -5,13 +5,14 @@ import { Cutscene } from './Cutscene/types'
 import { Flag } from './Flags/types'
 import { ScheduledEvent, ScheduleOptions } from './Scheduler/types'
 import { Trigger } from './Triggers/types'
-import { NPC } from "./NPC/types"
+import { NPC, NPCAssets } from "./NPC/types"
 import { DialogueTreePartial } from './Dialogue/types'
 import { TiledMap } from "./types"
 
 export interface NPCContent extends NPC {
 	sentiments?: AffinitySentiments
 	dialogues?: DialogueTreePartial[]
+	assets?: NPCAssets // Required assets for the NPC
 }
 
 export interface GameContent {

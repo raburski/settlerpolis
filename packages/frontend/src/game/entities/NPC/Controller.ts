@@ -1,11 +1,11 @@
 import { Scene } from 'phaser'
-import { PlayerView } from '../Player/View'
+import { NPCView, PlayerState } from './View'
 import { Event } from "@rugged/game"
 import { EventBus } from '../../EventBus'
 
 export class NPCController {
 	constructor(
-		private view: PlayerView,
+		private view: NPCView,
 		private scene: Scene,
 		private npcId: string
 	) {
