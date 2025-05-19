@@ -1,5 +1,3 @@
-import rabbitEscapeTrigger from "./rabbit_escape";
-import rabbitFlee from "./rabbit_flee";
-import rabbitCatch from "./rabbit_catch";
+import rabbitEscapeTrigger from "./rabbit_escape"
 
-export const triggers = [rabbitEscapeTrigger, rabbitFlee, rabbitCatch]
+export const triggers = [rabbitEscapeTrigger]
