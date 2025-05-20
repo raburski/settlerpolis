@@ -194,16 +194,29 @@ export abstract class MapScene extends Scene {
 		const mapWidth = this.map.widthInPixels
 		const mapHeight = this.map.heightInPixels
 		
+		// Add a small padding to prevent floating-point precision issues at edges
+		const PADDING = 1 // 1 pixel padding
+		
 		// Only center if map is smaller than window
 		if (mapWidth < windowWidth || mapHeight < windowHeight) {
 			const boundsX = Math.max(0, (windowWidth - mapWidth) / 2)
 			const boundsY = Math.max(0, (windowHeight - mapHeight) / 2)
 			
-			// Set camera bounds with offset
-			this.cameras.main.setBounds(-boundsX, -boundsY, mapWidth + boundsX * 2, mapHeight + boundsY * 2)
+			// Set camera bounds with offset and padding
+			this.cameras.main.setBounds(
+				-boundsX - PADDING, 
+				-boundsY - PADDING, 
+				mapWidth + boundsX * 2 + PADDING * 2, 
+				mapHeight + boundsY * 2 + PADDING * 2
+			)
 		} else {
-			// Normal bounds for larger maps
-			this.cameras.main.setBounds(0, 0, mapWidth, mapHeight)
+			// Normal bounds for larger maps with padding
+			this.cameras.main.setBounds(
+				-PADDING, 
+				-PADDING, 
+				mapWidth + PADDING * 2, 
+				mapHeight + PADDING * 2
+			)
 		}
 		
 		// If this is a transition, fade in the camera
