@@ -28,7 +28,7 @@ const rabbit: NPCContent = {
           state: NPCState.Idle,
           active: true,
           attributes: {
-            stamina: { min: 1, max: 6 } // only regenerate if stamina < 6
+            stamina: { min: 1, max: 4 } // only regenerate if stamina < 6
           }
         }
       },

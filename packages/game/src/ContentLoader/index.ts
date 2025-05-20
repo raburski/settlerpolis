@@ -94,10 +94,7 @@ export class ContentLoader {
 		npcs.forEach(npc => {
 			// Add NPC ID to triggers and schedules for reference
 			if (npc.triggers) {
-				npcTriggers.push(...npc.triggers.map(trigger => ({
-					...trigger,
-					mapId: npc.mapId // Ensure triggers are associated with the NPC's map
-				})))
+				npcTriggers.push(...npc.triggers)
 			}
 			if (npc.schedules) {
 				npcSchedules.push(...npc.schedules)

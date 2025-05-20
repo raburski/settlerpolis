@@ -143,8 +143,6 @@ export class NPCView extends GameObjects.Container {
 	protected updateSpriteFrame(): void {
 		if (!this.sprite || !this.assets) return
 
-		console.log('updateSpriteFrame state', this.currentState)
-
 		// Get animation key and flip configuration
 		const { animationKey, flipX, flipY } = this.getAnimationKey()
 
