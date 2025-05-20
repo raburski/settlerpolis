@@ -12,7 +12,7 @@
         "build": "npm run build --workspaces",
         "build:game": "npm run build --workspace=@rugged/game",
         "build:backend": "npm run build --workspace=@rugged/backend",
-        "build:frontend": "npm run build --workspace=@rugged/frontend; cp ./packages/frontend/dist ./dist",
+        "build:frontend": "npm run build --workspace=@rugged/frontend",
         "start:backend": "npm run start --workspace=@rugged/backend"
     },
     "devDependencies": {
