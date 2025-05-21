@@ -49,6 +49,7 @@ export interface DialogueTree extends DialogueTreePartial {
 export interface DialogueTriggerData {
 	dialogueId: string
 	node: DialogueNode
+	npcId: string
 }
 
 export interface DialogueContinueData {

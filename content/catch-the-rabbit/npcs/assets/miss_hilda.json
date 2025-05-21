@@ -1,0 +1,13 @@
+{
+  "spritesheet": "hilda.png",
+  "avatar": "hilda_avatar.png",
+  "frameWidth": 64,
+  "frameHeight": 64,
+  "animations": {
+    "idle": {
+      "frames": [0],
+      "frameRate": 1,
+      "repeat": 0
+    }
+  }
+} 

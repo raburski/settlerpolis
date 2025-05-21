@@ -5,12 +5,12 @@ import { EventBus } from '../EventBus'
 import { Event } from '@rugged/game'
 import { itemService } from '../services/ItemService'
 import { ItemTexture } from './ItemTexture'
-
-const DEFAULT_AVATAR = '/assets/npcs/avatar1.jpg'
+import { npcAssetsService } from '../services/NPCAssetsService'
 
 export function DialogUI() {
 	const [activeNode, setActiveNode] = useState<DialogueNode | null>(null)
 	const [dialogueId, setDialogueId] = useState<string | null>(null)
+	const [npcId, setNpcId] = useState<string | null>(null)
 	const [, setUpdateCounter] = useState(0)
 	const [displayedText, setDisplayedText] = useState('')
 	const [isAnimating, setIsAnimating] = useState(false)
@@ -20,9 +20,10 @@ export function DialogUI() {
 	const dialogTextRef = useRef<HTMLDivElement>(null)
 
 	useEffect(() => {
-		const handleDialogueTrigger = (data: { dialogueId: string, node: DialogueNode }) => {
+		const handleDialogueTrigger = (data: { dialogueId: string, node: DialogueNode, npcId: string }) => {
 			setDialogueId(data.dialogueId)
 			setActiveNode(data.node)
+			setNpcId(data.npcId)
 			setDisplayedText('')
 			setIsAnimating(true)
 			setShowResponses(false)
@@ -31,6 +32,7 @@ export function DialogUI() {
 		const handleDialogueEnd = (data: { dialogueId: string }) => {
 			setDialogueId(null)
 			setActiveNode(null)
+			setNpcId(null)
 			setDisplayedText('')
 			setIsAnimating(false)
 			setShowResponses(false)
@@ -169,10 +171,10 @@ export function DialogUI() {
 					×
 				</button>
 
-				{DEFAULT_AVATAR && (
+				{activeNode.speaker && (
 					<div className={styles.avatarContainer}>
 						<img 
-							src={DEFAULT_AVATAR} 
+							src={npcId ? npcAssetsService.getAvatarUrl(npcId) : '/assets/npcs/placeholder/avatar.png'} 
 							alt={activeNode.speaker}
 							className={styles.avatar}
 						/>

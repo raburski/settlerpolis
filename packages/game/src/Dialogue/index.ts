@@ -143,7 +143,8 @@ export class DialogueManager {
 			
 			client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
 				dialogueId,
-				node: filteredNode
+				node: filteredNode,
+				npcId: dialogue.npcId
 			})
 		})
 
@@ -192,7 +193,8 @@ export class DialogueManager {
 			
 			client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
 				dialogueId,
-				node: filteredNode
+				node: filteredNode,
+				npcId: dialogue.npcId
 			})
 		})
 
@@ -236,7 +238,8 @@ export class DialogueManager {
 		// Send the dialogue to the client
 		client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
 			dialogueId: dialogue.id,
-			node: filteredNode
+			node: filteredNode,
+			npcId: dialogue.npcId
 		})
 
 		return true
