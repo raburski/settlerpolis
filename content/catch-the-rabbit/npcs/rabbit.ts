@@ -60,27 +60,17 @@ const rabbit: NPCContent = {
           attributes: { stamina: { equals: 0 } }
         }
       },
-      effect: {
-        npc: {
-          id: "rabbit",
-          active: false,
-        },
-        chat: {
-          system: "🐇 The rabbit is exhausted! You cought the rabbit!"
-        },
-        quest: {
-          completeStep: {
-            questId: "catch_the_rabbit",
-            stepId: "catch"
-          }
-        },
+      effects: [{
+        npc: { id: "rabbit", active: false },
+        chat: { system: "🐇 The rabbit is exhausted! You cought the rabbit!" },
         inventory: {
           add: {
             itemType: "rabbit",
             quantity: 1
           }
         }
-      }
+      },
+      { quest: { progress:  "catch_the_rabbit" }}]
     },
     {
       id: "rabbit_flee",

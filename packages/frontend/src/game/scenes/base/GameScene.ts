@@ -214,9 +214,9 @@ export abstract class GameScene extends MapScene {
 	}
 
 	private handleNPCDespawn = (data: { npc: NPC }) => {
-		const npc = this.npcs.get(data.npc.id)
-		if (npc && npc.controller) {
-			npc.controller.destroy()
+		const npcController = this.npcs.get(data.npc.id)
+		if (npcController) {
+			npcController.destroy()
 			this.npcs.delete(data.npc.id)
 		}
 	}
@@ -391,11 +391,4 @@ export abstract class GameScene extends MapScene {
 		}
 	}
 
-	private handleNPCRemove = (data: { npcId: string }) => {
-		const controller = this.npcs.get(data.npcId)
-		if (controller) {
-			controller.destroy()
-			this.npcs.delete(data.npcId)
-		}
-	}
 }

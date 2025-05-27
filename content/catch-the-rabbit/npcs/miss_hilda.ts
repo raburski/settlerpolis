@@ -40,32 +40,19 @@ const missHilda: NPCContent = {
             {
               id: "reminder",
               text: "Still chasing the rabbit...",
-              next: "already_helping",
               condition: {
                 quest: { inProgress: "catch_the_rabbit"}
               }
             },
-            {
-              id: "completed",
-              text: "I caught the rabbit, by the way.",
-              next: "gratitude",
-              condition: {
-                quest: { completed: "catch_the_rabbit" }
-              }
-            }
           ]
         },
         thankyou: {
           speaker: "Miss Hilda",
           text: "Finally, someone responsible! Be quick, it’s already chewed through my herbs."
         },
-        already_helping: {
+        rabbit_cought: {
           speaker: "Miss Hilda",
-          text: "What are you waiting for? That rabbit won't catch itself!"
-        },
-        gratitude: {
-          speaker: "Miss Hilda",
-          text: "You caught him? You’re a miracle, dear. He’s grounded for a week."
+          text: "You caught him? You’re a miracle, dear. He’s grounded for a week.",
         },
         default_idle: {
           speaker: "Miss Hilda",

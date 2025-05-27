@@ -34,7 +34,7 @@ export class NPCController {
 				this.scene.textDisplayService.displayEmoji({
 					message: data.emoji,
 					scene: this.scene,
-					worldPosition: { x: this.view.x, y: this.view.y },
+					worldPosition: { x: this.view.x, y: this.view.y - 16 },
 					entityId: this.npc.id
 				})
 			} else if (data.message) {
@@ -42,7 +42,7 @@ export class NPCController {
 				this.scene.textDisplayService.displayMessage({
 					message: data.message,
 					scene: this.scene,
-					worldPosition: { x: this.view.x, y: this.view.y },
+					worldPosition: { x: this.view.x, y: this.view.y - 16 },
 					entityId: this.npc.id
 				})
 			}

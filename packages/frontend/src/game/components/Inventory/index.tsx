@@ -55,6 +55,7 @@ export function Inventory() {
 				<EquipmentSlot
 					equippedItem={equippedItems[EquipmentSlotType.Hand]}
 					isDragging={isDragging}
+					draggedItem={draggedItem}
 					handleDragStart={handleDragStart}
 					handleDragEnd={handleDragEnd}
 					handleDragOver={handleDragOver}

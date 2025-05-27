@@ -6,6 +6,7 @@ export interface ItemType {
 	type: string
 	description?: string
 	icon?: string
+	category?: string
 }
 
 type UpdateCallback = () => void
@@ -43,6 +44,21 @@ class ItemService {
 		}
 
 		return cachedType
+	}
+
+	getItemTypeAsync(itemType: string): Promise<ItemType | undefined> {
+		return new Promise((resolve) => {
+			const cachedType = this.itemTypes.get(itemType)
+			if (cachedType) {
+				resolve(cachedType)
+				return
+			}
+
+			const unsubscribe = this.subscribeToItemMetadata(itemType, (metadata) => {
+				unsubscribe()
+				resolve(metadata)
+			})
+		})
 	}
 
 	subscribeToItemMetadata(itemType: string, callback: ItemMetadataCallback): () => void {

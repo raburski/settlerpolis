@@ -1,14 +1,16 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Item, Position } from '@rugged/game'
-import { EquipmentSlotType } from '@rugged/game'
+import { EquipmentSlotType, ItemCategory } from '@rugged/game'
 import { EventBus } from '../../EventBus'
 import { Event } from "@rugged/game"
 import { ItemSlot } from './ItemSlot'
 import styles from '../Inventory.module.css'
+import { itemService } from '../../services/ItemService'
 
 interface EquipmentSlotProps {
 	equippedItem: Item | null
 	isDragging: boolean
+	draggedItem: Item | null
 	handleDragStart: (e: React.DragEvent, itemId: string, position: Position) => void
 	handleDragEnd: () => void
 	handleDragOver: (e: React.DragEvent) => void
@@ -20,6 +22,7 @@ interface EquipmentSlotProps {
 export const EquipmentSlot: React.FC<EquipmentSlotProps> = ({
 	equippedItem,
 	isDragging,
+	draggedItem,
 	handleDragStart,
 	handleDragEnd,
 	handleDragOver,
@@ -27,44 +30,52 @@ export const EquipmentSlot: React.FC<EquipmentSlotProps> = ({
 	handleConsumeItem,
 	handleUnequipItem
 }) => {
+	const [isDraggingOver, setIsDraggingOver] = useState(false)
+
 	const handleEquipmentDrop = (e: React.DragEvent) => {
 		e.preventDefault()
 		e.stopPropagation()
-		e.currentTarget.classList.remove(styles.draggingOver)
+		setIsDraggingOver(false)
 		
-		// Get the dragged item data
-		const inventoryData = e.dataTransfer.getData('application/inventory')
-		if (!inventoryData) return
+		if (!draggedItem) return
 		
-		try {
-			const data = JSON.parse(inventoryData)
-			if (data.type === 'inventory') {
-				// Send equip request
-				EventBus.emit(Event.Players.CS.Equip, {
-					itemId: data.itemId,
-					slotType: EquipmentSlotType.Hand,
-					sourcePosition: data.position
-				})
-			}
-		} catch (error) {
-			console.error('Error parsing inventory data:', error)
+		// Get the item type to check if it's a quest item
+		const itemType = itemService.getItemType(draggedItem.itemType)
+		if (itemType?.category === ItemCategory.Quest) {
+			return // Don't allow quest items to be equipped
 		}
+		
+		// Send equip request
+		EventBus.emit(Event.Players.CS.Equip, {
+			itemId: draggedItem.id,
+			slotType: EquipmentSlotType.Hand,
+			sourcePosition: draggedItem.position
+		})
 	}
 
 	const handleDragEnter = (e: React.DragEvent) => {
 		e.preventDefault()
-		e.currentTarget.classList.add(styles.draggingOver)
+		
+		if (!draggedItem) return
+		
+		// Get the item type to check if it's a quest item
+		const itemType = itemService.getItemType(draggedItem.itemType)
+		if (itemType?.category === ItemCategory.Quest) {
+			return // Don't highlight for quest items
+		}
+		
+		setIsDraggingOver(true)
 	}
 
 	const handleDragLeave = (e: React.DragEvent) => {
 		e.preventDefault()
-		e.currentTarget.classList.remove(styles.draggingOver)
+		setIsDraggingOver(false)
 	}
 
 	return (
 		<div className={styles.equipmentSection}>
 			<div 
-				className={`${styles.equipmentSlot} ${isDragging ? styles.draggingOver : ''}`}
+				className={`${styles.equipmentSlot} ${isDraggingOver ? styles.draggingOver : ''}`}
 				onDragOver={handleDragOver}
 				onDragEnter={handleDragEnter}
 				onDragLeave={handleDragLeave}

@@ -6,7 +6,8 @@ export enum ItemCategory {
 	Tool = 'tool',
 	Consumable = 'consumable',
 	Material = 'material',
-	Placeable = 'placeable'
+	Placeable = 'placeable',
+	Quest = 'quest'
 }
 
 export interface Item {

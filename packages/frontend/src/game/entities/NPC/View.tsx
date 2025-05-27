@@ -450,6 +450,14 @@ export class NPCView extends GameObjects.Container {
 			this.highlightSprite.destroy()
 			this.highlightSprite = null
 		}
+		if (this.sprite) {
+			this.sprite.destroy()
+			this.sprite = null
+		}
+		if (this.debugGraphics) {
+			this.debugGraphics.destroy()
+			this.debugGraphics = null
+		}
 		super.destroy()
 	}
 } 

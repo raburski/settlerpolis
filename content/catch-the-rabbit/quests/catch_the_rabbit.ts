@@ -10,25 +10,26 @@ const catchTheRabbit: Quest = {
     scope: "global"
   },
   startEffect: {
-    npc: {
-      id: 'rabbit',
-      active: true,
-      attributes: {
-        stamina: {
-          set: 4
-        }
-      }
-    }
+    // npc: {
+    //   id: 'rabbit',
+    //   active: true,
+    //   attributes: {
+    //     stamina: {
+    //       set: 4
+    //     }
+    //   }
+    // }
   },
   steps: [
     {
       id: "catch",
       label: "Catch the rabbit",
       npcId: "rabbit",
-      completeWhen: {
-        event: "cs:npc:interact",
-        payload: {
-          npcId: "rabbit"
+      condition: {
+        inventory: {
+          has: {
+            itemType: 'rabbit',
+          }
         }
       },
       effect: {
@@ -48,11 +49,18 @@ const catchTheRabbit: Quest = {
       id: "return",
       label: "Return the rabbit to Miss Hilda",
       npcId: "miss_hilda",
+      condition: {
+        dialogue: {
+          id: 'miss_hilda_intro',
+          nodeId: 'rabbit_cought'
+        }
+      },
       effect: {
         chat: { system: "You returned the rabbit to Miss Hilda!" },
-        event: {
-          type: "cs:inventory:consume",
-          payload: { itemId: "rabbit" }
+        inventory: {
+          remove: {
+            itemType: "rabbit"
+          }
         }
       }
     }
