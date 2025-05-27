@@ -215,7 +215,7 @@ export abstract class GameScene extends MapScene {
 
 	private handleNPCDespawn = (data: { npc: NPC }) => {
 		const npc = this.npcs.get(data.npc.id)
-		if (npc) {
+		if (npc && npc.controller) {
 			npc.controller.destroy()
 			this.npcs.delete(data.npc.id)
 		}

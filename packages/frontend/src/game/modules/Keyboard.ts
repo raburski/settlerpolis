@@ -18,6 +18,7 @@ export class Keyboard {
 	private upKey: Phaser.Input.Keyboard.Key
 	private downKey: Phaser.Input.Keyboard.Key
 	private enterKey: Phaser.Input.Keyboard.Key
+	private escapeKey: Phaser.Input.Keyboard.Key
 	private enabled: boolean = true
 	private wasInventoryPressed: boolean = false
 	private wasQuestPressed: boolean = false
@@ -54,6 +55,7 @@ export class Keyboard {
 		this.upKey = scene.input.keyboard.addKey(Input.Keyboard.KeyCodes.UP)
 		this.downKey = scene.input.keyboard.addKey(Input.Keyboard.KeyCodes.DOWN)
 		this.enterKey = scene.input.keyboard.addKey(Input.Keyboard.KeyCodes.ENTER)
+		this.escapeKey = scene.input.keyboard.addKey(Input.Keyboard.KeyCodes.ESC)
 
 		// Listen for chat input visibility changes
 		EventBus.on('ui:chat:toggle', this.handleChatInputVisible, this)
@@ -99,6 +101,9 @@ export class Keyboard {
 			}
 			if (this.enterKey.isDown && !this.wasEnterPressed) {
 				EventBus.emit('ui:dialogue:option:confirm')
+			}
+			if (this.escapeKey.isDown) {
+				EventBus.emit('ui:dialogue:close')
 			}
 
 			// Update was pressed states

@@ -16,8 +16,24 @@ export function DialogUI() {
 	const [isAnimating, setIsAnimating] = useState(false)
 	const [showResponses, setShowResponses] = useState(false)
 	const [predictedHeight, setPredictedHeight] = useState<number | undefined>(undefined)
+	const [selectedOptionIndex, setSelectedOptionIndex] = useState(0)
 	const measureRef = useRef<HTMLDivElement>(null)
 	const dialogTextRef = useRef<HTMLDivElement>(null)
+
+	const handleClose = () => {
+		if (dialogueId) {
+			EventBus.emit(Event.Dialogue.CS.End, { dialogueId })
+		}
+	}
+
+	const handleOptionSelect = (optionId: string) => {
+		if (dialogueId) {
+			EventBus.emit(Event.Dialogue.CS.Choice, {
+				dialogueId,
+				choiceId: optionId
+			})
+		}
+	}
 
 	useEffect(() => {
 		const handleDialogueTrigger = (data: { dialogueId: string, node: DialogueNode, npcId: string }) => {
@@ -27,6 +43,8 @@ export function DialogUI() {
 			setDisplayedText('')
 			setIsAnimating(true)
 			setShowResponses(false)
+			setSelectedOptionIndex(0)
+			EventBus.emit('ui:dialogue:animation:start')
 		}
 
 		const handleDialogueEnd = (data: { dialogueId: string }) => {
@@ -36,20 +54,67 @@ export function DialogUI() {
 			setDisplayedText('')
 			setIsAnimating(false)
 			setShowResponses(false)
+			setSelectedOptionIndex(0)
 		}
 
 		const handleItemUpdate = () => {
 			setUpdateCounter(c => c + 1)
 		}
 
-		const handleKeyPress = (event: KeyboardEvent) => {
-			if (event.code === 'Space' && activeNode && isAnimating) {
-				event.preventDefault()
+		const handleSkipAnimation = () => {
+			if (activeNode && isAnimating) {
 				setDisplayedText(activeNode.text)
 				setIsAnimating(false)
 				setTimeout(() => {
 					setShowResponses(true)
+					EventBus.emit('ui:dialogue:responses:show', true)
 				}, 200)
+			}
+		}
+
+		const handleOptionUp = () => {
+			if (!activeNode) return
+			const totalOptions = activeNode.options?.length || (activeNode.next ? 1 : 0)
+			console.log('Option Up:', { 
+				currentIndex: selectedOptionIndex, 
+				newIndex: (selectedOptionIndex - 1 + totalOptions) % totalOptions,
+				totalOptions 
+			})
+			setSelectedOptionIndex(prev => (prev - 1 + totalOptions) % totalOptions)
+		}
+
+		const handleOptionDown = () => {
+			if (!activeNode) return
+			const totalOptions = activeNode.options?.length || (activeNode.next ? 1 : 0)
+			console.log('Option Down:', { 
+				currentIndex: selectedOptionIndex, 
+				newIndex: (selectedOptionIndex + 1) % totalOptions,
+				totalOptions 
+			})
+			setSelectedOptionIndex(prev => (prev + 1) % totalOptions)
+		}
+
+		const handleOptionConfirm = () => {
+			if (!activeNode) return
+
+			// If text is still animating, show all text and options immediately
+			if (isAnimating) {
+				setDisplayedText(activeNode.text)
+				setIsAnimating(false)
+				setTimeout(() => {
+					setShowResponses(true)
+					EventBus.emit('ui:dialogue:responses:show', true)
+				}, 200)
+				return
+			}
+
+			const options = activeNode.options || []
+			if (options.length > 0) {
+				handleOptionSelect(options[selectedOptionIndex].id)
+			} else if (activeNode.next) {
+				handleContinue()
+			} else {
+				handleClose()
 			}
 		}
 
@@ -57,17 +122,25 @@ export function DialogUI() {
 		EventBus.on(Event.Dialogue.SC.Trigger, handleDialogueTrigger)
 		EventBus.on(Event.Dialogue.SC.End, handleDialogueEnd)
 
+		// Listen for keyboard events
+		EventBus.on('ui:dialogue:skip-animation', handleSkipAnimation)
+		EventBus.on('ui:dialogue:option:up', handleOptionUp)
+		EventBus.on('ui:dialogue:option:down', handleOptionDown)
+		EventBus.on('ui:dialogue:option:confirm', handleOptionConfirm)
+		EventBus.on('ui:dialogue:close', handleClose)
+
 		// Listen for item type updates
 		const unsubscribe = itemService.onUpdate(handleItemUpdate)
-
-		// Add keyboard listener
-		window.addEventListener('keydown', handleKeyPress)
 
 		return () => {
 			EventBus.off(Event.Dialogue.SC.Trigger, handleDialogueTrigger)
 			EventBus.off(Event.Dialogue.SC.End, handleDialogueEnd)
+			EventBus.off('ui:dialogue:skip-animation', handleSkipAnimation)
+			EventBus.off('ui:dialogue:option:up', handleOptionUp)
+			EventBus.off('ui:dialogue:option:down', handleOptionDown)
+			EventBus.off('ui:dialogue:option:confirm', handleOptionConfirm)
+			EventBus.off('ui:dialogue:close', handleClose)
 			unsubscribe()
-			window.removeEventListener('keydown', handleKeyPress)
 		}
 	}, [activeNode, isAnimating])
 
@@ -83,15 +156,25 @@ export function DialogUI() {
 			} else {
 				clearInterval(interval)
 				setIsAnimating(false)
+				EventBus.emit('ui:dialogue:animation:end')
 				// Add a small delay before showing responses
 				setTimeout(() => {
 					setShowResponses(true)
+					EventBus.emit('ui:dialogue:responses:show', true)
 				}, 200)
 			}
 		}, 40) // Slightly slower for better readability
 
 		return () => clearInterval(interval)
 	}, [activeNode, isAnimating])
+
+	// Update total options when activeNode changes
+	useEffect(() => {
+		if (activeNode) {
+			const totalOptions = activeNode.options?.length || (activeNode.next ? 1 : 0)
+			EventBus.emit('ui:dialogue:options:update', { totalOptions })
+		}
+	}, [activeNode])
 
 	// Predict the height of the full text and set minHeight
 	useEffect(() => {
@@ -114,21 +197,6 @@ export function DialogUI() {
 				dialogueId,
 				nodeId: activeNode.next 
 			})
-		}
-	}
-
-	const handleOptionSelect = (optionId: string) => {
-		if (dialogueId) {
-			EventBus.emit(Event.Dialogue.CS.Choice, {
-				dialogueId,
-				choiceId: optionId
-			})
-		}
-	}
-
-	const handleClose = () => {
-		if (dialogueId) {
-			EventBus.emit(Event.Dialogue.CS.End, { dialogueId })
 		}
 	}
 
@@ -216,10 +284,10 @@ export function DialogUI() {
 					</div>
 
 					<div className={`${styles.responsesList} ${showResponses ? styles.visible : ''}`}>
-						{activeNode.options?.map((option) => (
+						{activeNode.options?.map((option, index) => (
 							<div key={option.id} className={styles.responseWrapper}>
 								<button
-									className={styles.responseButton}
+									className={`${styles.responseButton} ${index === selectedOptionIndex ? styles.selected : ''}`}
 									onClick={() => handleOptionSelect(option.id)}
 								>
 									{option.text}
@@ -230,7 +298,7 @@ export function DialogUI() {
 
 						{(!activeNode.options && activeNode.next) && (
 							<button
-								className={styles.continueButton}
+								className={`${styles.continueButton} ${selectedOptionIndex === 0 ? styles.selected : ''}`}
 								onClick={handleContinue}
 							>
 								Continue
@@ -239,7 +307,7 @@ export function DialogUI() {
 
 						{(!activeNode.options && !activeNode.next) && (
 							<button
-								className={styles.closeButton}
+								className={`${styles.closeButton} ${selectedOptionIndex === 0 ? styles.selected : ''}`}
 								onClick={handleClose}
 							>
 								Close

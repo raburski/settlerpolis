@@ -174,7 +174,8 @@
 	text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
 }
 
-.responseButton:hover {
+.responseButton:hover,
+.responseButton.selected {
 	background-color: #4a2c1f;
 	transform: translate(-2px, -2px);
 	box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
@@ -192,7 +193,8 @@
 	font-weight: bold;
 }
 
-.continueButton:hover {
+.continueButton:hover,
+.continueButton.selected {
 	background-color: #3a7d2a;
 }
 
@@ -203,7 +205,8 @@
 	font-weight: bold;
 }
 
-.closeButton:hover {
+.closeButton:hover,
+.closeButton.selected {
 	background-color: #7d2a2a;
 }
 

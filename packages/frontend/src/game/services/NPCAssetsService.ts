@@ -74,15 +74,16 @@ class NPCAssetsService {
 		const imageData = tempCtx.getImageData(0, 0, frame.width, frame.height)
 		const data = imageData.data
 
-		// Create outline canvas
+		// Create outline canvas with extra padding for the blur effect
+		const padding = 4 // Extra padding for the blur effect
 		const outlineCanvas = document.createElement('canvas')
 		const outlineCtx = outlineCanvas.getContext('2d')
 		if (!outlineCtx) return
 
-		outlineCanvas.width = frame.width
-		outlineCanvas.height = frame.height
+		outlineCanvas.width = frame.width + padding * 2
+		outlineCanvas.height = frame.height + padding * 2
 
-		// Process each pixel
+		// First pass: Create a solid outline
 		for (let y = 0; y < frame.height; y++) {
 			for (let x = 0; x < frame.width; x++) {
 				const i = (y * frame.width + x) * 4
@@ -113,12 +114,49 @@ class NPCAssetsService {
 
 					// If has non-transparent neighbor, this is an outline pixel
 					if (hasNonTransparentNeighbor) {
-						outlineCtx.fillStyle = '#ffff00'
-						outlineCtx.fillRect(x, y, 1, 1)
+						outlineCtx.fillStyle = 'rgba(255, 255, 0, 0.9)'
+						outlineCtx.fillRect(x + padding, y + padding, 1, 1)
 					}
 				}
 			}
 		}
+
+		// Second pass: Create a second layer of outline for thickness
+		const tempOutlineCanvas = document.createElement('canvas')
+		const tempOutlineCtx = tempOutlineCanvas.getContext('2d')
+		if (!tempOutlineCtx) return
+
+		tempOutlineCanvas.width = outlineCanvas.width
+		tempOutlineCanvas.height = outlineCanvas.height
+
+		// Draw the first outline
+		tempOutlineCtx.drawImage(outlineCanvas, 0, 0)
+
+		// Get the image data of the first outline
+		const outlineData = tempOutlineCtx.getImageData(0, 0, outlineCanvas.width, outlineCanvas.height)
+		const outlinePixels = outlineData.data
+
+		// Clear the original canvas for the second pass
+		outlineCtx.clearRect(0, 0, outlineCanvas.width, outlineCanvas.height)
+
+		// Create a thicker outline by expanding the first outline
+		for (let y = 0; y < outlineCanvas.height; y++) {
+			for (let x = 0; x < outlineCanvas.width; x++) {
+				const i = (y * outlineCanvas.width + x) * 4
+				const alpha = outlinePixels[i + 3]
+
+				if (alpha > 0) {
+					// Draw a 2x2 pixel block for each outline pixel
+					outlineCtx.fillStyle = 'rgba(255, 255, 0, 0.9)'
+					outlineCtx.fillRect(x, y, 1, 1)
+				}
+			}
+		}
+
+		// Apply blur effect
+		outlineCtx.filter = 'blur(2px)'
+		outlineCtx.drawImage(outlineCanvas, 0, 0)
+		outlineCtx.filter = 'none'
 
 		// Add the outline texture to Phaser
 		scene.textures.addCanvas(outlineKey, outlineCanvas)
