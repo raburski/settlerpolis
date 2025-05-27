@@ -2,6 +2,7 @@ import { Scene, GameObjects, Physics } from 'phaser'
 import { npcAssetsService } from '../../services/NPCAssetsService'
 import { NPCAssets, Direction, isHorizontalDirection, getMirroredDirection, isDirectionalAnimation } from '@rugged/game'
 import { GameScene } from '../../scenes/base/GameScene'
+import { tutorialService, TutorialFlag } from '../../services/TutorialService'
 
 export enum PlayerState {
 	Idle = 'idle',
@@ -422,6 +423,25 @@ export class NPCView extends GameObjects.Container {
 			}
 		} else if (this.highlightSprite) {
 			this.highlightSprite.setVisible(false)
+		}
+
+		// Show tutorial tooltip if NPC is interactable, highlighted, and tutorial not completed
+		if (highlighted && this.interactable && !tutorialService.hasCompleted(TutorialFlag.NPCInteract)) {
+			if (this.scene.textDisplayService && this.sprite && this.assets) {
+				const spriteHeight = this.assets.frameHeight || this.sprite.height
+				const verticalOffset = spriteHeight + 16 // Half of sprite height plus some padding
+				
+				this.scene.textDisplayService.displayMessage({
+					message: 'Press E to interact',
+					worldPosition: { x: this.x, y: this.y + verticalOffset },
+					fontSize: '12px',
+					color: '#ffff00',
+					backgroundColor: '#000000',
+					padding: { x: 8, y: 4 },
+					duration: 3000,
+					entityId: this.npcId
+				})
+			}
 		}
 	}
 

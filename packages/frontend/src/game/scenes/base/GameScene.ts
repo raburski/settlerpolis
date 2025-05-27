@@ -17,12 +17,13 @@ import { ItemPlacementManager } from '../../modules/ItemPlacement'
 import { FX } from '../../modules/FX'
 import { TextDisplayService } from '../../services/TextDisplayService'
 import { NPCProximityService } from '../../services/NPCProximityService'
+import { NPCController } from '../../entities/NPC/NPCController'
 
 export abstract class GameScene extends MapScene {
     protected player: LocalPlayer | null = null
 	protected remotePlayers: Map<string, RemotePlayer> = new Map()
 	protected droppedItems: Map<string, Loot> = new Map()
-	protected npcs: Map<string, NPC> = new Map()
+	protected npcs: Map<string, NPCController> = new Map()
 	protected mapObjects: Map<string, MapObjectEntity> = new Map()
 	protected keyboard: Keyboard | null = null
 	protected portalManager: PortalManager | null = null
@@ -115,8 +116,8 @@ export abstract class GameScene extends MapScene {
 		})
 
 		// Update NPCs
-		this.npcs.forEach(npc => {
-			npc.controller.update()
+		this.npcs.forEach((controller) => {
+			controller.update()
 		})
 
 		// Update map objects
@@ -378,5 +379,23 @@ export abstract class GameScene extends MapScene {
 		
 		this.npcProximityService.destroy()
 		super.destroy()
+	}
+
+	private handleNPCUpdate = (data: { npc: NPC }) => {
+		const existingController = this.npcs.get(data.npc.id)
+		if (existingController) {
+			existingController.updateNPC(data.npc)
+		} else {
+			const controller = createNPC(data.npc, this)
+			this.npcs.set(data.npc.id, controller)
+		}
+	}
+
+	private handleNPCRemove = (data: { npcId: string }) => {
+		const controller = this.npcs.get(data.npcId)
+		if (controller) {
+			controller.destroy()
+			this.npcs.delete(data.npcId)
+		}
 	}
 }
