@@ -69,12 +69,28 @@ export interface NPCCondition {
 	active?: boolean
 }
 
+export interface InventoryCondition {
+	has?: {
+		itemType: string
+		quantity?: number // Default to 1 if not provided
+		playerId?: string // Optional, defaults to the current player
+	}
+}
+
+export interface DialogueCondition {
+	id: string
+	nodeId: string
+	playerId?: string // Optional, defaults to the current player
+}
+
 export interface Condition {
 	flag?: FlagCondition
 	quest?: QuestCondition
 	npc?: NPCCondition
 	time?: TimeRange
 	date?: DateRange
+	inventory?: InventoryCondition
+	dialogue?: DialogueCondition
 }
 
 export interface FlagEffect {
@@ -87,10 +103,7 @@ export interface FlagEffect {
 
 export interface QuestEffect {
 	start?: string
-	completeStep?: {
-		questId: string
-		stepId: string
-	}
+	progress?: string
 }
 
 export interface AffinityEffect {

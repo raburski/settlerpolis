@@ -4,6 +4,7 @@ import { NPCAssets, Direction, DirectionalAnimations, NPCAnimation, isDirectiona
 class NPCAssetsService {
 	private loadedAssets: Map<string, NPCAssets> = new Map()
 	private loadingPromises: Map<string, Promise<NPCAssets>> = new Map()
+	private outlineTextures: Map<string, string> = new Map() // Cache for outline textures
 	private readonly basePath = 'assets/npcs/'
 
 	// Default placeholder assets
@@ -28,6 +29,107 @@ class NPCAssetsService {
 	constructor() {
 		// Preload default assets
 		this.loadedAssets.set('placeholder', this.defaultAssets)
+	}
+
+	/**
+	 * Creates an outline texture from a spritesheet
+	 */
+	private createOutlineTexture(scene: Scene, npcId: string, assets: NPCAssets): void {
+		const textureKey = `npc-spritesheet-${npcId}`
+		const outlineKey = `npc-outline-${npcId}`
+
+		// Skip if outline already exists
+		if (this.outlineTextures.has(npcId)) return
+
+		// Create a temporary canvas to process the image
+		const tempCanvas = document.createElement('canvas')
+		const tempCtx = tempCanvas.getContext('2d')
+		if (!tempCtx) return
+
+		// Get the first frame of the spritesheet
+		const texture = scene.textures.get(textureKey)
+		if (!texture || !texture.frames || !texture.frames[0]) return
+
+		const frame = texture.frames[0]
+		const source = frame.source.image
+
+		// Set canvas size to match frame
+		tempCanvas.width = frame.width
+		tempCanvas.height = frame.height
+
+		// Draw the frame to the canvas
+		tempCtx.drawImage(
+			source,
+			frame.cutX,
+			frame.cutY,
+			frame.cutWidth,
+			frame.cutHeight,
+			0,
+			0,
+			frame.width,
+			frame.height
+		)
+
+		// Get image data
+		const imageData = tempCtx.getImageData(0, 0, frame.width, frame.height)
+		const data = imageData.data
+
+		// Create outline canvas
+		const outlineCanvas = document.createElement('canvas')
+		const outlineCtx = outlineCanvas.getContext('2d')
+		if (!outlineCtx) return
+
+		outlineCanvas.width = frame.width
+		outlineCanvas.height = frame.height
+
+		// Process each pixel
+		for (let y = 0; y < frame.height; y++) {
+			for (let x = 0; x < frame.width; x++) {
+				const i = (y * frame.width + x) * 4
+				const alpha = data[i + 3]
+
+				// If pixel is transparent, check surrounding pixels
+				if (alpha === 0) {
+					let hasNonTransparentNeighbor = false
+
+					// Check 8 surrounding pixels
+					for (let dy = -1; dy <= 1; dy++) {
+						for (let dx = -1; dx <= 1; dx++) {
+							if (dx === 0 && dy === 0) continue
+
+							const nx = x + dx
+							const ny = y + dy
+
+							if (nx >= 0 && nx < frame.width && ny >= 0 && ny < frame.height) {
+								const ni = (ny * frame.width + nx) * 4
+								if (data[ni + 3] > 0) {
+									hasNonTransparentNeighbor = true
+									break
+								}
+							}
+						}
+						if (hasNonTransparentNeighbor) break
+					}
+
+					// If has non-transparent neighbor, this is an outline pixel
+					if (hasNonTransparentNeighbor) {
+						outlineCtx.fillStyle = '#ffff00'
+						outlineCtx.fillRect(x, y, 1, 1)
+					}
+				}
+			}
+		}
+
+		// Add the outline texture to Phaser
+		scene.textures.addCanvas(outlineKey, outlineCanvas)
+		this.outlineTextures.set(npcId, outlineKey)
+	}
+
+	/**
+	 * Gets the outline texture key for an NPC
+	 */
+	public getOutlineTextureKey(npcId: string): string | null {
+		return this.outlineTextures.get(npcId) || null
 	}
 
 	/**
@@ -118,6 +220,9 @@ class NPCAssetsService {
 					scene.load.once('complete', () => {
 						// Create animations
 						this.createAnimations(scene, npcId, assets)
+
+						// Create outline texture
+						this.createOutlineTexture(scene, npcId, assets)
 
 						// Cache the assets
 						this.loadedAssets.set(npcId, assets)

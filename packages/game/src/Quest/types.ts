@@ -20,15 +20,7 @@ export interface QuestStep {
 		id: string
 		nodeId: string
 	}
-	completeWhen: {
-		event: string
-		inventory?: {
-			itemType: string
-			quantity: number
-		}
-		condition?: Record<string, any>
-		payload?: Record<string, any>
-	}
+	condition?: Condition
 	effect?: Effect
 }
 

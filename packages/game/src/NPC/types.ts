@@ -72,6 +72,7 @@ export interface NPC {
 	attributes?: Record<string, any>
 	state?: NPCState
 	active?: boolean // defaults to true, if false NPC is disabled
+	interactable?: boolean // defaults to false, if true NPC can be interacted with
 }
 
 export interface NPCInteractData extends PlayerSourcedData {

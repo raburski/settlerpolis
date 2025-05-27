@@ -275,4 +275,28 @@ export class DialogueManager {
 			.filter(dialogue => dialogue.npcId === npcId)
 			.map(dialogue => dialogue.id)
 	}
+
+	/**
+	 * Check if a player has a specific dialogue active
+	 * @param playerId The ID of the player to check
+	 * @param dialogueId The ID of the dialogue to check for
+	 * @param nodeId Optional node ID to check if the dialogue is at a specific node
+	 * @returns true if the player has the specified dialogue active
+	 */
+	public hasActiveDialogue(playerId: string, dialogueId: string, nodeId?: string): boolean {
+		// Check if player has any active dialogue
+		const activeDialogueId = this.activeDialogues.get(playerId)
+		if (!activeDialogueId || activeDialogueId !== dialogueId) {
+			return false
+		}
+
+		// If no specific node is requested, just check if the dialogue is active
+		if (!nodeId) {
+			return true
+		}
+
+		// Check if the player is at the specified node
+		const currentNodeId = this.currentNodes.get(playerId)
+		return currentNodeId === nodeId
+	}
 } 

@@ -10,6 +10,7 @@ import { TimeManager } from '../Time'
 import { DialogueEvents } from '../Dialogue/events'
 import { DialogueContinueData } from '../Dialogue/types'
 import { NPCState } from './types'
+import { QuestManager } from '../Quest'
 
 const MOVEMENT_STEP_LAG = 100
 const ROUTINE_CHECK_INTERVAL = 60000 // Check routines every minute
@@ -25,7 +26,8 @@ export class NPCManager {
 		private event: EventManager,
 		private dialogueManager: DialogueManager,
 		private mapManager: MapManager,
-		private timeManager: TimeManager
+		private timeManager: TimeManager,
+		private questManager: QuestManager
 	) {
 		this.setupEventHandlers()
 		this.startRoutineCheck()
@@ -375,10 +377,12 @@ export class NPCManager {
 
 		// Try to trigger dialogue first
 		const didTriggerDialogue = this.dialogueManager.triggerDialogue(client, npc.id)
-		if (didTriggerDialogue) return
+		
+		// Check quest completion conditions for all active quests involving this NPC
+		this.questManager.checkQuestsForNPCInteraction(npc.id, client.id, client)
 
 		// If no dialogue was triggered, fall back to messages
-		if (npc.messages) {
+		if (!didTriggerDialogue && npc.messages) {
 			let message = npc.messages.default
 			
 			// Check conditions in order

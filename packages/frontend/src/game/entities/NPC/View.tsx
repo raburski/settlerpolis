@@ -10,6 +10,7 @@ export enum PlayerState {
 
 export class NPCView extends GameObjects.Container {
 	protected sprite: GameObjects.Sprite | null = null
+	protected highlightSprite: GameObjects.Sprite | null = null
 	protected direction: Direction = Direction.Down
 	protected currentState: PlayerState = PlayerState.Idle
 	protected speed: number
@@ -23,13 +24,16 @@ export class NPCView extends GameObjects.Container {
 	protected lastHorizontalDirection: Direction = Direction.Right
 	private debug: boolean = false
 	private debugGraphics: Phaser.GameObjects.Graphics
+	private isHighlighted: boolean = false
+	private interactable: boolean = false
 
-	constructor(scene: GameScene, x: number = 0, y: number = 0, speed: number = 160, npcId: string) {
+	constructor(scene: GameScene, x: number = 0, y: number = 0, speed: number = 160, npcId: string, interactable: boolean = false) {
 		super(scene, x, y)
 		scene.add.existing(this)
 
 		this.speed = speed
 		this.npcId = npcId
+		this.interactable = interactable
 
 		// Initialize debug graphics if debug mode is enabled
 		if (this.debug) {
@@ -386,5 +390,46 @@ export class NPCView extends GameObjects.Container {
 			this.debugGraphics.fillStyle(0x00ff00, 1)
 			this.debugGraphics.fillCircle(this.sprite.x, this.sprite.y, 4)
 		}
+	}
+
+	public setHighlighted(highlighted: boolean) {
+		// Only allow highlighting if NPC is interactable
+		if (!this.interactable) {
+			if (this.highlightSprite) {
+				this.highlightSprite.setVisible(false)
+			}
+			return
+		}
+
+		if (this.isHighlighted === highlighted) return
+		this.isHighlighted = highlighted
+
+		if (highlighted) {
+			const outlineKey = npcAssetsService.getOutlineTextureKey(this.npcId)
+			if (!outlineKey || !this.sprite) return
+
+			// Create highlight sprite if it doesn't exist
+			if (!this.highlightSprite) {
+				this.highlightSprite = this.scene.add.sprite(0, 0, outlineKey)
+				this.highlightSprite.setDepth(this.depth + 1) // Just above the NPC
+				this.add(this.highlightSprite)
+			}
+
+			// Position highlight sprite to match the main sprite
+			if (this.sprite) {
+				this.highlightSprite.setPosition(this.sprite.x, this.sprite.y)
+				this.highlightSprite.setVisible(true)
+			}
+		} else if (this.highlightSprite) {
+			this.highlightSprite.setVisible(false)
+		}
+	}
+
+	public destroy() {
+		if (this.highlightSprite) {
+			this.highlightSprite.destroy()
+			this.highlightSprite = null
+		}
+		super.destroy()
 	}
 } 

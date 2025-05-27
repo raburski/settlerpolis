@@ -16,6 +16,7 @@ import { createMapObject, MapObjectEntity } from '../../entities/MapObject'
 import { ItemPlacementManager } from '../../modules/ItemPlacement'
 import { FX } from '../../modules/FX'
 import { TextDisplayService } from '../../services/TextDisplayService'
+import { NPCProximityService } from '../../services/NPCProximityService'
 
 export abstract class GameScene extends MapScene {
     protected player: LocalPlayer | null = null
@@ -24,13 +25,15 @@ export abstract class GameScene extends MapScene {
 	protected npcs: Map<string, NPC> = new Map()
 	protected mapObjects: Map<string, MapObjectEntity> = new Map()
 	protected keyboard: Keyboard | null = null
-    protected portalManager: PortalManager | null = null
+	protected portalManager: PortalManager | null = null
 	protected itemPlacementManager: ItemPlacementManager | null = null
 	protected fx: FX | null = null
 	protected textDisplayService: TextDisplayService | null = null
+	protected npcProximityService: NPCProximityService
 
 	constructor(config: { key: string, mapKey: string, mapPath: string }) {
 		super(config.key, config.mapKey, config.mapPath)
+		this.npcProximityService = new NPCProximityService(this)
 	}
 
     protected initializeScene(): void {
@@ -41,6 +44,9 @@ export abstract class GameScene extends MapScene {
 
         // Initialize text display service
 		this.textDisplayService = new TextDisplayService(this)
+
+        // Initialize NPC proximity service
+		this.npcProximityService.initialize()
 
         // Get scene data passed during transition
 		const sceneData = this.scene.settings.data
@@ -124,6 +130,14 @@ export abstract class GameScene extends MapScene {
 		}
 
 		this.textDisplayService?.update()
+
+		// Update NPC proximity service if we have a player
+		if (this.player) {
+			this.npcProximityService.update(
+				{ x: this.player.view.x, y: this.player.view.y },
+				this.npcs
+			)
+		}
     }
 
     private setupMultiplayer() {
@@ -362,6 +376,7 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn)
 		EventBus.off(Event.MapObjects.SC.Despawn, this.handleMapObjectDespawn)
 		
+		this.npcProximityService.destroy()
 		super.destroy()
 	}
 }

@@ -9,11 +9,13 @@ export type NPCEntity = {
 }
 
 export const createNPC = (scene: Scene, x: number, y: number, npcData: NPC): NPCEntity => {
-	const view = new NPCView(scene, x, y, npcData.speed, npcData.id)
+	const view = new NPCView(scene, x, y, npcData.speed, npcData.id, npcData.interactable)
 	
 	// Make the view interactive with a rectangle hit area
 	view.setInteractive(new Phaser.Geom.Rectangle(-32, -32, 64, 64), Phaser.Geom.Rectangle.Contains)
-	view.input.cursor = 'pointer'
+	
+	// Set cursor style based on interactable property
+	view.input.cursor = npcData.interactable ? 'pointer' : 'default'
 	
 	const controller = new NPCController(view, scene, npcData.id)
 	return { view, controller }

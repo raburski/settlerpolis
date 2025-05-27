@@ -1,5 +1,5 @@
 import { EventClient, EventManager } from '../events'
-import { Condition, Effect, FlagCondition, QuestCondition, FlagEffect, QuestEffect, AffinityEffect, FXEffect, CutsceneEffect, EventEffect, ChatEffect, NPCCondition, NPCAffinityCondition, NPCAffinityOverallCondition, TimeRange, DateRange, NPCAttributeCondition, NPCAttributeEffect, ScheduleEffect, InventoryEffect } from './types'
+import { Condition, Effect, FlagCondition, QuestCondition, FlagEffect, QuestEffect, AffinityEffect, FXEffect, CutsceneEffect, EventEffect, ChatEffect, NPCCondition, NPCAffinityCondition, NPCAffinityOverallCondition, TimeRange, DateRange, NPCAttributeCondition, NPCAttributeEffect, ScheduleEffect, InventoryEffect, DialogueCondition, InventoryCondition } from './types'
 import { QuestManager } from "../Quest"
 import { FlagsManager } from "../Flags"
 import { AffinityManager } from "../Affinity"
@@ -16,6 +16,7 @@ import { Time } from '../Time/types'
 import { SchedulerEvents } from '../Scheduler/events'
 import { InventoryManager } from '../Inventory'
 import { InventoryEvents } from '../Inventory/events'
+import { DialogueManager } from '../Dialogue'
 import { v4 as uuidv4 } from 'uuid'
 
 export class ConditionEffectManager {
@@ -27,7 +28,8 @@ export class ConditionEffectManager {
 		private npcManager: NPCManager,
 		private playersManager: PlayersManager,
 		private timeManager: TimeManager,
-		private inventoryManager: InventoryManager
+		private inventoryManager: InventoryManager,
+		private dialogueManager: DialogueManager
 	) {}
 
 	/**
@@ -68,16 +70,16 @@ export class ConditionEffectManager {
 	 * Apply a quest effect
 	 */
 	public applyQuestEffect(effect: QuestEffect, client: EventClient) {
-		const { start, completeStep } = effect
+		const { start, progress } = effect
 		
 		if (start) {
 			// Use the QuestManager's startQuest method
 			this.questManager.startQuest(start, client.id, client)
 		}
 		
-		if (completeStep) {
-			// Use the QuestManager to complete a specific step
-			this.questManager.completeSpecificStep(completeStep.questId, completeStep.stepId, client.id, client)
+		if (progress) {
+			// Use the QuestManager to check and progress the quest
+			this.questManager.checkAndProgressQuest(progress, client.id, client)
 		}
 	}
 
@@ -195,15 +197,18 @@ export class ConditionEffectManager {
 					itemType
 				}
 				
-				// Use the event system to add the item to ensure proper handling
-				client.emit(Receiver.Sender, InventoryEvents.SS.Add, item)
+				// Use the inventory manager directly to add the item
+				this.inventoryManager.addItem(client, item)
 			}
 		}
 		
-		// Handle removing items from inventory (for future implementation)
+		// Handle removing items from inventory
 		if (effect.remove) {
-			// This could be implemented in the future to remove items by type
-			console.warn('Remove items by type not yet implemented')
+			const { itemType, quantity = 1, playerId } = effect.remove
+			const targetPlayerId = playerId || client.id
+			
+			// Use the inventory manager directly to remove items
+			this.inventoryManager.removeItemByType(client, itemType, quantity)
 		}
 	}
 
@@ -585,6 +590,28 @@ export class ConditionEffectManager {
 	}
 
 	/**
+	 * Check if an inventory condition is met
+	 */
+	public checkInventoryCondition(condition: InventoryCondition, client: EventClient): boolean {
+		if (!condition.has) return true
+		
+		const { itemType, quantity = 1, playerId } = condition.has
+		const targetPlayerId = playerId || client.id
+		
+		return this.inventoryManager.doesHave(itemType, quantity, targetPlayerId)
+	}
+
+	/**
+	 * Check if a dialogue condition is met
+	 */
+	public checkDialogueCondition(condition: DialogueCondition, client: EventClient): boolean {
+		const { id, nodeId, playerId } = condition
+		const targetPlayerId = playerId || client.id
+		
+		return this.dialogueManager.hasActiveDialogue(targetPlayerId, id, nodeId)
+	}
+
+	/**
 	 * Check if a condition is met
 	 */
 	public checkCondition(condition: Condition, client: EventClient): boolean {
@@ -627,6 +654,28 @@ export class ConditionEffectManager {
 
 		if (condition.date && !this.checkDateCondition(condition.date)) {
 			return false
+		}
+
+		// Check inventory condition
+		if (condition.inventory) {
+			if (!client) {
+				console.warn('Client required for inventory conditions')
+				return false
+			}
+			if (!this.checkInventoryCondition(condition.inventory, client)) {
+				return false
+			}
+		}
+
+		// Check dialogue condition
+		if (condition.dialogue) {
+			if (!client) {
+				console.warn('Client required for dialogue conditions')
+				return false
+			}
+			if (!this.checkDialogueCondition(condition.dialogue, client)) {
+				return false
+			}
 		}
 
 		return true

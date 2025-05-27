@@ -10,6 +10,12 @@ export const InventoryEvents = {
 		MoveItem: 'sc:inventory:move_item'
 	},
 	SS: {
-		Add: 'ss:inventory:add'
+		Add: 'ss:inventory:add',
+		RemoveByType: 'ss:inventory:remove_by_type'
 	}
-} as const 
+} as const
+
+export interface RemoveByTypePayload {
+	itemType: string
+	quantity?: number
+} 

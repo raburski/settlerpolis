@@ -41,3 +41,8 @@ export interface AddItemData {
 	item: Item
 	position: Position
 }
+
+export interface RemoveByTypePayload {
+	itemType: string
+	quantity?: number
+}

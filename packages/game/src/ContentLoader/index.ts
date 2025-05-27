@@ -84,14 +84,20 @@ export class ContentLoader {
 		if (this.debug) {
 			console.log('[ContentLoader] Loading NPCs:', this.content.npcs)
 		}
-		await this.npc.loadNPCs(this.content.npcs || [])
+
+		// Process NPCs to set interactable flag based on dialogues
+		const processedNPCs = (this.content.npcs || []).map(npc => ({
+			...npc,
+			interactable: Boolean(npc.dialogues && npc.dialogues.length > 0)
+		}))
+
+		await this.npc.loadNPCs(processedNPCs)
 
 		// Load NPC-specific triggers and schedules
-		const npcs = this.content.npcs || []
 		const npcTriggers: Trigger[] = []
 		const npcSchedules: ScheduleOptions[] = []
 
-		npcs.forEach(npc => {
+		processedNPCs.forEach(npc => {
 			// Add NPC ID to triggers and schedules for reference
 			if (npc.triggers) {
 				npcTriggers.push(...npc.triggers)
@@ -121,8 +127,19 @@ export class ContentLoader {
 	private async loadDialogues() {
 		const npcs = this.content.npcs || []
 		const dialogues: DialogueTree[] = npcs
-			.map((npc) => npc.dialogues ? dialogueCompose({ id: `${npc.id}_dialogues`, npcId: npc.id }, ...npc.dialogues) : undefined)
-			.filter(Boolean) as DialogueTree[]
+			.map((npc) => {
+				if (!npc.dialogues) return undefined
+
+				const firstDialogueId = npc.dialogues.find(d => d.id)?.id
+				if (!firstDialogueId) return undefined
+
+				return npc.dialogues.map(dialogue => dialogueCompose(
+					{ id: dialogue.id || firstDialogueId, npcId: npc.id },
+					dialogue
+				))
+			})
+			.filter(Boolean)
+			.flat() as DialogueTree[]
 
 		if (this.debug) {
 			console.log('[ContentLoader] Loading dialogues:', dialogues)

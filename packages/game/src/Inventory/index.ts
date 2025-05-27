@@ -1,5 +1,5 @@
 import { EventManager, Event, EventClient } from '../events'
-import { Inventory, InventoryData, DropItemData, PickUpItemData, ConsumeItemData, MoveItemData, InventorySlot, Position, AddItemData } from './types'
+import { Inventory, InventoryData, DropItemData, PickUpItemData, ConsumeItemData, MoveItemData, InventorySlot, Position, AddItemData, RemoveByTypePayload } from './types'
 import { PlayerJoinData } from '../Players/types'
 import { Receiver } from '../Receiver'
 import { v4 as uuidv4 } from 'uuid'
@@ -146,6 +146,27 @@ export class InventoryManager {
 		client.emit(Receiver.Sender, Event.Inventory.SC.Update, { inventory })
 	}
 
+	public removeItemByType(client: EventClient, itemType: string, quantity: number = 1): boolean {
+		const inventory = this.inventories.get(client.id)
+		if (!inventory) return false
+
+		let removedCount = 0
+		const slotsWithItem = inventory.slots.filter(slot => slot.item?.itemType === itemType)
+
+		// Remove items up to the requested quantity
+		for (const slot of slotsWithItem) {
+			if (removedCount >= quantity) break
+			if (slot.item) {
+				const itemId = slot.item.id
+				slot.item = null
+				client.emit(Receiver.Sender, Event.Inventory.SC.Remove, { itemId })
+				removedCount++
+			}
+		}
+
+		return removedCount > 0
+	}
+
 	private setupEventHandlers() {
 		// Handle client lifecycle
 		this.event.onJoined((client) => {
@@ -205,6 +226,11 @@ export class InventoryManager {
 		this.event.on<MoveItemData>(Event.Inventory.CS.MoveItem, (data, client) => {
 			console.log('Received MoveItem event:', data)
 			this.moveItem(data, client)
+		})
+
+		// Handle remove item by type
+		this.event.on<RemoveByTypePayload>(Event.Inventory.SS.RemoveByType, (data, client) => {
+			this.removeItemByType(client, data.itemType, data.quantity)
 		})
 	}
 

@@ -15,6 +15,7 @@ export class LocalPlayerController extends BasePlayerController {
 	protected lastPositionUpdateTime: number = 0
 	protected readonly POSITION_UPDATE_THROTTLE = 50 // 50ms
 	private debug: boolean = false // Enable debug output
+	private isInDialogue: boolean = false
 
 	constructor(
 		view: PlayerViewType,
@@ -23,6 +24,30 @@ export class LocalPlayerController extends BasePlayerController {
 	) {
 		super(view, scene, playerId)
 		this.keyboard = new Keyboard(scene)
+		this.setupDialogueHandlers()
+	}
+
+	private setupDialogueHandlers() {
+		const handleDialogueTrigger = () => {
+			this.isInDialogue = true
+		}
+
+		const handleDialogueEnd = () => {
+			this.isInDialogue = false
+		}
+
+		EventBus.on(Event.Dialogue.SC.Trigger, handleDialogueTrigger)
+		EventBus.on(Event.Dialogue.SC.End, handleDialogueEnd)
+
+		// Clean up event listeners when controller is destroyed
+		this.destroy = () => {
+			super.destroy()
+			EventBus.off(Event.Dialogue.SC.Trigger, handleDialogueTrigger)
+			EventBus.off(Event.Dialogue.SC.End, handleDialogueEnd)
+			if (this.keyboard) {
+				this.keyboard.destroy()
+			}
+		}
 	}
 
 	/**
@@ -52,6 +77,12 @@ export class LocalPlayerController extends BasePlayerController {
 		
 		// Reset velocity
 		body.setVelocity(0, 0)
+		
+		// If in dialogue, don't process movement
+		if (this.isInDialogue) {
+			this.view.updateState(PlayerState.Idle)
+			return
+		}
 		
 		const speed = this.view.speed
 
@@ -115,13 +146,6 @@ export class LocalPlayerController extends BasePlayerController {
 			EventBus.emit(Event.Players.CS.Move, currentPosition)
 			this.lastPositionUpdate = currentPosition
 			this.lastPositionUpdateTime = now
-		}
-	}
-
-	public destroy(): void {
-		super.destroy()
-		if (this.keyboard) {
-			this.keyboard.destroy()
 		}
 	}
 } 

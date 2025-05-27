@@ -74,7 +74,7 @@ export class GameManager {
 			this.questManager
 		)
 		
-		this.npcManager = new NPCManager(event, this.dialogueManager, this.mapManager, this.timeManager)
+		this.npcManager = new NPCManager(event, this.dialogueManager, this.mapManager, this.timeManager, this.questManager)
 		this.scheduler = new Scheduler(event, this.timeManager)
 		this.mapObjectsManager = new MapObjectsManager(event, this.itemsManager, this.inventoryManager)
 		this.triggerManager = new TriggerManager(
@@ -101,7 +101,8 @@ export class GameManager {
 			this.npcManager,
 			this.playersManager,
 			this.timeManager,
-			this.inventoryManager
+			this.inventoryManager,
+			this.dialogueManager
 		)
 		this.dialogueManager.conditionEffectManager = this.conditionEffectManager
 		this.questManager.conditionEffectManager = this.conditionEffectManager
