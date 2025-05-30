@@ -12,15 +12,11 @@
 
 .message {
 	background-color: var(--color-background-medium);
-	backdrop-filter: blur(8px);
 	color: var(--color-text-primary);
 	padding: var(--spacing-md) var(--spacing-lg);
-	border-radius: var(--border-radius-sm);
 	margin-bottom: var(--spacing-sm);
 	font-size: var(--font-size-sm);
 	transition: var(--transition-medium);
-	border: 1px solid var(--color-border);
-	box-shadow: var(--shadow-md);
 }
 
 .playerName {
@@ -41,11 +37,8 @@
 .input {
 	width: 100%;
 	padding: var(--spacing-md) var(--spacing-lg);
-	border-radius: var(--border-radius-sm);
 	background-color: var(--color-background-medium);
-	backdrop-filter: blur(8px);
 	color: var(--color-text-primary);
-	border: 1px solid var(--color-border);
 	font-size: var(--font-size-sm);
 	transition: var(--transition-fast);
 	outline: none;
@@ -57,8 +50,6 @@
 
 .input:focus {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--color-accent-primary);
-	border-color: var(--color-border-hover);
 }
 
 .input::selection {

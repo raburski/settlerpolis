@@ -12,20 +12,24 @@
 }
 
 .message {
-	color: white;
-	font-size: 2rem;
+	color: #fffbe7;
+	font-size: 2.5rem;
+	font-family: 'Press Start 2P', 'VT323', 'monospace';
 	font-weight: bold;
-	padding: 1rem;
-	border-radius: 0.5rem;
+	padding: 2.5rem 3.5rem;
+	border: 6px solid #7c5e2c;
+	background: #23272e;
 	text-align: center;
-	max-width: 80%;
+	max-width: 90vw;
 	word-wrap: break-word;
-	text-shadow: 
-		-1px -1px 0 #000,  
-		1px -1px 0 #000,
-		-1px 1px 0 #000,
-		1px 1px 0 #000;
+	text-shadow:
+		4px 4px 0 #000,
+		0 0 8px #000,
+		0 2px 0 #7c5e2c;
+	box-shadow: 0 0 0 4px #ffe066, 8px 8px 0 0 #23272e;
+	image-rendering: pixelated;
 	opacity: 0;
+	border-radius: 0;
 }
 
 .visible {
@@ -46,12 +50,14 @@
 	}
 	to {
 		opacity: 1;
+		filter: none;
 	}
 }
 
 @keyframes fadeOut {
 	from {
 		opacity: 1;
+		filter: none;
 	}
 	to {
 		opacity: 0;

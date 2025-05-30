@@ -53,6 +53,33 @@
 	--z-index-modal: 1000;
 	--z-index-overlay: 1000;
 	--z-index-dropdown: 1001;
+
+	/* Dialog/Pixel UI Color Scheme */
+	--dialog-bg: rgba(20, 20, 20, 0.95);
+	--dialog-border: #2c1810;
+	--dialog-border-accent: #ffe066;
+	--dialog-shadow: 0 0 0 3px #ffe066, 0px 0px 0 0 #23272e;
+	--dialog-text: #fffbe7;
+	--dialog-text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.7);
+	--dialog-speaker: #ffd700;
+	--dialog-speaker-shadow: 2px 2px 0 rgba(0, 0, 0, 0.7);
+	--dialog-button-bg: #2c1810;
+	--dialog-button-hover-bg: #4a2c1f;
+	--dialog-button-border: #4a2c1f;
+	--dialog-button-continue-bg: #2c5e1e;
+	--dialog-button-continue-border: #3a7d2a;
+	--dialog-button-close-bg: #5e1e1e;
+	--dialog-button-close-border: #7d2a2a;
+	--dialog-item-bg: rgba(44, 24, 16, 0.9);
+	--dialog-item-hover-bg: rgba(74, 44, 31, 0.95);
+	--dialog-item-border: #4a2c1f;
+	--dialog-item-name: #ffd700;
+	--dialog-item-desc: #e0e0e0;
+	--dialog-item-type: #b8860b;
+
+	/* Border Widths */
+	--dialog-border-width: 2px;
+	--dialog-border-radius: 0;
 }
 
 /* Common utility classes */

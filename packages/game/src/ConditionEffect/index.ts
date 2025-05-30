@@ -300,6 +300,11 @@ export class ConditionEffectManager {
 			return this.questManager.hasActiveQuest(condition.inProgress, client.id)
 		}
 		
+		// Check if quest is not in progress
+		if (condition.notInProgress) {
+			return !this.questManager.hasActiveQuest(condition.notInProgress, client.id)
+		}
+		
 		// Check if quest has been completed
 		if (condition.completed) {
 			return this.questManager.hasCompletedQuest(condition.completed, client.id)

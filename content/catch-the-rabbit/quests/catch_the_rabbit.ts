@@ -6,19 +6,8 @@ const catchTheRabbit: Quest = {
   title: "Catch the Rabbit",
   description: "Miss Hilda's rabbit has escaped! Catch it before it destroys her garden.",
   settings: {
-    repeatable: true,
-    scope: "global"
-  },
-  startEffect: {
-    // npc: {
-    //   id: 'rabbit',
-    //   active: true,
-    //   attributes: {
-    //     stamina: {
-    //       set: 4
-    //     }
-    //   }
-    // }
+    // repeatable: true,
+    // scope: "global"
   },
   steps: [
     {
@@ -48,13 +37,6 @@ const catchTheRabbit: Quest = {
     {
       id: "return",
       label: "Return the rabbit to Miss Hilda",
-      npcId: "miss_hilda",
-      condition: {
-        dialogue: {
-          id: 'miss_hilda_intro',
-          nodeId: 'rabbit_cought'
-        }
-      },
       effect: {
         chat: { system: "You returned the rabbit to Miss Hilda!" },
         inventory: {

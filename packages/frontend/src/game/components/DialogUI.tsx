@@ -75,22 +75,12 @@ export function DialogUI() {
 		const handleOptionUp = () => {
 			if (!activeNode) return
 			const totalOptions = activeNode.options?.length || (activeNode.next ? 1 : 0)
-			console.log('Option Up:', { 
-				currentIndex: selectedOptionIndex, 
-				newIndex: (selectedOptionIndex - 1 + totalOptions) % totalOptions,
-				totalOptions 
-			})
 			setSelectedOptionIndex(prev => (prev - 1 + totalOptions) % totalOptions)
 		}
 
 		const handleOptionDown = () => {
 			if (!activeNode) return
 			const totalOptions = activeNode.options?.length || (activeNode.next ? 1 : 0)
-			console.log('Option Down:', { 
-				currentIndex: selectedOptionIndex, 
-				newIndex: (selectedOptionIndex + 1) % totalOptions,
-				totalOptions 
-			})
 			setSelectedOptionIndex(prev => (prev + 1) % totalOptions)
 		}
 

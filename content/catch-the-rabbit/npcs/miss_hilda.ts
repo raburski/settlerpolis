@@ -16,50 +16,108 @@ const missHilda: NPCContent = {
   messages: {
     default: "That rabbit was just here a moment ago... something's not right.",
   },
-  dialogues: [
-    {
-      id: "miss_hilda_intro",
-      npcId: "miss_hilda",
-      startNode: "start",
-      nodes: {
-        start: {
-          speaker: "Miss Hilda",
-          text: "Oh, it's you again. Have you seen my rabbit?",
-          options: [
+  dialogues: [{
+  id: "miss_hilda_intro",
+  npcId: "miss_hilda",
+  startNode: "start",
+  nodes: {
+    start: {
+      speaker: "Miss Hilda",
+      text: "Oh, it's you again. Have you seen my rabbit?",
+      options: [
+        {
+          id: "start_quest",
+          text: "I'll catch it for you, don't worry!",
+          next: "thankyou",
+          conditions: [
             {
-              id: "start_quest",
-              text: "I'll catch it for you, don't worry!",
-              next: "thankyou",
-              condition: {
-                quest: { canStart: "catch_the_rabbit" }
-              },
-              effect: {
-                quest: { start: "catch_the_rabbit" }
+              quest: {
+                canStart: "catch_the_rabbit"
               }
-            },
+            }
+          ],
+          effect: {
+            quest: {
+              start: "catch_the_rabbit"
+            }
+          }
+        },
+        {
+          id: "progress_reminder",
+          text: "Still chasing the rabbit...",
+          next: "already_helping",
+          conditions: [
             {
-              id: "reminder",
-              text: "Still chasing the rabbit...",
-              condition: {
-                quest: { inProgress: "catch_the_rabbit"}
+              quest: {
+                inProgress: "catch_the_rabbit"
               }
-            },
+            }
           ]
         },
-        thankyou: {
-          speaker: "Miss Hilda",
-          text: "Finally, someone responsible! Be quick, it’s already chewed through my herbs."
+        {
+          id: "ready_to_return",
+          text: "I caught the rabbit, here it is.",
+          next: "gratitude",
+          conditions: [
+            {
+              quest: {
+                inProgress: "catch_the_rabbit",
+              },
+              inventory: {
+                has: {
+                  itemType: "rabbit"
+                }
+              }
+            }
+          ],
+          effects: [
+            {
+              quest: {
+                progress: "catch_the_rabbit"
+              }
+            }
+          ]
         },
-        rabbit_cought: {
-          speaker: "Miss Hilda",
-          text: "You caught him? You’re a miracle, dear. He’s grounded for a week.",
+        {
+          id: "quest_completed",
+          text: "Hope the little rascal stays put now.",
+          next: "idle",
+          conditions: [
+            {
+              quest: {
+                completed: "catch_the_rabbit"
+              }
+            }
+          ]
         },
-        default_idle: {
-          speaker: "Miss Hilda",
-          text: "The weather’s fine, but I feel trouble in the air..."
+        {
+          id: "nothing",
+          text: "Just passing by.",
+          next: "idle",
+          condition: [{
+            quest: { notInProgress: 'catch_the_rabbit' }
+          }]
         }
-      }
+      ]
+    },
+    thankyou: {
+      speaker: "Miss Hilda",
+      text: "Finally, someone responsible! Be quick, it’s already chewed through my herbs."
+    },
+    already_helping: {
+      speaker: "Miss Hilda",
+      text: "What are you waiting for? That rabbit won't catch itself!"
+    },
+    gratitude: {
+      speaker: "Miss Hilda",
+      text: "You caught him? You’re a miracle, dear. He’s grounded for a week."
+    },
+    idle: {
+      speaker: "Miss Hilda",
+      text: "The weather’s fine, but I feel trouble in the air..."
     }
+  }
+}
   ]
 }
 

@@ -13,6 +13,7 @@ export function SidePanel() {
 	const [relationshipsPulse, setRelationshipsPulse] = useState(false)
 	const [hasNewQuest, setHasNewQuest] = useState(false)
 	const [hasNewQuestItem, setHasNewQuestItem] = useState(false)
+	const [hasCompletedQuest, setHasCompletedQuest] = useState(false)
 
 	const handleInventoryClick = () => {
 		EventBus.emit('ui:inventory:toggle')
@@ -22,6 +23,7 @@ export function SidePanel() {
 	const handleQuestsClick = () => {
 		EventBus.emit('ui:quests:toggle')
 		setHasNewQuest(false)
+		setHasCompletedQuest(false)
 	}
 
 	const handleRelationshipsClick = () => {
@@ -55,6 +57,13 @@ export function SidePanel() {
 			}, LABEL_TOOLTIP_TIME)
 		}
 
+		const handleQuestComplete = () => {
+			setHasCompletedQuest(true)
+			setTimeout(() => {
+				setHasCompletedQuest(false)
+			}, LABEL_TOOLTIP_TIME)
+		}
+
 		const handleItemAdded = async (data: { item: { itemType: string } }) => {
 			const itemType = await itemService.getItemTypeAsync(data.item.itemType)
 			if (itemType?.category === ItemCategory.Quest) {
@@ -76,6 +85,7 @@ export function SidePanel() {
 		EventBus.on(Event.Quest.SC.Complete, triggerQuestsPulse)
 		EventBus.on(Event.Quest.SC.StepComplete, triggerQuestsPulse)
 		EventBus.on(Event.Quest.SC.Start, handleNewQuest)
+		EventBus.on(Event.Quest.SC.Complete, handleQuestComplete)
 
 		// Relationships updates
 		EventBus.on(Event.Affinity.SC.Update, triggerRelationshipsPulse)
@@ -89,6 +99,7 @@ export function SidePanel() {
 			EventBus.off(Event.Quest.SC.Complete, triggerQuestsPulse)
 			EventBus.off(Event.Quest.SC.StepComplete, triggerQuestsPulse)
 			EventBus.off(Event.Quest.SC.Start, handleNewQuest)
+			EventBus.off(Event.Quest.SC.Complete, handleQuestComplete)
 			EventBus.off(Event.Affinity.SC.Update, triggerRelationshipsPulse)
 		}
 	}, [])
@@ -106,6 +117,9 @@ export function SidePanel() {
 					</button>
 					{hasNewQuest && (
 						<span className={styles.newQuestLabel}>New quest!</span>
+					)}
+					{hasCompletedQuest && (
+						<span className={styles.newQuestLabel}>Quest completed!</span>
 					)}
 				</div>
 				<div className={styles.buttonContainer}>

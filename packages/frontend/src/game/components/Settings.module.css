@@ -6,16 +6,20 @@
 	right: 0;
 	bottom: 0;
 	width: 360px;
-	background: var(--color-background-medium);
-	backdrop-filter: blur(8px);
+	background: var(--dialog-bg);
+	backdrop-filter: none;
 	padding: var(--spacing-md);
 	padding-left: var(--spacing-xl);
 	padding-right: calc(var(--spacing-xl) + 60px);
-	color: var(--color-text-primary);
+	color: var(--dialog-text);
 	overflow-y: auto;
-	box-shadow: var(--shadow-md);
+	box-shadow: var(--dialog-shadow);
 	animation: slideIn 0.3s ease-out;
 	z-index: var(--z-index-modal);
+	border: var(--dialog-border-width) solid var(--dialog-border);
+	border-radius: var(--dialog-border-radius);
+	image-rendering: pixelated;
+	font-family: 'Press Start 2P', monospace;
 }
 
 .settingsContainer.slideOut {
@@ -31,6 +35,9 @@
 	margin-top: var(--spacing-md);
 	margin-bottom: var(--spacing-xl);
 	text-align: center;
+	color: var(--dialog-speaker);
+	text-shadow: var(--dialog-speaker-shadow);
+	font-family: 'Press Start 2P', monospace;
 }
 
 .closeIcon {
@@ -39,27 +46,36 @@
 	top: var(--spacing-xs);
 	left: var(--spacing-md);
 	margin-top: -16px;
+	border: var(--dialog-border-width) solid var(--dialog-border);
+	border-radius: var(--dialog-border-radius);
+	background: var(--dialog-button-hover-bg);
+	color: var(--dialog-text);
 }
 
 .settingCard {
-	background: var(--color-background-light);
-	border: 1px solid var(--color-border);
-	border-radius: var(--border-radius-md);
+	background: var(--dialog-item-bg);
+	border: var(--dialog-border-width) solid var(--dialog-item-border);
+	border-radius: var(--dialog-border-radius);
 	padding: var(--spacing-lg);
 	margin-bottom: var(--spacing-lg);
 	transition: var(--transition-fast);
+	font-family: 'Press Start 2P', monospace;
+	color: var(--dialog-text);
+	text-shadow: var(--dialog-text-shadow);
 }
 
 .settingCard:hover {
-	border-color: var(--color-border-hover);
+	border-color: var(--dialog-item-hover-bg);
 	transform: translateY(-1px);
-	box-shadow: var(--shadow-sm);
+	box-shadow: var(--dialog-shadow);
 }
 
 .settingTitle {
 	margin: 0 0 var(--spacing-md) 0;
-	color: var(--color-accent-primary);
+	color: var(--dialog-item-name);
 	font-size: var(--font-size-lg);
+	text-shadow: var(--dialog-text-shadow);
+	font-family: 'Press Start 2P', monospace;
 }
 
 .settingContent {
@@ -76,16 +92,18 @@
 }
 
 .settingRow label {
-	color: var(--color-text-secondary);
+	color: var(--dialog-item-type);
 	flex: 1;
+	font-family: 'Press Start 2P', monospace;
+	text-shadow: var(--dialog-text-shadow);
 }
 
 .slider {
 	flex: 2;
 	height: 4px;
 	-webkit-appearance: none;
-	background: var(--color-background-medium);
-	border-radius: 2px;
+	background: var(--dialog-bg);
+	border-radius: var(--dialog-border-radius);
 	outline: none;
 }
 
@@ -94,34 +112,35 @@
 	appearance: none;
 	width: 16px;
 	height: 16px;
-	border-radius: 50%;
-	background: var(--color-accent-primary);
+	border-radius: var(--dialog-border-radius);
+	background: var(--dialog-item-name);
 	cursor: pointer;
-	border: none;
+	border: var(--dialog-border-width) solid var(--dialog-item-border);
 }
 
 .slider::-moz-range-thumb {
 	width: 16px;
 	height: 16px;
-	border-radius: 50%;
-	background: var(--color-accent-primary);
+	border-radius: var(--dialog-border-radius);
+	background: var(--dialog-item-name);
 	cursor: pointer;
-	border: none;
+	border: var(--dialog-border-width) solid var(--dialog-item-border);
 }
 
 .select {
 	flex: 2;
 	padding: var(--spacing-sm) var(--spacing-md);
-	border-radius: var(--border-radius-sm);
-	background: var(--color-background-medium);
-	border: 1px solid var(--color-border);
-	color: var(--color-text-primary);
+	border-radius: var(--dialog-border-radius);
+	background: var(--dialog-bg);
+	border: var(--dialog-border-width) solid var(--dialog-border);
+	color: var(--dialog-text);
 	font-size: var(--font-size-md);
 	outline: none;
+	font-family: 'Press Start 2P', monospace;
 }
 
 .select:focus {
-	border-color: var(--color-accent-primary);
+	border-color: var(--dialog-speaker);
 }
 
 @keyframes slideIn {

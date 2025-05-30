@@ -36,6 +36,7 @@ export interface FlagCondition {
 export interface QuestCondition {
 	canStart?: string
 	inProgress?: string
+	notInProgress?: string
 	completed?: string
 }
 

@@ -2,16 +2,55 @@
 
 .container {
 	position: absolute;
-	bottom: var(--spacing-xl);
-	left: var(--spacing-xl);
+	bottom: 50px;
 	width: 400px;
 	max-height: 200px;
 	overflow-y: auto;
-	background-color: var(--color-background-dark);
-	border-radius: var(--border-radius-md);
+	background: var(--dialog-bg);
+	border: var(--dialog-border-width) solid var(--dialog-border);
+	box-shadow: var(--dialog-shadow);
+	border-radius: var(--dialog-border-radius);
 	padding: var(--spacing-sm);
-	color: var(--color-text-primary);
+	color: var(--dialog-text);
 	font-size: var(--font-size-sm);
+	font-family: 'Press Start 2P', monospace;
+	image-rendering: pixelated;
+	transition: max-height 0.3s cubic-bezier(0.4,0,0.6,1), padding 0.3s cubic-bezier(0.4,0,0.6,1), opacity 0.3s cubic-bezier(0.4,0,0.6,1);
+	opacity: 1;
+}
+
+.collapsed {
+	max-height: 0;
+	padding-top: 0;
+	padding-bottom: 0;
+	overflow: hidden;
+	opacity: 0;
+}
+
+.toggleButton {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	width: 100%;
+	background: var(--dialog-button-bg);
+	border: var(--dialog-border-width) solid var(--dialog-button-border);
+	color: var(--dialog-text);
+	font-family: 'Press Start 2P', monospace;
+	font-size: var(--font-size-md);
+	box-shadow: var(--dialog-shadow);
+	border-radius: var(--dialog-border-radius);
+	padding: 0 var(--spacing-sm);
+	margin-bottom: var(--spacing-xs);
+	cursor: pointer;
+	transition: all 0.2s ease;
+	text-shadow: var(--dialog-text-shadow);
+	image-rendering: pixelated;
+	height: 32px;
+}
+
+.toggleButton:hover {
+	background: var(--dialog-button-hover-bg);
+	border-color: var(--dialog-item-name);
 }
 
 .message {
@@ -20,37 +59,37 @@
 }
 
 .timestamp {
-	color: var(--color-text-muted);
+	color: var(--dialog-item-type);
 	margin-right: var(--spacing-sm);
 	font-size: var(--font-size-xs);
 }
 
 /* Message types */
 .local {
-	color: var(--color-text-primary);
+	color: var(--dialog-text);
 }
 
 .system {
-	color: var(--color-accent-primary);
+	color: var(--dialog-speaker);
 	font-style: italic;
 }
 
 .warning {
-	color: var(--color-accent-orange);
+	color: var(--dialog-button-close-bg);
 	font-weight: bold;
 }
 
 .error {
-	color: var(--color-accent-red);
+	color: var(--dialog-button-close-bg);
 	font-weight: bold;
 }
 
 .success {
-	color: var(--color-accent-green);
+	color: var(--dialog-button-continue-bg);
 }
 
 .info {
-	color: var(--color-accent-light-blue);
+	color: var(--dialog-item-type);
 }
 
 /* Custom scrollbar styles */
