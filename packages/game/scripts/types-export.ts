@@ -3,8 +3,8 @@ import path from 'path'
 import { execSync } from 'child_process'
 
 // Configuration
-const GAME_MODULES_PATH = path.resolve(__dirname, '../src/Game')
-const CONTENT_PATH = path.resolve(__dirname, '../src/content')
+const GAME_MODULES_PATH = path.resolve(__dirname, '../src')
+const CONTENT_PATH = path.resolve(__dirname, '../../../content')
 const OUTPUT_FILE_PATH = path.resolve(__dirname, './defs.ts')
 
 const allEvents: Record<string, Record<string, Record<string, string>>> = {}

@@ -8,7 +8,7 @@
         "prepare": "husky install",
         "check-backend": "cd packages/backend && npm run check-types",
         "check-consistency": "cd packages/backend && ts-node scripts/consistency.ts",
-        "export-types": "cd packages/backend && ts-node scripts/types-export.ts",
+        "export-types": "npm run export-types --workspace=@rugged/game",
         "build": "npm run build --workspaces",
         "build:game": "npm run build --workspace=@rugged/game",
         "build:backend": "npm run build --workspace=@rugged/backend",
