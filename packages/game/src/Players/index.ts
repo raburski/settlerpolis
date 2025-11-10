@@ -315,9 +315,9 @@ export class PlayersManager {
 		}
 
 		// Try to place the object
-		const success = this.mapObjectsManager.placeObject(player.playerId, placeData, client)
+		const placedObject = this.mapObjectsManager.placeObject(player.playerId, placeData, client)
 
-		if (success) {
+		if (placedObject) {
 			// Remove item from player's equipment
 			player.equipment[EquipmentSlot.Hand] = null
 

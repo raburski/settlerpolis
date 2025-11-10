@@ -54,6 +54,13 @@ if (!fs.existsSync(contentPath)) {
 
 const content: GameContent = require(path.join(contentPath, 'index.ts'))
 
+// Debug: Log content structure
+console.log('[Backend] Content loaded:', {
+	hasBuildings: !!content.buildings,
+	buildingsCount: content.buildings?.length || 0,
+	buildings: content.buildings?.map(b => ({ id: b.id, name: b.name })) || []
+})
+
 // Create game manager instance with event bus, content, and map URL service
 const HOST_URL = process.env.PUBLIC_URL || process.env.RAILWAY_PUBLIC_URL || 'http://localhost:3000'
 const mapUrlService = new BackendMapUrlService('/api/maps/', HOST_URL)

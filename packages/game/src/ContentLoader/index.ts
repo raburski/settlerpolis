@@ -8,6 +8,7 @@ import { NPCManager } from "../NPC"
 import { QuestManager } from "../Quest"
 import { Scheduler } from "../Scheduler"
 import { TriggerManager } from "../Triggers"
+import { BuildingManager } from "../Buildings"
 import { dialogueCompose } from "../Dialogue/utils"
 import { DialogueTree } from "../Dialogue/types"
 import { GameContent, ScheduleOptions, Trigger } from "../types"
@@ -25,6 +26,7 @@ export class ContentLoader {
 		private scheduler: Scheduler,
 		private trigger: TriggerManager,
 		private affinity: AffinityManager,
+		private building: BuildingManager,
 		private debug: boolean = true
 	) {
 		this.loadAllContent()
@@ -44,7 +46,8 @@ export class ContentLoader {
 			this.loadFlags(),
 			this.loadSchedules(),
 			this.loadTriggers(),
-			this.loadAffinityWeights()
+			this.loadAffinityWeights(),
+			this.loadBuildings()
 		])
 		if (this.debug) {
 			console.log('[ContentLoader] Finished loading all content')
@@ -182,5 +185,21 @@ export class ContentLoader {
 			console.log('[ContentLoader] Loading affinity weights:', sentiments)
 		}
 		await this.affinity.loadAffinityWeights(sentiments || {})
+	}
+
+	private async loadBuildings() {
+		if (this.debug) {
+			console.log('[ContentLoader] Loading buildings from content:', this.content.buildings)
+			console.log('[ContentLoader] Buildings array length:', this.content.buildings?.length || 0)
+		}
+		const buildingsToLoad = this.content.buildings || []
+		if (buildingsToLoad.length === 0) {
+			console.warn('[ContentLoader] ⚠️ No buildings found in content! Check content/debug/general/buildings.ts')
+			console.warn('[ContentLoader] Content object keys:', Object.keys(this.content))
+			console.warn('[ContentLoader] Content.buildings type:', typeof this.content.buildings)
+		} else {
+			console.log('[ContentLoader] ✓ Found', buildingsToLoad.length, 'buildings to load')
+		}
+		this.building.loadBuildings(buildingsToLoad)
 	}
 } 

@@ -148,10 +148,15 @@ export class InventoryManager {
 
 	public removeItemByType(client: EventClient, itemType: string, quantity: number = 1): boolean {
 		const inventory = this.inventories.get(client.id)
-		if (!inventory) return false
+		if (!inventory) {
+			console.warn(`[InventoryManager] Cannot remove items: inventory not found for player ${client.id}`)
+			return false
+		}
 
 		let removedCount = 0
 		const slotsWithItem = inventory.slots.filter(slot => slot.item?.itemType === itemType)
+
+		console.log(`[InventoryManager] Removing ${quantity} of ${itemType} from player ${client.id}, found ${slotsWithItem.length} slots with this item`)
 
 		// Remove items up to the requested quantity
 		for (const slot of slotsWithItem) {
@@ -161,7 +166,18 @@ export class InventoryManager {
 				slot.item = null
 				client.emit(Receiver.Sender, Event.Inventory.SC.Remove, { itemId })
 				removedCount++
+				console.log(`[InventoryManager] Removed item ${itemId} (${itemType}), ${removedCount}/${quantity} removed`)
 			}
+		}
+
+		if (removedCount < quantity) {
+			console.warn(`[InventoryManager] Only removed ${removedCount} of ${quantity} requested items of type ${itemType}`)
+		}
+
+		// Send full inventory update after removing items to ensure UI is synchronized
+		if (removedCount > 0) {
+			client.emit(Receiver.Sender, Event.Inventory.SC.Update, { inventory })
+			console.log(`[InventoryManager] Sent inventory update after removing ${removedCount} items`)
 		}
 
 		return removedCount > 0
@@ -178,7 +194,39 @@ export class InventoryManager {
 			const firstSlot = getSlotAtPosition(initialInventory, { row: 0, column: 0 })
 			firstSlot.item = defaultItem
 			
+			// Add starting resources for building construction (Phase A)
+			// Add logs (wood) - 20 logs for testing
+			let slotIndex = 1
+			for (let i = 0; i < 20; i++) {
+				const logItem = createItemWithRandomId('logs')
+				const slot = getSlotAtPosition(initialInventory, { 
+					row: Math.floor(slotIndex / INVENTORY_GRID_COLUMNS), 
+					column: slotIndex % INVENTORY_GRID_COLUMNS 
+				})
+				if (slot && !slot.item) {
+					slot.item = logItem
+					slotIndex++
+				}
+			}
+			
+			// Add stone - 15 stone for testing
+			for (let i = 0; i < 15; i++) {
+				const stoneItem = createItemWithRandomId('stone')
+				const slot = getSlotAtPosition(initialInventory, { 
+					row: Math.floor(slotIndex / INVENTORY_GRID_COLUMNS), 
+					column: slotIndex % INVENTORY_GRID_COLUMNS 
+				})
+				if (slot && !slot.item) {
+					slot.item = stoneItem
+					slotIndex++
+				}
+			}
+			
 			this.inventories.set(client.id, initialInventory)
+			
+			// Send complete inventory update to client
+			// This will be sent when player joins a map, but we can also send it here
+			// to ensure the client has the inventory immediately
 		})
 
 		this.event.onLeft((client) => {

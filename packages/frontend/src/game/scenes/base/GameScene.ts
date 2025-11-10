@@ -13,7 +13,7 @@ import { PortalManager } from "../../modules/Portals";
 import networkManager from "../../network";
 import { playerService } from "../../services/PlayerService";
 import { createMapObject, MapObjectEntity } from '../../entities/MapObject'
-import { ItemPlacementManager } from '../../modules/ItemPlacement'
+import { BuildingPlacementManager } from '../../modules/BuildingPlacement'
 import { FX } from '../../modules/FX'
 import { TextDisplayService } from '../../services/TextDisplayService'
 import { NPCProximityService } from '../../services/NPCProximityService'
@@ -27,7 +27,7 @@ export abstract class GameScene extends MapScene {
 	protected mapObjects: Map<string, MapObjectEntity> = new Map()
 	protected keyboard: Keyboard | null = null
 	protected portalManager: PortalManager | null = null
-	protected itemPlacementManager: ItemPlacementManager | null = null
+	protected buildingPlacementManager: BuildingPlacementManager | null = null
 	protected fx: FX | null = null
 	protected textDisplayService: TextDisplayService | null = null
 	protected npcProximityService: NPCProximityService
@@ -78,8 +78,8 @@ export abstract class GameScene extends MapScene {
 		// Process portals
 		this.portalManager.processPortals(this.map)
 
-		// Initialize the item placement manager
-		this.itemPlacementManager = new ItemPlacementManager(this, this.player.controller)
+		// Initialize the building placement manager
+		this.buildingPlacementManager = new BuildingPlacementManager(this)
 
 		// Initialize FX
 		this.fx = new FX(this)
@@ -125,9 +125,9 @@ export abstract class GameScene extends MapScene {
 			mapObject.controller.update()
 		})
 
-		// Update item placement manager
-		if (this.itemPlacementManager) {
-			this.itemPlacementManager.update()
+		// Update building placement manager
+		if (this.buildingPlacementManager) {
+			this.buildingPlacementManager.update()
 		}
 
 		this.textDisplayService?.update()
@@ -157,6 +157,12 @@ export abstract class GameScene extends MapScene {
 		// Set up map objects event listeners
 		EventBus.on(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn, this)
 		EventBus.on(Event.MapObjects.SC.Despawn, this.handleMapObjectDespawn, this)
+
+		// Set up building event listeners
+		EventBus.on(Event.Buildings.SC.Placed, this.handleBuildingPlaced, this)
+		EventBus.on(Event.Buildings.SC.Progress, this.handleBuildingProgress, this)
+		EventBus.on(Event.Buildings.SC.Completed, this.handleBuildingCompleted, this)
+		EventBus.on(Event.Buildings.SC.Cancelled, this.handleBuildingCancelled, this)
 	}
 
 	private handlePlayerJoined = (data: { playerId: string, position: { x: number, y: number } }) => {
@@ -240,7 +246,7 @@ export abstract class GameScene extends MapScene {
 
 	private handleMapObjectSpawn = (data: { object: any }) => {
 		// Only add objects for the current map
-		if (data.object.mapId === this.mapKey) {
+		if (data.object.mapName === this.mapKey) {
 			const mapObject = createMapObject(this, data.object)
 			this.mapObjects.set(data.object.id, mapObject)
 			
@@ -257,6 +263,27 @@ export abstract class GameScene extends MapScene {
 			mapObject.controller.destroy()
 			this.mapObjects.delete(data.objectId)
 		}
+	}
+
+	private handleBuildingPlaced = (data: { building: any }) => {
+		// Building is already handled via MapObject spawn, but we can add specific logic here
+		console.log('[GameScene] Building placed:', data.building)
+	}
+
+	private handleBuildingProgress = (data: { buildingInstanceId: string, progress: number, stage: string }) => {
+		// Find the map object associated with this building and update its progress
+		// For Phase A, we'll update the visual representation
+		console.log('[GameScene] Building progress:', data)
+	}
+
+	private handleBuildingCompleted = (data: { building: any }) => {
+		// Update building visual to show completed state
+		console.log('[GameScene] Building completed:', data.building)
+	}
+
+	private handleBuildingCancelled = (data: { buildingInstanceId: string, refundedItems: any[] }) => {
+		// Building removal is handled via MapObject despawn
+		console.log('[GameScene] Building cancelled:', data)
 	}
 
     	// Transition to a new scene with a fade effect

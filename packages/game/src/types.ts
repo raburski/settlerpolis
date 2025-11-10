@@ -8,6 +8,7 @@ import { Trigger } from './Triggers/types'
 import { NPC, NPCAssets } from "./NPC/types"
 import { DialogueTreePartial } from './Dialogue/types'
 import { TiledMap } from "./types"
+import { BuildingDefinition } from './Buildings/types'
 
 export interface NPCContent extends NPC {
 	sentiments?: AffinitySentiments
@@ -27,6 +28,7 @@ export interface GameContent {
 	triggers: Trigger[]
 	maps: Record<string, TiledMap>,
 	defaultMap?: string // Optional default map ID to load initially
+	buildings?: BuildingDefinition[]
 }
 
 export interface Position {
@@ -53,4 +55,5 @@ export * from './Map/types'
 export * from './Quest/types'
 export * from './Scheduler/types'
 export * from './Time/types'
-export * from './Triggers/types' 
+export * from './Triggers/types'
+export * from './Buildings/types' 

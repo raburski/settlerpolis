@@ -27,7 +27,7 @@ const DEFAULT_APPEARANCE: PlayerAppearance = {
 }
 
 export class MultiplayerService {
-	private debug: boolean = false
+	private debug: boolean = true // Enable debug for building catalog
     private events: string[]
 	private handleCSEvent = (eventName: string, data: any) => {
 		if (eventName && eventName.startsWith('cs:') && this.event) {
@@ -40,6 +40,8 @@ export class MultiplayerService {
 
 	constructor(private event: EventManager) {
 		this.events = this.getAllNetworkEvents()
+		console.log('[MultiplayerService] Initializing with events:', this.events.length, 'events')
+		console.log('[MultiplayerService] Building catalog event:', Event.Buildings?.SC?.Catalog)
 		EventBus.onAny(this.handleCSEvent)
         this.setupNetworkEventForwarding()
 	}
@@ -60,17 +62,21 @@ export class MultiplayerService {
 	}
 
 	private setupNetworkEventForwarding() {
-		if (!this.event) return
+		if (!this.event) {
+			console.warn('[MultiplayerService] No event manager, cannot setup forwarding')
+			return
+		}
 
 		// Subscribe to each event and forward to EventBus
 		this.events.forEach(eventName => {
 			this.event.on(eventName, (data, client) => {
 				if (this.debug) {
-					console.log('[MULTIPLAYER SERVICE] Feed into the EventBUS', eventName)
+					console.log('[MULTIPLAYER SERVICE] Received event from server, forwarding to EventBus:', eventName, data)
 				}
 				EventBus.emit(eventName, data)
 			})
 		})
+		console.log('[MultiplayerService] Set up forwarding for', this.events.length, 'events')
 	}
 
 	public destroy(): void {

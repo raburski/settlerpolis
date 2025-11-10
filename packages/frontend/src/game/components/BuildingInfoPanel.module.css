@@ -1,0 +1,146 @@
+.panel {
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	background: rgba(30, 30, 30, 0.95);
+	border: 2px solid #555;
+	border-radius: 8px;
+	padding: 0;
+	min-width: 300px;
+	max-width: 400px;
+	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+	z-index: 1000;
+	font-family: system-ui, -apple-system, sans-serif;
+}
+
+.header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 16px;
+	border-bottom: 1px solid #555;
+	background: rgba(40, 40, 40, 0.9);
+	border-radius: 6px 6px 0 0;
+}
+
+.title {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.icon {
+	font-size: 24px;
+}
+
+.title h3 {
+	margin: 0;
+	font-size: 18px;
+	font-weight: 600;
+	color: #fff;
+}
+
+.closeButton {
+	background: transparent;
+	border: none;
+	color: #aaa;
+	font-size: 24px;
+	cursor: pointer;
+	padding: 0;
+	width: 24px;
+	height: 24px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 4px;
+	transition: all 0.2s;
+}
+
+.closeButton:hover {
+	background: rgba(255, 255, 255, 0.1);
+	color: #fff;
+}
+
+.content {
+	padding: 16px;
+}
+
+.description {
+	color: #ccc;
+	margin-bottom: 16px;
+	font-size: 14px;
+	line-height: 1.5;
+}
+
+.info {
+	margin-bottom: 16px;
+}
+
+.infoRow {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 8px 0;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.infoRow:last-child {
+	border-bottom: none;
+}
+
+.label {
+	color: #aaa;
+	font-size: 14px;
+}
+
+.value {
+	color: #fff;
+	font-size: 14px;
+	font-weight: 500;
+}
+
+.actions {
+	margin-top: 16px;
+	padding-top: 16px;
+	border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.cancelButton {
+	width: 100%;
+	padding: 10px;
+	background: #d32f2f;
+	border: none;
+	border-radius: 4px;
+	color: #fff;
+	font-size: 14px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background 0.2s;
+}
+
+.cancelButton:hover {
+	background: #b71c1c;
+}
+
+.cancelButton:active {
+	background: #c62828;
+}
+
+.cancelHint {
+	margin-top: 8px;
+	color: #aaa;
+	font-size: 12px;
+	text-align: center;
+}
+
+.completedMessage {
+	padding: 10px;
+	background: rgba(76, 175, 80, 0.2);
+	border: 1px solid rgba(76, 175, 80, 0.4);
+	border-radius: 4px;
+	color: #4caf50;
+	font-size: 14px;
+	text-align: center;
+}
+

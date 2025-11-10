@@ -22,6 +22,7 @@ import { GameContent } from './types'
 import { EventManager } from "./events"
 import { EquipmentSlot, EquipmentSlotType } from './Players/types'
 import { MapUrlService } from './Map/types'
+import { BuildingManager } from './Buildings'
 
 // Export types and events
 export * from './types'
@@ -43,6 +44,7 @@ export class GameManager {
 	private scheduler: Scheduler
 	private questManager: QuestManager
 	private mapObjectsManager: MapObjectsManager
+	private buildingManager: BuildingManager
 	private flagsManager: FlagsManager
 	private affinityManager: AffinityManager
 	private cutsceneManager: CutsceneManager
@@ -77,6 +79,7 @@ export class GameManager {
 		this.npcManager = new NPCManager(event, this.dialogueManager, this.mapManager, this.timeManager, this.questManager)
 		this.scheduler = new Scheduler(event, this.timeManager)
 		this.mapObjectsManager = new MapObjectsManager(event, this.itemsManager, this.inventoryManager)
+		this.buildingManager = new BuildingManager(event, this.inventoryManager, this.mapObjectsManager, this.itemsManager, this.mapManager)
 		this.triggerManager = new TriggerManager(
 			event,
 			this.npcManager,
@@ -121,7 +124,8 @@ export class GameManager {
 			this.questManager,
 			this.scheduler,
 			this.triggerManager,
-			this.affinityManager
+			this.affinityManager,
+			this.buildingManager
 		)
 		
 		this.setupEventHandlers()

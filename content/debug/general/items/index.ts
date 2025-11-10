@@ -34,5 +34,39 @@ export const items: ItemMetadata[] = [
 		category: ItemCategory.Material,
 		stackable: true,
 		maxStackSize: 3
+	},
+	{
+		id: 'building_foundation',
+		name: 'Building Foundation',
+		emoji: '🏗️',
+		description: 'A building foundation placeholder',
+		category: ItemCategory.Placeable,
+		stackable: false,
+		placement: {
+			size: {
+				width: 1,
+				height: 1
+			},
+			blocksMovement: true,
+			blocksPlacement: true
+		}
+	},
+	{
+		id: 'logs',
+		name: 'Logs',
+		emoji: '🪵',
+		description: 'Wooden logs for construction',
+		category: ItemCategory.Material,
+		stackable: true,
+		maxStackSize: 50
+	},
+	{
+		id: 'stone',
+		name: 'Stone',
+		emoji: '🪨',
+		description: 'Stone blocks for construction',
+		category: ItemCategory.Material,
+		stackable: true,
+		maxStackSize: 50
 	}
 ]

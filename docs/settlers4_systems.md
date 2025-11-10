@@ -91,6 +91,7 @@ Build a Settlers IV-inspired settlement RTS on top of the existing `@rugged/game
 
 **Phase 1 — Settlement MVP (Weeks 3-6)**
 - Implement `BuildingManager`, `ConstructionPlanner`, and minimal `ResourceCatalog` with wood and stone loops.
+- Stand up a foundational `StorageManager` to track shared stockpiles and per-building input buffers, enabling later logistics.
 - Add professions via `PopulationManager` (builder, carrier, lumberjack, miner) and integrate with `JobAssignmentSystem`.
 - Deliver `ConstructionUI` and foundational HUD (resource counts, population slots).
 - Ensure multiplayer sync of construction, inventory, and map ownership flows without AI opponents.
@@ -98,7 +99,7 @@ Build a Settlers IV-inspired settlement RTS on top of the existing `@rugged/game
 
 **Phase 2 — Logistics & Mid-Tier Economy (Weeks 7-12)**
 - Introduce `ProductionPipelines` for processed goods (planks, bricks) and a simple food chain (grain to bread).
-- Stand up `StorageManager`, `CarrierRoutingService`, and `RoadNetwork` (earth roads) to expose transport bottlenecks.
+- Expand `StorageManager` with warehouse capacities, reservation queues, and storage class priorities; add `CarrierRoutingService` and `RoadNetwork` (earth roads) to expose transport bottlenecks.
 - Expand UI with `EconomyDashboard`, shortage alerts, and production queue indicators.
 - Add multiplayer-safe pause and reconnection handling for longer sessions.
 - Result: Sustainable settlement loops with tangible logistics decisions.
@@ -179,4 +180,48 @@ Build a Settlers IV-inspired settlement RTS on top of the existing `@rugged/game
 - Skip naval gameplay for the first milestone; water remains a terrain constraint only.
 - Treat multiplayer sessions (co-op settlement and PvP skirmish) as first-class requirements from Phase 1 onward.
 - Defer advanced settlement AI and trader behaviors until core player-versus-player loop is stable.
+
+---
+
+### Current Package Topology
+- **`packages/game`**  
+	Cross-platform simulation core instantiating `GameManager` with managers for chat, players, inventory, NPCs, quests, triggers, scheduler, and map logic. All client/server flows rely on the shared `EventManager` interface and deterministic content loading.
+- **`packages/backend`**  
+	Express + Socket.IO service that wraps the shared game core. `NetworkManager` bridges Socket.IO sockets into the `EventManager` contract, while `EventBusManager` enforces prefix-based routing (`cs:` client→server, `ss:` server internal, `sc:` server→client). The backend instantiates `GameManager` with real-time content from `/content/<pack>/index.ts` and serves map JSON through `/api/maps`.
+- **`packages/frontend`**  
+	Phaser/React client that can run in two modes: local simulation (`LocalManager` pairs two `EventManager` instances) or remote multiplayer (`NetworkManager` built atop Socket.IO). Frontend code imports the same content packs, drives UI, and reacts to events emitted by the shared game core.
+- **`content/`**  
+	Authoring packs (e.g., `debug`, `catch-the-rabbit`) defining maps, NPCs, quests, triggers, and items. The selected pack (`VITE_GAME_CONTENT` on frontend, `GAME_CONTENT` on backend) delivers data-driven definitions consumed by `ContentLoader`.
+
+This separation keeps deterministic simulation logic in `packages/game`, with networking adapters in backend/frontend that translate transport details into the shared event vocabulary.
+
+---
+
+### Interactive MVP Slice Plan
+
+**Guiding Principle**  
+Each phase must boot end-to-end through the current backend ↔ shared core ↔ frontend stack, leaving the build playable and remotely interactable before advancing.
+
+**Phase A — Foundation & Basic Construction (Goal: place one functioning building)**
+- Extend `GameContent` to declare minimal `buildings` metadata (id, footprint, placement rules, construction time) alongside placeholder sprites in `content/settlers/`.
+- Add `Event.Buildings` namespace and scaffold `BuildingManager` within `packages/game`, wired to `Scheduler` for construction ticks and to `MapObjectsManager` for footprint reservation.
+- Bootstrap a lightweight `StorageManager` surface that tracks global stockpiles and exposes read APIs for HUD display; defer spatial logistics until later phases.
+- Implement a `ConstructionUI` slice in `packages/frontend` (`game/components`) that surfaces a building palette, placement ghost, and event dispatch (`cs:buildings.place`).
+- Update backend `EventBusManager` routing table with new `cs:`/`sc:` events; verify Socket.IO groups mirror map ownership to keep synchronization limited to active sessions.
+- Deliver verification build where players can connect (local or remote) and place a hut on the map; construction progress should be visible, cancellable, and persist through reconnect.
+
+**Phase B — Settler Spawn & Job Assignment (Goal: populate buildings with workers)**
+- Introduce a trimmed `PopulationManager` to spawn baseline settlers, track profession (builder/carrier), and expose occupancy hooks for `BuildingManager`.
+- Emit UI updates via `sc:population.*` so React HUD can show current headcount and idle settlers; ensure joining clients request the latest population snapshot during handshake.
+- Implement `cs:population.requestWorker` and corresponding server resolution to assign settlers to construction or transport jobs.
+- Ship build where players can place houses, watch settlers spawn, and observe them assigned to construction tasks, validating state sync across clients.
+
+**Phase C — Goods Flow Prototype (Goal: move wood from source to site)**
+- Add a lightweight `ResourceCatalog` with two resources (logs, planks) and tie them into `ItemsManager`.
+- Expand `StorageManager` with per-building buffers and reservation queues; build a rudimentary `CarrierRoutingService` leveraging existing `MapManager` navigation for point-to-point deliveries (no road bonuses yet).
+- Extend `BuildingManager` to request inputs, spawn carrier jobs, and emit status updates (`no input`, `in production`, `output ready`), mirrored in UI.
+- Ensure backend continues to persist authoritative inventory, with frontend receiving deltas via `sc:economy.*` events.
+- Release an interactable build where settlers cut trees (scripted via content pack), carriers haul logs to the constructed hut, and production timer completes—demonstrating the full economy loop skeleton.
+
+Advancing beyond Phase C should only proceed once each phase runs end-to-end with the existing networking adapters, allowing hands-on playtests and telemetry before layering deeper systems.
 

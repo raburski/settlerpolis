@@ -9,6 +9,8 @@ import { SidePanel } from './SidePanel'
 import { Settings } from './Settings'
 import { World } from './World'
 import { SystemMessages } from './SystemMessages'
+import { ConstructionPanel } from './ConstructionPanel'
+import { BuildingInfoPanel } from './BuildingInfoPanel'
 import { EventBus } from "../EventBus"
 import { Event, FXType } from '@rugged/game'
 
@@ -44,6 +46,8 @@ export const UIContainer = () => {
 			<Settings />
 			<SidePanel />
 			<SystemMessages />
+			<ConstructionPanel />
+			<BuildingInfoPanel />
 		</>
 	)
 } 

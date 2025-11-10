@@ -13,7 +13,8 @@
         "build:game": "npm run build --workspace=@rugged/game",
         "build:backend": "npm run build --workspace=@rugged/backend",
         "build:frontend": "npm run build --workspace=@rugged/frontend",
-        "start:backend": "npm run start --workspace=@rugged/backend"
+        "start:backend": "npm run start --workspace=@rugged/backend",
+        "dev": "npm run dev --workspace @rugged/frontend"
     },
     "devDependencies": {
         "husky": "^9.0.11",

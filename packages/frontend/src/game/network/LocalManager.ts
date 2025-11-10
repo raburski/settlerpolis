@@ -80,16 +80,20 @@ class LocalEventManager implements NetworkEventManager {
 			return
 		}
 
-		console.log(`[EVENT] to ${this.client.id}:`, event, data)
+		console.log(`[LocalManager] Event to ${this.client.id}:`, event, 'Receiver:', to, 'Data:', data)
 		// If this is the first message received, trigger joined callbacks
 		if (!this.hasReceivedMessage) {
 			this.hasReceivedMessage = true
 			this.joinedCallbacks.forEach(callback => callback(this.client))
 		}
 
-		if (!this.handlers.has(event)) return
+		if (!this.handlers.has(event)) {
+			console.warn(`[LocalManager] No handlers for event: ${event} (available handlers: ${Array.from(this.handlers.keys()).join(', ')})`)
+			return
+		}
 
 		const handlers = this.handlers.get(event)
+		console.log(`[LocalManager] Calling ${handlers.length} handler(s) for event: ${event}`)
 		handlers.forEach(handler => handler(data, this.client))
 	}
 }

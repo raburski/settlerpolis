@@ -65,26 +65,32 @@ export class MapObjectController {
 	}
 	
 	public update(): void {
+		// Update view (for building progress bars, etc.)
+		this.view.update()
+
 		if (!this.isInteractable || !this.interactionText) return
 		
 		// Get the player sprite
 		const playerSprite = this.scene.children.getByName('player') as Phaser.GameObjects.Sprite
 		if (!playerSprite) return
 		
+		const viewSprite = this.view.getSprite()
+		if (!viewSprite) return
+		
 		// Calculate distance between player and object
 		const distance = Phaser.Math.Distance.Between(
 			playerSprite.x,
 			playerSprite.y,
-			this.view.getSprite().x,
-			this.view.getSprite().y
+			viewSprite.x,
+			viewSprite.y
 		)
 		
 		// Show/hide interaction text based on distance
 		if (distance <= PICKUP_RANGE) {
 			// Position the text above the object
 			this.interactionText.setPosition(
-				this.view.getSprite().x,
-				this.view.getSprite().y - 40
+				viewSprite.x,
+				viewSprite.y - 40
 			)
 			this.interactionText.setVisible(true)
 		} else {

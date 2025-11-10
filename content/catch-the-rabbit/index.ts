@@ -5,6 +5,8 @@ export { npcs } from './npcs'
 export { quests } from './quests'
 export { schedules } from './schedules'
 export { items } from './items'
+export { flags } from './flags'
+export { buildings } from './buildings'
 
 // Set the default map ID
 export const defaultMap = 'map1'

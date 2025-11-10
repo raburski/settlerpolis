@@ -15,6 +15,7 @@ import { FXEvents } from "./FX/events"
 import { CutsceneEvents } from "./Cutscene/events"
 import { MapEvents } from "./Map/events"
 import { TimeEvents } from './Time/events'
+import { BuildingsEvents } from './Buildings/events'
 
 // Interface for client operations
 export interface EventClient {
@@ -53,6 +54,7 @@ export const Event = {
 	Cutscene: CutsceneEvents,
 	Map: MapEvents,
 	Time: TimeEvents,
+	Buildings: BuildingsEvents,
 } as const
 
 export default Event 

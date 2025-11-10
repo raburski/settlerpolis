@@ -67,21 +67,51 @@ export class MapObjectsManager {
 		console.log('Object removed:', mapObject)
 	}
 
-	private checkCollision(mapName: string, position: Position, item?: Item): boolean {
+	private checkCollision(mapName: string, position: Position, item?: Item, metadata?: Record<string, any>): boolean {
 		const objects = this.mapObjectsByMap.get(mapName)
 		if (!objects) return false
 
-		// Get item metadata to check placement properties
-		const itemMetadata = item ? this.itemsManager.getItemMetadata(item.itemType) : null
-		const width = itemMetadata?.placement?.size?.width || 1
-		const height = itemMetadata?.placement?.size?.height || 1
+		// Convert tile-based sizes to pixel-based sizes (assuming 32x32 tiles)
+		// TODO: Get actual tile size from MapManager
+		const TILE_SIZE = 32
+
+		// Get item size - check if it's a building with footprint in metadata
+		let width: number
+		let height: number
+		let footprint: { width: number, height: number } | undefined = undefined
+		
+		if (metadata?.footprint) {
+			// Building: use footprint from metadata (convert tiles to pixels)
+			footprint = metadata.footprint
+			width = metadata.footprint.width * TILE_SIZE
+			height = metadata.footprint.height * TILE_SIZE
+		} else {
+			// Regular item: use placement size from metadata (convert tiles to pixels)
+			const itemMetadata = item ? this.itemsManager.getItemMetadata(item.itemType) : null
+			const placementWidth = itemMetadata?.placement?.size?.width || 1
+			const placementHeight = itemMetadata?.placement?.size?.height || 1
+			width = placementWidth * TILE_SIZE
+			height = placementHeight * TILE_SIZE
+		}
 
 		// Check each object in the map
 		for (const [_, object] of objects) {
-			// Get object's metadata to check its placement properties
-			const objectMetadata = this.itemsManager.getItemMetadata(object.item.itemType)
-			const objectWidth = objectMetadata?.placement?.size?.width || 1
-			const objectHeight = objectMetadata?.placement?.size?.height || 1
+			// Get object's size - check if it's a building with footprint in metadata
+			let objectWidth: number
+			let objectHeight: number
+
+			if (object.metadata?.footprint) {
+				// Building: use footprint from metadata (convert tiles to pixels)
+				objectWidth = object.metadata.footprint.width * TILE_SIZE
+				objectHeight = object.metadata.footprint.height * TILE_SIZE
+			} else {
+				// Regular item: use placement size from metadata (convert tiles to pixels)
+				const objectMetadata = this.itemsManager.getItemMetadata(object.item.itemType)
+				const placementWidth = objectMetadata?.placement?.size?.width || 1
+				const placementHeight = objectMetadata?.placement?.size?.height || 1
+				objectWidth = placementWidth * TILE_SIZE
+				objectHeight = placementHeight * TILE_SIZE
+			}
 
 			// Check if the rectangles overlap
 			if (this.doRectanglesOverlap(
@@ -89,7 +119,13 @@ export class MapObjectsManager {
 				object.position, objectWidth, objectHeight
 			)) {
 				// If either object blocks placement, return true (collision)
-				if (itemMetadata?.placement?.blocksPlacement || objectMetadata?.placement?.blocksPlacement) {
+				const itemMetadata = item ? this.itemsManager.getItemMetadata(item.itemType) : null
+				const objectMetadata = this.itemsManager.getItemMetadata(object.item.itemType)
+				const blocksPlacement = itemMetadata?.placement?.blocksPlacement || 
+				                       objectMetadata?.placement?.blocksPlacement ||
+				                       object.metadata?.buildingId // Buildings always block placement
+				
+				if (blocksPlacement) {
 					return true
 				}
 			}
@@ -141,6 +177,27 @@ export class MapObjectsManager {
 		}
 	}
 
+	// Public method to remove an object without adding it to inventory
+	// Useful for building cancellation where refunds are handled separately
+	public removeObjectById(objectId: string, mapName: string): boolean {
+		const mapObject = this.getObjectById(objectId)
+		if (!mapObject) {
+			return false
+		}
+
+		if (mapObject.mapName !== mapName) {
+			return false
+		}
+
+		// Remove the object from the map
+		this.removeObjectFromMap(objectId, mapName)
+
+		// Notify all clients in the same map about the removed object
+		this.event.emit(Receiver.Group, Event.MapObjects.SC.Despawn, { objectId }, mapName)
+
+		return true
+	}
+
 	private getMapObjects(mapName: string): Map<string, MapObject> | undefined {
 		return this.mapObjectsByMap.get(mapName)
 	}
@@ -185,23 +242,23 @@ export class MapObjectsManager {
 		return undefined
 	}
 
-	public placeObject(playerId: string, data: PlaceObjectData, client: EventClient): boolean {
-		// Check for collisions
-		const hasCollision = this.checkCollision(client.currentGroup, data.position, data.item)
+	public placeObject(playerId: string, data: PlaceObjectData, client: EventClient): MapObject | null {
+		// Check for collisions (pass metadata so buildings can use footprint)
+		const hasCollision = this.checkCollision(client.currentGroup, data.position, data.item, data.metadata)
 		if (hasCollision) {
-			return false
+			console.log(`[MapObjectsManager] Collision detected at position:`, data.position)
+			return null
 		}
 
 		// Create the object
-		const object = {
+		const object: MapObject = {
 			id: uuidv4(),
 			item: data.item,
 			position: data.position,
 			rotation: data.rotation || 0,
 			playerId,
 			mapName: client.currentGroup,
-			metadata: data.metadata,
-			createdAt: Date.now()
+			metadata: data.metadata
 		}
 
 		// Add to map objects
@@ -210,6 +267,6 @@ export class MapObjectsManager {
 		// Broadcast to all players
 		client.emit(Receiver.Group, Event.MapObjects.SC.Spawn, { object })
 
-		return true
+		return object
 	}
 } 
