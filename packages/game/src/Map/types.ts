@@ -93,10 +93,35 @@ export interface MapLoadData {
 	mapId: string
 }
 
+export interface MapLoadResponseData {
+	mapId: string
+	name: string
+	tileLayers: MapLayer[]
+	objectLayers: MapObjectLayer[]
+	spawnPoints: Position[]
+	collision: CollisionData
+	npcSpots: NPCSpots
+	paths: PathData
+	triggers: MapTrigger[]
+	mapUrl?: string
+}
+
 export interface MapTransitionData {
-	fromMapId: string
 	toMapId: string
 	position: Position
+}
+
+export interface MapTransitionResponseData {
+	toMapId: string
+	position: Position
+	tileLayers: MapLayer[]
+	objectLayers: MapObjectLayer[]
+	spawnPoints: Position[]
+	collision: CollisionData
+	npcSpots: NPCSpots
+	paths: PathData
+	triggers: MapTrigger[]
+	mapUrl?: string
 }
 
 export interface PathData {
