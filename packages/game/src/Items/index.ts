@@ -1,11 +1,15 @@
 import { EventManager, Event, EventClient } from '../events'
 import { ItemMetadata, ItemTypeRequest, ItemTypeResponse } from './types'
 import { Receiver } from '../Receiver'
+import { Logger } from '../Logs'
 
 export class ItemsManager {
 	private itemsMetadata: Record<string, ItemMetadata> = {}
 
-	constructor(private event: EventManager) {
+	constructor(
+		private event: EventManager,
+		private logger: Logger
+	) {
 		this.setupEventHandlers()
 	}
 

@@ -1,0 +1,145 @@
+import { Position } from '../types'
+
+export type SettlerId = string
+
+export enum ProfessionType {
+	Carrier = 'carrier', // Default profession for all settlers
+	Builder = 'builder',
+	Woodcutter = 'woodcutter',
+	Miner = 'miner'
+	// Note: Settlers can change profession when assigned to specific buildings
+}
+
+export enum SettlerState {
+	Idle = 'idle',                    // No active task, available for work
+	Spawned = 'spawned',              // Just spawned from house (optional, could merge with Idle)
+	MovingToTool = 'moving_to_tool',           // Moving to pick up a profession tool
+	MovingToBuilding = 'moving_to_building',   // Moving to assigned building
+	Working = 'working',              // Actively working at a building
+	WaitingForWork = 'waiting_for_work', // At building but no work available (optional)
+	MovingToItem = 'moving_to_item',        // Moving to pick up item from ground
+	CarryingItem = 'carrying_item',         // Carrying item and moving to construction site for delivery
+	AssignmentFailed = 'assignment_failed',    // Assignment failed, needs cleanup
+}
+
+export enum JobType {
+	Construction = 'construction',  // Building under construction
+	Production = 'production',      // Completed building with worker slots
+	Transport = 'transport'         // Carrier transport job
+}
+
+export interface ProfessionDefinition {
+	type: ProfessionType
+	name: string
+	description: string
+	icon?: string
+	canBuild: boolean
+	canCarry: boolean
+	canWorkBuildings: string[] // Building IDs this profession can work in
+}
+
+// Note: Houses are just buildings with spawnsSettlers: true
+// No separate HouseDefinition needed - use BuildingDefinition with house properties
+
+export interface ProfessionToolDefinition {
+	itemType: string // Item type that changes profession (e.g., 'hammer', 'axe')
+	targetProfession: ProfessionType // Profession this tool grants
+	name: string
+	description: string
+}
+
+export interface SettlerStateContext {
+	targetId?: string              // ID of tool, building, or item being moved to
+	targetPosition?: Position      // Target position for movement
+	jobId?: string                 // Current job assignment ID - look up JobAssignment to get all job details
+	errorReason?: string           // Reason for failure state
+	lastIdleWanderTime?: number    // Timestamp of last idle wander movement (for cooldown)
+	// Note: buildingInstanceId, pendingAssignment, and carriedItemId removed from context
+	// - All job-related information is in JobAssignment (look up using jobId)
+	// - JobAssignment contains: buildingInstanceId, requiredProfession, carriedItemId (transport), sourceItemId (transport), etc.
+	// - JobAssignment is the single source of truth for assignment information
+}
+
+export interface Settler {
+	id: SettlerId
+	playerId: string
+	mapName: string
+	position: Position
+	profession: ProfessionType
+	state: SettlerState
+	stateContext: SettlerStateContext  // Context for current state
+	currentJob?: JobAssignment
+	houseId?: string // House that spawned this settler
+	buildingId?: string  // Can be derived from stateContext
+	speed: number
+	createdAt: number
+}
+
+export interface JobAssignment {
+	jobId: string
+	settlerId: SettlerId
+	buildingInstanceId: string
+	jobType: JobType // Construction for buildings under construction, production for completed buildings with worker slots, transport for carrier jobs
+	priority: number
+	assignedAt: number
+	status: 'pending' | 'active' | 'completed' | 'cancelled'
+	// Transport-specific fields (only populated when jobType === JobType.Transport)
+	sourceItemId?: string        // Item ID on the ground (from LootManager) - before pickup
+	carriedItemId?: string       // Item ID being carried - after pickup (item removed from LootManager)
+	sourcePosition?: Position    // Position of item on the ground
+	itemType?: string            // Item type to transport (logs, stone, etc.)
+	quantity?: number            // Quantity to transport (always 1 for ground items)
+	// Worker assignment fields (for construction/production jobs that need tool pickup first)
+	requiredProfession?: ProfessionType // Required profession for this job (if settler needs tool)
+}
+
+export interface SpawnSettlerData {
+	houseBuildingInstanceId: string
+	// Note: All settlers spawn as Carrier by default (no profession parameter needed)
+}
+
+export interface RequestWorkerData {
+	buildingInstanceId: string
+	// Note: No settlerId needed - game automatically finds and assigns closest available settler
+	// Note: Phase B only supports construction jobs. Job type is determined by building state (under construction = construction job)
+}
+
+export interface AssignWorkerData {
+	settlerId: SettlerId
+	buildingInstanceId: string
+	// Note: Used internally after automatic settler selection
+	// Note: Job type is determined by building state (under construction = construction job)
+}
+
+export interface UnassignWorkerData {
+	settlerId: SettlerId
+}
+
+export interface RequestListData {
+	// No data needed - server sends full population state for current player and map
+}
+
+export interface PopulationListData {
+	settlers: Settler[]
+	totalCount: number
+	byProfession: Record<ProfessionType, number>
+	idleCount: number
+	workingCount: number
+}
+
+export interface PopulationStatsData {
+	totalCount: number
+	byProfession: Record<ProfessionType, number>
+	idleCount: number
+	workingCount: number
+}
+
+export interface ProfessionTool {
+	itemType: string // Item type that changes profession
+	targetProfession: ProfessionType // Profession this tool grants
+}
+
+// Note: SettlerPickupItemData and SettlerArrivedAtBuildingData are no longer needed
+// Server detects these conditions internally during movement processing
+// No client-to-server events needed for these state changes
+

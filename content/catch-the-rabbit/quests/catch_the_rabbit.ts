@@ -1,4 +1,5 @@
 import { Quest } from "@rugged/game"
+import { ItemType } from "../items"
 
 const catchTheRabbit: Quest = {
   id: "catch_the_rabbit",
@@ -17,7 +18,7 @@ const catchTheRabbit: Quest = {
       condition: {
         inventory: {
           has: {
-            itemType: 'rabbit',
+            itemType: ItemType.Rabbit,
           }
         }
       },
@@ -41,7 +42,7 @@ const catchTheRabbit: Quest = {
         chat: { system: "You returned the rabbit to Miss Hilda!" },
         inventory: {
           remove: {
-            itemType: "rabbit"
+            itemType: ItemType.Rabbit
           }
         }
       }

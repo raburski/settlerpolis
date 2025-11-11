@@ -16,24 +16,82 @@ class BuildingServiceClass {
 			}
 		})
 
-		// Listen for building placed
+		// Listen for building placed - initialize collectedResources as empty object if not provided
 		EventBus.on(Event.Buildings.SC.Placed, (data: { building: BuildingInstance }) => {
-			this.buildingInstances.set(data.building.id, data.building)
+			const building = {
+				...data.building,
+				collectedResources: (data.building.collectedResources as Record<string, number>) || {}
+			}
+			this.buildingInstances.set(building.id, building as BuildingInstance)
 		})
 
 		// Listen for building progress
 		EventBus.on(Event.Buildings.SC.Progress, (data: { buildingInstanceId: string, progress: number, stage: string }) => {
 			const building = this.buildingInstances.get(data.buildingInstanceId)
 			if (building) {
-				building.progress = data.progress
-				building.stage = data.stage as any
-				this.buildingInstances.set(data.buildingInstanceId, building)
+				// Create a new object with updated progress (immutability for React)
+				const updatedBuilding = {
+					...building,
+					progress: data.progress,
+					stage: data.stage as any
+				}
+				this.buildingInstances.set(data.buildingInstanceId, updatedBuilding)
+				
+				// Emit UI event to notify components that building was updated
+				EventBus.emit('ui:building:updated', {
+					buildingInstanceId: data.buildingInstanceId,
+					building: updatedBuilding
+				})
 			}
 		})
 
-		// Listen for building completed
+		// Listen for resources changed - update collected resources
+		EventBus.on(Event.Buildings.SC.ResourcesChanged, (data: { buildingInstanceId: string, itemType: string, quantity: number, requiredQuantity: number }) => {
+			const building = this.buildingInstances.get(data.buildingInstanceId)
+			if (building) {
+				// Create a new object with updated collected resources (immutability for React)
+				const collectedResources = { ...((building.collectedResources as Record<string, number>) || {}) }
+				collectedResources[data.itemType] = data.quantity
+				const updatedBuilding = {
+					...building,
+					collectedResources
+				}
+				this.buildingInstances.set(data.buildingInstanceId, updatedBuilding)
+				
+				// Emit UI event to notify components that building was updated
+				EventBus.emit('ui:building:updated', {
+					buildingInstanceId: data.buildingInstanceId,
+					building: updatedBuilding
+				})
+			}
+		})
+
+		// Listen for stage changed
+		EventBus.on(Event.Buildings.SC.StageChanged, (data: { buildingInstanceId: string, stage: string }) => {
+			const building = this.buildingInstances.get(data.buildingInstanceId)
+			if (building) {
+				// Create a new object with updated stage (immutability for React)
+				const updatedBuilding = {
+					...building,
+					stage: data.stage as any
+				}
+				this.buildingInstances.set(data.buildingInstanceId, updatedBuilding)
+				
+				// Emit UI event to notify components that building was updated
+				EventBus.emit('ui:building:updated', {
+					buildingInstanceId: data.buildingInstanceId,
+					building: updatedBuilding
+				})
+			}
+		})
+
+		// Listen for building completed - ensure collectedResources is a Record
 		EventBus.on(Event.Buildings.SC.Completed, (data: { building: BuildingInstance }) => {
-			this.buildingInstances.set(data.building.id, data.building)
+			const building = {
+				...data.building,
+				collectedResources: (data.building.collectedResources as Record<string, number>) || {}
+			}
+			this.buildingInstances.set(building.id, building as BuildingInstance)
 		})
 
 		// Listen for building cancelled

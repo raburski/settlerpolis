@@ -7,6 +7,7 @@ import { PlayerView2 } from '../../entities/Player/View2'
 import { LocalPlayerController } from '../../entities/Player/LocalPlayerController'
 import { createRemotePlayer, RemotePlayer } from '../../entities/RemotePlayer'
 import { createNPC, NPC } from '../../entities/NPC'
+import { createSettler, SettlerController } from '../../entities/Settler'
 import { Keyboard } from '../../modules/Keyboard'
 import { createLoot, Loot, DroppedItem } from '../../entities/Loot'
 import { PortalManager } from "../../modules/Portals";
@@ -18,12 +19,14 @@ import { FX } from '../../modules/FX'
 import { TextDisplayService } from '../../services/TextDisplayService'
 import { NPCProximityService } from '../../services/NPCProximityService'
 import { NPCController } from '../../entities/NPC/NPCController'
+import { Settler } from '@rugged/game'
 
 export abstract class GameScene extends MapScene {
     protected player: LocalPlayer | null = null
 	protected remotePlayers: Map<string, RemotePlayer> = new Map()
 	protected droppedItems: Map<string, Loot> = new Map()
 	protected npcs: Map<string, NPCController> = new Map()
+	protected settlers: Map<string, SettlerController> = new Map()
 	protected mapObjects: Map<string, MapObjectEntity> = new Map()
 	protected keyboard: Keyboard | null = null
 	protected portalManager: PortalManager | null = null
@@ -120,6 +123,11 @@ export abstract class GameScene extends MapScene {
 			controller.update()
 		})
 
+		// Update settlers
+		this.settlers.forEach(settler => {
+			settler.update()
+		})
+
 		// Update map objects
 		this.mapObjects.forEach(mapObject => {
 			mapObject.controller.update()
@@ -163,6 +171,13 @@ export abstract class GameScene extends MapScene {
 		EventBus.on(Event.Buildings.SC.Progress, this.handleBuildingProgress, this)
 		EventBus.on(Event.Buildings.SC.Completed, this.handleBuildingCompleted, this)
 		EventBus.on(Event.Buildings.SC.Cancelled, this.handleBuildingCancelled, this)
+
+		// Set up population event listeners
+		EventBus.on(Event.Population.SC.List, this.handlePopulationList, this)
+		EventBus.on(Event.Population.SC.SettlerSpawned, this.handleSettlerSpawned, this)
+		EventBus.on('ui:population:settler-spawned', this.handleUISettlerSpawned, this)
+		// Note: Position updates are now handled directly by SettlerController via MovementEvents
+		EventBus.on('ui:population:profession-changed', this.handleSettlerProfessionChanged, this)
 	}
 
 	private handlePlayerJoined = (data: { playerId: string, position: { x: number, y: number } }) => {
@@ -284,6 +299,72 @@ export abstract class GameScene extends MapScene {
 	private handleBuildingCancelled = (data: { buildingInstanceId: string, refundedItems: any[] }) => {
 		// Building removal is handled via MapObject despawn
 		console.log('[GameScene] Building cancelled:', data)
+	}
+
+	// Population event handlers
+	private handlePopulationList = (data: { settlers: Settler[] }) => {
+		// Clear existing settlers first
+		this.settlers.forEach(settler => settler.destroy())
+		this.settlers.clear()
+
+		// Create new settlers
+		data.settlers.forEach(settlerData => {
+			// Only create settlers for the current map
+			if (settlerData.mapName === this.mapKey) {
+				const settler = createSettler(this, settlerData)
+				this.settlers.set(settlerData.id, settler)
+
+				// Set up collision with player if we have one
+				if (this.player) {
+					this.physics.add.collider(this.player.view, settler.view)
+				}
+			}
+		})
+	}
+
+	private handleSettlerSpawned = (data: { settler: Settler }) => {
+		// Only create settler if it's for the current map
+		if (data.settler.mapName === this.mapKey) {
+			const settler = createSettler(this, data.settler)
+			this.settlers.set(data.settler.id, settler)
+
+			// Set up collision with player if we have one
+			if (this.player) {
+				this.physics.add.collider(this.player.view, settler.view)
+			}
+		}
+	}
+
+	private handleUISettlerSpawned = (settlerData: Settler) => {
+		// Handle UI-triggered settler spawn (from PopulationService)
+		if (settlerData.mapName === this.mapKey) {
+			// Check if settler already exists
+			if (!this.settlers.has(settlerData.id)) {
+				const settler = createSettler(this, settlerData)
+				this.settlers.set(settlerData.id, settler)
+
+				// Set up collision with player if we have one
+				if (this.player) {
+					this.physics.add.collider(this.player.view, settler.view)
+				}
+			}
+		}
+	}
+
+	private handleSettlerPositionUpdate = (data: { settlerId: string, position: { x: number, y: number } }) => {
+		const settler = this.settlers.get(data.settlerId)
+		if (settler) {
+			// Position updates are handled by the controller via event subscription
+			// This is just for UI-triggered updates
+		}
+	}
+
+	private handleSettlerProfessionChanged = (data: { settlerId: string, oldProfession: any, newProfession: any }) => {
+		const settler = this.settlers.get(data.settlerId)
+		if (settler) {
+			// Profession changes are handled by the controller via event subscription
+			// This is just for UI-triggered updates
+		}
 	}
 
     	// Transition to a new scene with a fade effect

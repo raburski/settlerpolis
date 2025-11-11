@@ -7,10 +7,12 @@ import { PICKUP_RANGE, PLACE_RANGE } from '../consts'
 import { ItemsManager } from '../Items'
 import { MapObjectsManager } from '../MapObjects'
 import { PlaceObjectData } from '../MapObjects/types'
-import { Position } from '../types'
+import { Position, StartingItem } from '../types'
+import { Item } from '../Items/types'
 import { v4 as uuidv4 } from 'uuid'
 import { MapManager } from '../Map'
 import { MapEvents } from '../Map/events'
+import { Logger } from '../Logs'
 
 // Define missing types
 interface PlayerTransitionData {
@@ -33,6 +35,7 @@ const INITIAL_EQUIPMENT: Record<EquipmentSlotType, null> = {
 
 export class PlayersManager {
 	private players = new Map<string, Player>()
+	private startingItems: StartingItem[] = []
 
 	constructor(
 		private event: EventManager,
@@ -40,8 +43,11 @@ export class PlayersManager {
 		private lootManager: LootManager,
 		private itemsManager: ItemsManager,
 		private mapObjectsManager: MapObjectsManager,
-		private mapManager: MapManager
+		private mapManager: MapManager,
+		startingItems: StartingItem[],
+		private logger: Logger
 	) {
+		this.startingItems = startingItems || []
 		this.setupEventHandlers()
 	}
 
@@ -49,10 +55,63 @@ export class PlayersManager {
 		return this.players.get(playerId)
 	}
 
+	// Spawn starting items at player start location
+	private spawnStartingItems(playerPosition: Position, mapId: string, client: EventClient): void {
+		if (this.startingItems.length === 0) {
+			return // No starting items configured
+		}
+
+		const TILE_SIZE = 32
+
+		this.startingItems.forEach((startingItem) => {
+			// Check if item type exists
+			if (!this.itemsManager.itemExists(startingItem.itemType)) {
+				this.logger.warn(`Starting item type ${startingItem.itemType} does not exist, skipping spawn`)
+				return
+			}
+
+			// Create item
+			const item: Item = {
+				id: uuidv4(),
+				itemType: startingItem.itemType
+			}
+
+			// Calculate position with offset
+			let offsetX = 0
+			let offsetY = 0
+
+			if (startingItem.offset) {
+				// Check if offset is tile-based or pixel-based
+				const isTileBased = 'tileBased' in startingItem.offset 
+					? startingItem.offset.tileBased !== false // Default to true if tileBased property exists
+					: true // Default to tile-based if no tileBased property
+
+				offsetX = startingItem.offset.x || 0
+				offsetY = startingItem.offset.y || 0
+
+				// Convert tiles to pixels if tile-based
+				if (isTileBased) {
+					offsetX *= TILE_SIZE
+					offsetY *= TILE_SIZE
+				}
+			}
+
+			const itemPosition: Position = {
+				x: playerPosition.x + offsetX,
+				y: playerPosition.y + offsetY
+			}
+
+			// Drop item on the map using LootManager
+			this.lootManager.dropItem(item, itemPosition, client)
+			
+			this.logger.debug(`Spawned starting item ${startingItem.itemType} at position (${itemPosition.x}, ${itemPosition.y}) for player ${client.id}`)
+		})
+	}
+
 	private setupEventHandlers() {
 		// Handle initial connection
 		this.event.on(Event.Players.CS.Connect, (_, client) => {
-			console.log('[PLAYERS] on CONNECT', client.id)
+			this.logger.debug('[PLAYERS] on CONNECT', client.id)
 			
 			// Only send player ID initially
 			const playerInit = {
@@ -66,7 +125,7 @@ export class PlayersManager {
 
 		// Handle client lifecycle
 		this.event.onLeft((client) => {
-			console.log('[PLAYERS] on LEFT', client.id)
+			this.logger.debug('[PLAYERS] on LEFT', client.id)
 			const player = this.players.get(client.id)
 			if (player) {
 				this.players.delete(client.id)
@@ -75,7 +134,7 @@ export class PlayersManager {
 		})
 		
 		this.event.onJoined((client) => {
-			console.log('[PLAYERS] on JOINED', client.id)
+			this.logger.debug('[PLAYERS] on JOINED', client.id)
 		})
 
 		// Handle player join
@@ -103,6 +162,9 @@ export class PlayersManager {
 				mapId,
 				appearance: data.appearance 
 			})
+
+			// Spawn starting items at player start location
+			this.spawnStartingItems(data.position, mapId, client)
 		})
 
 		// Handle player movement
@@ -203,7 +265,7 @@ export class PlayersManager {
 			// Find the source slot of the item being equipped
 			const sourceSlot = this.inventoryManager.getSlotForItem(client.id, data.itemId)
 			if (!sourceSlot || !sourceSlot.item) {
-				console.log('Source slot not found or item mismatch')
+				this.logger.debug('Source slot not found or item mismatch')
 				return
 			}
 
@@ -295,14 +357,14 @@ export class PlayersManager {
 
 		// Check if player has equipment
 		if (!player.equipment) {
-			console.log('Player has no equipment:', player.playerId)
+			this.logger.debug('Player has no equipment:', player.playerId)
 			return
 		}
 
 		// Check if player has an item in their hand
 		const item = player.equipment[EquipmentSlot.Hand]
 		if (!item) {
-			console.log('No item in hand:', player.playerId)
+			this.logger.debug('No item in hand:', player.playerId)
 			return
 		}
 

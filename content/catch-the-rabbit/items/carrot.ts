@@ -1,7 +1,8 @@
-import { ItemMetadata, ItemCategory } from "@rugged/game";
+import { ItemMetadata, ItemCategory } from "@rugged/game"
+import { ItemType } from "./types"
 
 const carrot: ItemMetadata = {
-	id: "carrot",
+	id: ItemType.Carrot,
 	name: "Carrot",
 	emoji: "🥕",
 	description: "A fresh carrot. Perfect for rabbits!",
@@ -10,4 +11,4 @@ const carrot: ItemMetadata = {
 	maxStackSize: 16
 }
 
-export default carrot; 
+export default carrot 

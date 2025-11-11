@@ -1,7 +1,8 @@
 import { ItemMetadata, ItemCategory } from '@rugged/game'
+import { ItemType } from './types'
 
 export default {
-	id: 'building_foundation',
+	id: ItemType.BuildingFoundation,
 	name: 'Building Foundation',
 	emoji: '🏗️',
 	description: 'A building foundation placeholder',

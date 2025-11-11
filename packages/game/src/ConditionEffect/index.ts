@@ -18,6 +18,8 @@ import { InventoryManager } from '../Inventory'
 import { InventoryEvents } from '../Inventory/events'
 import { DialogueManager } from '../Dialogue'
 import { v4 as uuidv4 } from 'uuid'
+import { calculateDistance } from '../utils'
+import { Logger } from '../Logs'
 
 export class ConditionEffectManager {
 	constructor(
@@ -29,7 +31,8 @@ export class ConditionEffectManager {
 		private playersManager: PlayersManager,
 		private timeManager: TimeManager,
 		private inventoryManager: InventoryManager,
-		private dialogueManager: DialogueManager
+		private dialogueManager: DialogueManager,
+		private logger: Logger
 	) {}
 
 	/**
@@ -43,7 +46,7 @@ export class ConditionEffectManager {
 		
 		// Warning if scope is undefined
 		if (scope === undefined) {
-			console.warn('Flag effect scope is undefined. This may cause unexpected behavior.', set || unset)
+			this.logger.warn('Flag effect scope is undefined. This may cause unexpected behavior.', set || unset)
 		}
 		
 		if (set) {
@@ -403,13 +406,13 @@ export class ConditionEffectManager {
 	public checkNPCAttributeCondition(attributes: NPCCondition['attributes'], npcId: string): boolean {
 		// Add a null/undefined check for both parameters
 		if (!attributes || !npcId) {
-			console.warn('Missing attributes or NPC ID in checkNPCAttributeCondition')
+			this.logger.warn('Missing attributes or NPC ID in checkNPCAttributeCondition')
 			return false
 		}
 		
 		// Get the NPC
 		if (!this.npcManager) {
-			console.warn('NPCManager not initialized')
+			this.logger.warn('NPCManager not initialized')
 			return false
 		}
 
@@ -456,13 +459,13 @@ export class ConditionEffectManager {
 		
 		// Ensure id is provided
 		if (!id) {
-			console.warn('NPC condition missing required id property')
+			this.logger.warn('NPC condition missing required id property')
 			return false
 		}
 		
 		// Get the NPC first for state and attribute checks
 		if (!this.npcManager) {
-			console.warn('NPCManager not initialized')
+			this.logger.warn('NPCManager not initialized')
 			return false
 		}
 
@@ -495,7 +498,7 @@ export class ConditionEffectManager {
 		
 		// For the rest of the checks, we need a client
 		if (!client) {
-			console.warn('Client required for NPC proximity or affinity conditions')
+			this.logger.warn('Client required for NPC proximity or affinity conditions')
 			return false
 		}
 		
@@ -504,9 +507,7 @@ export class ConditionEffectManager {
 			const player = this.playersManager.getPlayer(client.id)
 			if (!player) return false
 
-			const dx = player.position.x - npc.position.x
-			const dy = player.position.y - npc.position.y
-			const distance = Math.sqrt(dx * dx + dy * dy)
+			const distance = calculateDistance(player.position, npc.position)
 
 			if (distance > proximity) return false
 		}
@@ -626,7 +627,7 @@ export class ConditionEffectManager {
 		// Check if flag condition requires client
 		if (condition.flag) {
 			if (!client) {
-				console.warn('Client required for flag conditions')
+				this.logger.warn('Client required for flag conditions')
 				return false
 			}
 			if (!this.checkFlagCondition(condition.flag, client)) {
@@ -637,7 +638,7 @@ export class ConditionEffectManager {
 		// Check if quest condition requires client
 		if (condition.quest) {
 			if (!client) {
-				console.warn('Client required for quest conditions')
+				this.logger.warn('Client required for quest conditions')
 				return false
 			}
 			if (!this.checkQuestCondition(condition.quest, client)) {
@@ -664,7 +665,7 @@ export class ConditionEffectManager {
 		// Check inventory condition
 		if (condition.inventory) {
 			if (!client) {
-				console.warn('Client required for inventory conditions')
+				this.logger.warn('Client required for inventory conditions')
 				return false
 			}
 			if (!this.checkInventoryCondition(condition.inventory, client)) {
@@ -675,7 +676,7 @@ export class ConditionEffectManager {
 		// Check dialogue condition
 		if (condition.dialogue) {
 			if (!client) {
-				console.warn('Client required for dialogue conditions')
+				this.logger.warn('Client required for dialogue conditions')
 				return false
 			}
 			if (!this.checkDialogueCondition(condition.dialogue, client)) {

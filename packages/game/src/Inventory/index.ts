@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { Item, ItemCategory, ItemType } from "../Items/types"
 import { ItemsManager } from "../Items"
 import { INVENTORY_GRID_ROWS, INVENTORY_GRID_COLUMNS } from '../consts'
+import { Logger } from '../Logs'
 
 const DEFAULT_INVENTORY_ITEM_NAME = 'chainfolk_rug'
 
@@ -57,6 +58,7 @@ export class InventoryManager {
 	constructor(
 		private event: EventManager,
 		private itemsManager: ItemsManager,
+		private logger: Logger
 	) {
 		this.setupEventHandlers()
 	}
@@ -99,11 +101,11 @@ export class InventoryManager {
 
 	private moveItem(data: MoveItemData, client: EventClient) {
 		const { itemId, sourcePosition, targetPosition } = data
-		console.log('Processing MoveItem request:', { itemId, sourcePosition, targetPosition })
+		this.logger.debug('Processing MoveItem request:', { itemId, sourcePosition, targetPosition })
 		
 		const inventory = this.inventories.get(client.id)
 		if (!inventory) {
-			console.log('Inventory not found for client:', client.id)
+			this.logger.debug('Inventory not found for client:', client.id)
 			return
 		}
 		
@@ -112,25 +114,25 @@ export class InventoryManager {
 		const targetSlot = getSlotAtPosition(inventory, targetPosition)
 		
 		if (!sourceSlot || !targetSlot) {
-			console.log('Failed to get or create slots')
+			this.logger.debug('Failed to get or create slots')
 			return
 		}
 		
 		// If target slot is empty, simply move the item
 		if (!targetSlot.item) {
-			console.log('Moving item to empty slot')
+			this.logger.debug('Moving item to empty slot')
 			targetSlot.item = sourceSlot.item
 			sourceSlot.item = null
 		} else {
 			// If target slot has an item, swap them
-			console.log('Swapping items between slots')
+			this.logger.debug('Swapping items between slots')
 			const tempItem = targetSlot.item
 			targetSlot.item = sourceSlot.item
 			sourceSlot.item = tempItem
 		}
 		
 		// Emit the move item event back to the client
-		console.log('Emitting MoveItem response:', {
+		this.logger.debug('Emitting MoveItem response:', {
 			itemId,
 			sourcePosition,
 			targetPosition
@@ -149,14 +151,14 @@ export class InventoryManager {
 	public removeItemByType(client: EventClient, itemType: string, quantity: number = 1): boolean {
 		const inventory = this.inventories.get(client.id)
 		if (!inventory) {
-			console.warn(`[InventoryManager] Cannot remove items: inventory not found for player ${client.id}`)
+			this.logger.warn(`Cannot remove items: inventory not found for player ${client.id}`)
 			return false
 		}
 
 		let removedCount = 0
 		const slotsWithItem = inventory.slots.filter(slot => slot.item?.itemType === itemType)
 
-		console.log(`[InventoryManager] Removing ${quantity} of ${itemType} from player ${client.id}, found ${slotsWithItem.length} slots with this item`)
+		this.logger.debug(`Removing ${quantity} of ${itemType} from player ${client.id}, found ${slotsWithItem.length} slots with this item`)
 
 		// Remove items up to the requested quantity
 		for (const slot of slotsWithItem) {
@@ -166,18 +168,18 @@ export class InventoryManager {
 				slot.item = null
 				client.emit(Receiver.Sender, Event.Inventory.SC.Remove, { itemId })
 				removedCount++
-				console.log(`[InventoryManager] Removed item ${itemId} (${itemType}), ${removedCount}/${quantity} removed`)
+				this.logger.debug(`Removed item ${itemId} (${itemType}), ${removedCount}/${quantity} removed`)
 			}
 		}
 
 		if (removedCount < quantity) {
-			console.warn(`[InventoryManager] Only removed ${removedCount} of ${quantity} requested items of type ${itemType}`)
+			this.logger.warn(`Only removed ${removedCount} of ${quantity} requested items of type ${itemType}`)
 		}
 
 		// Send full inventory update after removing items to ensure UI is synchronized
 		if (removedCount > 0) {
 			client.emit(Receiver.Sender, Event.Inventory.SC.Update, { inventory })
-			console.log(`[InventoryManager] Sent inventory update after removing ${removedCount} items`)
+			this.logger.debug(`Sent inventory update after removing ${removedCount} items`)
 		}
 
 		return removedCount > 0
@@ -272,7 +274,7 @@ export class InventoryManager {
 		
 		// Handle moving items between slots
 		this.event.on<MoveItemData>(Event.Inventory.CS.MoveItem, (data, client) => {
-			console.log('Received MoveItem event:', data)
+			this.logger.debug('Received MoveItem event:', data)
 			this.moveItem(data, client)
 		})
 

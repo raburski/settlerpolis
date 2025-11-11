@@ -16,6 +16,8 @@ import { CutsceneEvents } from "./Cutscene/events"
 import { MapEvents } from "./Map/events"
 import { TimeEvents } from './Time/events'
 import { BuildingsEvents } from './Buildings/events'
+import { PopulationEvents } from './Population/events'
+import { MovementEvents } from './Movement/events'
 
 // Interface for client operations
 export interface EventClient {
@@ -55,6 +57,8 @@ export const Event = {
 	Map: MapEvents,
 	Time: TimeEvents,
 	Buildings: BuildingsEvents,
+	Population: PopulationEvents,
+	Movement: MovementEvents,
 } as const
 
 export default Event 

@@ -3,13 +3,15 @@ import { AffinitySentimentType, AffinityData, AffinityUpdateEventData, AffinityU
 import { AffinityEvents } from './events'
 import { Receiver } from '../types'
 import { getOverallNPCApproach } from './utils'
+import { Logger } from '../Logs'
 
 export class AffinityManager {
 	private affinities: Map<string, AffinityData> = new Map()
 	private npcWeights: Map<string, Partial<Record<AffinitySentimentType, number>>> = new Map()
 
 	constructor(
-		private event: EventManager
+		private event: EventManager,
+		private logger: Logger
 	) {
 		this.setupEventHandlers()
 	}

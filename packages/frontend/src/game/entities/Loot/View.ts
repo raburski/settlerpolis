@@ -1,9 +1,8 @@
 import { Scene, GameObjects } from 'phaser'
 import { itemService } from '../../services/ItemService'
-import { itemTextureService } from '../../services/ItemTextureService'
 
 export class LootView extends GameObjects.Container {
-	private sprite: GameObjects.Sprite
+	private emojiText: GameObjects.Text | null = null
 	private nameText: GameObjects.Text
 	private itemType: string
 	private unsubscribe: (() => void) | null = null
@@ -18,25 +17,18 @@ export class LootView extends GameObjects.Container {
 		scene.add.existing(this)
 
 		this.itemType = itemType
-
-		// Get the texture for this item type
-		const textureInfo = itemTextureService.getItemTexture(itemType)
 		
-		// Create the sprite with the appropriate texture
-		if (textureInfo) {
-			this.sprite = scene.add.sprite(0, 0, textureInfo.key, textureInfo.frame)
-			// Scale down the sprite to fit the game world better
-			this.sprite.setScale(0.5)
-		} else {
-			// Fallback to a default texture if the item type doesn't have a texture
-			this.sprite = scene.add.sprite(0, 0, 'mozgotrzep')
-			this.sprite.setScale(0.5)
-		}
+		// Create emoji text (will be set when metadata is available)
+		this.emojiText = scene.add.text(0, 0, '❓', {
+			fontSize: '24px',
+			align: 'center',
+			color: '#000000'
+		})
+		this.emojiText.setOrigin(0.5, 0.5)
+		this.emojiText.setScale(0)
+		this.emojiText.setAlpha(0)
 		
-		this.sprite.setScale(0)
-		this.sprite.setAlpha(0)
-		
-		// Create text (initially hidden)
+		// Create name text (initially hidden)
 		this.nameText = scene.add.text(0, -20, '', {
 			fontSize: '14px',
 			color: '#ffffff',
@@ -47,16 +39,16 @@ export class LootView extends GameObjects.Container {
 		this.nameText.setOrigin(0.5)
 		this.nameText.setVisible(false)
 
-		// Add sprite and text to container
-		this.add([this.sprite, this.nameText])
+		// Add emoji and name text to container
+		this.add([this.emojiText, this.nameText])
 
-		// Make sprite interactive
-		this.sprite.setInteractive({ useHandCursor: true })
+		// Make emoji text interactive
+		this.emojiText.setInteractive({ useHandCursor: true })
 
 		// Add hover effects
 		this.setupHoverEffects()
 
-		// Setup item name display
+		// Setup item name and emoji display
 		this.setupItemNameDisplay()
 
 		// Set depth based on y position for proper layering
@@ -67,13 +59,21 @@ export class LootView extends GameObjects.Container {
 	}
 
 	private setupHoverEffects() {
-		this.sprite.on('pointerover', () => {
-			this.sprite.setTint(0xffff00)
+		if (!this.emojiText) return
+
+		this.emojiText.on('pointerover', () => {
+			if (this.emojiText) {
+				this.emojiText.setScale(1.2)
+				this.emojiText.setTint(0xffff00)
+			}
 			this.nameText.setVisible(true)
 		})
 
-		this.sprite.on('pointerout', () => {
-			this.sprite.clearTint()
+		this.emojiText.on('pointerout', () => {
+			if (this.emojiText) {
+				this.emojiText.setScale(1.0)
+				this.emojiText.clearTint()
+			}
 			this.nameText.setVisible(false)
 		})
 	}
@@ -83,30 +83,34 @@ export class LootView extends GameObjects.Container {
 		this.unsubscribe = itemService.subscribeToItemMetadata(this.itemType, (metadata) => {
 			if (metadata) {
 				this.nameText.setText(metadata.name)
+				// Update emoji from metadata
+				if (this.emojiText && metadata.emoji) {
+					this.emojiText.setText(metadata.emoji)
+				}
 			}
 		})
 	}
 
 	private playSpawnAnimation() {
 		// Check if scene and tweens are still available
-		if (!this.scene || !this.scene.tweens) return
+		if (!this.scene || !this.scene.tweens || !this.emojiText) return
 
 		// First tween: throw up and fade in
 		this.scene.tweens.add({
-			targets: this.sprite,
+			targets: this.emojiText,
 			y: -40, // Start at origin and move up (negative y is up)
-			scaleX: 0.5,
-			scaleY: 0.5,
+			scaleX: 1.0,
+			scaleY: 1.0,
 			alpha: 1,
 			duration: 300,
 			ease: 'Quad.out',
 			onComplete: () => {
 				// Check again before starting second tween
-				if (!this.scene || !this.scene.tweens) return
+				if (!this.scene || !this.scene.tweens || !this.emojiText) return
 
 				// Second tween: fall down with bounce
 				this.scene.tweens.add({
-					targets: this.sprite,
+					targets: this.emojiText,
 					y: 0,
 					duration: 400,
 					ease: 'Bounce.out',
@@ -131,17 +135,23 @@ export class LootView extends GameObjects.Container {
 	}
 
 	public setInteractive(callback: () => void) {
-		this.sprite.on('pointerdown', callback)
+		if (this.emojiText) {
+			this.emojiText.on('pointerdown', callback)
+		}
 	}
 
 	public destroy() {
 		if (this.unsubscribe) {
 			this.unsubscribe()
 		}
+		if (this.emojiText) {
+			this.emojiText.destroy()
+			this.emojiText = null
+		}
 		super.destroy()
 	}
 
 	public static preload(scene: Scene) {
-		// No need to preload textures here as they are preloaded by ItemTextureService
+		// No need to preload anything for emoji-based rendering
 	}
 } 

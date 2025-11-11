@@ -4,10 +4,9 @@ import { ItemType } from '../Items/types'
 export type BuildingId = string
 
 export enum ConstructionStage {
-	Foundation = 'foundation',
-	Constructing = 'constructing',
-	Completed = 'completed',
-	Cancelled = 'cancelled'
+	CollectingResources = 'collecting_resources', // Building placed, resources being collected by carriers
+	Constructing = 'constructing',                // Resources collected, builder working
+	Completed = 'completed'
 }
 
 export interface BuildingCost {
@@ -32,6 +31,11 @@ export interface BuildingDefinition {
 	constructionTime: number // in seconds
 	costs: BuildingCost[]
 	unlockFlags?: string[] // Optional flags that must be set to unlock this building
+	spawnsSettlers?: boolean // If true, this building spawns settlers (house)
+	maxOccupants?: number // Maximum number of settlers that can spawn from this house
+	requiredProfession?: string // ProfessionType required to work in this building (e.g., 'builder', 'woodcutter')
+	spawnRate?: number // Seconds between settler spawns (default: 60)
+	workerSlots?: number // Maximum number of workers that can be assigned to this building (for production/work)
 }
 
 export interface BuildingInstance {
@@ -41,9 +45,11 @@ export interface BuildingInstance {
 	mapName: string
 	position: Position
 	stage: ConstructionStage
-	progress: number // 0-100
-	startedAt: number // timestamp
-	createdAt: number // timestamp
+	progress: number // 0-100 (construction progress, only advances during Constructing stage)
+	startedAt: number // timestamp when construction started (when resources were collected)
+	createdAt: number // timestamp when building was placed
+	collectedResources: Map<string, number> // itemType -> quantity collected (server-side only, client tracks via events)
+	requiredResources: BuildingCost[] // Required resources (derived from definition.costs, server-side only)
 }
 
 export interface PlaceBuildingData {

@@ -8,6 +8,7 @@ import { Trigger, TriggerOption } from '../Triggers/types'
 import fs from 'fs'
 import path from 'path'
 import { Pathfinder } from './pathfinding'
+import { Logger } from '../Logs'
 
 const FETCH = true//typeof window !== 'undefined'
 
@@ -19,7 +20,8 @@ export class MapManager {
 
 	constructor(
 		private event: EventManager,
-		private mapUrlService?: MapUrlService
+		private mapUrlService: MapUrlService | undefined,
+		private logger: Logger
 	) {
 		this.setupEventHandlers()
 	}
@@ -186,7 +188,7 @@ export class MapManager {
 		const toMap = this.maps.get(toMapId)
 
 		if (!toMap) {
-			console.error(`Target map not found: ${toMapId}`)
+			this.logger.error(`Target map not found: ${toMapId}`)
 			return
 		}
 
@@ -270,6 +272,7 @@ export class MapManager {
 		// Find path in tile coordinates
 		const path = Pathfinder.findPath(map.collision, map.paths, startTile, endTile)
 
+		this.logger.debug('findPath', startTile, path)
 		// Convert path back to world coordinates
 		return path.map(tile => ({
 			x: tile.x * map.tiledMap.tilewidth + map.tiledMap.tilewidth / 2,
@@ -311,14 +314,14 @@ export class MapManager {
 
 	public async loadMaps(maps: Record<string, TiledMap>) {
 		if (this.debug) {
-			console.log('[MapManager] Loading maps from content')
+			this.logger.log('Loading maps from content')
 		}
 
 		for (const [mapId, tiledMap] of Object.entries(maps)) {
 			try {
 				// Validate required map properties
 				if (!tiledMap || !tiledMap.layers || !Array.isArray(tiledMap.layers)) {
-					console.error(`Invalid map data for ${mapId}`)
+					this.logger.error(`Invalid map data for ${mapId}`)
 					continue
 				}
 
@@ -335,12 +338,12 @@ export class MapManager {
 
 				this.maps.set(mapId, mapData)
 			} catch (error) {
-				console.error(`Error loading map ${mapId}:`, error)
+				this.logger.error(`Error loading map ${mapId}:`, error)
 			}
 		}
 
 		if (this.debug) {
-			console.log('[MapManager] Loaded maps:', Array.from(this.maps.keys()))
+			this.logger.log('Loaded maps:', Array.from(this.maps.keys()))
 		}
 	}
 
@@ -382,8 +385,8 @@ export class MapManager {
 		}
 		
 		if (this.debug) {
-			console.log(`[MapManager] Loading map for player: ${targetMapId} with URL: ${mapUrl || 'N/A'}`)
-			console.log(`[MapManager] Initial position: x=${playerPosition.x}, y=${playerPosition.y}`)
+			this.logger.debug(`Loading map for player: ${targetMapId} with URL: ${mapUrl || 'N/A'}`)
+			this.logger.debug(`Initial position: x=${playerPosition.x}, y=${playerPosition.y}`)
 		}
 		
 		// Send map load event with URL and position
@@ -408,12 +411,12 @@ export class MapManager {
 	 */
 	public setDefaultMapId(mapId: string): void {
 		if (this.debug) {
-			console.log(`[MapManager] Setting default map ID to ${mapId}`)
+			this.logger.debug(`Setting default map ID to ${mapId}`)
 		}
 		if (this.maps.has(mapId)) {
 			this.defaultMapId = mapId
 		} else {
-			console.warn(`[MapManager] Could not set default map ID to ${mapId} as it doesn't exist`)
+			this.logger.warn(`Could not set default map ID to ${mapId} as it doesn't exist`)
 		}
 	}
 } 

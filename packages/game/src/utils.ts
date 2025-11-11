@@ -1,4 +1,4 @@
-import { Direction, DirectionalAnimations, NPCAnimation } from './types'
+import { Direction, DirectionalAnimations, NPCAnimation, Position } from './types'
 
 /**
  * Checks if the given direction is horizontal (left or right)
@@ -25,4 +25,13 @@ export function getMirroredDirection(direction: Direction): Direction {
 export function isDirectionalAnimation(animation: DirectionalAnimations | NPCAnimation | undefined): animation is DirectionalAnimations {
 	if (!animation) return false
 	return 'down' in animation || 'up' in animation || 'left' in animation || 'right' in animation
+}
+
+/**
+ * Calculate Euclidean distance between two positions
+ */
+export function calculateDistance(pos1: Position, pos2: Position): number {
+	const dx = pos1.x - pos2.x
+	const dy = pos1.y - pos2.y
+	return Math.sqrt(dx * dx + dy * dy)
 } 

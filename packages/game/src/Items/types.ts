@@ -31,6 +31,7 @@ export interface ItemMetadata {
 		blocksMovement: boolean
 		blocksPlacement: boolean
 	}
+	changesProfession?: string // ProfessionType that this item grants when picked up (e.g., 'builder', 'woodcutter')
 }
 
 export interface ItemTypeRequest {

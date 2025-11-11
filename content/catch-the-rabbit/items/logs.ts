@@ -1,7 +1,8 @@
 import { ItemMetadata, ItemCategory } from '@rugged/game'
+import { ItemType } from './types'
 
 export default {
-	id: 'logs',
+	id: ItemType.Logs,
 	name: 'Logs',
 	emoji: '🪵',
 	description: 'Wooden logs for construction',

@@ -6,6 +6,7 @@ import { NPCManager } from '../NPC'
 import { ConditionEffectManager } from '../ConditionEffect'
 import { Position } from '../types'
 import { MapManager } from '../Map'
+import { Logger } from '../Logs'
 
 const PROXIMITY_DEACTIVATION_BUFFER = 50 // pixels
 
@@ -21,7 +22,8 @@ export class TriggerManager {
 	constructor(
 		private event: EventManager,
 		private npcManager: NPCManager,
-		private mapManager: MapManager
+		private mapManager: MapManager,
+		private logger: Logger
 	) {
 		this.setupEventHandlers()
 	}

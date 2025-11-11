@@ -1,7 +1,8 @@
 import { ItemMetadata, ItemCategory } from '@rugged/game'
+import { ItemType } from './types'
 
 export default {
-	id: 'stone',
+	id: ItemType.Stone,
 	name: 'Stone',
 	emoji: '🪨',
 	description: 'Stone blocks for construction',

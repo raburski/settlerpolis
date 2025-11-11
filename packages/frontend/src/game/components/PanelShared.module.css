@@ -1,0 +1,174 @@
+/* Shared styles for info panels */
+.info {
+	margin-bottom: 16px;
+}
+
+.infoRow {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 8px 0;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.infoRow:last-child {
+	border-bottom: none;
+}
+
+.label {
+	color: #aaa;
+	font-size: 14px;
+}
+
+.value {
+	color: #fff;
+	font-size: 14px;
+	font-weight: 500;
+}
+
+.actions {
+	margin-top: 16px;
+	padding-top: 16px;
+	border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.description {
+	color: #ccc;
+	margin-bottom: 16px;
+	font-size: 14px;
+	line-height: 1.5;
+}
+
+/* Message styles */
+.workingMessage {
+	padding: 10px;
+	background: rgba(76, 175, 80, 0.2);
+	border: 1px solid rgba(76, 175, 80, 0.4);
+	border-radius: 4px;
+	color: #4caf50;
+	font-size: 14px;
+	text-align: center;
+}
+
+.movingMessage {
+	padding: 10px;
+	background: rgba(33, 150, 243, 0.2);
+	border: 1px solid rgba(33, 150, 243, 0.4);
+	border-radius: 4px;
+	color: #2196f3;
+	font-size: 14px;
+	text-align: center;
+}
+
+.idleMessage {
+	padding: 10px;
+	background: rgba(158, 158, 158, 0.2);
+	border: 1px solid rgba(158, 158, 158, 0.4);
+	border-radius: 4px;
+	color: #9e9e9e;
+	font-size: 14px;
+	text-align: center;
+}
+
+.errorMessage {
+	margin-top: 8px;
+	padding: 8px;
+	font-size: 12px;
+	color: #ff6b6b;
+	background: rgba(255, 107, 107, 0.1);
+	border: 1px solid rgba(255, 107, 107, 0.3);
+	border-radius: 4px;
+	text-align: center;
+	animation: fadeIn 0.3s ease-in;
+}
+
+.workerStatus {
+	margin-top: 8px;
+	padding: 8px;
+	font-size: 12px;
+	color: #51cf66;
+	background: rgba(81, 207, 102, 0.1);
+	border: 1px solid rgba(81, 207, 102, 0.3);
+	border-radius: 4px;
+	text-align: center;
+	animation: fadeIn 0.3s ease-in;
+}
+
+.workerHint {
+	margin-top: 8px;
+	color: #aaa;
+	font-size: 12px;
+	text-align: center;
+}
+
+.completedMessage {
+	padding: 10px;
+	background: rgba(76, 175, 80, 0.2);
+	border: 1px solid rgba(76, 175, 80, 0.4);
+	border-radius: 4px;
+	color: #4caf50;
+	font-size: 14px;
+	text-align: center;
+}
+
+/* Button styles */
+.cancelButton {
+	width: 100%;
+	padding: 10px;
+	background: #d32f2f;
+	border: none;
+	border-radius: 4px;
+	color: #fff;
+	font-size: 14px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background 0.2s;
+}
+
+.cancelButton:hover {
+	background: #b71c1c;
+}
+
+.cancelButton:active {
+	background: #c62828;
+}
+
+.cancelHint {
+	margin-top: 8px;
+	color: #aaa;
+	font-size: 12px;
+	text-align: center;
+}
+
+.requestWorkerButton {
+	width: 100%;
+	padding: 10px;
+	background: #1976d2;
+	border: none;
+	border-radius: 4px;
+	color: #fff;
+	font-size: 14px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background 0.2s;
+}
+
+.requestWorkerButton:hover {
+	background: #1565c0;
+}
+
+.requestWorkerButton:active {
+	background: #0d47a1;
+}
+
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+		transform: translateY(-4px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+

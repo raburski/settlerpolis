@@ -3,11 +3,13 @@ import { MapObject, ConstructionStage } from '@rugged/game'
 import { ItemMetadata } from '@rugged/game'
 import { itemService } from "../../services/ItemService"
 import { itemTextureService } from "../../services/ItemTextureService"
+import { buildingService } from "../../services/BuildingService"
 import { EventBus } from '../../EventBus'
 import { Event } from '@rugged/game'
 
 export class MapObjectView {
 	private sprite: GameObjects.Sprite | null = null
+	private emojiText: GameObjects.Text | null = null
 	private mapObject: MapObject
 	private unsubscribe: (() => void) | null = null
 	private progressBar: GameObjects.Graphics | null = null
@@ -64,14 +66,8 @@ export class MapObjectView {
 					this.mapObject.metadata.progress = 100
 				}
 				
-				// Update display size to ensure footprint is still applied
-				if (this.sprite && this.mapObject.metadata?.footprint) {
-					const tileSize = 32
-					const width = this.mapObject.metadata.footprint.width * tileSize
-					const height = this.mapObject.metadata.footprint.height * tileSize
-					this.sprite.setDisplaySize(width, height)
-					console.log(`[MapObjectView] Updated building display size on completion: ${width}x${height} (footprint: ${this.mapObject.metadata.footprint.width}x${this.mapObject.metadata.footprint.height} tiles)`)
-				}
+				// Replace sprite with emoji text for completed buildings
+				this.replaceSpriteWithEmoji(scene)
 				
 				this.updateProgressBar(scene)
 				// Hide progress bar when completed
@@ -84,6 +80,12 @@ export class MapObjectView {
 	}
 	
 	private initializeSprite(scene: Scene, itemMetadata: ItemMetadata): void {
+		// For completed buildings, use emoji text instead of sprite
+		if (this.isBuilding && this.buildingStage === ConstructionStage.Completed) {
+			this.replaceSpriteWithEmoji(scene)
+			return
+		}
+
 		// Create the sprite using the appropriate texture
 		const texture = this.getTexture(itemMetadata)
 		this.sprite = scene.add.sprite(
@@ -115,6 +117,62 @@ export class MapObjectView {
 			this.sprite.setInteractive({ useHandCursor: true })
 			this.sprite.on('pointerdown', this.handleBuildingClick, this)
 		}
+	}
+
+	private replaceSpriteWithEmoji(scene: Scene): void {
+		if (!this.isBuilding || !this.mapObject.metadata?.footprint) return
+
+		// If emoji text already exists, don't recreate it
+		if (this.emojiText) return
+
+		// Get building definition to access icon
+		const buildingId = this.mapObject.metadata.buildingId
+		const buildingDefinition = buildingId ? buildingService.getBuildingDefinition(buildingId) : null
+		const emoji = buildingDefinition?.icon || '🏗️'
+
+		// Calculate footprint size
+		const tileSize = 32
+		const width = this.mapObject.metadata.footprint.width * tileSize
+		const height = this.mapObject.metadata.footprint.height * tileSize
+
+		// Calculate font size to cover footprint (use smaller dimension to ensure it fits)
+		const fontSize = Math.min(width, height) * 0.9 // 90% of smaller dimension to ensure it fits
+
+		// Destroy existing sprite if present
+		if (this.sprite) {
+			// Remove click handler
+			if (this.sprite.input) {
+				this.sprite.off('pointerdown', this.handleBuildingClick, this)
+				this.sprite.removeInteractive()
+			}
+			this.sprite.destroy()
+			this.sprite = null
+		}
+
+		// Create emoji text centered in the footprint
+		const centerX = this.mapObject.position.x + width / 2
+		const centerY = this.mapObject.position.y + height / 2
+
+		this.emojiText = scene.add.text(centerX, centerY, emoji, {
+			fontSize: `${fontSize}px`,
+			align: 'center'
+		})
+		this.emojiText.setOrigin(0.5, 0.5)
+		this.emojiText.setDepth(this.mapObject.position.y)
+
+		// Make emoji text interactive/clickable
+		this.emojiText.setInteractive({ useHandCursor: true })
+		this.emojiText.on('pointerdown', this.handleBuildingClick, this)
+
+		// Add physics body using the footprint
+		scene.physics.add.existing(this.emojiText, true)
+		const body = this.emojiText.body as Phaser.Physics.Arcade.Body
+		if (body) {
+			body.setSize(width, height)
+			body.setOffset(-width / 2, -height / 2)
+		}
+
+		console.log(`[MapObjectView] Replaced sprite with emoji text: ${emoji} at size ${fontSize}px for footprint ${this.mapObject.metadata.footprint.width}x${this.mapObject.metadata.footprint.height}`)
 	}
 
 	private handleBuildingClick = (pointer: Phaser.Input.Pointer) => {
@@ -183,6 +241,10 @@ export class MapObjectView {
 	}
 	
 	public getSprite(): GameObjects.Sprite | null {
+		// Return emoji text as sprite for collision detection if building is completed
+		if (this.emojiText && this.isBuilding && this.buildingStage === ConstructionStage.Completed) {
+			return this.emojiText as any
+		}
 		return this.sprite
 	}
 	
@@ -191,23 +253,28 @@ export class MapObjectView {
 	}
 	
 	private createProgressBar(scene: Scene) {
-		if (!this.sprite || !this.isBuilding) return
+		if (!this.isBuilding) return
 
-		const sprite = this.sprite
-		const barWidth = sprite.displayWidth || 64
+		// Use sprite or emoji text for positioning
+		const displayObject = this.sprite || this.emojiText
+		if (!displayObject) return
+
+		const barWidth = this.mapObject.metadata?.footprint 
+			? this.mapObject.metadata.footprint.width * 32 
+			: displayObject.displayWidth || 64
 		const barHeight = 6
-		const barX = sprite.x
-		const barY = sprite.y - 15
+		const barX = displayObject.x - (this.emojiText ? barWidth / 2 : 0)
+		const barY = displayObject.y - (this.emojiText ? (this.mapObject.metadata?.footprint?.height || 1) * 32 / 2 + 15 : 15)
 
 		// Create background bar
 		this.progressBarBg = scene.add.graphics()
 		this.progressBarBg.fillStyle(0x000000, 0.5)
 		this.progressBarBg.fillRect(barX, barY, barWidth, barHeight)
-		this.progressBarBg.setDepth(sprite.depth + 1)
+		this.progressBarBg.setDepth((displayObject.depth || 0) + 1)
 
 		// Create progress bar
 		this.progressBar = scene.add.graphics()
-		this.progressBar.setDepth(sprite.depth + 2)
+		this.progressBar.setDepth((displayObject.depth || 0) + 2)
 
 		// Create progress text
 		this.progressText = scene.add.text(barX + barWidth / 2, barY - 10, `${Math.round(this.buildingProgress)}%`, {
@@ -217,19 +284,24 @@ export class MapObjectView {
 			strokeThickness: 2
 		})
 		this.progressText.setOrigin(0.5, 0.5)
-		this.progressText.setDepth(sprite.depth + 3)
+		this.progressText.setDepth((displayObject.depth || 0) + 3)
 
 		this.updateProgressBar(scene)
 	}
 
 	private updateProgressBar(scene: Scene) {
-		if (!this.progressBar || !this.progressBarBg || !this.sprite || !this.isBuilding) return
+		if (!this.progressBar || !this.progressBarBg || !this.isBuilding) return
 
-		const sprite = this.sprite
-		const barWidth = sprite.displayWidth || 64
+		// Use sprite or emoji text position
+		const displayObject = this.sprite || this.emojiText
+		if (!displayObject) return
+
+		const barWidth = this.mapObject.metadata?.footprint 
+			? this.mapObject.metadata.footprint.width * 32 
+			: displayObject.displayWidth || 64
 		const barHeight = 6
-		const barX = sprite.x
-		const barY = sprite.y - 15
+		const barX = displayObject.x - (this.emojiText ? barWidth / 2 : 0)
+		const barY = displayObject.y - (this.emojiText ? (this.mapObject.metadata?.footprint?.height || 1) * 32 / 2 + 15 : 15)
 
 		// Update progress bar
 		this.progressBar.clear()
@@ -266,9 +338,12 @@ export class MapObjectView {
 	}
 
 	public update() {
-		// Update progress bar position if sprite moves
-		if (this.isBuilding && this.sprite && (this.progressBar || this.progressBarBg)) {
-			this.updateProgressBar(this.sprite.scene)
+		// Update progress bar position if sprite or emoji text moves
+		if (this.isBuilding && (this.sprite || this.emojiText) && (this.progressBar || this.progressBarBg)) {
+			const scene = this.sprite?.scene || this.emojiText?.scene
+			if (scene) {
+				this.updateProgressBar(scene)
+			}
 		}
 	}
 
@@ -283,10 +358,14 @@ export class MapObjectView {
 			this.completedHandler = null
 		}
 
-		// Remove click handler if sprite is interactive
+		// Remove click handler if sprite or emoji text is interactive
 		if (this.sprite && this.isBuilding) {
 			this.sprite.off('pointerdown', this.handleBuildingClick, this)
 			this.sprite.removeInteractive()
+		}
+		if (this.emojiText && this.isBuilding) {
+			this.emojiText.off('pointerdown', this.handleBuildingClick, this)
+			this.emojiText.removeInteractive()
 		}
 
 		if (this.unsubscribe) {
@@ -308,6 +387,10 @@ export class MapObjectView {
 		if (this.sprite) {
 			this.sprite.destroy()
 			this.sprite = null
+		}
+		if (this.emojiText) {
+			this.emojiText.destroy()
+			this.emojiText = null
 		}
 	}
 } 

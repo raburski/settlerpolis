@@ -1,8 +1,12 @@
 import { EventManager, Event } from '../events'
 import { Receiver } from '../Receiver'
+import { Logger } from '../Logs'
 
 export class SystemManager {
-	constructor(private event: EventManager) {
+	constructor(
+		private event: EventManager,
+		private logger: Logger
+	) {
 		this.setupEventHandlers()
 	}
 

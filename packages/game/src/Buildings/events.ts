@@ -9,10 +9,13 @@ export const BuildingsEvents = {
 		Progress: 'sc:buildings:progress',
 		Completed: 'sc:buildings:completed',
 		Cancelled: 'sc:buildings:cancelled',
-		Catalog: 'sc:buildings:catalog'
+		Catalog: 'sc:buildings:catalog',
+		ResourcesChanged: 'sc:buildings:resources-changed',     // Resource collection progress changed
+		StageChanged: 'sc:buildings:stage-changed'              // Construction stage changed
 	},
 	SS: {
-		Tick: 'ss:buildings:tick'
+		Tick: 'ss:buildings:tick',
+		HouseCompleted: 'ss:buildings:house-completed' // Internal event for PopulationManager
 	}
 } as const
 

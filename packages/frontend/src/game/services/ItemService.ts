@@ -7,6 +7,7 @@ export interface ItemType {
 	description?: string
 	icon?: string
 	category?: string
+	emoji?: string
 }
 
 type UpdateCallback = () => void

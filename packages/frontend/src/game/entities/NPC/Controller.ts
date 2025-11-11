@@ -11,9 +11,12 @@ export class NPCController {
 		private scene: GameScene,
 		public npc: NPC
 	) {
-		// Subscribe to NPC events
+		// Subscribe to movement events (unified movement system)
+		EventBus.on(Event.Movement.SC.MoveToPosition, this.handleMoveToPosition, this)
+		EventBus.on(Event.Movement.SC.PositionUpdated, this.handlePositionUpdated, this)
+		
+		// Subscribe to NPC-specific events
 		EventBus.on(Event.NPC.SC.Message, this.handleNPCMessage, this)
-		EventBus.on(Event.NPC.SC.Go, this.handleNPCGo, this)
 	}
 
 	public handleInteraction = () => {
@@ -49,10 +52,23 @@ export class NPCController {
 		}
 	}
 
-	private handleNPCGo = (data: { npcId: string, position: { x: number, y: number } }) => {
-		// Only move if it's our NPC
-		if (data.npcId === this.npc.id) {
-			this.view.setTargetPosition(data.position.x, data.position.y)
+	private handleMoveToPosition = (data: { entityId: string, targetPosition: { x: number, y: number }, mapName: string }) => {
+		// Only update if it's our NPC and on the same map
+		if (data.entityId === this.npc.id && data.mapName === this.npc.mapId) {
+			// Update NPC position for interpolation
+			this.view.setTargetPosition(data.targetPosition.x, data.targetPosition.y)
+			// Update text display service with new position
+			if (this.scene.textDisplayService) {
+				this.scene.textDisplayService.updateEntityPosition(this.npc.id, data.targetPosition)
+			}
+		}
+	}
+
+	private handlePositionUpdated = (data: { entityId: string, position: { x: number, y: number }, mapName: string }) => {
+		// Only update if it's our NPC and on the same map
+		if (data.entityId === this.npc.id && data.mapName === this.npc.mapId) {
+			// Immediate position update (teleport/sync, no interpolation)
+			this.view.updatePosition(data.position)
 			// Update text display service with new position
 			if (this.scene.textDisplayService) {
 				this.scene.textDisplayService.updateEntityPosition(this.npc.id, data.position)
@@ -61,7 +77,7 @@ export class NPCController {
 	}
 
 	public update() {
-		this.view.update()
+		this.view.preUpdate()
 	}
 
 	public updateNPC(npcData: NPC) {
@@ -72,8 +88,9 @@ export class NPCController {
 
 	public destroy(): void {
 		// Clean up event listeners
+		EventBus.off(Event.Movement.SC.MoveToPosition, this.handleMoveToPosition, this)
+		EventBus.off(Event.Movement.SC.PositionUpdated, this.handlePositionUpdated, this)
 		EventBus.off(Event.NPC.SC.Message, this.handleNPCMessage, this)
-		EventBus.off(Event.NPC.SC.Go, this.handleNPCGo, this)
 		// Clean up text displays
 		if (this.scene.textDisplayService) {
 			this.scene.textDisplayService.cleanupEntityTexts(this.npc.id)

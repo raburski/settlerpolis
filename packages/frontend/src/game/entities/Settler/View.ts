@@ -1,0 +1,196 @@
+import { GameObjects, Physics, Geom } from 'phaser'
+import { GameScene } from '../../scenes/base/GameScene'
+import { SettlerState, ProfessionType, Direction } from '@rugged/game'
+import { EventBus } from '../../EventBus'
+import { BaseMovementView } from '../Movement/BaseMovementView'
+
+export class SettlerView extends BaseMovementView {
+	protected graphics: GameObjects.Graphics | null = null
+	protected emojiText: GameObjects.Text | null = null
+	protected profession: ProfessionType
+	protected state: SettlerState
+	protected settlerId: string
+	private professionColors: Record<ProfessionType, number> = {
+		[ProfessionType.Carrier]: 0xffffff, // White
+		[ProfessionType.Builder]: 0xffaa00, // Orange
+		[ProfessionType.Woodcutter]: 0x8b4513, // Brown
+		[ProfessionType.Miner]: 0x808080 // Gray
+	}
+	private professionEmojis: Record<ProfessionType, string> = {
+		[ProfessionType.Carrier]: '👤',
+		[ProfessionType.Builder]: '🔨',
+		[ProfessionType.Woodcutter]: '🪓',
+		[ProfessionType.Miner]: '⛏️'
+	}
+
+	constructor(scene: GameScene, x: number = 0, y: number = 0, settlerId: string, profession: ProfessionType, speed: number = 64) {
+		super(scene, x, y, speed)
+		
+		this.baseDepth = 150 // Higher than NPCs (100) but lower than players
+		this.settlerId = settlerId
+		this.profession = profession
+		this.state = SettlerState.Idle
+
+		// Enable physics on the container
+		scene.physics.add.existing(this)
+		
+		// Setup visuals AFTER all properties are initialized
+		this.setupVisuals()
+	}
+
+	protected setupVisuals(): void {
+		// Create a simple colored circle for the settler using graphics
+		const size = 20
+		const color = this.professionColors[this.profession]
+		
+		// Create graphics circle - Phaser will add it to scene, then we add it to container
+		this.graphics = this.scene.add.graphics()
+		this.graphics.clear() // Clear any existing drawing
+		this.graphics.fillStyle(color, 1)
+		this.graphics.fillCircle(0, 0, size / 2)
+		this.graphics.lineStyle(2, 0x000000, 1)
+		this.graphics.strokeCircle(0, 0, size / 2)
+		// Add to container (Phaser automatically handles removing from scene display list)
+		this.add(this.graphics)
+
+		// Add emoji text on top
+		this.emojiText = this.scene.add.text(0, 0, this.professionEmojis[this.profession], {
+			fontSize: '14px',
+			align: 'center',
+			color: '#000000'
+		})
+		this.emojiText.setOrigin(0.5, 0.5)
+		// Add to container
+		this.add(this.emojiText)
+
+		// Make settler clickable with a circular hit area
+		const hitArea = new Geom.Circle(0, 0, size / 2)
+		this.setInteractive(hitArea, Geom.Circle.Contains)
+		this.input.cursor = 'pointer'
+		this.on('pointerdown', this.handleSettlerClick, this)
+
+		// Set up physics body (physics should already be enabled by this point)
+		const physicsBody = this.body as Physics.Arcade.Body
+		if (physicsBody) {
+			physicsBody.setSize(size, size)
+			physicsBody.setOffset(-size / 2, -size / 2)
+			physicsBody.setCollideWorldBounds(true)
+			physicsBody.setImmovable(true)
+		}
+		
+		// Ensure container is visible and active
+		this.setVisible(true)
+		this.setActive(true)
+		
+		// Update depth to ensure proper rendering
+		this.updateDepth()
+		
+		console.log(`[SettlerView] Created settler ${this.settlerId} at (${this.x}, ${this.y}) with profession ${this.profession}, color=${color.toString(16)}, visible=${this.visible}, active=${this.active}`)
+	}
+
+	protected updateVisuals(direction: Direction, state: 'idle' | 'moving'): void {
+		// Map movement state to settler state for visual updates
+		// Note: BaseMovementView handles 'idle' | 'moving', but SettlerView also has 'working' and 'assigned'
+		// We only update visuals for movement-related states here
+		if (state === 'moving') {
+			// Visual feedback for movement (if needed)
+			this.setAlpha(1.0)
+			this.setScale(1.0)
+		} else if (state === 'idle') {
+			// Visual feedback for idle (if needed)
+			// But don't override if settler is in 'working' or 'assigned' state
+			if (this.state === SettlerState.Idle || this.state === SettlerState.Moving) {
+				this.setAlpha(1.0)
+				this.setScale(1.0)
+			}
+		}
+		// Direction changes don't affect settler visuals (they're circular)
+	}
+
+	private handleSettlerClick = (pointer: Phaser.Input.Pointer) => {
+		// Only handle left clicks
+		if (!pointer.leftButtonDown()) return
+		
+		// Emit click event for UI
+		EventBus.emit('ui:settler:click', {
+			settlerId: this.settlerId
+		})
+	}
+
+	/**
+	 * Override updatePosition to also update depth
+	 */
+	public updatePosition(x: number, y: number): void {
+		super.updatePosition(x, y)
+		// Depth is already updated by BaseMovementView, but we can add additional logic here if needed
+	}
+
+	/**
+	 * Updates the settler profession (changes appearance)
+	 */
+	public updateProfession(profession: ProfessionType): void {
+		if (this.profession === profession) return
+		this.profession = profession
+
+		// Update graphics circle color
+		if (this.graphics) {
+			const size = 20
+			const color = this.professionColors[profession]
+			this.graphics.clear()
+			this.graphics.fillStyle(color, 1)
+			this.graphics.fillCircle(0, 0, size / 2)
+			this.graphics.lineStyle(2, 0x000000, 1)
+			this.graphics.strokeCircle(0, 0, size / 2)
+		}
+
+		// Update emoji text
+		if (this.emojiText) {
+			this.emojiText.setText(this.professionEmojis[profession])
+		}
+	}
+
+	/**
+	 * Updates the settler state (SettlerState, not movement state)
+	 */
+	public updateState(state: SettlerState): void {
+		if (this.state !== state) {
+			this.state = state
+			// Update visual based on state
+			if (state === SettlerState.Working) {
+				this.setAlpha(0.9) // Slightly transparent when working
+				this.setScale(1.1) // Slightly larger when working
+			} else if (state === SettlerState.Moving) {
+				this.setAlpha(1.0) // Full opacity when moving
+				this.setScale(1.0) // Normal size when moving
+			} else {
+				this.setAlpha(1.0) // Full opacity when idle
+				this.setScale(1.0) // Normal size when idle
+			}
+		}
+	}
+
+	/**
+	 * Override onStateChange to sync SettlerState with movement state
+	 */
+	protected onStateChange(state: 'idle' | 'moving'): void {
+		// Sync SettlerState with movement state when movement starts/completes
+		if (state === 'moving' && this.state !== SettlerState.Working && this.state !== SettlerState.Assigned) {
+			this.state = SettlerState.Moving
+		} else if (state === 'idle' && this.state === SettlerState.Moving) {
+			// Only set to Idle if we're currently Moving (don't override Working or Assigned)
+			this.state = SettlerState.Idle
+		}
+	}
+
+	public destroy(): void {
+		if (this.graphics) {
+			this.graphics.destroy()
+			this.graphics = null
+		}
+		if (this.emojiText) {
+			this.emojiText.destroy()
+			this.emojiText = null
+		}
+		super.destroy()
+	}
+}

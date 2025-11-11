@@ -1,6 +1,7 @@
 import { EventManager, Event, EventClient } from '../events'
 import { NPC, NPCInteractData, NPCGoData, NPCRoutine, NPCRoutineStep } from './types'
 import { NPCEvents } from './events'
+import { MovementEvents } from '../Movement/events'
 import { Receiver } from '../Receiver'
 import { DialogueManager } from '../Dialogue'
 import { PlayerJoinData, PlayerTransitionData, Position } from '../types'
@@ -11,13 +12,13 @@ import { DialogueEvents } from '../Dialogue/events'
 import { DialogueContinueData } from '../Dialogue/types'
 import { NPCState } from './types'
 import { QuestManager } from '../Quest'
+import { MovementManager, MovementEntity } from '../Movement'
+import { Logger } from '../Logs'
 
-const MOVEMENT_STEP_LAG = 100
 const ROUTINE_CHECK_INTERVAL = 60000 // Check routines every minute
 
 export class NPCManager {
 	private npcs: Map<string, NPC> = new Map()
-	private movementTimeouts: Map<string, NodeJS.Timeout> = new Map()
 	private routineTimeouts: Map<string, NodeJS.Timeout> = new Map()
 	private routineCheckInterval: NodeJS.Timeout | null = null
 	private pausedRoutines: Map<string, NPCRoutineStep> = new Map()
@@ -27,7 +28,9 @@ export class NPCManager {
 		private dialogueManager: DialogueManager,
 		private mapManager: MapManager,
 		private timeManager: TimeManager,
-		private questManager: QuestManager
+		private questManager: QuestManager,
+		private movementManager: MovementManager,
+		private logger: Logger
 	) {
 		this.setupEventHandlers()
 		this.startRoutineCheck()
@@ -58,6 +61,15 @@ export class NPCManager {
 			}
 			
 			this.npcs.set(npc.id, npc)
+
+			// Register NPC with MovementManager
+			const movementEntity: MovementEntity = {
+				id: npc.id,
+				position: npc.position,
+				mapName: npc.mapId,
+				speed: npc.speed
+			}
+			this.movementManager.registerEntity(movementEntity)
 		})
 	}
 
@@ -65,7 +77,7 @@ export class NPCManager {
 		// Send NPCs list when player joins or transitions to a map
 		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data: PlayerJoinData, client: EventClient) => {
 			const mapNPCs = this.getMapNPCs(data.mapId)
-			console.log('ON PLAYER JOIN', this.npcs)
+			this.logger.debug('ON PLAYER JOIN', this.npcs)
 			if (mapNPCs.length > 0) {
 				client.emit(Receiver.Sender, NPCEvents.SC.List, { npcs: mapNPCs })
 			}
@@ -83,9 +95,32 @@ export class NPCManager {
 			this.handleNPCInteraction(data, client)
 		})
 
-		// Handle NPC movement
+		// Handle NPC movement (internal server-side event)
 		this.event.on<NPCGoData>(NPCEvents.SS.Go, (data) => {
 			this.handleNPCGo(data)
+		})
+
+		// Listen for movement step completion to sync NPC position
+		this.event.on(MovementEvents.SS.StepComplete, (data: { entityId: string, position: Position }) => {
+			const npc = this.npcs.get(data.entityId)
+			if (npc) {
+				// Sync NPC position with MovementManager
+				npc.position = data.position
+			}
+		})
+
+		// Listen for movement path completion to update NPC state
+		this.event.on(MovementEvents.SS.PathComplete, (data: { entityId: string, targetType?: string, targetId?: string }) => {
+			const npc = this.npcs.get(data.entityId)
+			if (npc && npc.state === NPCState.Moving) {
+				npc.state = NPCState.Idle
+				// Get final position from MovementManager
+				const finalPosition = this.movementManager.getEntityPosition(data.entityId)
+				if (finalPosition) {
+					npc.position = finalPosition
+				}
+			}
+			// NPCs don't use target info (they just move to positions)
 		})
 
 		// Handle dialogue end to resume routines
@@ -127,65 +162,6 @@ export class NPCManager {
 		return Array.from(this.npcs.values()).filter(npc => npc.mapId === mapId && npc.active !== false)
 	}
 
-	private scheduleNPCMovement(npcId: string, delay: number) {
-		// Clear any existing timeout for this NPC
-		this.clearNPCMovement(npcId)
-
-		// Schedule new movement
-		const timeout = setTimeout(() => {
-			this.processNPCMovement(npcId)
-		}, delay)
-
-		this.movementTimeouts.set(npcId, timeout)
-	}
-
-	private clearNPCMovement(npcId: string) {
-		const timeout = this.movementTimeouts.get(npcId)
-		if (timeout) {
-			clearTimeout(timeout)
-			this.movementTimeouts.delete(npcId)
-		}
-	}
-
-	private processNPCMovement(npcId: string) {
-		const npc = this.npcs.get(npcId)
-		if (!npc || !npc.path || npc.path.length === 0) return
-
-		const nextPosition = npc.path[0]
-		const dx = nextPosition.x - npc.position.x
-		const dy = nextPosition.y - npc.position.y
-		const distance = Math.sqrt(dx * dx + dy * dy)
-
-		// Calculate time until next movement based on distance and speed
-		const timeToNextMove = (distance / npc.speed) * 1000 // Convert to milliseconds
-
-		// Move to next position
-		npc.position = nextPosition
-		npc.path = npc.path.slice(1)
-
-		// Emit position update
-		this.event.emit(Receiver.Group, NPCEvents.SC.Go, {
-			npcId: npc.id,
-			position: npc.position
-		}, npc.mapId)
-
-		// If there's more path, schedule next movement
-		if (npc.path.length > 0) {
-			this.scheduleNPCMovement(npcId, timeToNextMove + MOVEMENT_STEP_LAG)
-		} else {
-			// No more path, clear movement timeout
-			this.clearNPCMovement(npcId)
-			
-			// Update state to Idle when movement is complete
-			if (npc.state === NPCState.Moving) {
-				npc.state = NPCState.Idle
-				
-				// State changes are now part of the NPC data structure
-				// Clients will see the updated state when refreshing NPCs
-			}
-		}
-	}
-
 	private handleGoEvent(data: NPCGoData) {
 		const npc = this.npcs.get(data.npcId)
 		if (!npc || !npc.active) return
@@ -207,23 +183,39 @@ export class NPCManager {
 
 		if (!targetPosition) return
 
-		const path = this.mapManager.findPath(npc.mapId, npc.position, targetPosition)
-		if (path) {
-			npc.path = path
-			// Update NPC state to Moving
-			npc.state = NPCState.Moving
-			
-			// Schedule immediate movement
-			this.scheduleNPCMovement(npc.id, 0)
-		}
+		// Update NPC state to Moving
+		npc.state = NPCState.Moving
+
+		// Use MovementManager to move NPC
+		// MovementManager will handle pathfinding and emit movement events
+		// NPCManager listens to MovementEvents.SS.StepComplete to sync positions
+		this.movementManager.moveToPosition(npc.id, targetPosition, {
+			callbacks: {
+				onPathComplete: (task: any) => {
+					// Path completion is handled by MovementEvents.SS.PathComplete listener
+					// which updates NPC state to Idle
+					// Task is provided for potential future use (e.g., checking target info)
+				}
+			}
+		})
 	}
 
 	public addNPC(npc: NPC) {
 		this.npcs.set(npc.id, npc)
+
+		// Register NPC with MovementManager
+		const movementEntity: MovementEntity = {
+			id: npc.id,
+			position: npc.position,
+			mapName: npc.mapId,
+			speed: npc.speed
+		}
+		this.movementManager.registerEntity(movementEntity)
 	}
 
 	public removeNPC(npcId: string) {
-		this.clearNPCMovement(npcId)
+		// Unregister from MovementManager
+		this.movementManager.unregisterEntity(npcId)
 		this.npcs.delete(npcId)
 	}
 
@@ -301,11 +293,10 @@ export class NPCManager {
 	}
 
 	public cleanup() {
-		// Clear all movement timeouts
-		for (const timeout of this.movementTimeouts.values()) {
-			clearTimeout(timeout)
+		// Unregister all NPCs from MovementManager
+		for (const npcId of this.npcs.keys()) {
+			this.movementManager.unregisterEntity(npcId)
 		}
-		this.movementTimeouts.clear()
 
 		// Clear routine check interval
 		if (this.routineCheckInterval) {
@@ -328,7 +319,7 @@ export class NPCManager {
 					// Merge attributes rather than replace
 					npc.attributes = { ...npc.attributes, ...value }
 				} else {
-					console.warn(`Attempted to spread non-object value for NPC ${npcId} attributes`)
+					this.logger.warn(`Attempted to spread non-object value for NPC ${npcId} attributes`)
 				}
 			} else {
 				// @ts-ignore - Generic update
@@ -433,9 +424,9 @@ export class NPCManager {
 		// Update active state
 		npc.active = active
 
-		// If NPC is being deactivated, clear any ongoing movement or routines
+		// If NPC is being deactivated, cancel any ongoing movement or routines
 		if (!active) {
-			this.clearNPCMovement(npcId)
+			this.movementManager.cancelMovement(npcId)
 			this.pausedRoutines.delete(npcId)
 		}
 

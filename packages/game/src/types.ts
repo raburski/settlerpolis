@@ -9,6 +9,7 @@ import { NPC, NPCAssets } from "./NPC/types"
 import { DialogueTreePartial } from './Dialogue/types'
 import { TiledMap } from "./types"
 import { BuildingDefinition } from './Buildings/types'
+import { ProfessionDefinition, ProfessionToolDefinition } from './Population/types'
 
 export interface NPCContent extends NPC {
 	sentiments?: AffinitySentiments
@@ -16,6 +17,20 @@ export interface NPCContent extends NPC {
 	assets?: NPCAssets // Required assets for the NPC
 	triggers?: Trigger[] // Optional triggers specific to this NPC
 	schedules?: ScheduleOptions[] // Optional schedules specific to this NPC
+}
+
+export interface StartingItem {
+	itemType: string
+	offset?: {
+		x?: number // Offset in tiles or pixels (depending on tileBased)
+		y?: number // Offset in tiles or pixels (depending on tileBased)
+		tileBased?: boolean // If true, offsets are in tiles (default: true). If false, offsets are in pixels.
+	}
+}
+
+export interface StartingPopulation {
+	profession: string // ProfessionType
+	count: number // Number of settlers with this profession to spawn
 }
 
 export interface GameContent {
@@ -29,6 +44,10 @@ export interface GameContent {
 	maps: Record<string, TiledMap>,
 	defaultMap?: string // Optional default map ID to load initially
 	buildings?: BuildingDefinition[]
+	professions?: ProfessionDefinition[]
+	professionTools?: ProfessionToolDefinition[]
+	startingItems?: StartingItem[] // Items to spawn at player start location
+	startingPopulation?: StartingPopulation[] // Settlers to spawn at player start location
 }
 
 export interface Position {
@@ -56,4 +75,5 @@ export * from './Quest/types'
 export * from './Scheduler/types'
 export * from './Time/types'
 export * from './Triggers/types'
-export * from './Buildings/types' 
+export * from './Buildings/types'
+export * from './Population/types'

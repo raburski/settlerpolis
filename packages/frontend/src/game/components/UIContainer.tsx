@@ -11,6 +11,8 @@ import { World } from './World'
 import { SystemMessages } from './SystemMessages'
 import { ConstructionPanel } from './ConstructionPanel'
 import { BuildingInfoPanel } from './BuildingInfoPanel'
+import { PopulationPanel } from './PopulationPanel'
+import { SettlerInfoPanel } from './SettlerInfoPanel'
 import { EventBus } from "../EventBus"
 import { Event, FXType } from '@rugged/game'
 
@@ -48,6 +50,8 @@ export const UIContainer = () => {
 			<SystemMessages />
 			<ConstructionPanel />
 			<BuildingInfoPanel />
+			<SettlerInfoPanel />
+			<PopulationPanel />
 		</>
 	)
 } 

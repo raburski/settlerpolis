@@ -13,6 +13,7 @@ import {
 } from './types'
 import { InventoryManager } from "../Inventory"
 import { ConditionEffectManager } from "../ConditionEffect"
+import { Logger } from '../Logs'
 
 export class QuestManager {
 	private quests: Map<string, Quest> = new Map()
@@ -23,7 +24,8 @@ export class QuestManager {
 
 	constructor(
 		private event: EventManager, 
-		private inventoryManager: InventoryManager
+		private inventoryManager: InventoryManager,
+		private logger: Logger
 	) {
 		this.setupEventHandlers()
 	}
@@ -85,15 +87,15 @@ export class QuestManager {
 		playerId: string,
 		client: EventClient
 	): boolean {
-		console.log(`[QuestManager] Checking step completion for step ${step.id}`)
+		this.logger.debug(`Checking step completion for step ${step.id}`)
 		
 		if (!step.condition) {
-			console.log(`[QuestManager] Step ${step.id} has no condition, allowing progression`)
+			this.logger.debug(`Step ${step.id} has no condition, allowing progression`)
 			return true
 		}
 		
 		const result = this.conditionEffectManager.checkCondition(step.condition, client)
-		console.log(`[QuestManager] Step ${step.id} condition check result:`, result)
+		this.logger.debug(`Step ${step.id} condition check result:`, result)
 		return result
 	}
 
@@ -213,10 +215,10 @@ export class QuestManager {
 	}
 
 	public findDialogueFor(npcId: string, playerId: string): { dialogueId: string, nodeId: string } | undefined {
-		console.log(`[QuestManager] Finding dialogue for NPC ${npcId} and player ${playerId}`)
+		this.logger.debug(`Finding dialogue for NPC ${npcId} and player ${playerId}`)
 		
 		const playerState = this.getOrCreatePlayerState(playerId)
-		console.log(`[QuestManager] Player state:`, {
+		this.logger.debug(`Player state:`, {
 			activeQuests: playerState.activeQuests,
 			completedQuests: playerState.completedQuests
 		})
@@ -224,13 +226,13 @@ export class QuestManager {
 		// Helper function to check a quest's current step
 		const checkQuestStep = (quest: Quest, progress: QuestProgress) => {
 			if (progress.completed) {
-				console.log(`[QuestManager] Quest ${quest.id} is already completed`)
+				this.logger.debug(`Quest ${quest.id} is already completed`)
 				return undefined
 			}
 			
 			// Get current step
 			const currentStep = quest.steps[progress.currentStep]
-			console.log(`[QuestManager] Current step for quest ${quest.id}:`, {
+			this.logger.debug(`Current step for quest ${quest.id}:`, {
 				step: currentStep,
 				stepIndex: progress.currentStep,
 				hasNPCId: currentStep?.npcId === npcId,
@@ -239,7 +241,7 @@ export class QuestManager {
 			
 			// If current step involves this NPC and has dialogue info, return it
 			if (currentStep.npcId === npcId && currentStep.dialogue) {
-				console.log(`[QuestManager] Found matching dialogue:`, {
+				this.logger.debug(`Found matching dialogue:`, {
 					dialogueId: currentStep.dialogue.id,
 					nodeId: currentStep.dialogue.nodeId
 				})
@@ -256,7 +258,7 @@ export class QuestManager {
 		for (const progress of playerState.activeQuests) {
 			const quest = this.quests.get(progress.questId)
 			if (!quest) {
-				console.log(`[QuestManager] Quest ${progress.questId} not found in quests map`)
+				this.logger.debug(`Quest ${progress.questId} not found in quests map`)
 				continue
 			}
 			
@@ -274,7 +276,7 @@ export class QuestManager {
 			
 			// Only check if it's a global quest
 			if (settings.scope === QuestScope.Global) {
-				console.log(`[QuestManager] Checking global quest ${questId}`)
+				this.logger.debug(`Checking global quest ${questId}`)
 				const dialogue = checkQuestStep(quest, progress)
 				if (dialogue) return dialogue
 			}
@@ -290,13 +292,13 @@ export class QuestManager {
 			
 			// Only check if it's a shared quest
 			if (settings.scope === QuestScope.Shared) {
-				console.log(`[QuestManager] Checking shared quest ${questId}`)
+				this.logger.debug(`Checking shared quest ${questId}`)
 				const dialogue = checkQuestStep(quest, progress)
 				if (dialogue) return dialogue
 			}
 		}
 		
-		console.log(`[QuestManager] No matching dialogue found for NPC ${npcId}`)
+		this.logger.debug(`No matching dialogue found for NPC ${npcId}`)
 		return undefined
 	}
 
@@ -316,7 +318,7 @@ export class QuestManager {
 		
 		// Get player state
 		const playerState = this.getOrCreatePlayerState(playerId)
-		console.log('hasActiveQuest, playerState', playerState)
+		this.logger.debug('hasActiveQuest, playerState', playerState)
 		
 		// Check player's active quests first (applies to all scopes)
 		const isActiveForPlayer = playerState.activeQuests.some(quest => 
@@ -397,95 +399,95 @@ export class QuestManager {
 	 * @returns true if the player can start the quest, false otherwise
 	 */
 	public canStartQuest(questId: string, client: EventClient): boolean {
-		console.log(`[QuestManager] Checking if quest ${questId} can be started for player ${client.id}`)
+		this.logger.debug(`Checking if quest ${questId} can be started for player ${client.id}`)
 		
 		const quest = this.quests.get(questId)
 		if (!quest) {
-			console.log(`[QuestManager] Quest ${questId} not found in quests map`)
+			this.logger.debug(`Quest ${questId} not found in quests map`)
 			return false
 		}
 
 		// Get default settings if not provided
 		const settings = quest.settings || { repeatable: false, scope: QuestScope.Player }
-		console.log(`[QuestManager] Quest settings:`, settings)
+		this.logger.debug(`Quest settings:`, settings)
 		
 		// Get player state
 		const playerState = this.getOrCreatePlayerState(client.id)
-		console.log(`[QuestManager] Player state:`, {
+		this.logger.debug(`Player state:`, {
 			activeQuests: playerState.activeQuests,
 			completedQuests: playerState.completedQuests
 		})
-		
+
 		// Check if quest is already completed by the player
 		const isCompleted = playerState.completedQuests.includes(questId)
-		console.log(`[QuestManager] Quest completed by player:`, isCompleted)
+		this.logger.debug(`Quest completed by player:`, isCompleted)
 		
 		// Check if quest is already active for the player
 		const isActive = playerState.activeQuests.some(q => q.questId === questId)
-		console.log(`[QuestManager] Quest active for player:`, isActive)
-		
+		this.logger.debug(`Quest active for player:`, isActive)
+
 		// For player-scoped quests
 		if (settings.scope === QuestScope.Player) {
 			// If quest is not repeatable and already completed, can't start
 			if (!settings.repeatable && isCompleted) {
-				console.log(`[QuestManager] Quest is not repeatable and already completed`)
+				this.logger.debug(`Quest is not repeatable and already completed`)
 				return false
 			}
 			
 			// If quest is already active, can't start again
 			if (isActive) {
-				console.log(`[QuestManager] Quest is already active`)
+				this.logger.debug(`Quest is already active`)
 				return false
 			}
 		}
-		
+
 		// For global quests (one instance for everyone)
 		if (settings.scope === QuestScope.Global) {
 			// Check if global quest is already active
 			const globalQuestState = this.globalQuestStates.get(questId)
-			console.log(`[QuestManager] Global quest state:`, globalQuestState)
+			this.logger.debug(`Global quest state:`, globalQuestState)
 			
 			if (globalQuestState && !globalQuestState.completed) {
-				console.log(`[QuestManager] Global quest is already active`)
+				this.logger.debug(`Global quest is already active`)
 				return false
 			}
 			
 			// If quest is not repeatable and already completed globally, can't start
 			if (!settings.repeatable && globalQuestState?.completed) {
-				console.log(`[QuestManager] Global quest is not repeatable and already completed`)
+				this.logger.debug(`Global quest is not repeatable and already completed`)
 				return false
 			}
 		}
-		
+
 		// For shared quests (many players can take it and progress is communal)
 		if (settings.scope === QuestScope.Shared) {
 			// Check if player has already completed this shared quest
 			if (!settings.repeatable && isCompleted) {
-				console.log(`[QuestManager] Shared quest is not repeatable and already completed by player`)
+				this.logger.debug(`Shared quest is not repeatable and already completed by player`)
 				return false
 			}
 			
 			// Check if shared quest is already active
 			const sharedQuestState = this.sharedQuestStates.get(questId)
-			console.log(`[QuestManager] Shared quest state:`, sharedQuestState)
+			this.logger.debug(`Shared quest state:`, sharedQuestState)
 			
 			if (sharedQuestState && !sharedQuestState.completed) {
 				// If quest is already active, player can join it
-				console.log(`[QuestManager] Shared quest is already active, player can join`)
+				this.logger.debug(`Shared quest is already active, player can join`)
 				return true
 			}
 		}
 
 		// Check start condition if present
 		if (quest.startCondition && this.conditionEffectManager) {
-			console.log(`[QuestManager] Checking start condition:`, quest.startCondition)
+			this.logger.debug(`Checking start condition:`, quest.startCondition)
 			if (!this.conditionEffectManager.checkCondition(quest.startCondition, client)) {
-				console.log(`[QuestManager] Start condition not met`)
+				this.logger.debug(`Start condition not met`)
 				return false
 			}
 		}
 		
-		console.log(`[QuestManager] Quest can be started`)
+		this.logger.debug(`Quest can be started`)
 		return true
 	}
 
@@ -604,7 +606,7 @@ export class QuestManager {
 		// Get the quest
 		const quest = this.quests.get(questId)
 		if (!quest) {
-			console.warn(`Cannot complete step: Quest ${questId} not found`)
+			this.logger.warn(`Cannot complete step: Quest ${questId} not found`)
 			return
 		}
 		
@@ -631,20 +633,20 @@ export class QuestManager {
 		
 		// If no quest progress found at all
 		if (!questProgress) {
-			console.warn(`Cannot complete step: Quest ${questId} is not active`)
+			this.logger.warn(`Cannot complete step: Quest ${questId} is not active`)
 			return
 		}
 		
 		// If quest is already completed
 		if (questProgress.completed) {
-			console.warn(`Cannot complete step: Quest ${questId} is already completed`)
+			this.logger.warn(`Cannot complete step: Quest ${questId} is already completed`)
 			return
 		}
 		
 		// Find the step in the quest
 		const stepIndex = quest.steps.findIndex(step => step.id === stepId)
 		if (stepIndex === -1) {
-			console.warn(`Cannot complete step: Step ${stepId} not found in quest ${questId}`)
+			this.logger.warn(`Cannot complete step: Step ${stepId} not found in quest ${questId}`)
 			return
 		}
 		
@@ -653,7 +655,7 @@ export class QuestManager {
 		
 		// If step is already completed
 		if (questProgress.completedSteps.includes(stepId)) {
-			console.warn(`Step ${stepId} is already completed for quest ${questId}`)
+			this.logger.warn(`Step ${stepId} is already completed for quest ${questId}`)
 			return
 		}
 		
@@ -675,27 +677,27 @@ export class QuestManager {
 	 * @param client The client to emit events to
 	 */
 	public checkAndProgressQuest(questId: string, playerId: string, client: EventClient): void {
-		console.log(`[QuestManager] Checking quest progression for quest ${questId} and player ${playerId}`)
+		this.logger.debug(`Checking quest progression for quest ${questId} and player ${playerId}`)
 		
 		const quest = this.quests.get(questId)
 		if (!quest) {
-			console.warn(`[QuestManager] Cannot progress quest: Quest ${questId} not found`)
+			this.logger.warn(`Cannot progress quest: Quest ${questId} not found`)
 			return
 		}
 
 		// Get default settings if not provided
 		const settings = quest.settings || { repeatable: false, scope: QuestScope.Player }
-		console.log(`[QuestManager] Quest settings:`, settings)
+		this.logger.debug(`Quest settings:`, settings)
 		
 		// Get quest progress based on scope
 		let questProgress: QuestProgress | undefined
 		
 		if (settings.scope === QuestScope.Global) {
 			questProgress = this.globalQuestStates.get(questId)
-			console.log(`[QuestManager] Global quest progress:`, questProgress)
+			this.logger.debug(`Global quest progress:`, questProgress)
 		} else if (settings.scope === QuestScope.Shared) {
 			questProgress = this.sharedQuestStates.get(questId)
-			console.log(`[QuestManager] Shared quest progress:`, questProgress)
+			this.logger.debug(`Shared quest progress:`, questProgress)
 		}
 		
 		// If no global/shared progress found, or this is a player quest,
@@ -703,29 +705,29 @@ export class QuestManager {
 		if (!questProgress) {
 			const playerState = this.getOrCreatePlayerState(playerId)
 			questProgress = playerState.activeQuests.find(q => q.questId === questId)
-			console.log(`[QuestManager] Player quest progress:`, questProgress)
+			this.logger.debug(`Player quest progress:`, questProgress)
 		}
 		
 		// If no quest progress found at all
 		if (!questProgress) {
-			console.warn(`[QuestManager] Cannot progress quest: Quest ${questId} is not active`)
+			this.logger.warn(`Cannot progress quest: Quest ${questId} is not active`)
 			return
 		}
 		
 		// If quest is already completed
 		if (questProgress.completed) {
-			console.warn(`[QuestManager] Cannot progress quest: Quest ${questId} is already completed`)
+			this.logger.warn(`Cannot progress quest: Quest ${questId} is already completed`)
 			return
 		}
 
 		// Get current step
 		const currentStep = quest.steps[questProgress.currentStep]
 		if (!currentStep) {
-			console.warn(`[QuestManager] Cannot progress quest: No current step found for quest ${questId}`)
+			this.logger.warn(`Cannot progress quest: No current step found for quest ${questId}`)
 			return
 		}
 
-		console.log(`[QuestManager] Current step:`, {
+		this.logger.debug(`Current step:`, {
 			stepId: currentStep.id,
 			stepIndex: questProgress.currentStep,
 			step: currentStep
@@ -733,10 +735,10 @@ export class QuestManager {
 
 		// Check if current step conditions are met
 		const stepCompleted = this.checkStepCompletion(currentStep, playerId, client)
-		console.log(`[QuestManager] Step completion check result:`, stepCompleted)
+		this.logger.debug(`Step completion check result:`, stepCompleted)
 
 		if (stepCompleted) {
-			console.log(`[QuestManager] Completing step ${currentStep.id} for quest ${questId}`)
+			this.logger.debug(`Completing step ${currentStep.id} for quest ${questId}`)
 			this.completeStep(playerId, questProgress, quest, currentStep, client)
 		}
 	}

@@ -7,6 +7,10 @@ export { schedules } from './schedules'
 export { items } from './items'
 export { flags } from './flags'
 export { buildings } from './buildings'
+export { professions } from './professions'
+export { professionTools } from './professionTools'
+export { startingItems } from './startingItems'
+export { startingPopulation } from './startingPopulation'
 
 // Set the default map ID
 export const defaultMap = 'map1'

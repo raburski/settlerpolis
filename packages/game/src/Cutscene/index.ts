@@ -4,12 +4,16 @@ import { Cutscene, CutsceneTriggerEventData } from './types'
 import { FXEvents } from '../FX/events'
 import { FXType } from '../FX/types'
 import { Receiver } from "../Receiver"
+import { Logger } from '../Logs'
 
 export class CutsceneManager {
 	private cutscenes: Map<string, Cutscene> = new Map()
 	private activeCutscenes: Map<string, { cutscene: Cutscene, currentStep: number }> = new Map()
 
-	constructor(private eventManager: EventManager) {
+	constructor(
+		private eventManager: EventManager,
+		private logger: Logger
+	) {
 		this.setupEventListeners()
 	}
 
@@ -29,7 +33,7 @@ export class CutsceneManager {
 		const cutscene = this.cutscenes.get(cutsceneId)
 		
 		if (!cutscene) {
-			console.error(`Cutscene with ID ${cutsceneId} not found`)
+			this.logger.error(`Cutscene with ID ${cutsceneId} not found`)
 			return
 		}
 

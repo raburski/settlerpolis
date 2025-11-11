@@ -3,22 +3,18 @@ import { npcAssetsService } from '../../services/NPCAssetsService'
 import { NPCAssets, Direction, isHorizontalDirection, getMirroredDirection, isDirectionalAnimation } from '@rugged/game'
 import { GameScene } from '../../scenes/base/GameScene'
 import { tutorialService, TutorialFlag } from '../../services/TutorialService'
+import { BaseMovementView } from '../Movement/BaseMovementView'
 
 export enum PlayerState {
 	Idle = 'idle',
 	Walking = 'walking'
 }
 
-export class NPCView extends GameObjects.Container {
+export class NPCView extends BaseMovementView {
 	protected sprite: GameObjects.Sprite | null = null
 	protected highlightSprite: GameObjects.Sprite | null = null
 	protected direction: Direction = Direction.Down
 	protected currentState: PlayerState = PlayerState.Idle
-	protected speed: number
-	protected targetPosition: { x: number, y: number } | null = null
-	protected startPosition: { x: number, y: number } | null = null
-	protected movementStartTime: number = 0
-	protected movementDuration: number = 0
 	protected npcId: string
 	protected assets: NPCAssets | null = null
 	protected currentAnimation: string | null = null
@@ -29,10 +25,9 @@ export class NPCView extends GameObjects.Container {
 	private interactable: boolean = false
 
 	constructor(scene: GameScene, x: number = 0, y: number = 0, speed: number = 160, npcId: string, interactable: boolean = false) {
-		super(scene, x, y)
-		scene.add.existing(this)
-
-		this.speed = speed
+		super(scene, x, y, speed)
+		
+		this.baseDepth = 100 // NPC base depth
 		this.npcId = npcId
 		this.interactable = interactable
 
@@ -45,7 +40,11 @@ export class NPCView extends GameObjects.Container {
 		// Enable physics on the container
 		scene.physics.add.existing(this)
 
-		// Load NPC assets
+		// Setup visuals AFTER all properties are initialized
+		// For NPCs, setupVisuals() is empty - actual setup happens in setupSprite() after assets load
+		this.setupVisuals()
+
+		// Load NPC assets (async - will call setupSprite when loaded)
 		this.loadAssets()
 	}
 
@@ -56,6 +55,13 @@ export class NPCView extends GameObjects.Container {
 		} catch (error) {
 			console.error(`Failed to load assets for NPC ${this.npcId}:`, error)
 		}
+	}
+
+	protected setupVisuals(): void {
+		// Setup visuals is called by BaseMovementView constructor
+		// But NPC assets load asynchronously, so we'll set up the sprite in setupSprite()
+		// which is called after assets load. For now, just initialize state.
+		// The actual sprite setup happens in setupSprite() after assets are loaded
 	}
 
 	private setupSprite() {
@@ -89,6 +95,25 @@ export class NPCView extends GameObjects.Container {
 		}
 
 		// Set initial frame based on direction
+		this.updateSpriteFrame()
+	}
+
+	protected updateVisuals(direction: Direction, state: 'idle' | 'moving'): void {
+		// Update direction
+		if (this.direction !== direction) {
+			if (!isHorizontalDirection(direction) && isHorizontalDirection(this.direction)) {
+				this.lastHorizontalDirection = this.direction
+			}
+			this.direction = direction
+		}
+
+		// Update state (map 'idle'|'moving' to PlayerState)
+		const newState = state === 'moving' ? PlayerState.Walking : PlayerState.Idle
+		if (this.currentState !== newState) {
+			this.currentState = newState
+		}
+
+		// Update sprite frame/animation based on direction and state
 		this.updateSpriteFrame()
 	}
 
@@ -169,104 +194,41 @@ export class NPCView extends GameObjects.Container {
 	}
 
 	/**
-	 * Sets the target position for movement
+	 * Override updatePosition to support both Position object and x,y parameters
 	 */
-	public setTargetPosition(x: number, y: number): void {
-		const currentX = this.x
-		const currentY = this.y
-		const dx = x - currentX
-		const dy = y - currentY
-		const distance = Math.sqrt(dx * dx + dy * dy)
-
-		if (distance < 1) {
-			// Already at target
-			this.targetPosition = null
-			this.startPosition = null
-			this.updateState(PlayerState.Idle)
-			return
+	public updatePosition(xOrPosition: number | { x: number, y: number }, y?: number): void {
+		if (typeof xOrPosition === 'object') {
+			super.updatePosition(xOrPosition.x, xOrPosition.y)
+			// Update text display service with new position
+			if (this.scene.textDisplayService) {
+				this.scene.textDisplayService.updateEntityPosition(this.npcId, xOrPosition)
+			}
+		} else {
+			super.updatePosition(xOrPosition, y!)
+			// Update text display service with new position
+			if (this.scene.textDisplayService) {
+				this.scene.textDisplayService.updateEntityPosition(this.npcId, { x: xOrPosition, y: y! })
+			}
 		}
-
-		this.startPosition = { x: currentX, y: currentY }
-		this.targetPosition = { x, y }
-		this.movementStartTime = Date.now()
-		this.movementDuration = (distance / this.speed) * 1000 // Convert to milliseconds
-		this.updateState(PlayerState.Walking)
 	}
 
 	/**
-	 * Updates the player position
-	 */
-	public updatePosition(x: number, y: number): void {
-		this.x = x
-		this.y = y
-		
-		// Update depth based on y position
-		this.updateDepth()
-	}
-
-	/**
-	 * Updates the depth of the NPC to ensure proper rendering order
-	 */
-	private updateDepth(): void {
-		// NPC depth is 100 (base) + y-position (for sorting)
-		// This ensures NPCs standing lower on the screen appear in front
-		const NPC_BASE_DEPTH = 100
-		this.setDepth(NPC_BASE_DEPTH + this.y * 0.1)
-	}
-
-	/**
-	 * Called before the physics update
+	 * Override preUpdate to add NPC-specific updates
 	 */
 	public preUpdate(): void {
-		if (!this.targetPosition || !this.startPosition) return
-
-		const currentTime = Date.now()
-		const elapsed = currentTime - this.movementStartTime
-		const progress = Math.min(elapsed / this.movementDuration, 1)
-
-		// Calculate new position using linear interpolation
-		const newX = this.startPosition.x + (this.targetPosition.x - this.startPosition.x) * progress
-		const newY = this.startPosition.y + (this.targetPosition.y - this.startPosition.y) * progress
-
-		// Update container and physics body position
-		this.updatePosition(newX, newY)
-
-		// Update direction based on movement
-		const dx = this.targetPosition.x - this.startPosition.x
-		const dy = this.targetPosition.y - this.startPosition.y
-		if (Math.abs(dx) > Math.abs(dy)) {
-			const newDirection = dx > 0 ? Direction.Right : Direction.Left
-			this.updateDirection(newDirection)
-			// Store last horizontal direction when moving horizontally
-			this.lastHorizontalDirection = newDirection
-		} else {
-			const newDirection = dy > 0 ? Direction.Down : Direction.Up
-			this.updateDirection(newDirection)
-		}
-
-		// Check if movement is complete
-		if (progress >= 1) {
-			this.targetPosition = null
-			this.startPosition = null
-			this.updateState(PlayerState.Idle)
-		} else {
-			this.updateState(PlayerState.Walking)
-		}
-		
-		// Update depth in case y position changed
-		this.updateDepth()
-
-		// Update text display service with current position
+		// Call parent preUpdate (handles movement interpolation and calls updateVisuals)
+		super.preUpdate()
+		// Additional NPC-specific updates
+		// Update text display service with current position (for moving text bubbles)
 		if (this.scene.textDisplayService) {
 			this.scene.textDisplayService.updateEntityPosition(this.npcId, { x: this.x, y: this.y })
 		}
-
 		// Debug drawing the physics body
 		this.updateDebugGraphics()
 	}
 
 	/**
-	 * Updates the player direction
+	 * Updates the NPC direction (legacy method, now handled by updateVisuals)
 	 */
 	public updateDirection(direction: Direction): void {
 		if (this.direction !== direction) {
@@ -279,15 +241,23 @@ export class NPCView extends GameObjects.Container {
 	}
 
 	/**
-	 * Updates the player state
+	 * Updates the NPC state (PlayerState, not movement state)
 	 */
 	public updateState(state: PlayerState): void {
 		if (this.currentState !== state) {
-			// Store the current direction before state change
-			const previousDirection = this.direction
 			this.currentState = state
 			this.updateSpriteFrame()
 		}
+	}
+
+	/**
+	 * Override onDirectionChange to update sprite frame
+	 */
+	protected onDirectionChange(direction: Direction): void {
+		if (!isHorizontalDirection(direction) && isHorizontalDirection(this.direction)) {
+			this.lastHorizontalDirection = this.direction
+		}
+		// Sprite frame will be updated in updateVisuals
 	}
 
 	/**

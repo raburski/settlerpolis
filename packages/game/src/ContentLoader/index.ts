@@ -9,9 +9,11 @@ import { QuestManager } from "../Quest"
 import { Scheduler } from "../Scheduler"
 import { TriggerManager } from "../Triggers"
 import { BuildingManager } from "../Buildings"
+import { PopulationManager } from "../Population"
 import { dialogueCompose } from "../Dialogue/utils"
 import { DialogueTree } from "../Dialogue/types"
 import { GameContent, ScheduleOptions, Trigger } from "../types"
+import { Logger } from "../Logs"
 
 export class ContentLoader {
 	constructor(
@@ -27,15 +29,14 @@ export class ContentLoader {
 		private trigger: TriggerManager,
 		private affinity: AffinityManager,
 		private building: BuildingManager,
-		private debug: boolean = true
+		private population: PopulationManager,
+		private logger: Logger
 	) {
 		this.loadAllContent()
 	}
 
 	public async loadAllContent() {
-		if (this.debug) {
-			console.log('[ContentLoader] Starting to load all content')
-		}
+		this.logger.log('Starting to load all content')
 		await Promise.all([
 			this.loadMaps(),
 			this.loadItems(),
@@ -47,46 +48,36 @@ export class ContentLoader {
 			this.loadSchedules(),
 			this.loadTriggers(),
 			this.loadAffinityWeights(),
-			this.loadBuildings()
+			this.loadBuildings(),
+			this.loadProfessions(),
+			this.loadProfessionTools()
 		])
-		if (this.debug) {
-			console.log('[ContentLoader] Finished loading all content')
-		}
+		this.logger.log('Finished loading all content')
 	}
 
 	private async loadMaps() {
-		if (this.debug) {
-			console.log('[ContentLoader] Loading maps')
-		}
+		this.logger.debug('Loading maps')
 		await this.map.loadMaps(this.content.maps)
 		
 		// If content specifies a default map, set it after maps are loaded
 		if (this.content.defaultMap) {
-			if (this.debug) {
-				console.log(`[ContentLoader] Setting default map to: ${this.content.defaultMap}`)
-			}
+			this.logger.debug(`Setting default map to: ${this.content.defaultMap}`)
 			this.map.setDefaultMapId(this.content.defaultMap)
 		}
 	}
 
 	private async loadItems() {
-		if (this.debug) {
-			console.log('[ContentLoader] Loading items:', this.content.items)
-		}
+		this.logger.debug('Loading items:', this.content.items)
 		await this.item.loadItems(this.content.items || [])
 	}
 
 	private async loadQuests() {
-		if (this.debug) {
-			console.log('[ContentLoader] Loading quests:', this.content.quests)
-		}
+		this.logger.debug('Loading quests:', this.content.quests)
 		await this.quest.loadQuests(this.content.quests || [])
 	}
 
 	private async loadNPCs() {
-		if (this.debug) {
-			console.log('[ContentLoader] Loading NPCs:', this.content.npcs)
-		}
+		this.logger.debug('Loading NPCs:', this.content.npcs)
 
 		// Process NPCs to set interactable flag based on dialogues
 		const processedNPCs = (this.content.npcs || []).map(npc => ({
@@ -112,17 +103,13 @@ export class ContentLoader {
 
 		// Load NPC-specific triggers
 		if (npcTriggers.length > 0) {
-			if (this.debug) {
-				console.log('[ContentLoader] Loading NPC-specific triggers:', npcTriggers)
-			}
+			this.logger.debug('Loading NPC-specific triggers:', npcTriggers)
 			await this.trigger.loadTriggers(npcTriggers)
 		}
 
 		// Load NPC-specific schedules
 		if (npcSchedules.length > 0) {
-			if (this.debug) {
-				console.log('[ContentLoader] Loading NPC-specific schedules:', npcSchedules)
-			}
+			this.logger.debug('Loading NPC-specific schedules:', npcSchedules)
 			await this.scheduler.loadSchedules(npcSchedules)
 		}
 	}
@@ -144,62 +131,83 @@ export class ContentLoader {
 			.filter(Boolean)
 			.flat() as DialogueTree[]
 
-		if (this.debug) {
-			console.log('[ContentLoader] Loading dialogues:', dialogues)
-		}
+		this.logger.debug('Loading dialogues:', dialogues)
 		await this.dialogue.loadDialogues(dialogues || [])
 	}
 
 	private async loadCutscenes() {
-		if (this.debug) {
-			console.log('[ContentLoader] Loading cutscenes:', this.content.cutscenes)
-		}
+		this.logger.debug('Loading cutscenes:', this.content.cutscenes)
 		await this.cutscene.loadCutscenes(this.content.cutscenes || [])
 	}
 
 	private async loadFlags() {
-		if (this.debug) {
-			console.log('[ContentLoader] Loading flags:', this.content.flags)
-		}
+		this.logger.debug('Loading flags:', this.content.flags)
 		await this.flag.loadFlags()
 	}
 
 	private async loadSchedules() {
-		if (this.debug) {
-			console.log('[ContentLoader] Loading schedules:', this.content.schedules)
-		}
+		this.logger.debug('Loading schedules:', this.content.schedules)
 		await this.scheduler.loadSchedules(this.content.schedules || [])
 	}
 
 	private async loadTriggers() {
-		if (this.debug) {
-			console.log('[ContentLoader] Loading triggers:', this.content.triggers)
-		}
+		this.logger.debug('Loading triggers:', this.content.triggers)
 		await this.trigger.loadTriggers(this.content.triggers || [])
 	}
 
 	private async loadAffinityWeights() {
 		const npcs = this.content.npcs || []
 		const sentiments = npcs.reduce((acc, npc) => npc.sentiments ? {...acc, [npc.id]: npc.sentiments} : acc, {})
-		if (this.debug) {
-			console.log('[ContentLoader] Loading affinity weights:', sentiments)
-		}
+		this.logger.debug('Loading affinity weights:', sentiments)
 		await this.affinity.loadAffinityWeights(sentiments || {})
 	}
 
 	private async loadBuildings() {
-		if (this.debug) {
-			console.log('[ContentLoader] Loading buildings from content:', this.content.buildings)
-			console.log('[ContentLoader] Buildings array length:', this.content.buildings?.length || 0)
-		}
+		this.logger.debug('Loading buildings from content:', this.content.buildings)
+		this.logger.debug('Buildings array length:', this.content.buildings?.length || 0)
 		const buildingsToLoad = this.content.buildings || []
 		if (buildingsToLoad.length === 0) {
-			console.warn('[ContentLoader] ⚠️ No buildings found in content! Check content/debug/general/buildings.ts')
-			console.warn('[ContentLoader] Content object keys:', Object.keys(this.content))
-			console.warn('[ContentLoader] Content.buildings type:', typeof this.content.buildings)
+			this.logger.warn('⚠️ No buildings found in content! Check content/debug/general/buildings.ts')
+			this.logger.warn('Content object keys:', Object.keys(this.content))
+			this.logger.warn('Content.buildings type:', typeof this.content.buildings)
 		} else {
-			console.log('[ContentLoader] ✓ Found', buildingsToLoad.length, 'buildings to load')
+			this.logger.log('✓ Found', buildingsToLoad.length, 'buildings to load')
 		}
 		this.building.loadBuildings(buildingsToLoad)
+	}
+
+	private async loadProfessions() {
+		this.logger.debug('Loading professions from content:', this.content.professions)
+		if (this.content.professions && this.content.professions.length > 0) {
+			this.population.loadProfessions(this.content.professions)
+		} else {
+			this.logger.warn('No professions found in content')
+		}
+	}
+
+	private async loadProfessionTools() {
+		this.logger.debug('Loading profession tools from content:', this.content.professionTools)
+		// Load profession tools from content
+		const toolsFromContent = this.content.professionTools || []
+		
+		// Also load profession tools from items (items with changesProfession property)
+		const items = this.content.items || []
+		const toolsFromItems = items
+			.filter(item => item.changesProfession)
+			.map(item => ({
+				itemType: item.id,
+				targetProfession: item.changesProfession! as any, // Will be converted to ProfessionType enum
+				name: item.name,
+				description: item.description
+			}))
+
+		// Combine both sources
+		const allTools = [...toolsFromContent, ...toolsFromItems]
+
+		if (allTools.length > 0) {
+			this.population.loadProfessionTools(allTools)
+		} else {
+			this.logger.warn('No profession tools found in content or items')
+		}
 	}
 } 

@@ -1,4 +1,5 @@
 import { NPCContent } from "@my/engine"
+import { ItemType } from "../items"
 
 const missHilda: NPCContent = {
   id: "miss_hilda",
@@ -65,7 +66,7 @@ const missHilda: NPCContent = {
               },
               inventory: {
                 has: {
-                  itemType: "rabbit"
+                  itemType: ItemType.Rabbit
                 }
               }
             }

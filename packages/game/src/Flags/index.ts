@@ -2,11 +2,15 @@ import { EventManager, EventClient } from '../events'
 import { FlagsEvents } from './events'
 import { Flag, SetFlagData, UnsetFlagData, FlagScope } from './types'
 import { Receiver } from '../Receiver'
+import { Logger } from '../Logs'
 
 export class FlagsManager {
 	private flags: Map<string, Flag> = new Map()
 
-	constructor(private event: EventManager) {
+	constructor(
+		private event: EventManager,
+		private logger: Logger
+	) {
 		this.setupEventHandlers()
 	}
 

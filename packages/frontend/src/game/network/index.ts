@@ -4,6 +4,8 @@ import { NetworkEventManager, NetworkManager } from "./NetworkManager"
 import { FrontendMapUrlService } from '../services/MapUrlService'
 // Initialize BuildingService to start listening to events
 import '../services/BuildingService'
+// Initialize PopulationService to start listening to events
+import '../services/PopulationService'
 
 const IS_REMOTE_GAME = false
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'debug'

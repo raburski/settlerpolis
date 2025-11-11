@@ -92,26 +92,24 @@ export interface Position {
 	y: number
 }
 
-export { Receiver } from './Receiver'
+// Type aliases for compatibility
+export type WorldPosition = Position
+export interface InventoryPosition {
+	row: number
+	column: number
+}
 
-// Re-export types from modules
-export * from './Affinity/types' 
-export * from './Players/types'
-export * from './Chat/types'
-export * from './NPC/types'
-export * from './Inventory/types'
-export * from './Dialogue/types'
-export * from './MapObjects/types'
-export * from './Cutscene/types'
-export * from './Flags/types'
-export * from './FX/types'
-export * from './Items/types'
-export * from './Loot/types'
-export * from './Map/types'
-export * from './Quest/types'
-export * from './Scheduler/types'
-export * from './Time/types'
-export * from './Triggers/types'
+// Receiver enum (from Receiver.ts)
+export enum Receiver {
+	Sender = 'SENDER',
+	Group = 'GROUP',
+	NoSenderGroup = 'NO_SENDER_GROUP',
+	All = 'ALL',
+	Client = 'CLIENT'
+}
+
+// Note: This file is auto-generated. Type exports are inlined here for build compatibility.
+// In actual usage, import types from '../src/types' instead.
 
 export enum AffinitySentimentType {
 	Empathy = 'empathy',

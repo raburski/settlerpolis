@@ -9,6 +9,7 @@ import { CronExpressionParser } from 'cron-parser'
 import { v4 as uuidv4 } from 'uuid'
 import { Receiver } from "../Receiver"
 import { ConditionEffectManager } from '../ConditionEffect'
+import { Logger } from '../Logs'
 
 export class Scheduler {
 	private scheduledEvents: Map<string, ScheduledEvent> = new Map()
@@ -19,6 +20,7 @@ export class Scheduler {
 	constructor(
 		private event: EventManager,
 		timeManager: TimeManager,
+		private logger: Logger
 	) {
 		this.timeManager = timeManager
 		this.setupEventHandlers()
@@ -212,7 +214,7 @@ export class Scheduler {
 		if (this._conditionEffectManager) {
 			// Check single condition if present
 			if (event.condition && !this._conditionEffectManager.checkCondition(event.condition, mockClient)) {
-				console.log(`Scheduled event ${event.id} condition not met, skipping execution`)
+				this.logger.debug(`Scheduled event ${event.id} condition not met, skipping execution`)
 				// Schedule next execution for recurring events
 				if (this.isRecurringEvent(event)) {
 					event.nextRun = this.calculateNextRun(event)
@@ -228,7 +230,7 @@ export class Scheduler {
 				);
 				
 				if (!allConditionsMet) {
-					console.log(`Scheduled event ${event.id} conditions not met, skipping execution`)
+					this.logger.debug(`Scheduled event ${event.id} conditions not met, skipping execution`)
 					// Schedule next execution for recurring events
 					if (this.isRecurringEvent(event)) {
 						event.nextRun = this.calculateNextRun(event)

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { EventBus } from '../EventBus'
 import { Event, BuildingDefinition } from '@rugged/game'
+import { itemService } from '../services/ItemService'
 import styles from './ConstructionPanel.module.css'
 
 // Try to load content - this is a fallback, server catalog is primary source
@@ -18,6 +19,30 @@ try {
 	})
 } catch (error) {
 	console.warn('[ConstructionPanel] Failed to load content directly:', error)
+}
+
+// Component to display item emoji that reactively updates when metadata loads
+const ItemEmoji: React.FC<{ itemType: string }> = ({ itemType }) => {
+	const [emoji, setEmoji] = useState<string>(itemType)
+
+	useEffect(() => {
+		// Try to get immediately
+		const itemMetadata = itemService.getItemType(itemType)
+		if (itemMetadata?.emoji) {
+			setEmoji(itemMetadata.emoji)
+		}
+
+		// Subscribe to updates
+		const unsubscribe = itemService.subscribeToItemMetadata(itemType, (metadata) => {
+			if (metadata?.emoji) {
+				setEmoji(metadata.emoji)
+			}
+		})
+
+		return unsubscribe
+	}, [itemType])
+
+	return <>{emoji}</>
 }
 
 export const ConstructionPanel: React.FC = () => {
@@ -121,7 +146,7 @@ export const ConstructionPanel: React.FC = () => {
 								<div className={styles.buildingCosts}>
 									{building.costs.map((cost, index) => (
 										<span key={index} className={styles.cost}>
-											{cost.quantity}x {cost.itemType}
+											{cost.quantity}x <ItemEmoji itemType={cost.itemType} />
 										</span>
 									))}
 								</div>

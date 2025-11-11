@@ -1,4 +1,5 @@
 import { NPCContent, ScheduleType, NPCState, TriggerOption } from "@rugged/game"
+import { ItemType } from "../items"
 
 const rabbit: NPCContent = {
   id: "rabbit",
@@ -65,7 +66,7 @@ const rabbit: NPCContent = {
         chat: { system: "🐇 The rabbit is exhausted! You cought the rabbit!" },
         inventory: {
           add: {
-            itemType: "rabbit",
+            itemType: ItemType.Rabbit,
             quantity: 1
           }
         }

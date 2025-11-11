@@ -2,6 +2,7 @@ import { EventManager, Event, EventClient } from '../events'
 import { TimeEvents } from './events'
 import { Time, TimeData, TimeUpdateEventData, TimeSpeedUpdateEventData, TimePauseEventData, TimeSyncEventData, MONTHS_IN_YEAR, DAYS_IN_MONTH } from './types'
 import { Receiver } from '../Receiver'
+import { Logger } from '../Logs'
 
 export class TimeManager {
 	private timeData: TimeData = {
@@ -19,7 +20,8 @@ export class TimeManager {
 	private lastBroadcastHour: number = 8
 
 	constructor(
-		private event: EventManager
+		private event: EventManager,
+		private logger: Logger
 	) {
 		this.setupEventHandlers()
 		this.startTime()

@@ -1,8 +1,12 @@
 import { EventManager, Event } from '../events'
 import { Receiver, ChatMessageData, ChatSystemMessageData, ChatMessageType } from '../types'
+import { Logger } from '../Logs'
 
 export class ChatManager {
-	constructor(private event: EventManager) {
+	constructor(
+		private event: EventManager,
+		private logger: Logger
+	) {
 		this.setupEventHandlers()
 	}
 

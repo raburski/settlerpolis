@@ -8,6 +8,7 @@ import { InventoryManager } from '../Inventory'
 import { PLACE_RANGE } from '../consts'
 import { EquipmentSlotType, PlayerJoinData, PlayerTransitionData } from '../Players/types'
 import { Position } from '../types'
+import { Logger } from '../Logs'
 
 export class MapObjectsManager {
 	// Map of mapName to MapObject[]
@@ -16,7 +17,8 @@ export class MapObjectsManager {
 	constructor(
 		private event: EventManager,
 		private itemsManager: ItemsManager,
-		private inventoryManager: InventoryManager
+		private inventoryManager: InventoryManager,
+		private logger: Logger
 	) {
 		this.setupEventHandlers()
 	}
@@ -45,13 +47,13 @@ export class MapObjectsManager {
 		// Find the object in the map
 		const mapObject = this.getObjectById(objectId)
 		if (!mapObject) {
-			console.log('Object not found:', objectId)
+			this.logger.debug('Object not found:', objectId)
 			return
 		}
 
 		// Verify the object is on the current map
 		if (mapObject.mapName !== mapName) {
-			console.log('Object is not on the current map:', objectId)
+			this.logger.debug('Object is not on the current map:', objectId)
 			return
 		}
 
@@ -64,7 +66,7 @@ export class MapObjectsManager {
 		// Notify all clients in the same map about the removed object
 		this.event.emit(Receiver.Group, Event.MapObjects.SC.Despawn, { objectId }, mapName)
 
-		console.log('Object removed:', mapObject)
+		this.logger.debug('Object removed:', mapObject)
 	}
 
 	private checkCollision(mapName: string, position: Position, item?: Item, metadata?: Record<string, any>): boolean {
@@ -246,7 +248,7 @@ export class MapObjectsManager {
 		// Check for collisions (pass metadata so buildings can use footprint)
 		const hasCollision = this.checkCollision(client.currentGroup, data.position, data.item, data.metadata)
 		if (hasCollision) {
-			console.log(`[MapObjectsManager] Collision detected at position:`, data.position)
+			this.logger.debug(`Collision detected at position:`, data.position)
 			return null
 		}
 

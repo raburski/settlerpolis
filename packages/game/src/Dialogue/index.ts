@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { FXEvents } from "../FX/events"
 import { CutsceneEvents } from "../Cutscene/events"
 import { ConditionEffectManager } from "../ConditionEffect"
+import { Logger } from '../Logs'
 
 const DEFAULT_START_NODE = 'start'
 
@@ -18,7 +19,8 @@ export class DialogueManager {
 
 	constructor(
 		private event: EventManager, 
-		private questManager: QuestManager
+		private questManager: QuestManager,
+		private logger: Logger
 	) {
 		this.setupEventHandlers()
 	}
@@ -40,7 +42,7 @@ export class DialogueManager {
 				this.registerDialogue(dialogue)
 			})
 		} catch (error) {
-			console.error('Error loading dialogues:', error)
+			this.logger.error('Error loading dialogues:', error)
 		}
 	}
 
@@ -209,7 +211,7 @@ export class DialogueManager {
 
 	public registerDialogue(dialogue: DialogueTree) {
 		this.dialogues.set(dialogue.id, dialogue)
-		console.log(`Registered dialogue: ${dialogue.id}`)
+		this.logger.debug(`Registered dialogue: ${dialogue.id}`)
 	}
 
 	public triggerDialogue(client: EventClient, npcId: string): boolean {

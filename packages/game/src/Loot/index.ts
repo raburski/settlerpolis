@@ -5,6 +5,7 @@ import { Item } from "../Items/types"
 import { DroppedItem, Range, SpawnPosition, LootSpawnPayload, LootSpawnEventPayload, LootDespawnEventPayload } from "./types"
 import { LootEvents } from './events'
 import { v4 as uuidv4 } from 'uuid'
+import { Logger } from '../Logs'
 
 export class LootManager {
 	private droppedItems = new Map<string, DroppedItem[]>()
@@ -12,7 +13,10 @@ export class LootManager {
 	private readonly DROPPED_ITEM_LIFESPAN = 5 * 60 * 1000 // 5 minutes in milliseconds
 	private readonly ITEM_CLEANUP_INTERVAL = 30 * 1000 // Check every 30 seconds
 
-	constructor(private event: EventManager) {
+	constructor(
+		private event: EventManager,
+		private logger: Logger
+	) {
 		this.setupEventHandlers()
 		this.startItemCleanupInterval()
 	}
@@ -36,7 +40,7 @@ export class LootManager {
 		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
 			const mapId = data.mapId
 			if (!mapId) {
-				console.warn('[WARNING] Received Join event with undefined mapId. Ignoring event.')
+				this.logger.warn('Received Join event with undefined mapId. Ignoring event.')
 				return
 			}
 			
@@ -52,7 +56,7 @@ export class LootManager {
 		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
 			const mapId = data.mapId
 			if (!mapId) {
-				console.warn('[WARNING] Received TransitionTo event with undefined mapId. Ignoring event.')
+				this.logger.warn('Received TransitionTo event with undefined mapId. Ignoring event.')
 				return
 			}
 			
@@ -68,7 +72,7 @@ export class LootManager {
 		// Handle scheduled item spawns
 		this.event.on(LootEvents.SS.Spawn, (data: LootSpawnPayload) => {
 			if (!data.mapId) {
-				console.warn('[WARNING] Received SS.Spawn event with undefined mapId. Ignoring event.')
+				this.logger.warn('Received SS.Spawn event with undefined mapId. Ignoring event.')
 				return
 			}
 			
@@ -98,7 +102,7 @@ export class LootManager {
 		
 		// Handle undefined mapId
 		if (!mapId || mapId === 'undefined') {
-			console.warn('[WARNING] dropItem received undefined or invalid mapId. Ignoring drop request.')
+			this.logger.warn('dropItem received undefined or invalid mapId. Ignoring drop request.')
 			return
 		}
 		
