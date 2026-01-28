@@ -413,7 +413,9 @@ export class ProductionManager {
 		// Check each required input
 		for (const input of recipe.inputs) {
 			const current = this.storageManager.getCurrentQuantity(buildingInstanceId, input.itemType)
-			const needed = input.quantity - current
+			const capacity = this.storageManager.getStorageCapacity(buildingInstanceId, input.itemType)
+			const desired = capacity > 0 ? capacity : input.quantity
+			const needed = desired - current
 
 			if (needed <= 0) {
 				continue // Already have enough
