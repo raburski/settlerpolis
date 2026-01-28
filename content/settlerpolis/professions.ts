@@ -31,7 +31,6 @@ export const professions: ProfessionDefinition[] = [
 		description: 'A settler skilled in mining',
 		canBuild: false,
 		canCarry: true,
-		canWorkBuildings: [] // Phase B: No mining buildings yet
+		canWorkBuildings: ['quarry']
 	}
 ]
-

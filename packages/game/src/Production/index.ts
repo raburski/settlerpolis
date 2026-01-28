@@ -395,6 +395,9 @@ export class ProductionManager {
 		if (!building) {
 			return
 		}
+		const buildingDef = this.buildingManager.getBuildingDefinition(building.buildingId)
+		const buildingPriority = buildingDef?.priority ?? 1
+		const priority = 60 + buildingPriority
 
 		this.logger.log(`[ProductionManager] Requesting input resources for building ${buildingInstanceId}`)
 
@@ -416,7 +419,7 @@ export class ProductionManager {
 				this.logger.log(`[ProductionManager] Found source building ${sourceBuildingId} for ${input.itemType}`)
 				
 				// Request transport from source building
-				this.jobsManager.requestTransport(sourceBuildingId, buildingInstanceId, input.itemType, needed)
+				this.jobsManager.requestTransport(sourceBuildingId, buildingInstanceId, input.itemType, needed, priority)
 				continue
 			}
 
@@ -434,7 +437,7 @@ export class ProductionManager {
 					// Use existing requestResourceCollection for ground items
 					// Note: This will need to be updated to handle production buildings, not just construction
 					// For now, we'll use the same method
-					this.jobsManager.requestResourceCollection(buildingInstanceId, input.itemType)
+					this.jobsManager.requestResourceCollection(buildingInstanceId, input.itemType, priority)
 				}
 				continue
 			}
@@ -444,39 +447,51 @@ export class ProductionManager {
 	}
 
 	// Request output transport (delegate to JobsManager for building-to-building transport)
-	// Finds target buildings that need the output items
-	// Transports outputs as soon as they are available (if there are destinations), not just when storage is full
+	// Moves outputs to warehouse only when storage is close to full
 	private requestOutputTransport(buildingInstanceId: string, recipe: ProductionRecipe): void {
 		const building = this.buildingManager.getBuildingInstance(buildingInstanceId)
 		if (!building) {
 			return
 		}
+		const buildingDef = this.buildingManager.getBuildingDefinition(building.buildingId)
+		const buildingPriority = buildingDef?.priority ?? 1
+		const priority = 20 + buildingPriority
 
-		this.logger.log(`[ProductionManager] Requesting output transport for building ${buildingInstanceId}`)
+		this.logger.log(`[ProductionManager] Checking output overflow for building ${buildingInstanceId}`)
+
+		const OVERFLOW_THRESHOLD = 0.8
 
 		// Check each output item
 		for (const output of recipe.outputs) {
-			// Use getAvailableQuantity to get items that are available for transport (excluding already reserved items)
+			const capacity = this.storageManager.getStorageCapacity(buildingInstanceId, output.itemType)
+			if (capacity === 0) {
+				continue
+			}
+
+			const current = this.storageManager.getCurrentQuantity(buildingInstanceId, output.itemType)
 			const available = this.storageManager.getAvailableQuantity(buildingInstanceId, output.itemType)
 			
-			if (available === 0) {
+			if (available === 0 || current === 0) {
 				continue // No outputs available (or all reserved)
 			}
 
-			// Find target buildings that need this output
-			const targetBuildings = this.findTargetBuildings(output.itemType, output.quantity, building.mapName, building.playerId)
-			
-			if (targetBuildings.length > 0) {
-				// Use first available target building
-				const targetBuildingId = targetBuildings[0]
-				this.logger.log(`[ProductionManager] Found target building ${targetBuildingId} for ${output.itemType} (available: ${available})`)
-				
-				// Request transport to target building (transport the quantity needed by the recipe, or available amount, whichever is smaller)
-				const transportQuantity = Math.min(output.quantity, available)
-				this.jobsManager.requestTransport(buildingInstanceId, targetBuildingId, output.itemType, transportQuantity)
-			} else {
-				this.logger.log(`[ProductionManager] No target buildings found for ${output.itemType} (available: ${available})`)
+			const fillRatio = current / capacity
+			if (fillRatio < OVERFLOW_THRESHOLD) {
+				continue
 			}
+
+			if (this.jobsManager.hasActiveJobForBuilding(buildingInstanceId, output.itemType)) {
+				continue
+			}
+
+			const warehouseId = this.findClosestWarehouse(output.itemType, output.quantity, building.mapName, building.playerId, building.position)
+			if (!warehouseId) {
+				continue
+			}
+
+			const transportQuantity = Math.min(output.quantity, available)
+			this.logger.log(`[ProductionManager] Output overflow for ${output.itemType} at ${buildingInstanceId} (${Math.round(fillRatio * 100)}%), moving ${transportQuantity} to warehouse ${warehouseId}`)
+			this.jobsManager.requestTransport(buildingInstanceId, warehouseId, output.itemType, transportQuantity, priority)
 		}
 	}
 
@@ -532,6 +547,39 @@ export class ProductionManager {
 		}
 
 		return buildings
+	}
+
+	private findClosestWarehouse(
+		itemType: string,
+		quantity: number,
+		mapName: string,
+		playerId: string,
+		position: Position
+	): string | null {
+		const warehouses = this.buildingManager.getBuildingsForMap(mapName)
+			.filter(building => building.playerId === playerId)
+			.filter(building => {
+				const definition = this.buildingManager.getBuildingDefinition(building.buildingId)
+				return !!definition?.isWarehouse
+			})
+			.filter(building => this.storageManager.hasAvailableStorage(building.id, itemType, quantity))
+
+		if (warehouses.length === 0) {
+			return null
+		}
+
+		let closest = warehouses[0]
+		let closestDistance = calculateDistance(position, closest.position)
+
+		for (let i = 1; i < warehouses.length; i++) {
+			const distance = calculateDistance(position, warehouses[i].position)
+			if (distance < closestDistance) {
+				closest = warehouses[i]
+				closestDistance = distance
+			}
+		}
+
+		return closest.id
 	}
 
 	// Emit status changed event

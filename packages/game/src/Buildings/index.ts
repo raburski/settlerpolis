@@ -500,14 +500,14 @@ export class BuildingManager {
 	}
 
 	// Request carrier to collect resource (delegate to JobsManager)
-	public requestResourceCollection(buildingInstanceId: string, itemType: string): void {
+	public requestResourceCollection(buildingInstanceId: string, itemType: string, priority: number = 1): void {
 		// Simply delegate to JobsManager
 		if (!this.jobsManager) {
 			this.logger.warn(`[RESOURCE COLLECTION] Cannot request resource collection: JobsManager not set for building ${buildingInstanceId}, itemType: ${itemType}`)
 			return
 		}
-		this.logger.log(`[RESOURCE COLLECTION] Delegating resource collection request to JobsManager: building=${buildingInstanceId}, itemType=${itemType}`)
-		this.jobsManager.requestResourceCollection(buildingInstanceId, itemType)
+		this.logger.log(`[RESOURCE COLLECTION] Delegating resource collection request to JobsManager: building=${buildingInstanceId}, itemType=${itemType}, priority=${priority}`)
+		this.jobsManager.requestResourceCollection(buildingInstanceId, itemType, priority)
 	}
 
 	// Check if construction can progress (resources collected AND builder present)
@@ -560,9 +560,12 @@ export class BuildingManager {
 			this.logger.log(`[RESOURCE COLLECTION] Building ${building.id} resource ${itemType}: hasActiveJob=${hasActiveJob}`)
 			
 			if (this.jobsManager && !hasActiveJob) {
+				const buildingDef = this.definitions.get(building.buildingId)
+				const buildingPriority = buildingDef?.priority ?? 1
+				const priority = 100 + buildingPriority
 				// Request carrier to collect this resource (delegate to JobsManager)
-				this.logger.log(`[RESOURCE COLLECTION] Requesting resource collection for building ${building.id}, itemType: ${itemType}`)
-				this.requestResourceCollection(building.id, itemType)
+				this.logger.log(`[RESOURCE COLLECTION] Requesting resource collection for building ${building.id}, itemType: ${itemType}, priority: ${priority}`)
+				this.requestResourceCollection(building.id, itemType, priority)
 			}
 		}
 	}

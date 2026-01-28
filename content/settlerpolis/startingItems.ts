@@ -68,6 +68,14 @@ export const startingItems: StartingItem[] = [
 			tileBased: true
 		}
 	},
+	{
+		itemType: ItemType.Pickaxe,
+		offset: {
+			x: 3,
+			y: 0,
+			tileBased: true
+		}
+	},
 	// 20 logs below (positive y)
 	...generateItems(ItemType.Logs, 20, -2, 3, 4),
 	// 20 stones above (negative y) as piles of up to 8

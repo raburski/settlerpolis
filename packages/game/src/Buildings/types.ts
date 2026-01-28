@@ -36,6 +36,8 @@ export interface BuildingDefinition {
 	requiredProfession?: string // ProfessionType required to work in this building (e.g., 'builder', 'woodcutter')
 	spawnRate?: number // Seconds between settler spawns (default: 60)
 	workerSlots?: number // Maximum number of workers that can be assigned to this building (for production/work)
+	priority?: number // Optional priority for logistics and job assignment (higher = more urgent)
+	isWarehouse?: boolean // Marks building as storage hub for overflow
 	harvest?: {
 		nodeType: string
 	} // Optional resource node harvesting config

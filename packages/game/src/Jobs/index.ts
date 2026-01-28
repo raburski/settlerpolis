@@ -14,11 +14,38 @@ import { ProfessionType } from '../Population/types'
 import { PopulationEvents } from '../Population/events'
 import { Receiver } from '../Receiver'
 import { Logger } from '../Logs'
+import { SimulationEvents } from '../Simulation/events'
+import { SimulationTickData } from '../Simulation/types'
+
+type PendingTransportRequest =
+	| {
+			id: string
+			type: 'collect'
+			buildingInstanceId: string
+			itemType: string
+			priority: number
+			requestedAt: number
+	  }
+	| {
+			id: string
+			type: 'direct'
+			sourceBuildingInstanceId: string
+			targetBuildingInstanceId: string
+			itemType: string
+			quantity: number
+			priority: number
+			requestedAt: number
+	  }
 
 export class JobsManager {
 	private jobs = new Map<string, JobAssignment>() // jobId -> JobAssignment
 	private activeJobsByBuilding = new Map<string, Set<string>>() // buildingInstanceId -> Set<jobId>
 	private storageManager?: StorageManager // Optional - set after construction to avoid circular dependency
+	private pendingTransportRequests: PendingTransportRequest[] = []
+	private pendingRequestKeys = new Set<string>()
+	private dispatchAccumulatorMs = 0
+	private simulationTimeMs = 0
+	private readonly DISPATCH_INTERVAL_MS = 500
 
 	constructor(
 		private event: EventManager,
@@ -38,182 +65,38 @@ export class JobsManager {
 	}
 
 	private setupEventHandlers() {
-		// No event handlers needed - job state is surfaced through existing events
-		// See docs/jobs_manager_design.md for event flow
+		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+			this.handleSimulationTick(data)
+		})
+	}
+
+	private handleSimulationTick(data: SimulationTickData): void {
+		this.simulationTimeMs = data.nowMs
+		this.dispatchAccumulatorMs += data.deltaMs
+		if (this.dispatchAccumulatorMs < this.DISPATCH_INTERVAL_MS) {
+			return
+		}
+		this.dispatchAccumulatorMs -= this.DISPATCH_INTERVAL_MS
+		this.dispatchPendingTransportJobs()
 	}
 
 	// Transport Jobs
-	public requestResourceCollection(buildingInstanceId: string, itemType: string): void {
-		this.logger.log(`[JOBS] Requesting resource collection: building=${buildingInstanceId}, itemType=${itemType}`)
-		
-		// 1. Get building from BuildingManager
+	public requestResourceCollection(buildingInstanceId: string, itemType: string, priority: number = 1): void {
+		this.logger.log(`[JOBS] Requesting resource collection: building=${buildingInstanceId}, itemType=${itemType}, priority=${priority}`)
+
 		const building = this.buildingManager.getBuildingInstance(buildingInstanceId)
 		if (!building) {
 			this.logger.warn(`[JOBS] Cannot request resource collection: Building ${buildingInstanceId} not found`)
 			return
 		}
 
-		// 2. Check if already has active job for this resource type
 		if (this.hasActiveJobForBuilding(buildingInstanceId, itemType)) {
-			this.logger.log(`[JOBS] Building ${buildingInstanceId} already has active job for ${itemType}`)
-			return // Already has an active transport job
-		}
-
-		// 2b. Try to source from building storage first
-		if (this.storageManager) {
-			const storageJobCreated = this.requestStorageResourceCollection(building, itemType)
-			if (storageJobCreated) {
-				return
-			}
-		}
-
-		// 3. Find item on the ground (anywhere on the map, not just nearby)
-		const mapItems = this.lootManager.getMapItems(building.mapName)
-		this.logger.log(`[JOBS] Found ${mapItems.length} total items on map ${building.mapName}`)
-		
-		// Filter to items of the requested type (no distance restriction)
-		const itemsOfType = mapItems.filter(item => item.itemType === itemType)
-		this.logger.log(`[JOBS] Found ${itemsOfType.length} items of type ${itemType} on map`)
-
-		if (itemsOfType.length === 0) {
-			this.logger.log(`[JOBS] No items of type ${itemType} found on map for building ${buildingInstanceId}`)
-			return // No items found
-		}
-
-		// Find the closest item to the building (carriers will travel to get it)
-		const closestItem = this.findClosestItem(itemsOfType, building.position)
-		if (!closestItem) {
-			this.logger.warn(`[JOBS] Could not find closest item for building ${buildingInstanceId}`)
+			this.logger.log(`[JOBS] Building ${buildingInstanceId} already has active or pending job for ${itemType}`)
 			return
 		}
-		
-		const distanceToItem = calculateDistance(building.position, closestItem.position)
-		this.logger.log(`[JOBS] Closest item: ${closestItem.id} at (${Math.round(closestItem.position.x)}, ${Math.round(closestItem.position.y)}) | distance: ${Math.round(distanceToItem)}px from building`)
 
-		// 4. Find available carrier
-		const availableCarriers = this.populationManager.getAvailableCarriers(
-			building.mapName,
-			building.playerId
-		)
-		this.logger.log(`[JOBS] Found ${availableCarriers.length} available carriers on map ${building.mapName}`)
-
-		if (availableCarriers.length === 0) {
-			this.logger.log(`[JOBS] No available carriers for building ${buildingInstanceId}`)
-			return // No available carriers
-		}
-
-		const closestCarrier = this.findClosestCarrier(availableCarriers, closestItem.position)
-		if (!closestCarrier) {
-			this.logger.warn(`[JOBS] Could not find closest carrier for building ${buildingInstanceId}`)
-			return
-		}
-		this.logger.log(`[JOBS] Assigned carrier: ${closestCarrier.id} at (${Math.round(closestCarrier.position.x)}, ${Math.round(closestCarrier.position.y)})`)
-
-		// 5. Create transport job
-		const jobAssignment: JobAssignment = {
-			jobId: uuidv4(),
-			settlerId: closestCarrier.id,
-			buildingInstanceId: buildingInstanceId,
-			jobType: JobType.Transport,
-			priority: 1,
-			assignedAt: Date.now(),
-			status: 'active',
-			// Transport-specific fields
-			sourceItemId: closestItem.id,
-			sourcePosition: closestItem.position,
-			itemType: itemType,
-			quantity: 1
-		}
-
-		// 6. Store job
-		this.jobs.set(jobAssignment.jobId, jobAssignment)
-		if (!this.activeJobsByBuilding.has(buildingInstanceId)) {
-			this.activeJobsByBuilding.set(buildingInstanceId, new Set())
-		}
-		this.activeJobsByBuilding.get(buildingInstanceId)!.add(jobAssignment.jobId)
-		this.logger.log(`[JOBS] Created transport job ${jobAssignment.jobId} for building ${buildingInstanceId}, itemType: ${itemType}, carrier: ${closestCarrier.id}`)
-
-		// 7. Assign worker to job (delegate to PopulationManager)
-		this.populationManager.assignWorkerToTransportJob(
-			closestCarrier.id,
-			jobAssignment.jobId,
-			jobAssignment
-		)
-
-		// 8. No event needed - settler state change (MovingToItem) will be emitted by PopulationManager
-		// via PopulationEvents.SC.SettlerUpdated
-	}
-
-	private requestStorageResourceCollection(building: { id: string, mapName: string, playerId: string, position: Position }, itemType: string): boolean {
-		if (!this.storageManager) {
-			return false
-		}
-
-		const sourceBuildingIds = this.storageManager
-			.getBuildingsWithAvailableItems(itemType, 1, building.mapName, building.playerId)
-			.filter(id => id !== building.id)
-
-		if (sourceBuildingIds.length === 0) {
-			return false
-		}
-
-		const sourceBuildingId = this.findClosestBuilding(sourceBuildingIds, building.position)
-		if (!sourceBuildingId) {
-			return false
-		}
-
-		const sourceBuilding = this.buildingManager.getBuildingInstance(sourceBuildingId)
-		if (!sourceBuilding) {
-			return false
-		}
-
-		const availableCarriers = this.populationManager.getAvailableCarriers(
-			sourceBuilding.mapName,
-			sourceBuilding.playerId
-		)
-
-		if (availableCarriers.length === 0) {
-			return false
-		}
-
-		const closestCarrier = this.findClosestCarrier(availableCarriers, sourceBuilding.position)
-		if (!closestCarrier) {
-			return false
-		}
-
-		const jobAssignment: JobAssignment = {
-			jobId: uuidv4(),
-			settlerId: closestCarrier.id,
-			buildingInstanceId: building.id,
-			jobType: JobType.Transport,
-			priority: 1,
-			assignedAt: Date.now(),
-			status: 'active',
-			sourceBuildingInstanceId: sourceBuildingId,
-			itemType,
-			quantity: 1
-		}
-
-		this.jobs.set(jobAssignment.jobId, jobAssignment)
-		if (!this.activeJobsByBuilding.has(building.id)) {
-			this.activeJobsByBuilding.set(building.id, new Set())
-		}
-		this.activeJobsByBuilding.get(building.id)!.add(jobAssignment.jobId)
-
-		if (!this.activeJobsByBuilding.has(sourceBuildingId)) {
-			this.activeJobsByBuilding.set(sourceBuildingId, new Set())
-		}
-		this.activeJobsByBuilding.get(sourceBuildingId)!.add(jobAssignment.jobId)
-
-		this.logger.log(`[JOBS] Created storage transport job ${jobAssignment.jobId} from ${sourceBuildingId} to ${building.id} for ${itemType}`)
-
-		this.populationManager.assignWorkerToTransportJob(
-			closestCarrier.id,
-			jobAssignment.jobId,
-			jobAssignment
-		)
-
-		return true
+		this.enqueueCollectRequest(buildingInstanceId, itemType, priority)
+		this.dispatchPendingTransportJobs()
 	}
 
 	// Harvest Jobs (worker goes to resource node, harvests, returns to building storage)
@@ -278,6 +161,185 @@ export class JobsManager {
 	public getActiveHarvestJobs(): JobAssignment[] {
 		return Array.from(this.jobs.values())
 			.filter(job => job.jobType === JobType.Harvest && job.status === 'active')
+	}
+
+	private enqueueCollectRequest(buildingInstanceId: string, itemType: string, priority: number): void {
+		const key = `collect:${buildingInstanceId}:${itemType}`
+		if (this.pendingRequestKeys.has(key)) {
+			return
+		}
+
+		this.pendingRequestKeys.add(key)
+		this.pendingTransportRequests.push({
+			id: uuidv4(),
+			type: 'collect',
+			buildingInstanceId,
+			itemType,
+			priority,
+			requestedAt: this.simulationTimeMs || Date.now()
+		})
+	}
+
+	private enqueueDirectRequest(
+		sourceBuildingInstanceId: string,
+		targetBuildingInstanceId: string,
+		itemType: string,
+		quantity: number,
+		priority: number
+	): void {
+		const key = `direct:${sourceBuildingInstanceId}:${targetBuildingInstanceId}:${itemType}`
+		if (this.pendingRequestKeys.has(key)) {
+			return
+		}
+
+		this.pendingRequestKeys.add(key)
+		this.pendingTransportRequests.push({
+			id: uuidv4(),
+			type: 'direct',
+			sourceBuildingInstanceId,
+			targetBuildingInstanceId,
+			itemType,
+			quantity,
+			priority,
+			requestedAt: this.simulationTimeMs || Date.now()
+		})
+	}
+
+	private dispatchPendingTransportJobs(): void {
+		if (this.pendingTransportRequests.length === 0) {
+			return
+		}
+
+		// Higher priority first, then older requests first
+		const sorted = [...this.pendingTransportRequests].sort((a, b) => {
+			if (b.priority !== a.priority) {
+				return b.priority - a.priority
+			}
+			return a.requestedAt - b.requestedAt
+		})
+
+		const handledIds = new Set<string>()
+		for (const request of sorted) {
+			if (handledIds.has(request.id)) {
+				continue
+			}
+
+			const result = this.tryDispatchRequest(request)
+			if (result === 'assigned' || result === 'drop') {
+				handledIds.add(request.id)
+			}
+		}
+
+		if (handledIds.size === 0) {
+			return
+		}
+
+		this.pendingTransportRequests = this.pendingTransportRequests.filter(req => !handledIds.has(req.id))
+		for (const request of sorted) {
+			if (handledIds.has(request.id)) {
+				this.pendingRequestKeys.delete(this.getRequestKey(request))
+			}
+		}
+	}
+
+	private tryDispatchRequest(request: PendingTransportRequest): 'assigned' | 'keep' | 'drop' {
+		if (request.type === 'collect') {
+			return this.tryDispatchCollectRequest(request)
+		}
+
+		return this.tryDispatchDirectRequest(request)
+	}
+
+	private tryDispatchCollectRequest(request: Extract<PendingTransportRequest, { type: 'collect' }>): 'assigned' | 'keep' | 'drop' {
+		const building = this.buildingManager.getBuildingInstance(request.buildingInstanceId)
+		if (!building) {
+			return 'drop'
+		}
+
+		const availableCarriers = this.populationManager.getAvailableCarriers(
+			building.mapName,
+			building.playerId
+		)
+
+		if (availableCarriers.length === 0) {
+			return 'keep'
+		}
+
+		// Prefer building storage sources first
+		if (this.storageManager) {
+			const sourceBuildingIds = this.storageManager
+				.getBuildingsWithAvailableItems(request.itemType, 1, building.mapName, building.playerId)
+				.filter(id => id !== building.id)
+
+			if (sourceBuildingIds.length > 0) {
+				const sourceBuildingId = this.findClosestBuilding(sourceBuildingIds, building.position)
+				if (sourceBuildingId) {
+					const jobId = this.tryCreateBuildingTransportJob(
+						sourceBuildingId,
+						building.id,
+						request.itemType,
+						1,
+						request.priority
+					)
+					return jobId ? 'assigned' : 'drop'
+				}
+			}
+		}
+
+		// Fall back to ground items
+		const mapItems = this.lootManager.getMapItems(building.mapName)
+		const itemsOfType = mapItems.filter(item => item.itemType === request.itemType)
+		if (itemsOfType.length === 0) {
+			return 'drop'
+		}
+
+		const closestItem = this.findClosestItem(itemsOfType, building.position)
+		if (!closestItem) {
+			return 'drop'
+		}
+
+		const jobId = this.tryCreateGroundTransportJob(
+			building.id,
+			closestItem.id,
+			closestItem.position,
+			request.itemType,
+			request.priority
+		)
+
+		return jobId ? 'assigned' : 'drop'
+	}
+
+	private tryDispatchDirectRequest(request: Extract<PendingTransportRequest, { type: 'direct' }>): 'assigned' | 'keep' | 'drop' {
+		const sourceBuilding = this.buildingManager.getBuildingInstance(request.sourceBuildingInstanceId)
+		if (!sourceBuilding) {
+			return 'drop'
+		}
+
+		const availableCarriers = this.populationManager.getAvailableCarriers(
+			sourceBuilding.mapName,
+			sourceBuilding.playerId
+		)
+
+		if (availableCarriers.length === 0) {
+			return 'keep'
+		}
+
+		const jobId = this.tryCreateBuildingTransportJob(
+			request.sourceBuildingInstanceId,
+			request.targetBuildingInstanceId,
+			request.itemType,
+			request.quantity,
+			request.priority
+		)
+
+		return jobId ? 'assigned' : 'drop'
+	}
+
+	private getRequestKey(request: PendingTransportRequest): string {
+		if (request.type === 'collect') {
+			return `collect:${request.buildingInstanceId}:${request.itemType}`
+		}
+		return `direct:${request.sourceBuildingInstanceId}:${request.targetBuildingInstanceId}:${request.itemType}`
 	}
 
 	// Worker Jobs (construction/production)
@@ -379,11 +441,49 @@ export class JobsManager {
 	public hasActiveJobForBuilding(buildingInstanceId: string, itemType?: string): boolean {
 		const jobs = this.getActiveJobsForBuilding(buildingInstanceId)
 		if (itemType) {
-			return jobs.some(job =>
+			const activeMatch = jobs.some(job =>
 				job.jobType === JobType.Transport && job.itemType === itemType
 			)
+			if (activeMatch) {
+				return true
+			}
+			if (this.pendingRequestKeys.has(`collect:${buildingInstanceId}:${itemType}`)) {
+				return true
+			}
+			for (const key of this.pendingRequestKeys) {
+				if (!key.startsWith('direct:')) {
+					continue
+				}
+				const [, sourceId, targetId, keyItemType] = key.split(':')
+				if (keyItemType !== itemType) {
+					continue
+				}
+				if (sourceId === buildingInstanceId || targetId === buildingInstanceId) {
+					return true
+				}
+			}
+			return false
 		}
-		return jobs.length > 0
+		if (jobs.length > 0) {
+			return true
+		}
+		for (const key of this.pendingRequestKeys) {
+			const parts = key.split(':')
+			if (parts.length < 3) {
+				continue
+			}
+			if (parts[0] === 'collect' && parts[1] === buildingInstanceId) {
+				return true
+			}
+			if (parts[0] === 'direct') {
+				const sourceId = parts[1]
+				const targetId = parts[2]
+				if (sourceId === buildingInstanceId || targetId === buildingInstanceId) {
+					return true
+				}
+			}
+		}
+		return false
 	}
 
 	public hasActiveHarvestJobForBuilding(buildingInstanceId: string): boolean {
@@ -545,22 +645,75 @@ export class JobsManager {
 		return closest
 	}
 
-	// NEW: Request transport from source building to target building
-	public requestTransport(
+	private tryCreateGroundTransportJob(
+		targetBuildingInstanceId: string,
+		itemId: string,
+		itemPosition: Position,
+		itemType: string,
+		priority: number
+	): string | null {
+		const building = this.buildingManager.getBuildingInstance(targetBuildingInstanceId)
+		if (!building) {
+			return null
+		}
+
+		const availableCarriers = this.populationManager.getAvailableCarriers(
+			building.mapName,
+			building.playerId
+		)
+
+		if (availableCarriers.length === 0) {
+			return null
+		}
+
+		const closestCarrier = this.findClosestCarrier(availableCarriers, itemPosition)
+		if (!closestCarrier) {
+			return null
+		}
+
+		const jobAssignment: JobAssignment = {
+			jobId: uuidv4(),
+			settlerId: closestCarrier.id,
+			buildingInstanceId: targetBuildingInstanceId,
+			jobType: JobType.Transport,
+			priority,
+			assignedAt: Date.now(),
+			status: 'active',
+			sourceItemId: itemId,
+			sourcePosition: itemPosition,
+			itemType,
+			quantity: 1
+		}
+
+		this.jobs.set(jobAssignment.jobId, jobAssignment)
+		if (!this.activeJobsByBuilding.has(targetBuildingInstanceId)) {
+			this.activeJobsByBuilding.set(targetBuildingInstanceId, new Set())
+		}
+		this.activeJobsByBuilding.get(targetBuildingInstanceId)!.add(jobAssignment.jobId)
+
+		this.logger.log(`[JOBS] Created ground transport job ${jobAssignment.jobId} for building ${targetBuildingInstanceId}, itemType: ${itemType}, carrier: ${closestCarrier.id}`)
+
+		this.populationManager.assignWorkerToTransportJob(
+			closestCarrier.id,
+			jobAssignment.jobId,
+			jobAssignment
+		)
+
+		return jobAssignment.jobId
+	}
+
+	private tryCreateBuildingTransportJob(
 		sourceBuildingInstanceId: string,
 		targetBuildingInstanceId: string,
 		itemType: string,
 		quantity: number,
-		priority: number = 1
+		priority: number
 	): string | null {
 		if (!this.storageManager) {
 			this.logger.warn(`[JOBS] Cannot request transport: StorageManager not set`)
 			return null
 		}
 
-		this.logger.log(`[JOBS] Requesting transport: source=${sourceBuildingInstanceId}, target=${targetBuildingInstanceId}, itemType=${itemType}, quantity=${quantity}`)
-
-		// 1. Validate source and target buildings exist
 		const sourceBuilding = this.buildingManager.getBuildingInstance(sourceBuildingInstanceId)
 		if (!sourceBuilding) {
 			this.logger.warn(`[JOBS] Cannot request transport: Source building ${sourceBuildingInstanceId} not found`)
@@ -573,84 +726,64 @@ export class JobsManager {
 			return null
 		}
 
-		// 2. Check if source building has available output items
 		const availableQuantity = this.storageManager.getAvailableQuantity(sourceBuildingInstanceId, itemType)
 		if (availableQuantity < quantity) {
-			this.logger.warn(`[JOBS] Cannot request transport: Source building ${sourceBuildingInstanceId} has insufficient ${itemType}. Available: ${availableQuantity}, Requested: ${quantity}`)
 			return null
 		}
 
-		// 3. Check if target building has available input storage
 		if (!this.storageManager.hasAvailableStorage(targetBuildingInstanceId, itemType, quantity)) {
-			this.logger.warn(`[JOBS] Cannot request transport: Target building ${targetBuildingInstanceId} has no available storage for ${itemType}`)
 			return null
 		}
 
-		// 4. Reserve storage at source (output) and target (input) buildings
-		// Source reservation is outgoing (items already in storage, will be removed)
 		const sourceReservationId = this.storageManager.reserveStorage(sourceBuildingInstanceId, itemType, quantity, `transport-${targetBuildingInstanceId}`, true)
 		if (!sourceReservationId) {
-			this.logger.warn(`[JOBS] Cannot request transport: Failed to reserve storage at source building ${sourceBuildingInstanceId}`)
 			return null
 		}
 
-		// Target reservation is incoming (empty space needed for delivery)
 		const targetReservationId = this.storageManager.reserveStorage(targetBuildingInstanceId, itemType, quantity, `transport-${sourceBuildingInstanceId}`, false)
 		if (!targetReservationId) {
-			this.logger.warn(`[JOBS] Cannot request transport: Failed to reserve storage at target building ${targetBuildingInstanceId}`)
-			// Release source reservation
 			this.storageManager.releaseReservation(sourceReservationId)
 			return null
 		}
 
-		// 5. Find available carrier
 		const availableCarriers = this.populationManager.getAvailableCarriers(
 			sourceBuilding.mapName,
 			sourceBuilding.playerId
 		)
 
 		if (availableCarriers.length === 0) {
-			this.logger.log(`[JOBS] No available carriers for transport from ${sourceBuildingInstanceId} to ${targetBuildingInstanceId}`)
-			// Release reservations
 			this.storageManager.releaseReservation(sourceReservationId)
 			this.storageManager.releaseReservation(targetReservationId)
 			return null
 		}
 
-		// Find closest carrier to source building
 		const closestCarrier = this.findClosestCarrier(availableCarriers, sourceBuilding.position)
 		if (!closestCarrier) {
-			this.logger.warn(`[JOBS] Could not find closest carrier for transport`)
-			// Release reservations
 			this.storageManager.releaseReservation(sourceReservationId)
 			this.storageManager.releaseReservation(targetReservationId)
 			return null
 		}
 
-		// 6. Create transport job with sourceBuildingInstanceId (not sourceItemId)
 		const jobAssignment: JobAssignment = {
 			jobId: uuidv4(),
 			settlerId: closestCarrier.id,
-			buildingInstanceId: targetBuildingInstanceId, // Target building
+			buildingInstanceId: targetBuildingInstanceId,
 			jobType: JobType.Transport,
 			priority,
 			assignedAt: Date.now(),
 			status: 'active',
-			// Transport-specific fields
-			sourceBuildingInstanceId: sourceBuildingInstanceId, // Source building
-			itemType: itemType,
-			quantity: quantity,
-			reservationId: targetReservationId // Store reservation ID for release on completion
+			sourceBuildingInstanceId,
+			itemType,
+			quantity,
+			reservationId: targetReservationId
 		}
 
-		// 7. Store job
 		this.jobs.set(jobAssignment.jobId, jobAssignment)
 		if (!this.activeJobsByBuilding.has(targetBuildingInstanceId)) {
 			this.activeJobsByBuilding.set(targetBuildingInstanceId, new Set())
 		}
 		this.activeJobsByBuilding.get(targetBuildingInstanceId)!.add(jobAssignment.jobId)
 
-		// Also track source building jobs
 		if (!this.activeJobsByBuilding.has(sourceBuildingInstanceId)) {
 			this.activeJobsByBuilding.set(sourceBuildingInstanceId, new Set())
 		}
@@ -658,7 +791,6 @@ export class JobsManager {
 
 		this.logger.log(`[JOBS] Created transport job ${jobAssignment.jobId} from ${sourceBuildingInstanceId} to ${targetBuildingInstanceId}, itemType: ${itemType}, quantity: ${quantity}, carrier: ${closestCarrier.id}`)
 
-		// 8. Assign worker to job (delegate to PopulationManager)
 		this.populationManager.assignWorkerToTransportJob(
 			closestCarrier.id,
 			jobAssignment.jobId,
@@ -666,6 +798,20 @@ export class JobsManager {
 		)
 
 		return jobAssignment.jobId
+	}
+
+	// NEW: Request transport from source building to target building
+	public requestTransport(
+		sourceBuildingInstanceId: string,
+		targetBuildingInstanceId: string,
+		itemType: string,
+		quantity: number,
+		priority: number = 1
+	): string | null {
+		this.logger.log(`[JOBS] Requesting transport: source=${sourceBuildingInstanceId}, target=${targetBuildingInstanceId}, itemType=${itemType}, quantity=${quantity}, priority=${priority}`)
+		this.enqueueDirectRequest(sourceBuildingInstanceId, targetBuildingInstanceId, itemType, quantity, priority)
+		this.dispatchPendingTransportJobs()
+		return null
 	}
 
 	// NEW: Handle building pickup (remove from source building storage)

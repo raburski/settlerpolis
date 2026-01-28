@@ -27,6 +27,7 @@ export const buildings: BuildingDefinition[] = [
 				quantity: 2
 			}
 		],
+		isWarehouse: true,
 		workerSlots: 2, // Storehouse can have 2 workers managing inventory
 		// Phase C: Storage capacity
 		storage: {
@@ -69,7 +70,7 @@ export const buildings: BuildingDefinition[] = [
 	{
 		id: 'woodcutter_hut',
 		name: 'Woodcutter Hut',
-		description: 'A simple hut where woodcutters can process logs into planks',
+		description: 'A simple hut where woodcutters gather logs',
 		category: 'production',
 		icon: '🪵',
 		sprite: {
@@ -98,7 +99,43 @@ export const buildings: BuildingDefinition[] = [
 		workerSlots: 1, // Woodcutter hut can have 1 worker
 		storage: {
 			capacities: {
-				[ItemType.Logs]: 10 // Can store up to 10 planks (output)
+				[ItemType.Logs]: 10 // Can store up to 10 logs (output)
+			}
+		}
+	},
+	{
+		id: 'quarry',
+		name: 'Quarry',
+		description: 'Extracts stone from deposits',
+		category: 'production',
+		icon: '⛏️',
+		sprite: {
+			foundation: 'building_foundation',
+			completed: 'woodcutter_hut'
+		},
+		footprint: {
+			width: 2,
+			height: 2
+		},
+		constructionTime: 12, // 12 seconds
+		costs: [
+			{
+				itemType: ItemType.Logs,
+				quantity: 1
+			},
+			{
+				itemType: ItemType.Stone,
+				quantity: 1
+			}
+		],
+		harvest: {
+			nodeType: 'stone_deposit'
+		},
+		requiredProfession: ProfessionType.Miner,
+		workerSlots: 1,
+		storage: {
+			capacities: {
+				[ItemType.Stone]: 10 // Can store up to 10 stone (output)
 			}
 		}
 	},
