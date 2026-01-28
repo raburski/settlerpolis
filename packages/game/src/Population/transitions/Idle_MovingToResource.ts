@@ -1,7 +1,5 @@
 import { StateTransition } from './types'
 import { SettlerState, JobType } from '../types'
-import { Receiver } from '../../Receiver'
-import { MovementEvents } from '../../Movement/events'
 
 export interface MovingToResourceContext {
 	jobId: string
@@ -21,7 +19,20 @@ export const Idle_MovingToResource: StateTransition<MovingToResourceContext> = {
 			return false
 		}
 		const node = managers.resourceNodesManager.getNode(job.resourceNodeId)
-		return node !== undefined
+		if (!node) {
+			return false
+		}
+
+		const path = managers.mapManager.findPath(settler.mapName, settler.position, node.position)
+		if (!path || path.length === 0) {
+			managers.jobsManager.cancelJob(context.jobId, 'path_not_found', { skipSettlerReset: true })
+			if (settler.stateContext.jobId === context.jobId) {
+				settler.stateContext = {}
+			}
+			return false
+		}
+
+		return true
 	},
 
 	action: (settler, context, managers) => {
@@ -41,32 +52,25 @@ export const Idle_MovingToResource: StateTransition<MovingToResourceContext> = {
 
 		managers.logger.log(`[TRANSITION ACTION] Idle -> MovingToResource | settler=${settler.id} | jobId=${context.jobId} | nodeId=${node.id}`)
 
-		settler.state = SettlerState.MovingToResource
-		settler.stateContext = {
-			jobId: context.jobId,
-			targetId: node.id,
-			targetPosition: node.position,
-			targetType: 'resource'
-		}
-
 		const movementStarted = managers.movementManager.moveToPosition(settler.id, node.position, {
 			targetType: 'resource',
 			targetId: node.id
 		})
 		managers.logger.log(`[MOVEMENT REQUESTED] Idle -> MovingToResource | settler=${settler.id} | movementStarted=${movementStarted}`)
 		if (!movementStarted) {
-			const currentPosition = managers.movementManager.getEntityPosition(settler.id) || settler.position
-			setTimeout(() => {
-				managers.eventManager.emit(Receiver.All, MovementEvents.SS.StepComplete, {
-					entityId: settler.id,
-					position: currentPosition
-				})
-				managers.eventManager.emit(Receiver.All, MovementEvents.SS.PathComplete, {
-					entityId: settler.id,
-					targetType: 'resource',
-					targetId: node.id
-				})
-			}, 0)
+			managers.jobsManager.cancelJob(context.jobId, 'movement_failed', { skipSettlerReset: true })
+			if (settler.stateContext.jobId === context.jobId) {
+				settler.stateContext = {}
+			}
+			return
+		}
+
+		settler.state = SettlerState.MovingToResource
+		settler.stateContext = {
+			jobId: context.jobId,
+			targetId: node.id,
+			targetPosition: node.position,
+			targetType: 'resource'
 		}
 	},
 

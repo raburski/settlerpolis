@@ -939,7 +939,7 @@ export class JobsManager {
 		}
 	}
 
-	public cancelJob(jobId: string, reason?: string): void {
+	public cancelJob(jobId: string, reason?: string, options?: { skipSettlerReset?: boolean }): void {
 		const job = this.jobs.get(jobId)
 		if (!job) {
 			return
@@ -996,7 +996,9 @@ export class JobsManager {
 			}
 		}
 
-		this.populationManager.resetSettlerFromJob(jobId, reason || 'job_cancelled')
+		if (!options?.skipSettlerReset) {
+			this.populationManager.resetSettlerFromJob(jobId, reason || 'job_cancelled')
+		}
 	}
 
 	private dropCarriedItem(job: JobAssignment, settler: Settler): void {
