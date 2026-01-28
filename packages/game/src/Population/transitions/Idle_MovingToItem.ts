@@ -2,6 +2,7 @@ import { StateTransition } from './types'
 import { SettlerState, ProfessionType, JobType } from '../types'
 import { Receiver } from '../../Receiver'
 import { PopulationEvents } from '../events'
+import { MovementEvents } from '../../Movement/events'
 
 export interface MovingToItemContext {
 	jobId: string
@@ -71,6 +72,20 @@ export const Idle_MovingToItem: StateTransition<MovingToItemContext> = {
 				targetId: job.sourceItemId
 			})
 			managers.logger.log(`[MOVEMENT REQUESTED] Idle -> MovingToItem | settler=${settler.id} | movementStarted=${movementStarted}`)
+			if (!movementStarted) {
+				const currentPosition = managers.movementManager.getEntityPosition(settler.id) || settler.position
+				setTimeout(() => {
+					managers.eventManager.emit(Receiver.All, MovementEvents.SS.StepComplete, {
+						entityId: settler.id,
+						position: currentPosition
+					})
+					managers.eventManager.emit(Receiver.All, MovementEvents.SS.PathComplete, {
+						entityId: settler.id,
+						targetType: 'item',
+						targetId: job.sourceItemId
+					})
+				}, 0)
+			}
 		} else if (job.sourceBuildingInstanceId) {
 			// Building storage - move to source building position
 			const sourceBuilding = managers.buildingManager.getBuildingInstance(job.sourceBuildingInstanceId)
@@ -93,6 +108,20 @@ export const Idle_MovingToItem: StateTransition<MovingToItemContext> = {
 				targetId: job.sourceBuildingInstanceId
 			})
 			managers.logger.log(`[MOVEMENT REQUESTED] Idle -> MovingToItem | settler=${settler.id} | movementStarted=${movementStarted}`)
+			if (!movementStarted) {
+				const currentPosition = managers.movementManager.getEntityPosition(settler.id) || settler.position
+				setTimeout(() => {
+					managers.eventManager.emit(Receiver.All, MovementEvents.SS.StepComplete, {
+						entityId: settler.id,
+						position: currentPosition
+					})
+					managers.eventManager.emit(Receiver.All, MovementEvents.SS.PathComplete, {
+						entityId: settler.id,
+						targetType: 'building',
+						targetId: job.sourceBuildingInstanceId
+					})
+				}, 0)
+			}
 		} else {
 			throw new Error(`[Idle_MovingToItem] Job ${context.jobId} missing sourceItemId or sourceBuildingInstanceId`)
 		}

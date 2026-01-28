@@ -128,10 +128,19 @@ export interface RequestListData {
 	// No data needed - server sends full population state for current player and map
 }
 
+export interface RequestProfessionToolPickupData {
+	profession: ProfessionType
+}
+
+export interface RequestRevertToCarrierData {
+	profession: ProfessionType
+}
+
 export interface PopulationListData {
 	settlers: Settler[]
 	totalCount: number
 	byProfession: Record<ProfessionType, number>
+	byProfessionActive: Record<ProfessionType, number>
 	idleCount: number
 	workingCount: number
 }
@@ -139,6 +148,7 @@ export interface PopulationListData {
 export interface PopulationStatsData {
 	totalCount: number
 	byProfession: Record<ProfessionType, number>
+	byProfessionActive: Record<ProfessionType, number>
 	idleCount: number
 	workingCount: number
 }

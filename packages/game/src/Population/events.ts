@@ -3,6 +3,8 @@ export const PopulationEvents = {
 		RequestWorker: 'cs:population:request-worker', // Request worker for building (automatic assignment)
 		UnassignWorker: 'cs:population:unassign-worker', // Unassign settler from job
 		RequestList: 'cs:population:request-list', // Request full population state (settlers list + statistics)
+		RequestProfessionToolPickup: 'cs:population:request-profession-tool-pickup', // Request carrier to pick up tool and change profession
+		RequestRevertToCarrier: 'cs:population:request-revert-to-carrier' // Request idle worker to revert to carrier and drop tool
 	},
 	SC: {
 		SettlerSpawned: 'sc:population:settler-spawned', // Settler was spawned

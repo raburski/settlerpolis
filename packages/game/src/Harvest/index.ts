@@ -163,6 +163,7 @@ export class HarvestManager {
 		this.jobsManager.requestTransport(buildingInstanceId, warehouseId, itemType, transportQuantity, priority)
 	}
 
+
 	private findClosestWarehouse(
 		itemType: string,
 		quantity: number,

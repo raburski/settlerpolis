@@ -39,7 +39,7 @@ import type { CutsceneTriggerEventData } from './Cutscene/types'
 import type { MapLoadData, MapLoadResponseData, MapTransitionData, MapTransitionResponseData } from './Map/types'
 import type { TimeUpdateEventData, TimeSpeedUpdateEventData, TimePauseEventData, TimeSyncEventData } from './Time/types'
 import type { PlaceBuildingData, CancelBuildingData, BuildingPlacedData, BuildingProgressData, BuildingCompletedData, BuildingCancelledData, BuildingCatalogData } from './Buildings/types'
-import type { RequestWorkerData, UnassignWorkerData, RequestListData, PopulationListData, PopulationStatsData, JobAssignment, Settler, ProfessionType } from './Population/types'
+import type { RequestWorkerData, UnassignWorkerData, RequestListData, RequestProfessionToolPickupData, RequestRevertToCarrierData, PopulationListData, PopulationStatsData, JobAssignment, Settler, ProfessionType } from './Population/types'
 import type { ProductionRecipe, ProductionStatus } from './Production/types'
 import type { ScheduleOptions } from './Scheduler/types'
 import type { SimulationTickData } from './Simulation/types'
@@ -175,6 +175,8 @@ export type EventPayloads = Record<string, unknown> & {
 	[PopulationEvents.CS.RequestWorker]: RequestWorkerData
 	[PopulationEvents.CS.UnassignWorker]: UnassignWorkerData
 	[PopulationEvents.CS.RequestList]: RequestListData
+	[PopulationEvents.CS.RequestProfessionToolPickup]: RequestProfessionToolPickupData
+	[PopulationEvents.CS.RequestRevertToCarrier]: RequestRevertToCarrierData
 	[PopulationEvents.SC.SettlerSpawned]: { settler: Settler }
 	[PopulationEvents.SC.SettlerUpdated]: { settler: Settler }
 	[PopulationEvents.SC.WorkerAssigned]: { jobAssignment: JobAssignment, settlerId: string, buildingInstanceId: string }

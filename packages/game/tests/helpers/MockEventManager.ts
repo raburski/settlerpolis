@@ -40,6 +40,21 @@ export class MockEventManager implements EventManager {
 		this.handlers.set(event, handlers)
 	}
 
+	off<T>(event: string, callback: EventCallback<T>): void {
+		const handlers = this.handlers.get(event)
+		if (!handlers) {
+			return
+		}
+
+		const nextHandlers = handlers.filter(handler => handler.callback !== callback)
+		if (nextHandlers.length === 0) {
+			this.handlers.delete(event)
+			return
+		}
+
+		this.handlers.set(event, nextHandlers)
+	}
+
 	onJoined(callback: LifecycleCallback): void {
 		this.joinedHandlers.push(callback)
 	}

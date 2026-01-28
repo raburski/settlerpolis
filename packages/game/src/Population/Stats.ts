@@ -22,12 +22,21 @@ export class PopulationStats {
 			[ProfessionType.Woodcutter]: 0,
 			[ProfessionType.Miner]: 0
 		}
+		const byProfessionActive: Record<ProfessionType, number> = {
+			[ProfessionType.Carrier]: 0,
+			[ProfessionType.Builder]: 0,
+			[ProfessionType.Woodcutter]: 0,
+			[ProfessionType.Miner]: 0
+		}
 
 		let idleCount = 0
 		let workingCount = 0
 
 		settlers.forEach(settler => {
 			byProfession[settler.profession] = (byProfession[settler.profession] || 0) + 1
+			if (settler.state !== SettlerState.Idle) {
+				byProfessionActive[settler.profession] = (byProfessionActive[settler.profession] || 0) + 1
+			}
 
 			if (settler.state === SettlerState.Idle) {
 				idleCount++
@@ -39,6 +48,7 @@ export class PopulationStats {
 		return {
 			totalCount: settlers.length,
 			byProfession,
+			byProfessionActive,
 			idleCount,
 			workingCount
 		}

@@ -12,7 +12,9 @@ import {
 	JobType,
 	SpawnSettlerData,
 	RequestWorkerData,
-	UnassignWorkerData
+	UnassignWorkerData,
+	RequestProfessionToolPickupData,
+	RequestRevertToCarrierData
 } from './types'
 import { Receiver } from '../Receiver'
 import { v4 as uuidv4 } from 'uuid'
@@ -41,6 +43,7 @@ export class PopulationManager {
 	private spawnTimers = new Map<string, NodeJS.Timeout>() // houseId -> timer
 	private jobTickInterval: NodeJS.Timeout | null = null
 	private idleTickInterval: NodeJS.Timeout | null = null
+	private recoveryTickInterval: NodeJS.Timeout | null = null
 	private professionTools = new Map<string, ProfessionType>() // itemType -> ProfessionType
 	private professions = new Map<ProfessionType, ProfessionDefinition>() // professionType -> ProfessionDefinition
 	private stateMachine: SettlerStateMachine
@@ -91,6 +94,7 @@ export class PopulationManager {
 		this.stats.setupEventHandlers()
 		this.startJobTickLoop()
 		this.startIdleTickLoop()
+		this.startRecoveryTickLoop()
 		this.loadProfessionToolsFromItems()
 	}
 
@@ -169,6 +173,14 @@ export class PopulationManager {
 
 		this.event.on<UnassignWorkerData>(PopulationEvents.CS.UnassignWorker, (data, client) => {
 			this.unassignWorker(data, client)
+		})
+
+		this.event.on<RequestProfessionToolPickupData>(PopulationEvents.CS.RequestProfessionToolPickup, (data, client) => {
+			this.requestProfessionToolPickup(data, client)
+		})
+
+		this.event.on<RequestRevertToCarrierData>(PopulationEvents.CS.RequestRevertToCarrier, (data, client) => {
+			this.requestRevertToCarrier(data, client)
 		})
 
 		// Handle SS events (internal)
@@ -504,6 +516,214 @@ export class PopulationManager {
 		}
 	}
 
+	private requestProfessionToolPickup(data: RequestProfessionToolPickupData, client: EventClient): void {
+		const mapName = client.currentGroup
+		if (!mapName) {
+			this.logger.warn(`[PROFESSION TOOL PICKUP] No map group available for client ${client.id}`)
+			return
+		}
+
+		const requiredProfession = data.profession
+		const toolItemType = this.findToolForProfession(requiredProfession)
+		if (!toolItemType) {
+			this.logger.warn(`[PROFESSION TOOL PICKUP] No tool item type found for profession ${requiredProfession}`)
+			return
+		}
+
+		const tool = this.findToolOnMap(mapName, toolItemType)
+		if (!tool) {
+			this.logger.warn(`[PROFESSION TOOL PICKUP] No tool found on map for profession ${requiredProfession}`)
+			return
+		}
+
+		const idleCarriers = Array.from(this.settlers.values()).filter(settler =>
+			settler.mapName === mapName &&
+			settler.playerId === client.id &&
+			settler.state === SettlerState.Idle &&
+			settler.profession === ProfessionType.Carrier
+		)
+
+		if (idleCarriers.length === 0) {
+			this.logger.warn(`[PROFESSION TOOL PICKUP] No idle carrier available for profession ${requiredProfession}`)
+			return
+		}
+
+		const closestSettler = this.findClosestSettler(idleCarriers, tool.position)
+		if (!this.lootManager.reserveItem(tool.id, closestSettler.id)) {
+			this.logger.warn(`[PROFESSION TOOL PICKUP] Tool ${tool.id} already reserved`)
+			return
+		}
+		closestSettler.stateContext = {}
+		const started = this.stateMachine.executeTransition(closestSettler, SettlerState.MovingToTool, {
+			toolId: tool.id,
+			toolPosition: tool.position,
+			requiredProfession
+		})
+		if (!started) {
+			this.lootManager.releaseReservation(tool.id, closestSettler.id)
+		}
+	}
+
+	private startRecoveryTickLoop(): void {
+		const RECOVERY_TICK_INTERVAL = 1000
+		const scheduleNextTick = () => {
+			this.recoveryTickInterval = setTimeout(() => {
+				this.processRecoveryTick()
+				scheduleNextTick()
+			}, RECOVERY_TICK_INTERVAL)
+		}
+
+		scheduleNextTick()
+	}
+
+	private processRecoveryTick(): void {
+		const settlers = Array.from(this.settlers.values())
+		for (const settler of settlers) {
+			const jobId = settler.stateContext.jobId
+			if (jobId && this.jobsManager) {
+				const job = this.jobsManager.getJob(jobId)
+				if (!job || job.status === 'cancelled' || job.status === 'completed') {
+					this.recoverSettlerToIdle(settler, 'job_missing')
+					continue
+				}
+			}
+
+			if (settler.state === SettlerState.MovingToTool) {
+				const toolId = settler.stateContext.targetId
+				if (!toolId) {
+					this.recoverSettlerToIdle(settler, 'tool_target_missing')
+					continue
+				}
+				if (!this.lootManager.getItem(toolId)) {
+					this.lootManager.releaseReservation(toolId, settler.id)
+					this.recoverSettlerToIdle(settler, 'tool_missing')
+					continue
+				}
+				if (!this.lootManager.isReservationValid(toolId, settler.id)) {
+					this.recoverSettlerToIdle(settler, 'tool_reservation_lost')
+					continue
+				}
+			}
+
+			if (settler.state === SettlerState.MovingToBuilding || settler.state === SettlerState.Working) {
+				if (jobId && this.jobsManager) {
+					const job = this.jobsManager.getJob(jobId)
+					if (!job) {
+						this.recoverSettlerToIdle(settler, 'building_job_missing')
+						continue
+					}
+					const building = this.buildingManager.getBuildingInstance(job.buildingInstanceId)
+					if (!building) {
+						this.jobsManager.cancelJob(jobId, 'building_missing')
+						this.recoverSettlerToIdle(settler, 'building_missing')
+						continue
+					}
+				} else if (settler.buildingId) {
+					const building = this.buildingManager.getBuildingInstance(settler.buildingId)
+					if (!building) {
+						this.recoverSettlerToIdle(settler, 'building_missing')
+						continue
+					}
+				}
+			}
+
+			if (settler.state === SettlerState.MovingToResource || settler.state === SettlerState.Harvesting) {
+				if (!jobId || !this.jobsManager) {
+					this.recoverSettlerToIdle(settler, 'harvest_job_missing')
+					continue
+				}
+				const job = this.jobsManager.getJob(jobId)
+				if (!job || !job.resourceNodeId) {
+					this.recoverSettlerToIdle(settler, 'harvest_job_missing')
+					continue
+				}
+				const node = this.resourceNodesManager.getNode(job.resourceNodeId)
+				if (!node || node.reservedBy !== jobId) {
+					this.jobsManager.cancelJob(jobId, 'resource_missing')
+					this.recoverSettlerToIdle(settler, 'resource_missing')
+					continue
+				}
+			}
+
+			if (settler.state === SettlerState.MovingToItem || settler.state === SettlerState.CarryingItem) {
+				if (jobId && this.jobsManager) {
+					const job = this.jobsManager.getJob(jobId)
+					if (!job || job.status === 'cancelled' || job.status === 'completed') {
+						this.recoverSettlerToIdle(settler, 'transport_job_missing')
+						continue
+					}
+				}
+			}
+		}
+	}
+
+	private recoverSettlerToIdle(settler: Settler, reason: string): void {
+		if (this.movementManager.hasActiveMovement(settler.id)) {
+			this.movementManager.cancelMovement(settler.id)
+		}
+
+		if (settler.stateContext.targetId && settler.state === SettlerState.MovingToTool) {
+			this.lootManager.releaseReservation(settler.stateContext.targetId, settler.id)
+		}
+
+		if (settler.currentJob && this.jobsManager) {
+			this.jobsManager.cancelJob(settler.currentJob.jobId, reason)
+		}
+
+		settler.currentJob = undefined
+		settler.buildingId = undefined
+		settler.state = SettlerState.Idle
+		settler.stateContext = {}
+
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+		this.logger.warn(`[RECOVERY] Settler ${settler.id} reset to Idle (${reason})`)
+	}
+
+	private requestRevertToCarrier(data: RequestRevertToCarrierData, client: EventClient): void {
+		const mapName = client.currentGroup
+		if (!mapName) {
+			this.logger.warn(`[REVERT TO CARRIER] No map group available for client ${client.id}`)
+			return
+		}
+
+		if (data.profession === ProfessionType.Carrier) {
+			return
+		}
+
+		const idleWorkers = Array.from(this.settlers.values()).filter(settler =>
+			settler.mapName === mapName &&
+			settler.playerId === client.id &&
+			settler.state === SettlerState.Idle &&
+			settler.profession === data.profession
+		)
+
+		if (idleWorkers.length === 0) {
+			this.logger.warn(`[REVERT TO CARRIER] No idle worker available for profession ${data.profession}`)
+			return
+		}
+
+		const settler = idleWorkers[0]
+		const toolItemType = this.findToolForProfession(data.profession)
+		if (toolItemType) {
+			this.lootManager.dropItem(
+				{ id: uuidv4(), itemType: toolItemType },
+				settler.position,
+				client,
+				1
+			)
+		}
+
+		const oldProfession = settler.profession
+		settler.profession = ProfessionType.Carrier
+		this.event.emit(Receiver.Group, PopulationEvents.SC.ProfessionChanged, {
+			settlerId: settler.id,
+			oldProfession,
+			newProfession: settler.profession
+		}, settler.mapName)
+
+		this.stats.emitPopulationStatsUpdate(client, mapName)
+	}
+
 	// Query methods for JobsManager
 	public getAvailableCarriers(mapName: string, playerId: string): Settler[] {
 		return Array.from(this.settlers.values()).filter(settler =>
@@ -588,8 +808,12 @@ export class PopulationManager {
 				// Find tool on map
 				const tool = this.findToolOnMap(mapName, toolItemType)
 				if (tool) {
-					// Find closest settler to tool (any profession, will change)
-					const closestSettler = this.findClosestSettler(idleSettlers, tool.position)
+					const toolPickupCandidates = idleSettlers.filter(s => s.profession === ProfessionType.Carrier)
+					if (toolPickupCandidates.length === 0) {
+						return null
+					}
+					// Find closest carrier to tool (will change profession)
+					const closestSettler = this.findClosestSettler(toolPickupCandidates, tool.position)
 					return {
 						settlerId: closestSettler.id,
 						needsTool: true,
@@ -640,16 +864,11 @@ export class PopulationManager {
 
 	// Find tool on map
 	private findToolOnMap(mapName: string, itemType: string): { id: string, position: Position } | null {
-		// Get all dropped items on the map
-		const droppedItems = this.lootManager.getMapItems(mapName)
-		
-		// Find tool with matching itemType
-		for (const item of droppedItems) {
-			if (item.itemType === itemType) {
-				return {
-					id: item.id,
-					position: item.position
-				}
+		const availableItem = this.lootManager.getAvailableItemByType(mapName, itemType)
+		if (availableItem) {
+			return {
+				id: availableItem.id,
+				position: availableItem.position
 			}
 		}
 

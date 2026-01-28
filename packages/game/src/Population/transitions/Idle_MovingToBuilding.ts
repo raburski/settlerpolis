@@ -1,5 +1,7 @@
 import { StateTransition, RequestWorkerHasProfessionContext } from './types'
 import { SettlerState } from '../types'
+import { Receiver } from '../../Receiver'
+import { MovementEvents } from '../../Movement/events'
 
 export const Idle_MovingToBuilding: StateTransition<RequestWorkerHasProfessionContext> = {
 	condition: (settler, context) => {
@@ -36,6 +38,20 @@ export const Idle_MovingToBuilding: StateTransition<RequestWorkerHasProfessionCo
 			targetId: context.buildingInstanceId
 		})
 		managers.logger.log(`[MOVEMENT REQUESTED] Idle -> MovingToBuilding | settler=${settler.id} | movementStarted=${movementStarted}`)
+		if (!movementStarted) {
+			const currentPosition = managers.movementManager.getEntityPosition(settler.id) || settler.position
+			setTimeout(() => {
+				managers.eventManager.emit(Receiver.All, MovementEvents.SS.StepComplete, {
+					entityId: settler.id,
+					position: currentPosition
+				})
+				managers.eventManager.emit(Receiver.All, MovementEvents.SS.PathComplete, {
+					entityId: settler.id,
+					targetType: 'building',
+					targetId: context.buildingInstanceId
+				})
+			}, 0)
+		}
 	},
 	
 	completed: (settler, managers) => {

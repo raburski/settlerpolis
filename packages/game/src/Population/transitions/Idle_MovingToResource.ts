@@ -2,6 +2,7 @@ import { StateTransition } from './types'
 import { SettlerState, JobType } from '../types'
 import { Receiver } from '../../Receiver'
 import { PopulationEvents } from '../events'
+import { MovementEvents } from '../../Movement/events'
 
 export interface MovingToResourceContext {
 	jobId: string
@@ -62,6 +63,20 @@ export const Idle_MovingToResource: StateTransition<MovingToResourceContext> = {
 			targetId: node.id
 		})
 		managers.logger.log(`[MOVEMENT REQUESTED] Idle -> MovingToResource | settler=${settler.id} | movementStarted=${movementStarted}`)
+		if (!movementStarted) {
+			const currentPosition = managers.movementManager.getEntityPosition(settler.id) || settler.position
+			setTimeout(() => {
+				managers.eventManager.emit(Receiver.All, MovementEvents.SS.StepComplete, {
+					entityId: settler.id,
+					position: currentPosition
+				})
+				managers.eventManager.emit(Receiver.All, MovementEvents.SS.PathComplete, {
+					entityId: settler.id,
+					targetType: 'resource',
+					targetId: node.id
+				})
+			}, 0)
+		}
 	},
 
 	completed: (settler, managers) => {

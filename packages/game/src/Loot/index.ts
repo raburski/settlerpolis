@@ -11,6 +11,7 @@ import { Logger } from '../Logs'
 export class LootManager {
 	private droppedItems = new Map<string, DroppedItem[]>()
 	private itemIdToMapId = new Map<string, string>()
+	private itemReservations = new Map<string, string>()
 	private readonly DROPPED_ITEM_LIFESPAN = 5 * 60 * 1000 // 5 minutes in milliseconds
 	private readonly ITEM_CLEANUP_INTERVAL = 30 * 1000 // Check every 30 seconds
 
@@ -101,6 +102,58 @@ export class LootManager {
 		})
 	}
 
+	public reserveItem(itemId: string, ownerId: string): boolean {
+		const item = this.getItem(itemId)
+		if (!item) {
+			return false
+		}
+
+		const existingOwner = this.itemReservations.get(itemId)
+		if (existingOwner && existingOwner !== ownerId) {
+			return false
+		}
+
+		this.itemReservations.set(itemId, ownerId)
+		return true
+	}
+
+	public releaseReservation(itemId: string, ownerId?: string): void {
+		if (!this.itemReservations.has(itemId)) {
+			return
+		}
+
+		if (ownerId && this.itemReservations.get(itemId) !== ownerId) {
+			return
+		}
+
+		this.itemReservations.delete(itemId)
+	}
+
+	public isReservationValid(itemId: string, ownerId: string): boolean {
+		if (!this.getItem(itemId)) {
+			return false
+		}
+
+		return this.itemReservations.get(itemId) === ownerId
+	}
+
+	public isItemAvailable(itemId: string): boolean {
+		if (!this.getItem(itemId)) {
+			return false
+		}
+
+		return !this.itemReservations.has(itemId)
+	}
+
+	public getAvailableItemByType(mapId: string, itemType: string): DroppedItem | undefined {
+		const mapItems = this.droppedItems.get(mapId)
+		if (!mapItems || mapItems.length === 0) {
+			return undefined
+		}
+
+		return mapItems.find(item => item.itemType === itemType && this.isItemAvailable(item.id))
+	}
+
 	dropItem(item: Item, position: Position, client: EventClient, quantity: number = 1) {
 		const mapId = client.currentGroup
 		
@@ -131,6 +184,8 @@ export class LootManager {
 		if (itemIndex === -1) {
 			return undefined
 		}
+
+		this.releaseReservation(itemId)
 
 		const targetItem = mapItems[itemIndex]
 		if (targetItem.quantity > 1) {
@@ -253,7 +308,10 @@ export class LootManager {
 			)
 
 			// Clean up the itemIdToMapId map
-			expiredItemIds.forEach(id => this.itemIdToMapId.delete(id))
+			expiredItemIds.forEach(id => {
+				this.itemIdToMapId.delete(id)
+				this.itemReservations.delete(id)
+			})
 
 			// Send individual despawn events for each expired item
 			expiredItemIds.forEach(itemId => {

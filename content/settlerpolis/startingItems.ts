@@ -76,8 +76,8 @@ export const startingItems: StartingItem[] = [
 			tileBased: true
 		}
 	},
-	// 20 logs below (positive y)
-	...generateItems(ItemType.Logs, 20, -2, 3, 4),
+	// 20 logs below (positive y) as piles of up to 8
+	...generatePiles(ItemType.Logs, [8, 8, 4], -2, 3, 4),
 	// 20 stones above (negative y) as piles of up to 8
 	...generatePiles(ItemType.Stone, [8, 8, 4], -2, -5, 4)
 ]

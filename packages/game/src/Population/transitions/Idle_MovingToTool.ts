@@ -3,6 +3,7 @@ import { SettlerState, ProfessionType } from '../types'
 import { Receiver } from '../../Receiver'
 import { PopulationEvents } from '../events'
 import { EventClient } from '../../events'
+import { MovementEvents } from '../../Movement/events'
 
 export const Idle_MovingToTool: StateTransition<RequestWorkerNeedToolContext> = {
 	condition: (settler, context) => {
@@ -16,20 +17,17 @@ export const Idle_MovingToTool: StateTransition<RequestWorkerNeedToolContext> = 
 	},
 	
 	action: (settler, context, managers) => {
-		// Get jobId from stateContext (should be set by assignWorkerToJob before calling this transition)
+		// jobId may be set by assignWorkerToJob, but tool pickup can also be requested without a job
 		const jobId = settler.stateContext.jobId
-		if (!jobId) {
-			throw new Error(`[Idle_MovingToTool] No jobId found in stateContext`)
-		}
 		
-		managers.logger.log(`[TRANSITION ACTION] Idle -> MovingToTool | settler=${settler.id} | jobId=${jobId} | toolId=${context.toolId} | toolPosition=(${Math.round(context.toolPosition.x)},${Math.round(context.toolPosition.y)})`)
+		managers.logger.log(`[TRANSITION ACTION] Idle -> MovingToTool | settler=${settler.id} | jobId=${jobId || 'none'} | toolId=${context.toolId} | toolPosition=(${Math.round(context.toolPosition.x)},${Math.round(context.toolPosition.y)})`)
 		
 		// Update state
 		settler.state = SettlerState.MovingToTool
 		settler.stateContext = {
 			targetId: context.toolId,
 			targetPosition: context.toolPosition,
-			jobId: jobId
+			jobId
 		}
 		
 		// Start movement to tool
@@ -38,6 +36,20 @@ export const Idle_MovingToTool: StateTransition<RequestWorkerNeedToolContext> = 
 			targetId: context.toolId
 		})
 		managers.logger.log(`[MOVEMENT REQUESTED] Idle -> MovingToTool | settler=${settler.id} | movementStarted=${movementStarted}`)
+		if (!movementStarted) {
+			const currentPosition = managers.movementManager.getEntityPosition(settler.id) || settler.position
+			setTimeout(() => {
+				managers.eventManager.emit(Receiver.All, MovementEvents.SS.StepComplete, {
+					entityId: settler.id,
+					position: currentPosition
+				})
+				managers.eventManager.emit(Receiver.All, MovementEvents.SS.PathComplete, {
+					entityId: settler.id,
+					targetType: 'tool',
+					targetId: context.toolId
+				})
+			}, 0)
+		}
 	},
 	
 	completed: (settler, managers) => {
@@ -45,6 +57,11 @@ export const Idle_MovingToTool: StateTransition<RequestWorkerNeedToolContext> = 
 		const toolId = settler.stateContext.targetId
 		if (!toolId) {
 			managers.logger.warn(`Settler ${settler.id} arrived at tool but no targetId in stateContext`)
+			return SettlerState.Idle
+		}
+
+		if (!managers.lootManager.isReservationValid(toolId, settler.id)) {
+			managers.logger.warn(`Settler ${settler.id} lost reservation for tool ${toolId}`)
 			return SettlerState.Idle
 		}
 
@@ -80,6 +97,8 @@ export const Idle_MovingToTool: StateTransition<RequestWorkerNeedToolContext> = 
 					newProfession: targetProfession
 				}, settler.mapName)
 			}
+		} else {
+			managers.lootManager.releaseReservation(toolId, settler.id)
 		}
 		
 		// Return next state based on jobId

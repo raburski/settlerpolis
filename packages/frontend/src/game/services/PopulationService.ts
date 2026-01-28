@@ -12,6 +12,12 @@ class PopulationServiceClass {
 			[ProfessionType.Woodcutter]: 0,
 			[ProfessionType.Miner]: 0
 		},
+		byProfessionActive: {
+			[ProfessionType.Carrier]: 0,
+			[ProfessionType.Builder]: 0,
+			[ProfessionType.Woodcutter]: 0,
+			[ProfessionType.Miner]: 0
+		},
 		idleCount: 0,
 		workingCount: 0
 	}
@@ -30,8 +36,8 @@ class PopulationServiceClass {
 		// Handle statistics updates
 		EventBus.on(Event.Population.SC.StatsUpdated, (data: PopulationStatsData) => {
 			console.log('[PopulationService] Received population stats update:', data)
-			this.stats = data
-			EventBus.emit('ui:population:stats-updated', data)
+			this.stats = this.normalizeStats(data)
+			EventBus.emit('ui:population:stats-updated', this.stats)
 		})
 
 		// Handle settler spawned
@@ -39,6 +45,7 @@ class PopulationServiceClass {
 			console.log('[PopulationService] Settler spawned:', data.settler)
 			this.settlers.set(data.settler.id, data.settler)
 			EventBus.emit('ui:population:settler-spawned', data.settler)
+			this.updateStatsFromSettlers()
 		})
 
 		// Note: Position updates are now handled directly by SettlerController via MovementEvents.SC.MoveToPosition
@@ -51,6 +58,7 @@ class PopulationServiceClass {
 				settler.profession = data.newProfession
 				EventBus.emit('ui:population:profession-changed', data)
 				EventBus.emit('ui:population:settler-updated', { settlerId: data.settlerId })
+				this.updateStatsFromSettlers()
 			}
 		})
 
@@ -63,6 +71,7 @@ class PopulationServiceClass {
 				settler.state = SettlerState.Working
 				EventBus.emit('ui:population:worker-assigned', data)
 				EventBus.emit('ui:population:settler-updated', { settlerId: data.settlerId })
+				this.updateStatsFromSettlers()
 			}
 		})
 
@@ -71,6 +80,7 @@ class PopulationServiceClass {
 			const settler = data.settler
 			this.settlers.set(settler.id, settler)
 			EventBus.emit('ui:population:settler-updated', { settlerId: settler.id })
+			this.updateStatsFromSettlers()
 		})
 
 		// Handle worker unassigned
@@ -82,6 +92,7 @@ class PopulationServiceClass {
 				settler.state = SettlerState.Idle
 				EventBus.emit('ui:population:worker-unassigned', data)
 				EventBus.emit('ui:population:settler-updated', { settlerId: data.settlerId })
+				this.updateStatsFromSettlers()
 			}
 		})
 
@@ -101,16 +112,71 @@ class PopulationServiceClass {
 			this.settlers.set(settler.id, settler)
 		})
 
-		// Update stats
-		this.stats = {
-			totalCount: data.totalCount,
-			byProfession: data.byProfession,
-			idleCount: data.idleCount,
-			workingCount: data.workingCount
-		}
+		// Update stats from current settlers to keep professions in sync
+		this.updateStatsFromSettlers()
 
 		// Emit UI event
 		EventBus.emit('ui:population:list-loaded', data)
+	}
+
+	private getEmptyByProfession(): Record<ProfessionType, number> {
+		const byProfession = {} as Record<ProfessionType, number>
+		Object.values(ProfessionType).forEach(profession => {
+			byProfession[profession] = 0
+		})
+		return byProfession
+	}
+
+	private normalizeStats(data: PopulationStatsData): PopulationStatsData {
+		const byProfession = this.getEmptyByProfession()
+		const byProfessionActive = this.getEmptyByProfession()
+		Object.entries(data.byProfession).forEach(([profession, count]) => {
+			byProfession[profession as ProfessionType] = count
+		})
+		Object.entries(data.byProfessionActive).forEach(([profession, count]) => {
+			byProfessionActive[profession as ProfessionType] = count
+		})
+		return {
+			totalCount: data.totalCount,
+			byProfession,
+			byProfessionActive,
+			idleCount: data.idleCount,
+			workingCount: data.workingCount
+		}
+	}
+
+	private calculateStatsFromSettlers(): PopulationStatsData {
+		const byProfession = this.getEmptyByProfession()
+		const byProfessionActive = this.getEmptyByProfession()
+		let idleCount = 0
+		let workingCount = 0
+
+		this.settlers.forEach(settler => {
+			byProfession[settler.profession] = (byProfession[settler.profession] || 0) + 1
+			if (settler.state !== SettlerState.Idle) {
+				byProfessionActive[settler.profession] = (byProfessionActive[settler.profession] || 0) + 1
+			}
+			if (settler.state === SettlerState.Idle) {
+				idleCount += 1
+				return
+			}
+			if (settler.state === SettlerState.Working || settler.state === SettlerState.Harvesting) {
+				workingCount += 1
+			}
+		})
+
+		return {
+			totalCount: this.settlers.size,
+			byProfession,
+			byProfessionActive,
+			idleCount,
+			workingCount
+		}
+	}
+
+	private updateStatsFromSettlers(): void {
+		this.stats = this.calculateStatsFromSettlers()
+		EventBus.emit('ui:population:stats-updated', this.stats)
 	}
 
 	// Public getters
@@ -143,6 +209,20 @@ class PopulationServiceClass {
 	// Request population list
 	public requestList(): void {
 		EventBus.emit(Event.Population.CS.RequestList, {})
+	}
+
+	// Request a carrier to pick up a profession tool
+	public requestProfessionToolPickup(profession: ProfessionType): void {
+		EventBus.emit(Event.Population.CS.RequestProfessionToolPickup, {
+			profession
+		})
+	}
+
+	// Request an idle worker to revert to carrier
+	public requestRevertToCarrier(profession: ProfessionType): void {
+		EventBus.emit(Event.Population.CS.RequestRevertToCarrier, {
+			profession
+		})
 	}
 
 	// Get workers assigned to a building

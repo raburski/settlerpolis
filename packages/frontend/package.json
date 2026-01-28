@@ -6,7 +6,7 @@
 	"scripts": {
 		"predev": "node --env-file=.env.development ./scripts/load-content.js",
 		"dev": "vite --config ../../vite/config.dev.mjs",
-		"prebuild": "node --env-file=.env.production ./scripts/load-content.js",
+		"prebuild": "node ./scripts/load-content.js",
 		"build": "vite build --config ../../vite/config.prod.mjs",
 		"lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
 		"preview": "vite preview"
