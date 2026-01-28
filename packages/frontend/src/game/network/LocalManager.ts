@@ -49,6 +49,18 @@ class LocalEventManager implements NetworkEventManager {
 		this.handlers.get(event).push(callback as EventCallback)
 	}
 
+	off<T>(event: string, callback: EventCallback<T>): void {
+		const handlers = this.handlers.get(event)
+		if (!handlers) return
+
+		const nextHandlers = handlers.filter(handler => handler !== callback)
+		if (nextHandlers.length === 0) {
+			this.handlers.delete(event)
+		} else {
+			this.handlers.set(event, nextHandlers)
+		}
+	}
+
 	onJoined(callback: LifecycleCallback): void {
 		this.joinedCallbacks.add(callback)
 		// Call immediately if we've already received a message

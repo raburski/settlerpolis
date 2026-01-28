@@ -1,0 +1,17 @@
+export { maps } from './maps'
+export { cutscenes } from './cutscenes'
+export { triggers } from './triggers'
+export { npcs } from './npcs'
+export { quests } from './quests'
+export { schedules } from './schedules'
+export { items } from './items'
+export { flags } from './flags'
+export { buildings } from './buildings'
+export { professions } from './professions'
+export { professionTools } from './professionTools'
+export { startingItems } from './startingItems'
+export { startingPopulation } from './startingPopulation'
+export { resourceNodeDefinitions, resourceNodes } from './resourceNodes'
+
+// Set the default map ID
+export const defaultMap = 'map1'

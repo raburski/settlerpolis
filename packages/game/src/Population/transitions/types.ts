@@ -6,6 +6,7 @@ import { EventManager } from '../../events'
 import { ItemsManager } from '../../Items'
 import { Logger } from '../../Logs'
 import { MapManager } from '../../Map'
+import { ResourceNodesManager } from '../../ResourceNodes'
 
 export interface RequestWorkerNeedToolContext {
 	toolId: string
@@ -39,6 +40,7 @@ export interface StateMachineManagers {
 	lootManager: any // LootManager - type imported to avoid circular dependency
 	itemsManager: ItemsManager
 	mapManager: MapManager
+	resourceNodesManager?: ResourceNodesManager
 	jobsManager?: any // JobsManager - type imported to avoid circular dependency
 	storageManager?: any // StorageManager - type imported to avoid circular dependency
 	logger: Logger
@@ -56,4 +58,3 @@ export type StateTransitionsConfig = {
 		[toState in SettlerState]?: StateTransition
 	}
 }
-

@@ -2,7 +2,8 @@ import { EventManager, Event, EventClient } from '../events'
 import { PlayerJoinData, PlayerTransitionData, Position } from '../types'
 import { Receiver } from '../Receiver'
 import { Item } from "../Items/types"
-import { DroppedItem, Range, SpawnPosition, LootSpawnPayload, LootSpawnEventPayload, LootDespawnEventPayload } from "./types"
+import { ItemsManager } from '../Items'
+import { DroppedItem, Range, SpawnPosition, LootSpawnPayload, LootSpawnEventPayload, LootDespawnEventPayload, LootUpdateEventPayload } from "./types"
 import { LootEvents } from './events'
 import { v4 as uuidv4 } from 'uuid'
 import { Logger } from '../Logs'
@@ -15,6 +16,7 @@ export class LootManager {
 
 	constructor(
 		private event: EventManager,
+		private itemsManager: ItemsManager,
 		private logger: Logger
 	) {
 		this.setupEventHandlers()
@@ -33,6 +35,19 @@ export class LootManager {
 			x: this.getRandomInRange(spawnPosition.x),
 			y: this.getRandomInRange(spawnPosition.y)
 		}
+	}
+
+	private getMaxStackSize(itemType: string): number {
+		const metadata = this.itemsManager.getItemMetadata(itemType)
+		if (!metadata || !metadata.stackable) {
+			return 1
+		}
+		return Math.max(1, metadata.maxStackSize || 1)
+	}
+
+	private canStack(itemType: string): boolean {
+		const metadata = this.itemsManager.getItemMetadata(itemType)
+		return !!metadata?.stackable
 	}
 
 	private setupEventHandlers() {
@@ -75,29 +90,18 @@ export class LootManager {
 				this.logger.warn('Received SS.Spawn event with undefined mapId. Ignoring event.')
 				return
 			}
-			
-			const item: Item = {
-				id: uuidv4(),
-				itemType: data.itemType
-			}
-			
-			const droppedItem: DroppedItem = {
-				...item,
-				position: this.resolvePosition(data.position),
-				droppedAt: Date.now()
-			}
 
-			const mapDroppedItems = this.droppedItems.get(data.mapId) || []
-			mapDroppedItems.push(droppedItem)
-			this.droppedItems.set(data.mapId, mapDroppedItems)
-			this.itemIdToMapId.set(item.id, data.mapId)
-
-			// Broadcast to all players in the map that an item was spawned
-			this.event.emit(Receiver.Group, Event.Loot.SC.Spawn, { item: droppedItem } as LootSpawnEventPayload, data.mapId)
+			const quantity = data.quantity ?? 1
+			const position = this.resolvePosition(data.position)
+			this.addOrMergeDroppedItem(data.mapId, data.itemType, position, quantity, (payload) => {
+				this.event.emit(Receiver.Group, Event.Loot.SC.Spawn, payload, data.mapId)
+			}, (payload) => {
+				this.event.emit(Receiver.Group, Event.Loot.SC.Update, payload, data.mapId)
+			})
 		})
 	}
 
-	dropItem(item: Item, position: Position, client: EventClient) {
+	dropItem(item: Item, position: Position, client: EventClient, quantity: number = 1) {
 		const mapId = client.currentGroup
 		
 		// Handle undefined mapId
@@ -106,21 +110,14 @@ export class LootManager {
 			return
 		}
 		
-		const mapDroppedItems = this.droppedItems.get(mapId) || []
-		const droppedItem = {
-			...item,
-			position: position,
-			droppedAt: Date.now()
-		}
-		mapDroppedItems.push(droppedItem)
-		this.droppedItems.set(mapId, mapDroppedItems)
-		this.itemIdToMapId.set(item.id, mapId)
-
-		// Broadcast to all players in the map that an item was dropped
-		client.emit(Receiver.Group, Event.Loot.SC.Spawn, { item: droppedItem } as LootSpawnEventPayload)
+		this.addOrMergeDroppedItem(mapId, item.itemType, position, quantity, (payload) => {
+			client.emit(Receiver.Group, Event.Loot.SC.Spawn, payload)
+		}, (payload) => {
+			client.emit(Receiver.Group, Event.Loot.SC.Update, payload)
+		}, item.id)
 	}
 
-	pickItem(itemId: string, client: EventClient): DroppedItem | undefined {
+	pickItem(itemId: string, client: EventClient): Item | undefined {
 		// Get the correct mapId from our mapping, not from client's current group
 		const mapId = this.itemIdToMapId.get(itemId)
 		
@@ -135,18 +132,98 @@ export class LootManager {
 			return undefined
 		}
 
-		const [removedItem] = mapItems.splice(itemIndex, 1)
-		this.droppedItems.set(mapId, mapItems)
-		this.itemIdToMapId.delete(itemId)
+		const targetItem = mapItems[itemIndex]
+		if (targetItem.quantity > 1) {
+			targetItem.quantity -= 1
+			this.droppedItems.set(mapId, mapItems)
 
-		// Broadcast to all players in the map that an item was picked up
-		client.emit(Receiver.Group, Event.Loot.SC.Despawn, { itemId } as LootDespawnEventPayload)
+			// Broadcast quantity update
+			client.emit(Receiver.Group, Event.Loot.SC.Update, { item: targetItem } as LootUpdateEventPayload)
+		} else {
+			mapItems.splice(itemIndex, 1)
+			this.droppedItems.set(mapId, mapItems)
+			this.itemIdToMapId.delete(itemId)
 
-		return removedItem
+			// Broadcast to all players in the map that an item was picked up
+			client.emit(Receiver.Group, Event.Loot.SC.Despawn, { itemId } as LootDespawnEventPayload)
+		}
+
+		return {
+			id: uuidv4(),
+			itemType: targetItem.itemType
+		}
 	}
 
 	getMapItems(mapId: string): DroppedItem[] {
 		return this.droppedItems.get(mapId) || []
+	}
+
+	private addOrMergeDroppedItem(
+		mapId: string,
+		itemType: string,
+		position: Position,
+		quantity: number,
+		emitSpawn: (payload: LootSpawnEventPayload) => void,
+		emitUpdate: (payload: LootUpdateEventPayload) => void,
+		preferredItemId?: string
+	): void {
+		if (quantity <= 0) return
+
+		const mapDroppedItems = this.droppedItems.get(mapId) || []
+		const maxStackSize = this.getMaxStackSize(itemType)
+		const stackable = this.canStack(itemType)
+
+		let remaining = quantity
+
+		if (stackable) {
+			const existingPile = mapDroppedItems.find(item =>
+				item.itemType === itemType &&
+				item.position.x === position.x &&
+				item.position.y === position.y &&
+				item.quantity < maxStackSize
+			)
+
+			if (existingPile) {
+				const addAmount = Math.min(maxStackSize - existingPile.quantity, remaining)
+				existingPile.quantity += addAmount
+				remaining -= addAmount
+				emitUpdate({ item: existingPile })
+			}
+		}
+
+		while (remaining > 0) {
+			if (!stackable) {
+				const item: DroppedItem = {
+					id: preferredItemId || uuidv4(),
+					itemType,
+					position,
+					droppedAt: Date.now(),
+					quantity: 1
+				}
+				mapDroppedItems.push(item)
+				this.itemIdToMapId.set(item.id, mapId)
+				emitSpawn({ item })
+				remaining -= 1
+				preferredItemId = undefined
+				continue
+			}
+
+			const stackQuantity = Math.min(maxStackSize, remaining)
+			const item: DroppedItem = {
+				id: preferredItemId || uuidv4(),
+				itemType,
+				position,
+				droppedAt: Date.now(),
+				quantity: stackQuantity
+			}
+			mapDroppedItems.push(item)
+			this.itemIdToMapId.set(item.id, mapId)
+			emitSpawn({ item })
+			remaining -= stackQuantity
+			preferredItemId = undefined
+		}
+
+		this.droppedItems.set(mapId, mapDroppedItems)
 	}
 
 	private startItemCleanupInterval() {

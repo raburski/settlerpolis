@@ -12,8 +12,8 @@ This document introduces the Settlerpolis codebase for future Cursor agents. It 
 	Node/Express + Socket.IO service. Translates WebSocket traffic into the shared event bus contract, hosts the authoritative `GameManager`, and exposes REST endpoints for map JSON.
 - **Frontend Adapter (`packages/frontend`)**  
 	React + Phaser application. Runs either a local loop (client/server simulated in-memory) or connects to the backend over Socket.IO, rendering game state and UI layers.
-- **Content Packs (`content/*`)**  
-	TypeScript-defined quest/NPC/map/item data. Backend and frontend both import these packs to keep simulation deterministic and data-driven.
+- **Content Pack (`content/settlerpolis`)**  
+	TypeScript-defined quest/NPC/map/item data. Backend and frontend both import the pack to keep simulation deterministic and data-driven.
 
 ---
 
@@ -22,7 +22,7 @@ This document introduces the Settlerpolis codebase for future Cursor agents. It 
 - `packages/game/` – Shared simulation library (`@rugged/game`).  
 - `packages/backend/` – Express + Socket.IO server (`@rugged/backend`).  
 - `packages/frontend/` – Vite-powered React/Phaser client (`@rugged/frontend`).  
-- `content/` – Authoring packs (`debug`, `catch-the-rabbit`, etc.).  
+- `content/` – Single authoring pack (`settlerpolis`).  
 - `vite/` – Environment-specific Vite configuration.  
 - `railway.json`, `vercel.json` – Deployment metadata.  
 - Root `package.json` – Defines npm workspaces and cross-package scripts.
@@ -75,7 +75,7 @@ Both modes rely on identical event payloads defined by the shared game package, 
 ---
 
 ### Content Pipeline
-1. **Authoring**: Define maps, NPCs, items, quests, triggers, etc. inside `content/<pack>/`.  
+1. **Authoring**: Define maps, NPCs, items, quests, triggers, etc. inside `content/settlerpolis/`.  
 2. **Frontend Prep**: `scripts/load-content.js` copies pack assets into `public/assets` and runs `packages/game/scripts/export-maps.js` so Phaser can consume TMX/JSON content.  
 3. **Backend Load**: On boot, backend resolves `GAME_CONTENT` to load the same pack. `ContentLoader` registers everything with managers and sets `defaultMap`.  
 4. **Runtime Usage**: `MapManager` uses `MapUrlService` implementations (backend vs frontend) to load tilemaps from either `/api/maps/` or `/assets/maps/`.
@@ -109,7 +109,7 @@ Ensuring both adapters use the same pack keeps all gameplay deterministic across
 **Map Asset Request**
 1. Frontend `MapManager` calls `FrontendMapUrlService.getMapUrl('map1')` ⇒ `/assets/maps/map1.json`.  
 2. Backend `MapManager` uses `BackendMapUrlService` to respond with `/api/maps/map1.json`.  
-3. Express handler reads `content/<pack>/maps/<map>.json` and responds with JSON payload.
+3. Express handler reads `content/settlerpolis/maps/<map>.json` and responds with JSON payload.
 
 **Construction Event (Planned)**
 1. React UI emits `cs:buildings.place` with coordinates and building ID.  
@@ -120,7 +120,7 @@ Ensuring both adapters use the same pack keeps all gameplay deterministic across
 
 ### Environment & Configuration
 - **Content Selection**  
-	`GAME_CONTENT` env for backend; `VITE_GAME_CONTENT` for frontend. Defaults to `debug`.  
+	`GAME_CONTENT` env for backend; `VITE_GAME_CONTENT` for frontend. Defaults to `settlerpolis`.  
 - **Scripts**  
 	`npm run build:game/backend/frontend` to build individual packages. `npm run start:backend` boots the backend server (Socket.IO at `/api/socket.io`).  
 - **Frontend Dev**  
@@ -181,9 +181,8 @@ Use these snippets as anchors when exploring the codebase; they illustrate how a
 ### Recommended First Steps for New Contributors
 1. **Read this document** to internalize architecture.  
 2. **Spin up local simulation** (frontend-only) to test UI/gameplay changes.  
-3. **Inspect `content/debug`** to understand current gameplay data definitions.  
+3. **Inspect `content/settlerpolis`** to understand current gameplay data definitions.  
 4. **Trace an event** (e.g., player movement) from frontend UI → `cs:` emission → backend manager → `sc:` response.  
 5. **Check `docs/settlers4_systems.md`** for high-level feature roadmap.
 
 Armed with these references, you can confidently add new systems while respecting the event-driven structure.
-

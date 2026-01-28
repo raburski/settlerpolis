@@ -2,7 +2,7 @@ import { Scene, GameObjects, Input } from 'phaser'
 import { EventBus } from '../EventBus'
 import { Event, BuildingDefinition } from '@rugged/game'
 
-const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'debug'
+const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'
 const contentModules = import.meta.glob('../../../../../content/*/index.ts', { eager: true })
 const content = contentModules[`../../../../../content/${CONTENT_FOLDER}/index.ts`]
 
@@ -235,4 +235,3 @@ export class BuildingPlacementManager {
 		}
 	}
 }
-

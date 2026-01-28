@@ -4,19 +4,23 @@ import { itemService } from '../../services/ItemService'
 export class LootView extends GameObjects.Container {
 	private emojiText: GameObjects.Text | null = null
 	private nameText: GameObjects.Text
+	private quantityText: GameObjects.Text
 	private itemType: string
 	private unsubscribe: (() => void) | null = null
+	private quantity: number
 
 	constructor(
 		scene: Scene, 
 		x: number, 
 		y: number, 
-		itemType: string
+		itemType: string,
+		quantity: number = 1
 	) {
 		super(scene, x, y)
 		scene.add.existing(this)
 
 		this.itemType = itemType
+		this.quantity = quantity
 		
 		// Create emoji text (will be set when metadata is available)
 		this.emojiText = scene.add.text(0, 0, '❓', {
@@ -39,8 +43,17 @@ export class LootView extends GameObjects.Container {
 		this.nameText.setOrigin(0.5)
 		this.nameText.setVisible(false)
 
+		this.quantityText = scene.add.text(12, 12, '', {
+			fontSize: '12px',
+			color: '#ffffff',
+			backgroundColor: '#000000',
+			padding: { x: 4, y: 2 },
+			align: 'center'
+		})
+		this.quantityText.setOrigin(0.5)
+
 		// Add emoji and name text to container
-		this.add([this.emojiText, this.nameText])
+		this.add([this.emojiText, this.nameText, this.quantityText])
 
 		// Make emoji text interactive
 		this.emojiText.setInteractive({ useHandCursor: true })
@@ -50,6 +63,7 @@ export class LootView extends GameObjects.Container {
 
 		// Setup item name and emoji display
 		this.setupItemNameDisplay()
+		this.setQuantity(this.quantity)
 
 		// Set depth based on y position for proper layering
 		this.setDepth(y)
@@ -140,6 +154,19 @@ export class LootView extends GameObjects.Container {
 		}
 	}
 
+	public setQuantity(quantity: number) {
+		this.quantity = quantity
+		if (this.quantityText) {
+			if (quantity > 1) {
+				this.quantityText.setText(`${quantity}`)
+				this.quantityText.setVisible(true)
+			} else {
+				this.quantityText.setText('')
+				this.quantityText.setVisible(false)
+			}
+		}
+	}
+
 	public destroy() {
 		if (this.unsubscribe) {
 			this.unsubscribe()
@@ -147,6 +174,9 @@ export class LootView extends GameObjects.Container {
 		if (this.emojiText) {
 			this.emojiText.destroy()
 			this.emojiText = null
+		}
+		if (this.quantityText) {
+			this.quantityText.destroy()
 		}
 		super.destroy()
 	}

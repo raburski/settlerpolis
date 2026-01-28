@@ -90,7 +90,8 @@ export class SettlerController {
 		const isMoving = settlerData.state === SettlerState.MovingToItem || 
 		                 settlerData.state === SettlerState.CarryingItem ||
 		                 settlerData.state === SettlerState.MovingToBuilding ||
-		                 settlerData.state === SettlerState.MovingToTool
+		                 settlerData.state === SettlerState.MovingToTool ||
+		                 settlerData.state === SettlerState.MovingToResource
 		
 		if (!isMoving) {
 			// Not moving - check if position has changed significantly before updating
@@ -130,4 +131,3 @@ export class SettlerController {
 		this.view.destroy()
 	}
 }
-

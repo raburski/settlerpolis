@@ -19,13 +19,16 @@ export enum SettlerState {
 	WaitingForWork = 'waiting_for_work', // At building but no work available (optional)
 	MovingToItem = 'moving_to_item',        // Moving to pick up item from ground
 	CarryingItem = 'carrying_item',         // Carrying item and moving to construction site for delivery
+	MovingToResource = 'moving_to_resource', // Moving to resource node for harvesting
+	Harvesting = 'harvesting',             // Harvesting at a resource node
 	AssignmentFailed = 'assignment_failed',    // Assignment failed, needs cleanup
 }
 
 export enum JobType {
 	Construction = 'construction',  // Building under construction
 	Production = 'production',      // Completed building with worker slots
-	Transport = 'transport'         // Carrier transport job
+	Transport = 'transport',        // Carrier transport job
+	Harvest = 'harvest'             // Worker harvest job
 }
 
 export interface ProfessionDefinition {
@@ -91,6 +94,10 @@ export interface JobAssignment {
 	itemType?: string            // Item type to transport (logs, stone, etc.)
 	quantity?: number            // Quantity to transport (always 1 for ground items, variable for building storage)
 	reservationId?: string       // Storage reservation ID (for building-to-building transport)
+	// Harvest-specific fields
+	resourceNodeId?: string      // Resource node instance ID
+	harvestStartedAtMs?: number
+	harvestDurationMs?: number
 	// Worker assignment fields (for construction/production jobs that need tool pickup first)
 	requiredProfession?: ProfessionType // Required profession for this job (if settler needs tool)
 }
@@ -144,4 +151,3 @@ export interface ProfessionTool {
 // Note: SettlerPickupItemData and SettlerArrivedAtBuildingData are no longer needed
 // Server detects these conditions internally during movement processing
 // No client-to-server events needed for these state changes
-

@@ -3,14 +3,19 @@ import { BuildingManager } from '../Buildings'
 import { ItemsManager } from '../Items'
 import { Logger } from '../Logs'
 import { StorageEvents } from './events'
-import { BuildingStorage, StorageReservation, StorageCapacity } from './types'
+import { BuildingStorage, StorageReservation } from './types'
 import { BuildingInstance } from '../Buildings/types'
 import { v4 as uuidv4 } from 'uuid'
 import { Receiver } from '../Receiver'
+import { SimulationEvents } from '../Simulation/events'
+import { SimulationTickData } from '../Simulation/types'
 
 export class StorageManager {
 	private buildingStorages: Map<string, BuildingStorage> = new Map() // buildingInstanceId -> BuildingStorage
 	private reservations: Map<string, StorageReservation> = new Map()  // reservationId -> StorageReservation
+	private readonly STORAGE_TICK_INTERVAL_MS = 5000
+	private tickAccumulatorMs = 0
+	private simulationTimeMs = 0
 
 	constructor(
 		private event: EventManager,
@@ -19,14 +24,27 @@ export class StorageManager {
 		private logger: Logger
 	) {
 		this.setupEventHandlers()
-		this.startStorageTickLoop()
 	}
 
 	private setupEventHandlers() {
 		// Listen for building completion to initialize storage
 		this.event.on(StorageEvents.SS.StorageTick, () => {
-			// Storage tick handled in storageTick()
+			this.storageTick()
 		})
+
+		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+			this.handleSimulationTick(data)
+		})
+	}
+
+	private handleSimulationTick(data: SimulationTickData): void {
+		this.simulationTimeMs = data.nowMs
+		this.tickAccumulatorMs += data.deltaMs
+		if (this.tickAccumulatorMs < this.STORAGE_TICK_INTERVAL_MS) {
+			return
+		}
+		this.tickAccumulatorMs -= this.STORAGE_TICK_INTERVAL_MS
+		this.event.emit(Receiver.All, StorageEvents.SS.StorageTick, {})
 	}
 
 	// Initialize storage for a building
@@ -113,7 +131,7 @@ export class StorageManager {
 			quantity,
 			reservedBy,
 			status: 'pending',
-			createdAt: Date.now(),
+			createdAt: this.simulationTimeMs,
 			isOutgoing
 		}
 
@@ -381,19 +399,10 @@ export class StorageManager {
 		return buildings
 	}
 
-	// Storage tick loop (periodic storage management)
-	private startStorageTickLoop(): void {
-		// Emit storage tick event periodically (every 5 seconds)
-		setInterval(() => {
-			this.event.emit(Receiver.All, StorageEvents.SS.StorageTick, {})
-			this.storageTick()
-		}, 5000)
-	}
-
 	private storageTick(): void {
 		// Periodic storage management tasks
 		// For now, just cleanup old cancelled reservations
-		const now = Date.now()
+		const now = this.simulationTimeMs
 		const RESERVATION_CLEANUP_AGE = 60000 // 1 minute
 
 		for (const [reservationId, reservation] of this.reservations.entries()) {
@@ -403,4 +412,3 @@ export class StorageManager {
 		}
 	}
 }
-

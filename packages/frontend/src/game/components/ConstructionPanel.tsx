@@ -5,7 +5,7 @@ import { itemService } from '../services/ItemService'
 import styles from './ConstructionPanel.module.css'
 
 // Try to load content - this is a fallback, server catalog is primary source
-const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'debug'
+const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'
 let content: any = null
 try {
 	const contentModules = import.meta.glob('../../../../../content/*/index.ts', { eager: true })
@@ -158,4 +158,3 @@ export const ConstructionPanel: React.FC = () => {
 		</div>
 	)
 }
-

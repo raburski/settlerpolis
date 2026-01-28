@@ -102,7 +102,8 @@ export class PlayersManager {
 			}
 
 			// Drop item on the map using LootManager
-			this.lootManager.dropItem(item, itemPosition, client)
+			const quantity = startingItem.quantity ?? 1
+			this.lootManager.dropItem(item, itemPosition, client, quantity)
 			
 			this.logger.debug(`Spawned starting item ${startingItem.itemType} at position (${itemPosition.x}, ${itemPosition.y}) for player ${client.id}`)
 		})

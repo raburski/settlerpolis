@@ -178,7 +178,7 @@ export const Idle_MovingToItem: StateTransition<MovingToItemContext> = {
 			}
 
 			// Update job with carried item ID (item removed from LootManager)
-			job.carriedItemId = itemId
+			job.carriedItemId = pickedItem.id
 			job.sourceItemId = undefined // Clear sourceItemId after pickup
 
 			// Verify building still exists after picking up item (double-check in case it was cancelled during pickup)
@@ -262,4 +262,3 @@ export const Idle_MovingToItem: StateTransition<MovingToItemContext> = {
 		}
 	}
 }
-

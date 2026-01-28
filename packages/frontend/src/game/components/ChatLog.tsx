@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { EventBus } from '../EventBus'
-import { Event } from '@rugged/game'
-import { ChatMessageData, ChatSystemMessageData, ChatMessageType } from '../../../backend/src/DataTypes'
+import { Event, ChatMessageData, ChatSystemMessageData, ChatMessageType } from '@rugged/game'
 import styles from './ChatLog.module.css'
 
 interface Message {

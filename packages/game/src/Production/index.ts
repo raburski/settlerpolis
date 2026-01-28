@@ -11,9 +11,14 @@ import { Position } from '../types'
 import { Receiver } from '../Receiver'
 import { calculateDistance } from '../utils'
 import { JobType } from '../Population/types'
+import { SimulationEvents } from '../Simulation/events'
+import { SimulationTickData } from '../Simulation/types'
 
 export class ProductionManager {
 	private buildingProductions: Map<string, BuildingProduction> = new Map() // buildingInstanceId -> BuildingProduction
+	private readonly PRODUCTION_TICK_INTERVAL_MS = 1000
+	private tickAccumulatorMs = 0
+	private simulationTimeMs = 0
 
 	constructor(
 		private event: EventManager,
@@ -24,13 +29,16 @@ export class ProductionManager {
 		private logger: Logger
 	) {
 		this.setupEventHandlers()
-		this.startProductionTickLoop()
 	}
 
 	private setupEventHandlers() {
 		// Listen for production tick events
 		this.event.on(ProductionEvents.SS.ProductionTick, () => {
 			this.productionTick()
+		})
+
+		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+			this.handleSimulationTick(data)
 		})
 
 		// Listen for worker assignment events - when a worker is assigned to a production building, try to start production
@@ -83,6 +91,16 @@ export class ProductionManager {
 				this.requestOutputTransport(buildingInstanceId, recipe)
 			}
 		})
+	}
+
+	private handleSimulationTick(data: SimulationTickData): void {
+		this.simulationTimeMs = data.nowMs
+		this.tickAccumulatorMs += data.deltaMs
+		if (this.tickAccumulatorMs < this.PRODUCTION_TICK_INTERVAL_MS) {
+			return
+		}
+		this.tickAccumulatorMs -= this.PRODUCTION_TICK_INTERVAL_MS
+		this.event.emit(Receiver.All, ProductionEvents.SS.ProductionTick, {})
 	}
 
 	// Initialize production for a building (gets recipe from BuildingDefinition)
@@ -159,15 +177,18 @@ export class ProductionManager {
 			return false
 		}
 
-		// For now, we assume all production requires a worker
-		// TODO: Check if building has assigned worker
-		// For Phase C, we'll assume worker assignment is handled elsewhere
-		// and production can start if inputs are available
+		// Require at least one assigned worker to run production
+		const assignedWorkers = this.buildingManager.getBuildingWorkers(buildingInstanceId)
+		if (assignedWorkers.length === 0) {
+			production.status = ProductionStatus.NoWorker
+			this.emitStatusChanged(buildingInstanceId, ProductionStatus.NoWorker)
+			return false
+		}
 
 		// Start production
 		production.status = ProductionStatus.InProduction
 		production.isProducing = true
-		production.currentBatchStartTime = Date.now()
+		production.currentBatchStartTime = this.simulationTimeMs
 		production.progress = 0
 
 		this.logger.log(`[ProductionManager] Started production for building ${buildingInstanceId}`)
@@ -219,7 +240,7 @@ export class ProductionManager {
 			return
 		}
 
-		const now = Date.now()
+		const now = this.simulationTimeMs
 		if (!production.currentBatchStartTime) {
 			production.currentBatchStartTime = now
 			return
@@ -358,14 +379,6 @@ export class ProductionManager {
 		return production.status
 	}
 
-	// Production tick loop
-	private startProductionTickLoop(): void {
-		// Emit production tick event periodically (every second)
-		setInterval(() => {
-			this.event.emit(Receiver.All, ProductionEvents.SS.ProductionTick, {})
-		}, 1000)
-	}
-
 	private productionTick(): void {
 		// Process all buildings in production
 		for (const [buildingInstanceId, production] of this.buildingProductions.entries()) {
@@ -382,6 +395,9 @@ export class ProductionManager {
 		if (!building) {
 			return
 		}
+		const buildingDef = this.buildingManager.getBuildingDefinition(building.buildingId)
+		const buildingPriority = buildingDef?.priority ?? 1
+		const priority = 60 + buildingPriority
 
 		this.logger.log(`[ProductionManager] Requesting input resources for building ${buildingInstanceId}`)
 
@@ -403,7 +419,7 @@ export class ProductionManager {
 				this.logger.log(`[ProductionManager] Found source building ${sourceBuildingId} for ${input.itemType}`)
 				
 				// Request transport from source building
-				this.jobsManager.requestTransport(sourceBuildingId, buildingInstanceId, input.itemType, needed)
+				this.jobsManager.requestTransport(sourceBuildingId, buildingInstanceId, input.itemType, needed, priority)
 				continue
 			}
 
@@ -421,7 +437,7 @@ export class ProductionManager {
 					// Use existing requestResourceCollection for ground items
 					// Note: This will need to be updated to handle production buildings, not just construction
 					// For now, we'll use the same method
-					this.jobsManager.requestResourceCollection(buildingInstanceId, input.itemType)
+					this.jobsManager.requestResourceCollection(buildingInstanceId, input.itemType, priority)
 				}
 				continue
 			}
@@ -431,39 +447,51 @@ export class ProductionManager {
 	}
 
 	// Request output transport (delegate to JobsManager for building-to-building transport)
-	// Finds target buildings that need the output items
-	// Transports outputs as soon as they are available (if there are destinations), not just when storage is full
+	// Moves outputs to warehouse only when storage is close to full
 	private requestOutputTransport(buildingInstanceId: string, recipe: ProductionRecipe): void {
 		const building = this.buildingManager.getBuildingInstance(buildingInstanceId)
 		if (!building) {
 			return
 		}
+		const buildingDef = this.buildingManager.getBuildingDefinition(building.buildingId)
+		const buildingPriority = buildingDef?.priority ?? 1
+		const priority = 20 + buildingPriority
 
-		this.logger.log(`[ProductionManager] Requesting output transport for building ${buildingInstanceId}`)
+		this.logger.log(`[ProductionManager] Checking output overflow for building ${buildingInstanceId}`)
+
+		const OVERFLOW_THRESHOLD = 0.8
 
 		// Check each output item
 		for (const output of recipe.outputs) {
-			// Use getAvailableQuantity to get items that are available for transport (excluding already reserved items)
+			const capacity = this.storageManager.getStorageCapacity(buildingInstanceId, output.itemType)
+			if (capacity === 0) {
+				continue
+			}
+
+			const current = this.storageManager.getCurrentQuantity(buildingInstanceId, output.itemType)
 			const available = this.storageManager.getAvailableQuantity(buildingInstanceId, output.itemType)
 			
-			if (available === 0) {
+			if (available === 0 || current === 0) {
 				continue // No outputs available (or all reserved)
 			}
 
-			// Find target buildings that need this output
-			const targetBuildings = this.findTargetBuildings(output.itemType, output.quantity, building.mapName, building.playerId)
-			
-			if (targetBuildings.length > 0) {
-				// Use first available target building
-				const targetBuildingId = targetBuildings[0]
-				this.logger.log(`[ProductionManager] Found target building ${targetBuildingId} for ${output.itemType} (available: ${available})`)
-				
-				// Request transport to target building (transport the quantity needed by the recipe, or available amount, whichever is smaller)
-				const transportQuantity = Math.min(output.quantity, available)
-				this.jobsManager.requestTransport(buildingInstanceId, targetBuildingId, output.itemType, transportQuantity)
-			} else {
-				this.logger.log(`[ProductionManager] No target buildings found for ${output.itemType} (available: ${available})`)
+			const fillRatio = current / capacity
+			if (fillRatio < OVERFLOW_THRESHOLD) {
+				continue
 			}
+
+			if (this.jobsManager.hasActiveJobForBuilding(buildingInstanceId, output.itemType)) {
+				continue
+			}
+
+			const warehouseId = this.findClosestWarehouse(output.itemType, output.quantity, building.mapName, building.playerId, building.position)
+			if (!warehouseId) {
+				continue
+			}
+
+			const transportQuantity = Math.min(output.quantity, available)
+			this.logger.log(`[ProductionManager] Output overflow for ${output.itemType} at ${buildingInstanceId} (${Math.round(fillRatio * 100)}%), moving ${transportQuantity} to warehouse ${warehouseId}`)
+			this.jobsManager.requestTransport(buildingInstanceId, warehouseId, output.itemType, transportQuantity, priority)
 		}
 	}
 
@@ -521,6 +549,39 @@ export class ProductionManager {
 		return buildings
 	}
 
+	private findClosestWarehouse(
+		itemType: string,
+		quantity: number,
+		mapName: string,
+		playerId: string,
+		position: Position
+	): string | null {
+		const warehouses = this.buildingManager.getBuildingsForMap(mapName)
+			.filter(building => building.playerId === playerId)
+			.filter(building => {
+				const definition = this.buildingManager.getBuildingDefinition(building.buildingId)
+				return !!definition?.isWarehouse
+			})
+			.filter(building => this.storageManager.hasAvailableStorage(building.id, itemType, quantity))
+
+		if (warehouses.length === 0) {
+			return null
+		}
+
+		let closest = warehouses[0]
+		let closestDistance = calculateDistance(position, closest.position)
+
+		for (let i = 1; i < warehouses.length; i++) {
+			const distance = calculateDistance(position, warehouses[i].position)
+			if (distance < closestDistance) {
+				closest = warehouses[i]
+				closestDistance = distance
+			}
+		}
+
+		return closest.id
+	}
+
 	// Emit status changed event
 	private emitStatusChanged(buildingInstanceId: string, status: ProductionStatus): void {
 		const building = this.buildingManager.getBuildingInstance(buildingInstanceId)
@@ -534,4 +595,3 @@ export class ProductionManager {
 		}, building.mapName)
 	}
 }
-

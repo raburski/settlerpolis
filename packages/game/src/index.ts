@@ -29,6 +29,9 @@ import { ProfessionType } from './Population/types'
 import { JobsManager } from './Jobs'
 import { StorageManager } from './Storage'
 import { ProductionManager } from './Production'
+import { SimulationManager } from './Simulation'
+import { ResourceNodesManager } from './ResourceNodes'
+import { HarvestManager } from './Harvest'
 
 // Export types and events
 export * from './types'
@@ -39,6 +42,10 @@ export { EquipmentSlot, EquipmentSlotType }
 // export { Event } from './events' 
 
 import { LogsManager, LogLevel } from './Logs'
+
+export interface GameManagerOptions {
+	simulationTickMs?: number
+}
 
 export class GameManager {
 	private chatManager: ChatManager
@@ -66,14 +73,23 @@ export class GameManager {
 	private logsManager: LogsManager
 	private storageManager: StorageManager
 	private productionManager: ProductionManager
+	private simulationManager: SimulationManager
+	private resourceNodesManager: ResourceNodesManager
+	private harvestManager: HarvestManager
 
 	constructor(
 		private event: EventManager,
 		private content: GameContent,
-		private readonly mapUrlService: MapUrlService
+		private readonly mapUrlService: MapUrlService,
+		options: GameManagerOptions = {}
 	) {
 		// Initialize LogsManager first
 		this.logsManager = new LogsManager()
+		this.simulationManager = new SimulationManager(
+			event,
+			this.logsManager.getLogger('SimulationManager'),
+			options.simulationTickMs
+		)
 		
 		// Initialize managers in dependency order
 		this.timeManager = new TimeManager(event, this.logsManager.getLogger('TimeManager'))
@@ -86,7 +102,7 @@ export class GameManager {
 		this.flagsManager = new FlagsManager(event, this.logsManager.getLogger('FlagsManager'))
 		this.affinityManager = new AffinityManager(event, this.logsManager.getLogger('AffinityManager'))
 		this.questManager = new QuestManager(event, this.inventoryManager, this.logsManager.getLogger('QuestManager'))
-		this.lootManager = new LootManager(event, this.logsManager.getLogger('LootManager'))
+		this.lootManager = new LootManager(event, this.itemsManager, this.logsManager.getLogger('LootManager'))
 		this.cutsceneManager = new CutsceneManager(event, this.logsManager.getLogger('CutsceneManager'))
 		this.dialogueManager = new DialogueManager(
 			event, 
@@ -97,23 +113,25 @@ export class GameManager {
 		this.npcManager = new NPCManager(event, this.dialogueManager, this.mapManager, this.timeManager, this.questManager, this.movementManager, this.logsManager.getLogger('NPCManager'))
 		this.scheduler = new Scheduler(event, this.timeManager, this.logsManager.getLogger('Scheduler'))
 		this.mapObjectsManager = new MapObjectsManager(event, this.itemsManager, this.inventoryManager, this.logsManager.getLogger('MapObjectsManager'))
+		this.resourceNodesManager = new ResourceNodesManager(event, this.mapObjectsManager, this.itemsManager, this.logsManager.getLogger('ResourceNodesManager'))
 		this.buildingManager = new BuildingManager(event, this.inventoryManager, this.mapObjectsManager, this.itemsManager, this.mapManager, this.logsManager.getLogger('BuildingManager'), this.lootManager)
 		// Convert startingPopulation from content (string profession) to ProfessionType
 		const startingPopulation = this.content.startingPopulation?.map(entry => ({
 			profession: entry.profession as ProfessionType,
 			count: entry.count
 		})) || []
-		this.populationManager = new PopulationManager(event, this.buildingManager, this.scheduler, this.mapManager, this.lootManager, this.itemsManager, this.movementManager, startingPopulation, this.logsManager.getLogger('PopulationManager'))
+		this.populationManager = new PopulationManager(event, this.buildingManager, this.scheduler, this.mapManager, this.lootManager, this.itemsManager, this.movementManager, this.resourceNodesManager, startingPopulation, this.logsManager.getLogger('PopulationManager'))
 		
 		// Create StorageManager after BuildingManager (to avoid circular dependency)
 		this.storageManager = new StorageManager(event, this.buildingManager, this.itemsManager, this.logsManager.getLogger('StorageManager'))
 		
 		// Create JobsManager after BuildingManager, PopulationManager, and StorageManager (to avoid circular dependency)
-		const jobsManager = new JobsManager(event, this.buildingManager, this.populationManager, this.lootManager, this.mapManager, this.logsManager.getLogger('JobsManager'))
+		const jobsManager = new JobsManager(event, this.buildingManager, this.populationManager, this.lootManager, this.mapManager, this.resourceNodesManager, this.logsManager.getLogger('JobsManager'))
 		jobsManager.setStorageManager(this.storageManager)
 		
 		// Create ProductionManager after BuildingManager, StorageManager, JobsManager, and LootManager
 		this.productionManager = new ProductionManager(event, this.buildingManager, this.storageManager, jobsManager, this.lootManager, this.logsManager.getLogger('ProductionManager'))
+		this.harvestManager = new HarvestManager(event, this.buildingManager, this.populationManager, jobsManager, this.resourceNodesManager, this.storageManager, this.logsManager.getLogger('HarvestManager'))
 		
 		// Set JobsManager references (to avoid circular dependency in constructors)
 		this.buildingManager.setJobsManager(jobsManager)
@@ -178,6 +196,7 @@ export class GameManager {
 			this.affinityManager,
 			this.buildingManager,
 			this.populationManager,
+			this.resourceNodesManager,
 			this.logsManager.getLogger('ContentLoader')
 		)
 		
@@ -212,13 +231,17 @@ export class GameManager {
 			'ConditionEffectManager',
 			'ContentLoader',
 			'StorageManager',
-			'ProductionManager'
+			'ProductionManager',
+			'SimulationManager',
+			'ResourceNodesManager',
+			'HarvestManager'
 		]
 		for (const managerName of quietManagers) {
 			this.logsManager.setManagerLevel(managerName, LogLevel.Warn)
 		}
 		
 		this.setupEventHandlers()
+		this.simulationManager.start()
 	}
 
 	private setupEventHandlers() {

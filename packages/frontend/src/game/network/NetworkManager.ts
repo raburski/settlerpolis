@@ -6,7 +6,7 @@ export interface NetworkEventManager extends EventManager {
 	disconnect()
 }
 
-export class NetworkClient implements NetworkEventManager {
+export class NetworkClient implements EventClient {
 	private _currentGroup: string = 'GLOBAL'
 
 	constructor(
@@ -34,6 +34,7 @@ export class NetworkManager implements EventManager {
 	private pingInterval: number | null = null
 	private readonly PING_INTERVAL = 25000 // 5 seconds
 	private handlers: Map<string, EventCallback[]> = new Map()
+	private socketHandlers: Map<string, (data: any) => void> = new Map()
 	private joinedCallbacks = new Set<LifecycleCallback>()
 	private leftCallbacks = new Set<LifecycleCallback>()
 
@@ -103,6 +104,7 @@ export class NetworkManager implements EventManager {
 			this.socket = null
 		}
 		this.client = null
+		this.socketHandlers.clear()
 	}
 
 	on<T>(event: string, callback: EventCallback<T>): void {
@@ -129,6 +131,25 @@ export class NetworkManager implements EventManager {
 		this.leftCallbacks.add(callback)
 	}
 
+	off<T>(event: string, callback: EventCallback<T>): void {
+		const handlers = this.handlers.get(event)
+		if (!handlers) return
+
+		const nextHandlers = handlers.filter(handler => handler !== callback)
+		if (nextHandlers.length === 0) {
+			this.handlers.delete(event)
+			if (this.socket) {
+				const socketHandler = this.socketHandlers.get(event)
+				if (socketHandler) {
+					this.socket.off(event, socketHandler)
+					this.socketHandlers.delete(event)
+				}
+			}
+		} else {
+			this.handlers.set(event, nextHandlers)
+		}
+	}
+
 	emit(to: Receiver, event: string, data: any, groupName?: string): void {
 		if (!this.socket) return
 		console.log('[EMIT]', event)
@@ -148,7 +169,9 @@ export class NetworkManager implements EventManager {
 	private setupHandlerForEvent(event: string) {
 		if (!this.socket || !this.handlers.has(event)) return
 
-		this.socket.on(event, (data: any) => {
+		if (this.socketHandlers.has(event)) return
+
+		const socketHandler = (data: any) => {
 			if (this.client) {
 				// Update client's current group based on map events
 				if (event === Event.Players.CS.Join || event === Event.Players.CS.TransitionTo) {
@@ -158,11 +181,14 @@ export class NetworkManager implements EventManager {
 					}
 				}
 
-				const handlers = this.handlers.get(event)
+				const handlers = this.handlers.get(event) || []
 				handlers.forEach(handler => handler(data, this.client))
 				this.lastMessageTime = Date.now()
 			}
-		})
+		}
+
+		this.socketHandlers.set(event, socketHandler)
+		this.socket.on(event, socketHandler)
 	}
 
 	private startPingInterval() {

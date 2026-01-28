@@ -10,6 +10,7 @@ import { DialogueTreePartial } from './Dialogue/types'
 import { TiledMap } from "./types"
 import { BuildingDefinition } from './Buildings/types'
 import { ProfessionDefinition, ProfessionToolDefinition } from './Population/types'
+import { ResourceNodeDefinition, ResourceNodeSpawn } from './ResourceNodes/types'
 
 export interface NPCContent extends NPC {
 	sentiments?: AffinitySentiments
@@ -21,6 +22,7 @@ export interface NPCContent extends NPC {
 
 export interface StartingItem {
 	itemType: string
+	quantity?: number
 	offset?: {
 		x?: number // Offset in tiles or pixels (depending on tileBased)
 		y?: number // Offset in tiles or pixels (depending on tileBased)
@@ -48,6 +50,8 @@ export interface GameContent {
 	professionTools?: ProfessionToolDefinition[]
 	startingItems?: StartingItem[] // Items to spawn at player start location
 	startingPopulation?: StartingPopulation[] // Settlers to spawn at player start location
+	resourceNodeDefinitions?: ResourceNodeDefinition[]
+	resourceNodes?: ResourceNodeSpawn[]
 }
 
 export interface Position {
@@ -79,3 +83,5 @@ export * from './Buildings/types'
 export * from './Population/types'
 export * from './Production/types'
 export * from './Storage/types'
+export * from './Simulation/types'
+export * from './ResourceNodes/types'

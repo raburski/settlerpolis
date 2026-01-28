@@ -11,6 +11,7 @@ export class NetworkManager implements EventManager {
 	private joinedCallbacks: Set<LifecycleCallback>
 	private leftCallbacks: Set<LifecycleCallback>
 	private lastMessageTimestamps: Map<string, number>
+	private socketHandlers: Map<string, Map<string, (data: any) => void>>
 	private readonly TIMEOUT_CHECK_INTERVAL = 5000 // 5 seconds
 	private readonly MAX_INACTIVE_TIME = 60000 // 60 seconds
 	private debug = true
@@ -23,6 +24,7 @@ export class NetworkManager implements EventManager {
 		this.joinedCallbacks = new Set()
 		this.leftCallbacks = new Set()
 		this.lastMessageTimestamps = new Map()
+		this.socketHandlers = new Map()
 
 		if (this.debug) console.log('[NetworkManager] Initialized')
 
@@ -163,13 +165,8 @@ export class NetworkManager implements EventManager {
 
 		// When a socket connects, set up all the event handlers for it
 		if (this.debug) console.log(`[NetworkManager] Setting up ${this.eventHandlers.size} event handlers for client ${socket.id}`)
-		this.eventHandlers.forEach((callbacks, event) => {
-			socket.on(event, (data: any) => {
-				if (this.debug) console.log(`[NetworkManager] Received event ${event} from client ${socket.id}`)
-				// Update timestamp when client sends any event
-				this.updateClientTimestamp(socket.id)
-				callbacks.forEach(callback => callback(data, client))
-			})
+		this.eventHandlers.forEach((_callbacks, event) => {
+			this.attachSocketHandler(socket, event)
 		})
 
 		// Set up disconnect handler
@@ -187,6 +184,7 @@ export class NetworkManager implements EventManager {
 
 			// Clean up timestamp
 			this.lastMessageTimestamps.delete(socket.id)
+			this.socketHandlers.delete(socket.id)
 			// Clean up group membership on disconnect
 			const group = this.clientGroups.get(socket.id)
 			if (group) {
@@ -214,13 +212,20 @@ export class NetworkManager implements EventManager {
 
 		// Also set up the handler for all existing sockets
 		if (this.debug) console.log(`[NetworkManager] Setting up handler for ${event} on ${this.io.sockets.sockets.size} existing sockets`)
-		this.io.sockets.sockets.forEach(socket => {
-			const client = this.createNetworkClient(socket)
-			socket.on(event, (data: T) => {
-				if (this.debug) console.log(`[NetworkManager] Handling event ${event} from existing client ${socket.id}`)
-				callback(data, client)
-			})
-		})
+		this.io.sockets.sockets.forEach(socket => this.attachSocketHandler(socket, event))
+	}
+
+	off<T>(event: string, callback: EventCallback<T>): void {
+		const handlers = this.eventHandlers.get(event)
+		if (!handlers) return
+
+		const nextHandlers = handlers.filter(handler => handler !== callback)
+		if (nextHandlers.length === 0) {
+			this.eventHandlers.delete(event)
+			this.io.sockets.sockets.forEach(socket => this.detachSocketHandler(socket, event))
+		} else {
+			this.eventHandlers.set(event, nextHandlers)
+		}
 	}
 
 	emit(to: Receiver, event: string, data: any, groupName?: string, originalClient?: EventClient): void {
@@ -271,4 +276,40 @@ export class NetworkManager implements EventManager {
 				}
 		}
 	}
-} 
+
+	private attachSocketHandler(socket: Socket, event: string): void {
+		let handlers = this.socketHandlers.get(socket.id)
+		if (!handlers) {
+			handlers = new Map()
+			this.socketHandlers.set(socket.id, handlers)
+		}
+
+		if (handlers.has(event)) {
+			return
+		}
+
+		const handler = (data: any) => {
+			if (this.debug) console.log(`[NetworkManager] Received event ${event} from client ${socket.id}`)
+			// Update timestamp when client sends any event
+			this.updateClientTimestamp(socket.id)
+			const client = this.createNetworkClient(socket)
+			const callbacks = this.eventHandlers.get(event) || []
+			callbacks.forEach(callback => callback(data, client))
+		}
+
+		handlers.set(event, handler)
+		socket.on(event, handler)
+	}
+
+	private detachSocketHandler(socket: Socket, event: string): void {
+		const handlers = this.socketHandlers.get(socket.id)
+		const handler = handlers?.get(event)
+		if (!handler) return
+
+		socket.off(event, handler)
+		handlers?.delete(event)
+		if (handlers && handlers.size === 0) {
+			this.socketHandlers.delete(socket.id)
+		}
+	}
+}

@@ -24,6 +24,7 @@ import { ItemsManager } from '../Items'
 import { Position } from '../types'
 import { BuildingInstance, ConstructionStage } from '../Buildings/types'
 import { MovementManager, MovementEntity } from '../Movement'
+import { ResourceNodesManager } from '../ResourceNodes'
 import { SettlerStateMachine } from './StateMachine'
 import { PopulationStats } from './Stats'
 import { calculateDistance } from '../utils'
@@ -53,12 +54,13 @@ export class PopulationManager {
 		private event: EventManager,
 		private buildingManager: BuildingManager,
 		private scheduler: Scheduler,
-		private mapManager: MapManager,
-		private lootManager: LootManager,
-		private itemsManager: ItemsManager,
-		private movementManager: MovementManager,
-		startingPopulation: Array<{ profession: ProfessionType, count: number }>,
-		private logger: Logger
+	private mapManager: MapManager,
+	private lootManager: LootManager,
+	private itemsManager: ItemsManager,
+	private movementManager: MovementManager,
+	private resourceNodesManager: ResourceNodesManager,
+	startingPopulation: Array<{ profession: ProfessionType, count: number }>,
+	private logger: Logger
 	) {
 		this.startingPopulation = startingPopulation || []
 		
@@ -70,6 +72,7 @@ export class PopulationManager {
 			lootManager,
 			itemsManager,
 			mapManager,
+			resourceNodesManager,
 			this.logger
 		)
 		
@@ -675,6 +678,63 @@ export class PopulationManager {
 		})
 	}
 
+	// Assign worker to harvest job (called by JobsManager)
+	public assignWorkerToHarvestJob(
+		settlerId: string,
+		jobId: string,
+		jobAssignment: JobAssignment
+	): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return
+		}
+
+		if (!settler.currentJob) {
+			settler.currentJob = jobAssignment
+		}
+		settler.stateContext.jobId = jobId
+
+		this.stateMachine.executeTransition(settler, SettlerState.MovingToResource, {
+			jobId: jobAssignment.jobId
+		})
+	}
+
+	public completeHarvestJob(settlerId: string, jobId: string): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return
+		}
+
+		if (settler.state !== SettlerState.Harvesting) {
+			return
+		}
+
+		settler.stateContext.jobId = jobId
+		const success = this.stateMachine.executeTransition(settler, SettlerState.CarryingItem, {
+			jobId
+		})
+		if (!success && this.jobsManager) {
+			this.jobsManager.cancelJob(jobId, 'harvest_failed')
+			this.clearSettlerJob(settlerId, jobId)
+		}
+	}
+
+	public clearSettlerJob(settlerId: string, jobId?: string): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return
+		}
+
+		if (jobId && settler.currentJob?.jobId !== jobId) {
+			return
+		}
+
+		settler.currentJob = undefined
+		settler.state = SettlerState.Idle
+		settler.stateContext = {}
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+	}
+
 	// Assign worker to job (called by JobsManager for construction/production jobs)
 	public assignWorkerToJob(
 		settlerId: string,
@@ -1127,4 +1187,3 @@ export class PopulationManager {
 	// Note: getJob removed - JobsManager handles job tracking
 	// Use jobsManager.getJob() instead
 }
-

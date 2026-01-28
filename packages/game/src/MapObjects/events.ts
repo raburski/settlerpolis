@@ -6,5 +6,5 @@ export const MapObjectsEvents = {
 	SC: {
 		Spawn: 'sc:mapobj:spawn',
 		Despawn: 'sc:mapobj:despawn'
-	}
+} as const
 } as const 

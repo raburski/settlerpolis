@@ -14,4 +14,4 @@ export const NPCEvents = {
         SetAttribute: 'ss:npc:set_attribute',
         RemoveAttribute: 'ss:npc:remove_attribute'
     }
-}
+} as const

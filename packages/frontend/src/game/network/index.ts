@@ -8,7 +8,7 @@ import '../services/BuildingService'
 import '../services/PopulationService'
 
 const IS_REMOTE_GAME = false
-const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'debug'
+const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'
 
 // Load content using glob import
 const contentModules = import.meta.glob('../../../../../content/*/index.ts', { eager: true })

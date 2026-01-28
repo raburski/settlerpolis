@@ -158,6 +158,7 @@ export abstract class GameScene extends MapScene {
 		// Set up scene event listeners
 		EventBus.on(Event.Loot.SC.Spawn, this.handleAddItems, this)
 		EventBus.on(Event.Loot.SC.Despawn, this.handleRemoveItems, this)
+		EventBus.on(Event.Loot.SC.Update, this.handleUpdateItems, this)
 		EventBus.on(Event.NPC.SC.List, this.handleNPCList, this)
 		EventBus.on(Event.NPC.SC.Spawn, this.handleNPCSpawn, this)
 		EventBus.on(Event.NPC.SC.Despawn, this.handleNPCDespawn, this)
@@ -207,13 +208,19 @@ export abstract class GameScene extends MapScene {
 
 	private handleAddItems = (data: { item: DroppedItem }) => {
 		console.log('[CLIENT DEBUG] handleAddItems called with item:', data.item)
-		if (this.player) {
-			const loot = createLoot(this, data.item, this.player.view)
-			this.droppedItems.set(data.item.id, loot)
-			console.log('[CLIENT DEBUG] Added item to droppedItems. Current items:',
-				Array.from(this.droppedItems.keys())
-			)
+		if (!this.player) return
+
+		const existingLoot = this.droppedItems.get(data.item.id)
+		if (existingLoot) {
+			existingLoot.view.setQuantity(data.item.quantity)
+			return
 		}
+
+		const loot = createLoot(this, data.item, this.player.view)
+		this.droppedItems.set(data.item.id, loot)
+		console.log('[CLIENT DEBUG] Added item to droppedItems. Current items:',
+			Array.from(this.droppedItems.keys())
+		)
 	}
 
 	private handleRemoveItems = (data: { itemId: string }) => {
@@ -221,6 +228,16 @@ export abstract class GameScene extends MapScene {
 		if (loot) {
 			loot.controller.destroy()
 			this.droppedItems.delete(data.itemId)
+		}
+	}
+
+	private handleUpdateItems = (data: { item: DroppedItem }) => {
+		const loot = this.droppedItems.get(data.item.id)
+		if (loot) {
+			loot.view.setQuantity(data.item.quantity)
+		} else if (this.player) {
+			const newLoot = createLoot(this, data.item, this.player.view)
+			this.droppedItems.set(data.item.id, newLoot)
 		}
 	}
 
@@ -466,6 +483,7 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(Event.Players.SC.Left, this.handlePlayerLeft)
 		EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems)
 		EventBus.off(Event.Loot.SC.Despawn, this.handleRemoveItems)
+		EventBus.off(Event.Loot.SC.Update, this.handleUpdateItems)
 		EventBus.off(Event.NPC.SC.List, this.handleNPCList)
 		EventBus.off(Event.NPC.SC.Spawn, this.handleNPCSpawn)
 		EventBus.off(Event.NPC.SC.Despawn, this.handleNPCDespawn)
@@ -479,6 +497,7 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(Event.Players.SC.Left, this.handlePlayerLeft)
 		EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems)
 		EventBus.off(Event.Loot.SC.Despawn, this.handleRemoveItems)
+		EventBus.off(Event.Loot.SC.Update, this.handleUpdateItems)
 		EventBus.off(Event.NPC.SC.List, this.handleNPCList)
 		EventBus.off(Event.NPC.SC.Spawn, this.handleNPCSpawn)
 		EventBus.off(Event.NPC.SC.Despawn, this.handleNPCDespawn)

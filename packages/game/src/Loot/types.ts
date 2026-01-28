@@ -4,6 +4,7 @@ import { Item } from '../Items/types'
 export interface DroppedItem extends Item {
 	position: Position
 	droppedAt: number
+	quantity: number
 }
 
 export type Range = {
@@ -20,6 +21,7 @@ export type LootSpawnPayload = {
 	itemType: string
 	position: SpawnPosition
 	mapId: string
+	quantity?: number
 }
 
 export type LootSpawnEventPayload = {
@@ -28,4 +30,8 @@ export type LootSpawnEventPayload = {
 
 export type LootDespawnEventPayload = {
 	itemId: string
-} 
+}
+
+export type LootUpdateEventPayload = {
+	item: DroppedItem
+}

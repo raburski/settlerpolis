@@ -8,5 +8,5 @@ export const QuestEvents = {
 		StepComplete: 'sc:quest:step_complete',
 		Complete: 'sc:quest:complete',
 		List: 'sc:quest:list'
-	}
+} as const
 } as const 

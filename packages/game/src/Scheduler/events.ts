@@ -9,4 +9,4 @@ export const SchedulerEvents = {
 		Enable: 'ss:scheduler:enable',
 		Disable: 'ss:scheduler:disable'
 	}
-}
+} as const
