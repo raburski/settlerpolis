@@ -86,7 +86,7 @@ Build a Settlers IV-inspired settlement RTS on top of the existing `@rugged/game
 **Phase 0 — Framework Prep (Weeks 1-2)**
 - Extend `GameContent` schema with buildings, professions, techs, and missions while keeping optional hooks for future factions.
 - Set up `Event.Buildings`, `Event.Economy`, `Event.Territory`, `Event.Military` namespaces and shared type definitions.
-- Bootstrap `content/settlers/` pack with placeholder assets and a baseline map tailored for a single faction.
+- Bootstrap `content/settlerpolis/` pack with placeholder assets and a baseline map tailored for a single faction.
 - Confirm multiplayer handshake flow (lobby to shared session) using existing event bus and `Receiver.Group`.
 
 **Phase 1 — Settlement MVP (Weeks 3-6)**
@@ -165,7 +165,7 @@ Build a Settlers IV-inspired settlement RTS on top of the existing `@rugged/game
 	Add `Event.Buildings`, `Event.Economy`, `Event.Military`, `Event.Territory` domains to `packages/game`.
 - **Content Schema**  
 	Extend `GameContent` with new arrays: `buildings`, `professions`, `techTree`, `campaignMissions`.  
-	Mirror with authoring scripts under `content/settlers/`.
+	Mirror with authoring scripts under `content/settlerpolis/`.
 - **Networking**  
 	Leverage existing `Receiver.Group` semantics for map-based territories; consider per-army channels for combat updates.
 - **Performance**  
@@ -191,7 +191,7 @@ Build a Settlers IV-inspired settlement RTS on top of the existing `@rugged/game
 - **`packages/frontend`**  
 	Phaser/React client that can run in two modes: local simulation (`LocalManager` pairs two `EventManager` instances) or remote multiplayer (`NetworkManager` built atop Socket.IO). Frontend code imports the same content packs, drives UI, and reacts to events emitted by the shared game core.
 - **`content/`**  
-	Authoring packs (e.g., `debug`, `catch-the-rabbit`) defining maps, NPCs, quests, triggers, and items. The selected pack (`VITE_GAME_CONTENT` on frontend, `GAME_CONTENT` on backend) delivers data-driven definitions consumed by `ContentLoader`.
+	Single authoring pack (`settlerpolis`) defining maps, NPCs, quests, triggers, and items. The selected pack (`VITE_GAME_CONTENT` on frontend, `GAME_CONTENT` on backend) delivers data-driven definitions consumed by `ContentLoader`.
 
 This separation keeps deterministic simulation logic in `packages/game`, with networking adapters in backend/frontend that translate transport details into the shared event vocabulary.
 
@@ -203,7 +203,7 @@ This separation keeps deterministic simulation logic in `packages/game`, with ne
 Each phase must boot end-to-end through the current backend ↔ shared core ↔ frontend stack, leaving the build playable and remotely interactable before advancing.
 
 **Phase A — Foundation & Basic Construction (Goal: place one functioning building)**
-- Extend `GameContent` to declare minimal `buildings` metadata (id, footprint, placement rules, construction time) alongside placeholder sprites in `content/settlers/`.
+- Extend `GameContent` to declare minimal `buildings` metadata (id, footprint, placement rules, construction time) alongside placeholder sprites in `content/settlerpolis/`.
 - Add `Event.Buildings` namespace and scaffold `BuildingManager` within `packages/game`, wired to `Scheduler` for construction ticks and to `MapObjectsManager` for footprint reservation.
 - Bootstrap a lightweight `StorageManager` surface that tracks global stockpiles and exposes read APIs for HUD display; defer spatial logistics until later phases.
 - Implement a `ConstructionUI` slice in `packages/frontend` (`game/components`) that surfaces a building palette, placement ghost, and event dispatch (`cs:buildings.place`).
@@ -224,4 +224,3 @@ Each phase must boot end-to-end through the current backend ↔ shared core ↔ 
 - Release an interactable build where settlers cut trees (scripted via content pack), carriers haul logs to the constructed hut, and production timer completes—demonstrating the full economy loop skeleton.
 
 Advancing beyond Phase C should only proceed once each phase runs end-to-end with the existing networking adapters, allowing hands-on playtests and telemetry before layering deeper systems.
-

@@ -26,19 +26,22 @@ import { Position } from '../types'
 import { JobsManager } from '../Jobs'
 import { LootManager } from '../Loot'
 import { Logger } from '../Logs'
+import { SimulationEvents } from '../Simulation/events'
+import { SimulationTickData } from '../Simulation/types'
 
 export class BuildingManager {
 	private buildings = new Map<string, BuildingInstance>() // buildingInstanceId -> BuildingInstance
 	private definitions = new Map<BuildingId, BuildingDefinition>() // buildingId -> BuildingDefinition
 	private constructionTimers = new Map<string, NodeJS.Timeout>() // buildingInstanceId -> timer
 	private buildingToMapObject = new Map<string, string>() // buildingInstanceId -> mapObjectId
-	private tickInterval: NodeJS.Timeout | null = null
 	private readonly TICK_INTERVAL_MS = 1000 // Update construction progress every second
 	private resourceRequests: Map<string, Set<string>> = new Map() // buildingInstanceId -> Set<itemType> (resources still needed)
 	private jobsManager?: JobsManager // Optional - set after construction to avoid circular dependency
 	private lootManager?: LootManager // Optional - set after construction to avoid circular dependency
 	private storageManager?: any // StorageManager - Optional - set after construction to avoid circular dependency
 	private productionManager?: any // ProductionManager - Optional - set after construction to avoid circular dependency
+	private simulationTimeMs = 0
+	private tickAccumulatorMs = 0
 
 	constructor(
 		private event: EventManager,
@@ -51,7 +54,6 @@ export class BuildingManager {
 	) {
 		this.lootManager = lootManager
 		this.setupEventHandlers()
-		this.startTickLoop()
 		
 		// Send building catalog to clients when they connect (in addition to when they join a map)
 		// Note: Buildings might not be loaded yet, so we also send on player join
@@ -105,17 +107,25 @@ export class BuildingManager {
 		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
 			this.sendBuildingsToClient(client, data.mapId)
 		})
+
+		// Drive construction progress from simulation ticks
+		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+			this.handleSimulationTick(data)
+		})
 	}
 
-	private startTickLoop() {
-		// Start a periodic tick loop to update construction progress
-		this.tickInterval = setInterval(() => {
-			this.tick()
-		}, this.TICK_INTERVAL_MS)
+	private handleSimulationTick(data: SimulationTickData) {
+		this.simulationTimeMs = data.nowMs
+		this.tickAccumulatorMs += data.deltaMs
+		if (this.tickAccumulatorMs < this.TICK_INTERVAL_MS) {
+			return
+		}
+		this.tickAccumulatorMs -= this.TICK_INTERVAL_MS
+		this.tick()
 	}
 
 	private tick() {
-		const now = Date.now()
+		const now = this.simulationTimeMs
 		const buildingsToUpdate: BuildingInstance[] = []
 
 		// Collect all buildings that need processing
@@ -218,7 +228,7 @@ export class BuildingManager {
 			stage: ConstructionStage.CollectingResources,
 			progress: 0,
 			startedAt: 0, // Will be set when construction starts (resources collected)
-			createdAt: Date.now(),
+			createdAt: this.simulationTimeMs,
 			collectedResources: new Map(),
 			requiredResources: []
 		}
@@ -452,7 +462,7 @@ export class BuildingManager {
 			this.logger.log(`[RESOURCE DELIVERY] All required resources collected for building ${buildingInstanceId}. Transitioning to Constructing stage.`)
 			// Transition to Constructing stage
 			building.stage = ConstructionStage.Constructing
-			building.startedAt = Date.now() // Start construction timer
+			building.startedAt = this.simulationTimeMs // Start construction timer
 
 			// Emit stage changed event (this signals that all resources are collected)
 			this.event.emit(Receiver.Group, BuildingsEvents.SC.StageChanged, {
@@ -1006,15 +1016,9 @@ export class BuildingManager {
 
 	public destroy() {
 		// Clear all timers
-		if (this.tickInterval) {
-			clearInterval(this.tickInterval)
-			this.tickInterval = null
-		}
-
 		for (const timer of this.constructionTimers.values()) {
 			clearTimeout(timer)
 		}
 		this.constructionTimers.clear()
 	}
 }
-

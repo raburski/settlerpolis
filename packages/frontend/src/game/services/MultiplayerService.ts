@@ -1,9 +1,5 @@
 import { EventBus } from '../EventBus'
 import { Receiver, Event, EventManager } from '@rugged/game'
-import { PlayerJoinData, PlayerMovedData, ChatMessageData, PlayerSourcedData, InventoryData, DropItemData, DroppedItem, PickUpItemData, ConsumeItemData } from '../../../backend/src/DataTypes'
-import { NetworkManager } from '../network/NetworkManager'
-import { LocalManager } from '../network/LocalManager'
-import { PlayerData } from '../types'
 
 export enum Gender {
 	Male = 'Male',
@@ -29,6 +25,7 @@ const DEFAULT_APPEARANCE: PlayerAppearance = {
 export class MultiplayerService {
 	private debug: boolean = true // Enable debug for building catalog
     private events: string[]
+	private networkHandlers = new Map<string, (data: any, client: any) => void>()
 	private handleCSEvent = (eventName: string, data: any) => {
 		if (eventName && eventName.startsWith('cs:') && this.event) {
 			if (this.debug) {
@@ -69,21 +66,23 @@ export class MultiplayerService {
 
 		// Subscribe to each event and forward to EventBus
 		this.events.forEach(eventName => {
-			this.event.on(eventName, (data, client) => {
+			const handler = (data, client) => {
 				if (this.debug) {
 					console.log('[MULTIPLAYER SERVICE] Received event from server, forwarding to EventBus:', eventName, data)
 				}
 				EventBus.emit(eventName, data)
-			})
+			}
+			this.networkHandlers.set(eventName, handler)
+			this.event.on(eventName, handler)
 		})
 		console.log('[MultiplayerService] Set up forwarding for', this.events.length, 'events')
 	}
 
 	public destroy(): void {
 		EventBus.offAny(this.handleCSEvent)
-        this.events.forEach(eventName => {
-            // todo add handlers:
-			// this.event.off(eventName)
+		this.networkHandlers.forEach((handler, eventName) => {
+			this.event.off(eventName, handler)
 		})
+		this.networkHandlers.clear()
 	}
-} 
+}

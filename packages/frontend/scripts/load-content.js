@@ -33,7 +33,7 @@ if (!process.env.VITE_GAME_CONTENT) {
 }
 
 // Get game content from env variable or use default
-const gameContent = process.env.VITE_GAME_CONTENT || 'debug';
+const gameContent = process.env.VITE_GAME_CONTENT || 'settlerpolis';
 console.log(`Loading content for game: ${gameContent}`);
 
 // Function to run the export-maps script

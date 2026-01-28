@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Get game content from env variable or use default
-const gameContent = process.env.VITE_GAME_CONTENT || 'debug';
+const gameContent = process.env.VITE_GAME_CONTENT || 'settlerpolis';
 
 // Define paths
 const __filename = fileURLToPath(import.meta.url);

@@ -2,6 +2,8 @@ import { EventManager, Event, EventClient } from '../events'
 import { TimeEvents } from './events'
 import { Time, TimeData, TimeUpdateEventData, TimeSpeedUpdateEventData, TimePauseEventData, TimeSyncEventData, MONTHS_IN_YEAR, DAYS_IN_MONTH } from './types'
 import { Receiver } from '../Receiver'
+import { SimulationEvents } from '../Simulation/events'
+import { SimulationTickData } from '../Simulation/types'
 import { Logger } from '../Logs'
 
 export class TimeManager {
@@ -16,15 +18,14 @@ export class TimeManager {
 		isPaused: false,
 		timeSpeed: 1000 // 1 real second = 1 game minute
 	}
-	private timeInterval: NodeJS.Timeout | null = null
 	private lastBroadcastHour: number = 8
+	private tickAccumulatorMs = 0
 
 	constructor(
 		private event: EventManager,
 		private logger: Logger
 	) {
 		this.setupEventHandlers()
-		this.startTime()
 	}
 
 	private setupEventHandlers() {
@@ -51,56 +52,62 @@ export class TimeManager {
 		this.event.on(Event.Players.CS.Connect, (_, client: EventClient) => {
 			this.syncTime(client)
 		})
+
+		// Advance time based on simulation ticks
+		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+			this.handleSimulationTick(data)
+		})
 	}
 
-	private startTime() {
-		if (this.timeInterval) {
-			clearInterval(this.timeInterval)
+	private handleSimulationTick(data: SimulationTickData) {
+		if (this.timeData.isPaused) {
+			return
 		}
 
-		this.timeInterval = setInterval(() => {
-			if (!this.timeData.isPaused) {
-				this.incrementTime()
-			}
-		}, this.timeData.timeSpeed)
+		this.tickAccumulatorMs += data.deltaMs
+		const minutesToAdvance = Math.floor(this.tickAccumulatorMs / this.timeData.timeSpeed)
+		if (minutesToAdvance <= 0) {
+			return
+		}
+
+		this.tickAccumulatorMs -= minutesToAdvance * this.timeData.timeSpeed
+		this.incrementTime(minutesToAdvance)
 	}
 
-	private incrementTime() {
-		const { hours, minutes, day, month, year } = this.timeData.time
-		let newMinutes = minutes + 1
-		let newHours = hours
-		let newDay = day
-		let newMonth = month
-		let newYear = year
+	private incrementTime(minutesToAdvance: number = 1) {
+		let { hours, minutes, day, month, year } = this.timeData.time
 
-		if (newMinutes >= 60) {
-			newMinutes = 0
-			newHours = (newHours + 1) % 24
-			
-			if (newHours === 0) {
-				newDay = (newDay % DAYS_IN_MONTH) + 1
+		for (let i = 0; i < minutesToAdvance; i++) {
+			minutes += 1
+			if (minutes >= 60) {
+				minutes = 0
+				hours = (hours + 1) % 24
 				
-				if (newDay === 1) {
-					newMonth = (newMonth % MONTHS_IN_YEAR) + 1
+				if (hours === 0) {
+					day = (day % DAYS_IN_MONTH) + 1
 					
-					if (newMonth === 1) {
-						newYear++
+					if (day === 1) {
+						month = (month % MONTHS_IN_YEAR) + 1
+						
+						if (month === 1) {
+							year++
+						}
 					}
 				}
 			}
 		}
 
 		this.timeData.time = { 
-			hours: newHours, 
-			minutes: newMinutes,
-			day: newDay,
-			month: newMonth,
-			year: newYear
+			hours,
+			minutes,
+			day,
+			month,
+			year
 		}
 
 		// Only broadcast update when hour changes
-		if (newHours !== this.lastBroadcastHour) {
-			this.lastBroadcastHour = newHours
+		if (hours !== this.lastBroadcastHour) {
+			this.lastBroadcastHour = hours
 			this.broadcastTimeUpdate()
 		}
 	}
@@ -128,7 +135,6 @@ export class TimeManager {
 
 	public setTimeSpeed(timeSpeed: number, client: EventClient) {
 		this.timeData.timeSpeed = Math.max(100, timeSpeed) // Minimum 100ms per game minute
-		this.startTime()
 
 		client.emit(Receiver.All, TimeEvents.SC.SpeedSet, {
 			timeSpeed: this.timeData.timeSpeed

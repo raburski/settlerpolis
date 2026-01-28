@@ -5,65 +5,7 @@
 
 /**
  * Content folder structure:
-catch-the-rabbit/
-  cutscenes/
-    index.ts
-    rabbit_escape.ts
-  index.ts
-  items/
-    assets/
-    carrot.ts
-    index.ts
-    rabbit.ts
-  maps/
-    assets/
-    index.ts
-  npcs/
-    assets/
-    index.ts
-    miss_hilda.ts
-    rabbit.ts
-  quests/
-    catch_the_rabbit.ts
-    index.ts
-  schedules/
-    index.ts
-  triggers/
-    index.ts
-    rabbit_escape.ts
-debug/
-  general/
-    cutscenes/
-      index.ts
-    flags/
-      index.ts
-    index.ts
-    items/
-      index.ts
-    maps/
-      index.ts
-    npcs/
-      guard/
-        dialogues.ts
-        index.ts
-        routine.ts
-        sentiments.ts
-      index.ts
-      innkeeper/
-        dialogues/
-          freeDrink.ts
-          index.ts
-          mozgotrzep.ts
-        index.ts
-        sentiments.ts
-    quests/
-      index.ts
-    schedules/
-      index.ts
-    triggers/
-      index.ts
-  index.ts
-
+ * settlerpolis/
  */
 
 // Types

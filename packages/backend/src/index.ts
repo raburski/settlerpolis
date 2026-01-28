@@ -43,7 +43,7 @@ const network = new NetworkManager(io)
 const eventBus = new EventBusManager(network)
 
 // Load content based on environment variable
-const CONTENT_FOLDER = process.env.GAME_CONTENT || 'debug'
+const CONTENT_FOLDER = process.env.GAME_CONTENT || 'settlerpolis'
 const contentPath = path.join(__dirname, '..', '..', '..', 'content', CONTENT_FOLDER)
 
 if (!fs.existsSync(contentPath)) {

@@ -11,9 +11,14 @@ import { Position } from '../types'
 import { Receiver } from '../Receiver'
 import { calculateDistance } from '../utils'
 import { JobType } from '../Population/types'
+import { SimulationEvents } from '../Simulation/events'
+import { SimulationTickData } from '../Simulation/types'
 
 export class ProductionManager {
 	private buildingProductions: Map<string, BuildingProduction> = new Map() // buildingInstanceId -> BuildingProduction
+	private readonly PRODUCTION_TICK_INTERVAL_MS = 1000
+	private tickAccumulatorMs = 0
+	private simulationTimeMs = 0
 
 	constructor(
 		private event: EventManager,
@@ -24,13 +29,16 @@ export class ProductionManager {
 		private logger: Logger
 	) {
 		this.setupEventHandlers()
-		this.startProductionTickLoop()
 	}
 
 	private setupEventHandlers() {
 		// Listen for production tick events
 		this.event.on(ProductionEvents.SS.ProductionTick, () => {
 			this.productionTick()
+		})
+
+		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+			this.handleSimulationTick(data)
 		})
 
 		// Listen for worker assignment events - when a worker is assigned to a production building, try to start production
@@ -83,6 +91,16 @@ export class ProductionManager {
 				this.requestOutputTransport(buildingInstanceId, recipe)
 			}
 		})
+	}
+
+	private handleSimulationTick(data: SimulationTickData): void {
+		this.simulationTimeMs = data.nowMs
+		this.tickAccumulatorMs += data.deltaMs
+		if (this.tickAccumulatorMs < this.PRODUCTION_TICK_INTERVAL_MS) {
+			return
+		}
+		this.tickAccumulatorMs -= this.PRODUCTION_TICK_INTERVAL_MS
+		this.event.emit(Receiver.All, ProductionEvents.SS.ProductionTick, {})
 	}
 
 	// Initialize production for a building (gets recipe from BuildingDefinition)
@@ -167,7 +185,7 @@ export class ProductionManager {
 		// Start production
 		production.status = ProductionStatus.InProduction
 		production.isProducing = true
-		production.currentBatchStartTime = Date.now()
+		production.currentBatchStartTime = this.simulationTimeMs
 		production.progress = 0
 
 		this.logger.log(`[ProductionManager] Started production for building ${buildingInstanceId}`)
@@ -219,7 +237,7 @@ export class ProductionManager {
 			return
 		}
 
-		const now = Date.now()
+		const now = this.simulationTimeMs
 		if (!production.currentBatchStartTime) {
 			production.currentBatchStartTime = now
 			return
@@ -356,14 +374,6 @@ export class ProductionManager {
 		}
 
 		return production.status
-	}
-
-	// Production tick loop
-	private startProductionTickLoop(): void {
-		// Emit production tick event periodically (every second)
-		setInterval(() => {
-			this.event.emit(Receiver.All, ProductionEvents.SS.ProductionTick, {})
-		}, 1000)
 	}
 
 	private productionTick(): void {
@@ -534,4 +544,3 @@ export class ProductionManager {
 		}, building.mapName)
 	}
 }
-

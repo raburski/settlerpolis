@@ -13,6 +13,7 @@ export class EventBusManager implements EventManager {
 	private eventHandlers: Map<string, EventCallback[]> = new Map()
 	private joinedHandlers: LifecycleCallback[] = []
 	private leftHandlers: LifecycleCallback[] = []
+	private networkHandlers: Map<string, EventCallback> = new Map()
 	private debug = false
 
 	constructor(private networkManager: NetworkManager) {
@@ -26,9 +27,11 @@ export class EventBusManager implements EventManager {
 		
 		if (event.startsWith('cs:')) {
 			// For client-to-server events, we need to subscribe to the network manager
-			if (handlers.length == 0) {
+			if (handlers.length === 0) {
 				// No handler registered for this even yet
-				this.networkManager.on(event, (data: any, client: EventClient) => this.onNetworkEvent(event, data, client))
+				const networkHandler: EventCallback = (data: any, client: EventClient) => this.onNetworkEvent(event, data, client)
+				this.networkHandlers.set(event, networkHandler)
+				this.networkManager.on(event, networkHandler)
 				if (this.debug) console.log(`[EventBusManager] Setting up network subscription for ${event}`)
 			}
 			handlers.push(callback)
@@ -37,6 +40,25 @@ export class EventBusManager implements EventManager {
 		}
 		this.eventHandlers.set(event, handlers)
 		if (this.debug) console.log(`[EventBusManager] Registered handler for ${event}. Total handlers: ${handlers.length}`)
+	}
+
+	off<T>(event: string, callback: EventCallback<T>): void {
+		const handlers = this.eventHandlers.get(event)
+		if (!handlers) return
+
+		const nextHandlers = handlers.filter(handler => handler !== callback)
+		if (nextHandlers.length === 0) {
+			this.eventHandlers.delete(event)
+			if (event.startsWith('cs:')) {
+				const networkHandler = this.networkHandlers.get(event)
+				if (networkHandler) {
+					this.networkManager.off(event, networkHandler)
+					this.networkHandlers.delete(event)
+				}
+			}
+		} else {
+			this.eventHandlers.set(event, nextHandlers)
+		}
 	}
 
 	createProxyClient(client: EventClient): EventClient {

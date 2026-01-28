@@ -29,6 +29,7 @@ import { ProfessionType } from './Population/types'
 import { JobsManager } from './Jobs'
 import { StorageManager } from './Storage'
 import { ProductionManager } from './Production'
+import { SimulationManager } from './Simulation'
 
 // Export types and events
 export * from './types'
@@ -39,6 +40,10 @@ export { EquipmentSlot, EquipmentSlotType }
 // export { Event } from './events' 
 
 import { LogsManager, LogLevel } from './Logs'
+
+export interface GameManagerOptions {
+	simulationTickMs?: number
+}
 
 export class GameManager {
 	private chatManager: ChatManager
@@ -66,14 +71,21 @@ export class GameManager {
 	private logsManager: LogsManager
 	private storageManager: StorageManager
 	private productionManager: ProductionManager
+	private simulationManager: SimulationManager
 
 	constructor(
 		private event: EventManager,
 		private content: GameContent,
-		private readonly mapUrlService: MapUrlService
+		private readonly mapUrlService: MapUrlService,
+		options: GameManagerOptions = {}
 	) {
 		// Initialize LogsManager first
 		this.logsManager = new LogsManager()
+		this.simulationManager = new SimulationManager(
+			event,
+			this.logsManager.getLogger('SimulationManager'),
+			options.simulationTickMs
+		)
 		
 		// Initialize managers in dependency order
 		this.timeManager = new TimeManager(event, this.logsManager.getLogger('TimeManager'))
@@ -212,13 +224,15 @@ export class GameManager {
 			'ConditionEffectManager',
 			'ContentLoader',
 			'StorageManager',
-			'ProductionManager'
+			'ProductionManager',
+			'SimulationManager'
 		]
 		for (const managerName of quietManagers) {
 			this.logsManager.setManagerLevel(managerName, LogLevel.Warn)
 		}
 		
 		this.setupEventHandlers()
+		this.simulationManager.start()
 	}
 
 	private setupEventHandlers() {
