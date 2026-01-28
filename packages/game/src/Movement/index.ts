@@ -95,6 +95,19 @@ export class MovementManager {
 		this.tasks.set(entityId, task)
 		this.logger.log(`[MOVEMENT TASK CREATED] entityId=${entityId} | pathLength=${path.length} | createdAt=${task.createdAt}`)
 
+		// If already at target (path length 1), defer completion to avoid synchronous completion
+		// racing state-machine transition tracking.
+		if (path.length === 1) {
+			entity.position = { ...path[0] }
+			task.timeoutId = setTimeout(() => {
+				if (!this.tasks.has(entityId)) {
+					return
+				}
+				this.completePath(entityId)
+			}, 0)
+			return true
+		}
+
 		// Process first step immediately (no delay, step 0)
 		this.processMovementStep(entityId)
 
@@ -293,4 +306,3 @@ export class MovementManager {
 // Export types and events for use by other modules
 export * from './types'
 export * from './events'
-
