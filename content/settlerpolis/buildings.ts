@@ -91,16 +91,11 @@ export const buildings: BuildingDefinition[] = [
 				quantity: 1
 			}
 		],
+		harvest: {
+			nodeType: 'tree'
+		},
 		requiredProfession: 'woodcutter',
 		workerSlots: 1, // Woodcutter hut can have 1 worker
-		// Phase C: Production recipe and storage
-		productionRecipe: {
-			inputs: [], // No inputs required - automatically produces outputs
-			outputs: [
-				{ itemType: ItemType.Logs, quantity: 1 }
-			],
-			productionTime: 10 // 10 seconds to produce 1 plank
-		},
 		storage: {
 			capacities: {
 				[ItemType.Logs]: 10 // Can store up to 10 planks (output)
@@ -152,4 +147,3 @@ export const buildings: BuildingDefinition[] = [
 		}
 	}
 ]
-

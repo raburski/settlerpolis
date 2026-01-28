@@ -11,6 +11,7 @@ export { professions } from './professions'
 export { professionTools } from './professionTools'
 export { startingItems } from './startingItems'
 export { startingPopulation } from './startingPopulation'
+export { resourceNodeDefinitions, resourceNodes } from './resourceNodes'
 
 // Set the default map ID
 export const defaultMap = 'map1'

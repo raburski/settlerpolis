@@ -7,4 +7,4 @@ export const MapEvents = {
 		Load: 'cs:map:load',
 		Transition: 'cs:map:transition'
 	}
-}
+} as const

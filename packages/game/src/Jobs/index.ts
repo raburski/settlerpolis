@@ -4,7 +4,8 @@ import { PopulationManager } from '../Population'
 import { LootManager } from '../Loot'
 import { MapManager } from '../Map'
 import { StorageManager } from '../Storage'
-import { JobAssignment, JobType, Settler } from '../Population/types'
+import { ResourceNodesManager } from '../ResourceNodes'
+import { JobAssignment, JobType, Settler, SettlerState } from '../Population/types'
 import { Position } from '../types'
 import { v4 as uuidv4 } from 'uuid'
 import { calculateDistance } from '../utils'
@@ -25,6 +26,7 @@ export class JobsManager {
 		private populationManager: PopulationManager,
 		private lootManager: LootManager,
 		private mapManager: MapManager,
+		private resourceNodesManager: ResourceNodesManager,
 		private logger: Logger
 	) {
 		this.setupEventHandlers()
@@ -55,6 +57,14 @@ export class JobsManager {
 		if (this.hasActiveJobForBuilding(buildingInstanceId, itemType)) {
 			this.logger.log(`[JOBS] Building ${buildingInstanceId} already has active job for ${itemType}`)
 			return // Already has an active transport job
+		}
+
+		// 2b. Try to source from building storage first
+		if (this.storageManager) {
+			const storageJobCreated = this.requestStorageResourceCollection(building, itemType)
+			if (storageJobCreated) {
+				return
+			}
 		}
 
 		// 3. Find item on the ground (anywhere on the map, not just nearby)
@@ -134,6 +144,135 @@ export class JobsManager {
 		// via PopulationEvents.SC.SettlerUpdated
 	}
 
+	private requestStorageResourceCollection(building: { id: string, mapName: string, playerId: string, position: Position }, itemType: string): boolean {
+		if (!this.storageManager) {
+			return false
+		}
+
+		const sourceBuildingIds = this.storageManager
+			.getBuildingsWithAvailableItems(itemType, 1, building.mapName, building.playerId)
+			.filter(id => id !== building.id)
+
+		if (sourceBuildingIds.length === 0) {
+			return false
+		}
+
+		const sourceBuildingId = this.findClosestBuilding(sourceBuildingIds, building.position)
+		if (!sourceBuildingId) {
+			return false
+		}
+
+		const sourceBuilding = this.buildingManager.getBuildingInstance(sourceBuildingId)
+		if (!sourceBuilding) {
+			return false
+		}
+
+		const availableCarriers = this.populationManager.getAvailableCarriers(
+			sourceBuilding.mapName,
+			sourceBuilding.playerId
+		)
+
+		if (availableCarriers.length === 0) {
+			return false
+		}
+
+		const closestCarrier = this.findClosestCarrier(availableCarriers, sourceBuilding.position)
+		if (!closestCarrier) {
+			return false
+		}
+
+		const jobAssignment: JobAssignment = {
+			jobId: uuidv4(),
+			settlerId: closestCarrier.id,
+			buildingInstanceId: building.id,
+			jobType: JobType.Transport,
+			priority: 1,
+			assignedAt: Date.now(),
+			status: 'active',
+			sourceBuildingInstanceId: sourceBuildingId,
+			itemType,
+			quantity: 1
+		}
+
+		this.jobs.set(jobAssignment.jobId, jobAssignment)
+		if (!this.activeJobsByBuilding.has(building.id)) {
+			this.activeJobsByBuilding.set(building.id, new Set())
+		}
+		this.activeJobsByBuilding.get(building.id)!.add(jobAssignment.jobId)
+
+		if (!this.activeJobsByBuilding.has(sourceBuildingId)) {
+			this.activeJobsByBuilding.set(sourceBuildingId, new Set())
+		}
+		this.activeJobsByBuilding.get(sourceBuildingId)!.add(jobAssignment.jobId)
+
+		this.logger.log(`[JOBS] Created storage transport job ${jobAssignment.jobId} from ${sourceBuildingId} to ${building.id} for ${itemType}`)
+
+		this.populationManager.assignWorkerToTransportJob(
+			closestCarrier.id,
+			jobAssignment.jobId,
+			jobAssignment
+		)
+
+		return true
+	}
+
+	// Harvest Jobs (worker goes to resource node, harvests, returns to building storage)
+	public requestHarvestJob(settlerId: string, buildingInstanceId: string, resourceNodeId: string): string | null {
+		const settler = this.populationManager.getSettler(settlerId)
+		if (!settler || (settler.state !== SettlerState.Idle && settler.state !== SettlerState.Working)) {
+			return null
+		}
+
+		const building = this.buildingManager.getBuildingInstance(buildingInstanceId)
+		if (!building) {
+			this.logger.warn(`[JOBS] Cannot request harvest: Building ${buildingInstanceId} not found`)
+			return null
+		}
+
+		const node = this.resourceNodesManager.getNode(resourceNodeId)
+		if (!node) {
+			this.logger.warn(`[JOBS] Cannot request harvest: Resource node ${resourceNodeId} not found`)
+			return null
+		}
+
+		const definition = this.resourceNodesManager.getDefinition(node.nodeType)
+		if (!definition) {
+			this.logger.warn(`[JOBS] Cannot request harvest: Definition for node type ${node.nodeType} not found`)
+			return null
+		}
+
+		const jobId = uuidv4()
+		if (!this.resourceNodesManager.reserveNode(resourceNodeId, jobId)) {
+			this.logger.log(`[JOBS] Cannot request harvest: Resource node ${resourceNodeId} already reserved`)
+			return null
+		}
+
+		const jobAssignment: JobAssignment = {
+			jobId,
+			settlerId,
+			buildingInstanceId,
+			jobType: JobType.Harvest,
+			priority: 1,
+			assignedAt: Date.now(),
+			status: 'active',
+			resourceNodeId,
+			itemType: definition.outputItemType,
+			quantity: definition.harvestQuantity
+		}
+
+		this.jobs.set(jobAssignment.jobId, jobAssignment)
+		if (!this.activeJobsByBuilding.has(buildingInstanceId)) {
+			this.activeJobsByBuilding.set(buildingInstanceId, new Set())
+		}
+		this.activeJobsByBuilding.get(buildingInstanceId)!.add(jobAssignment.jobId)
+
+		this.logger.log(`[JOBS] Created harvest job ${jobAssignment.jobId} for building ${buildingInstanceId}, node=${resourceNodeId}, settler=${settlerId}`)
+
+		this.populationManager.assignWorkerToHarvestJob(settlerId, jobAssignment.jobId, jobAssignment)
+
+		return jobAssignment.jobId
+	}
+
 	// Worker Jobs (construction/production)
 	public requestWorker(buildingInstanceId: string): void {
 		// 1. Get building from BuildingManager
@@ -157,10 +296,13 @@ export class JobsManager {
 		// Note: Builders are only needed during Constructing stage
 		// During CollectingResources, only carriers are needed (handled by requestResourceCollection)
 		let jobType: JobType
+		let requiredProfession: ProfessionType | undefined
 		if (building.stage === ConstructionStage.Constructing) {
 			jobType = JobType.Construction
+			requiredProfession = ProfessionType.Builder
 		} else if (building.stage === ConstructionStage.Completed && buildingDef.workerSlots) {
 			jobType = JobType.Production
+			requiredProfession = buildingDef.requiredProfession ? buildingDef.requiredProfession as ProfessionType : undefined
 		} else {
 			return // Building doesn't need workers
 		}
@@ -168,7 +310,7 @@ export class JobsManager {
 		// 5. Find available worker (delegate to PopulationManager)
 		const worker = this.populationManager.findWorkerForBuilding(
 			buildingInstanceId,
-			buildingDef.requiredProfession ? buildingDef.requiredProfession as ProfessionType : undefined,
+			requiredProfession,
 			building.mapName,
 			building.position,
 			building.playerId
@@ -193,7 +335,7 @@ export class JobsManager {
 			priority: 1,
 			assignedAt: Date.now(),
 			status: 'pending', // Will be 'active' when worker arrives
-			requiredProfession: buildingDef.requiredProfession ? buildingDef.requiredProfession as ProfessionType : undefined // Store required profession in job
+			requiredProfession // Store required profession in job
 		}
 
 		// 7. Store job
@@ -237,6 +379,11 @@ export class JobsManager {
 		return jobs.length > 0
 	}
 
+	public hasActiveHarvestJobForBuilding(buildingInstanceId: string): boolean {
+		const jobs = this.getActiveJobsForBuilding(buildingInstanceId)
+		return jobs.some(job => job.jobType === JobType.Harvest)
+	}
+
 	// Job Completion
 	public completeJob(jobId: string): void {
 		const job = this.jobs.get(jobId)
@@ -263,6 +410,10 @@ export class JobsManager {
 		// - Settler state change to Idle (PopulationEvents.SC.SettlerUpdated)
 		// - Building resource delivery (BuildingsEvents.SC.ResourcesChanged) for transport jobs
 		// - Building stage change (BuildingsEvents.SC.StageChanged) when resources collected
+
+		if (job.resourceNodeId) {
+			this.resourceNodesManager.releaseReservation(job.resourceNodeId, jobId)
+		}
 	}
 
 	public cancelJob(jobId: string, reason?: string): void {
@@ -280,6 +431,10 @@ export class JobsManager {
 
 		// If carrier is carrying items from building storage, we should handle that in the state transition
 		// The state transition will handle dropping items if needed
+
+		if (job.resourceNodeId) {
+			this.resourceNodesManager.releaseReservation(job.resourceNodeId, jobId)
+		}
 
 		// Remove from active jobs
 		const buildingJobs = this.activeJobsByBuilding.get(job.buildingInstanceId)
@@ -339,6 +494,29 @@ export class JobsManager {
 		}
 
 		return closest
+	}
+
+	private findClosestBuilding(buildingIds: string[], targetPosition: Position): string | null {
+		if (buildingIds.length === 0) {
+			return null
+		}
+
+		let closestId: string | null = null
+		let closestDistance = Infinity
+
+		for (const buildingId of buildingIds) {
+			const building = this.buildingManager.getBuildingInstance(buildingId)
+			if (!building) {
+				continue
+			}
+			const distance = calculateDistance(building.position, targetPosition)
+			if (distance < closestDistance) {
+				closestDistance = distance
+				closestId = buildingId
+			}
+		}
+
+		return closestId
 	}
 
 	private findClosestCarrier(carriers: Settler[], targetPosition: Position): Settler | null {

@@ -9,5 +9,4 @@ export const MovementEvents = {
 		MoveToPosition: 'sc:movement:move-to-position', // Order entity to move to position (interpolated movement)
 		PositionUpdated: 'sc:movement:position-updated' // Entity position changed (teleport/sync, no interpolation)
 	}
-}
-
+} as const

@@ -10,6 +10,7 @@ import { Scheduler } from "../Scheduler"
 import { TriggerManager } from "../Triggers"
 import { BuildingManager } from "../Buildings"
 import { PopulationManager } from "../Population"
+import { ResourceNodesManager } from "../ResourceNodes"
 import { dialogueCompose } from "../Dialogue/utils"
 import { DialogueTree } from "../Dialogue/types"
 import { GameContent, ScheduleOptions, Trigger } from "../types"
@@ -26,11 +27,12 @@ export class ContentLoader {
 		private npc: NPCManager,
 		private quest: QuestManager,
 		private scheduler: Scheduler,
-		private trigger: TriggerManager,
-		private affinity: AffinityManager,
-		private building: BuildingManager,
-		private population: PopulationManager,
-		private logger: Logger
+	private trigger: TriggerManager,
+	private affinity: AffinityManager,
+	private building: BuildingManager,
+	private population: PopulationManager,
+	private resourceNodes: ResourceNodesManager,
+	private logger: Logger
 	) {
 		this.loadAllContent()
 	}
@@ -50,7 +52,8 @@ export class ContentLoader {
 			this.loadAffinityWeights(),
 			this.loadBuildings(),
 			this.loadProfessions(),
-			this.loadProfessionTools()
+			this.loadProfessionTools(),
+			this.loadResourceNodes()
 		])
 		this.logger.log('Finished loading all content')
 	}
@@ -210,4 +213,16 @@ export class ContentLoader {
 			this.logger.warn('No profession tools found in content or items')
 		}
 	}
-} 
+
+	private async loadResourceNodes() {
+		this.logger.debug('Loading resource nodes from content')
+
+		if (this.content.resourceNodeDefinitions && this.content.resourceNodeDefinitions.length > 0) {
+			this.resourceNodes.loadDefinitions(this.content.resourceNodeDefinitions)
+		}
+
+		if (this.content.resourceNodes && this.content.resourceNodes.length > 0) {
+			this.resourceNodes.spawnNodes(this.content.resourceNodes)
+		}
+	}
+}

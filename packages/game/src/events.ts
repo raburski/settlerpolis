@@ -27,7 +27,7 @@ import type { PlayerJoinData, PlayerTransitionData, PlayerMoveData, EquipItemDat
 import type { ChatMessageData, ChatSystemMessageData } from './Chat/types'
 import type { InventoryData, DropItemData, PickUpItemData, ConsumeItemData, MoveItemData, AddItemData, RemoveByTypePayload } from './Inventory/types'
 import type { ItemTypeRequest, ItemTypeResponse } from './Items/types'
-import type { LootSpawnPayload, LootSpawnEventPayload, LootDespawnEventPayload } from './Loot/types'
+import type { LootSpawnPayload, LootSpawnEventPayload, LootDespawnEventPayload, LootUpdateEventPayload } from './Loot/types'
 import type { DialogueTriggerData, DialogueContinueData, DialogueChoiceData } from './Dialogue/types'
 import type { QuestStartRequest, QuestUpdateResponse, QuestCompleteResponse, QuestListResponse } from './Quest/types'
 import type { PlaceObjectData, RemoveObjectData, SpawnObjectData, DespawnObjectData } from './MapObjects/types'
@@ -108,6 +108,7 @@ export type EventPayloads = Record<string, unknown> & {
 	[LootEvents.SS.Spawn]: LootSpawnPayload
 	[LootEvents.SC.Spawn]: LootSpawnEventPayload
 	[LootEvents.SC.Despawn]: LootDespawnEventPayload
+	[LootEvents.SC.Update]: LootUpdateEventPayload
 
 	[DialogueEvents.CS.Continue]: DialogueContinueData
 	[DialogueEvents.CS.Choice]: DialogueChoiceData

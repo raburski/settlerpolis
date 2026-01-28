@@ -8,6 +8,5 @@ export default {
 	description: 'Stone blocks for construction',
 	category: ItemCategory.Material,
 	stackable: true,
-	maxStackSize: 50
+	maxStackSize: 8
 } as ItemMetadata
-

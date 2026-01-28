@@ -897,6 +897,10 @@ export class BuildingManager {
 		)
 	}
 
+	public getAllBuildings(): BuildingInstance[] {
+		return Array.from(this.buildings.values())
+	}
+
 	// Worker assignment methods for PopulationManager
 	private buildingWorkers = new Map<string, Set<string>>() // buildingInstanceId -> Set<settlerId>
 	private readonly WORKER_CONSTRUCTION_SPEEDUP = 2 // Workers double construction speed

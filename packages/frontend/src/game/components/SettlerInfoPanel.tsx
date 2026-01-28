@@ -113,6 +113,8 @@ export const SettlerInfoPanel: React.FC = () => {
 				return '⏳ Waiting for Work'
 			case SettlerState.MovingToItem:
 				return '🚶 Moving to Item'
+			case SettlerState.MovingToResource:
+				return '🚶 Moving to Resource'
 			case SettlerState.CarryingItem:
 				return '📦 Carrying Item'
 			case SettlerState.AssignmentFailed:
@@ -147,6 +149,7 @@ export const SettlerInfoPanel: React.FC = () => {
 								{settler.currentJob.jobType === JobType.Construction && '🏗️ Construction'}
 								{settler.currentJob.jobType === JobType.Production && '⚙️ Production'}
 								{settler.currentJob.jobType === JobType.Transport && '📦 Transport'}
+								{settler.currentJob.jobType === JobType.Harvest && '🪓 Harvest'}
 							</span>
 						</div>
 						<div className={sharedStyles.infoRow}>
@@ -209,7 +212,7 @@ export const SettlerInfoPanel: React.FC = () => {
 				</div>
 			)}
 
-			{(settler.state === SettlerState.MovingToBuilding || settler.state === SettlerState.MovingToTool || settler.state === SettlerState.MovingToItem) && (
+			{(settler.state === SettlerState.MovingToBuilding || settler.state === SettlerState.MovingToTool || settler.state === SettlerState.MovingToItem || settler.state === SettlerState.MovingToResource) && (
 				<div className={sharedStyles.actions}>
 					<div className={sharedStyles.movingMessage}>
 						This settler is moving to their destination
@@ -243,4 +246,3 @@ export const SettlerInfoPanel: React.FC = () => {
 		</DraggablePanel>
 	)
 }
-

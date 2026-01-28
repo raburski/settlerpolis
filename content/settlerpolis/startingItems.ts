@@ -17,6 +17,23 @@ const generateItems = (itemType: ItemType, count: number, startX: number, startY
 	})
 }
 
+// Helper function to generate piles with explicit quantities
+const generatePiles = (itemType: ItemType, quantities: number[], startX: number, startY: number, columns: number): StartingItem[] => {
+	return quantities.map((quantity, index) => {
+		const col = index % columns
+		const row = Math.floor(index / columns)
+		return {
+			itemType,
+			quantity,
+			offset: {
+				x: startX + col,
+				y: startY + row,
+				tileBased: true
+			}
+		}
+	})
+}
+
 export const startingItems: StartingItem[] = [
 	// Tools
 	{
@@ -53,7 +70,6 @@ export const startingItems: StartingItem[] = [
 	},
 	// 20 logs below (positive y)
 	...generateItems(ItemType.Logs, 20, -2, 3, 4),
-	// 20 stones above (negative y)
-	...generateItems(ItemType.Stone, 20, -2, -5, 4)
+	// 20 stones above (negative y) as piles of up to 8
+	...generatePiles(ItemType.Stone, [8, 8, 4], -2, -5, 4)
 ]
-

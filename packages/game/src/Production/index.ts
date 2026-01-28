@@ -177,10 +177,13 @@ export class ProductionManager {
 			return false
 		}
 
-		// For now, we assume all production requires a worker
-		// TODO: Check if building has assigned worker
-		// For Phase C, we'll assume worker assignment is handled elsewhere
-		// and production can start if inputs are available
+		// Require at least one assigned worker to run production
+		const assignedWorkers = this.buildingManager.getBuildingWorkers(buildingInstanceId)
+		if (assignedWorkers.length === 0) {
+			production.status = ProductionStatus.NoWorker
+			this.emitStatusChanged(buildingInstanceId, ProductionStatus.NoWorker)
+			return false
+		}
 
 		// Start production
 		production.status = ProductionStatus.InProduction

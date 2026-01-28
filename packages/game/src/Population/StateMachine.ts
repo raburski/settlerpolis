@@ -17,6 +17,7 @@ export class SettlerStateMachine {
 		lootManager: StateMachineManagers['lootManager'],
 		itemsManager: StateMachineManagers['itemsManager'],
 		mapManager: StateMachineManagers['mapManager'],
+		resourceNodesManager: StateMachineManagers['resourceNodesManager'],
 		logger: Logger,
 		transitions: StateTransitionsConfig = SETTLER_STATE_TRANSITIONS
 	) {
@@ -28,6 +29,7 @@ export class SettlerStateMachine {
 			lootManager,
 			itemsManager,
 			mapManager,
+			resourceNodesManager,
 			logger
 		}
 		
@@ -230,4 +232,3 @@ export class SettlerStateMachine {
 		return fromStateTransitions[to]
 	}
 }
-
