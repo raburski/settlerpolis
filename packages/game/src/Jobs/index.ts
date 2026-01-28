@@ -1183,7 +1183,14 @@ export class JobsManager {
 			return null
 		}
 
-		if (!this.storageManager.hasAvailableStorage(targetBuildingInstanceId, itemType, quantity)) {
+		const isConstructionTarget = targetBuilding.stage === ConstructionStage.CollectingResources
+			|| targetBuilding.stage === ConstructionStage.Constructing
+
+		if (isConstructionTarget) {
+			if (!this.buildingManager.buildingNeedsResource(targetBuildingInstanceId, itemType)) {
+				return null
+			}
+		} else if (!this.storageManager.hasAvailableStorage(targetBuildingInstanceId, itemType, quantity)) {
 			return null
 		}
 
@@ -1194,10 +1201,13 @@ export class JobsManager {
 			return null
 		}
 
-		const targetReservation = this.reservationService.reserveStorage(targetBuildingInstanceId, itemType, quantity, jobId, false)
-		if (!targetReservation) {
-			this.reservationService.release(sourceReservation)
-			return null
+		let targetReservation: JobReservation | null = null
+		if (!isConstructionTarget) {
+			targetReservation = this.reservationService.reserveStorage(targetBuildingInstanceId, itemType, quantity, jobId, false)
+			if (!targetReservation) {
+				this.reservationService.release(sourceReservation)
+				return null
+			}
 		}
 
 		const availableCarriers = this.populationManager.getAvailableCarriers(
@@ -1207,14 +1217,18 @@ export class JobsManager {
 
 		if (availableCarriers.length === 0) {
 			this.reservationService.release(sourceReservation)
-			this.reservationService.release(targetReservation)
+			if (targetReservation) {
+				this.reservationService.release(targetReservation)
+			}
 			return null
 		}
 
 		const closestCarrier = this.findClosestCarrier(availableCarriers, sourceBuilding.position)
 		if (!closestCarrier) {
 			this.reservationService.release(sourceReservation)
-			this.reservationService.release(targetReservation)
+			if (targetReservation) {
+				this.reservationService.release(targetReservation)
+			}
 			return null
 		}
 
@@ -1229,7 +1243,7 @@ export class JobsManager {
 			sourceBuildingInstanceId,
 			itemType,
 			quantity,
-			reservationId: targetReservation.id
+			reservationId: targetReservation?.id
 		}
 		this.addReservation(jobAssignment, sourceReservation)
 		this.addReservation(jobAssignment, targetReservation)
@@ -1301,7 +1315,7 @@ export class JobsManager {
 
 		// Release outgoing storage reservation now that items are removed
 		const outgoingReservation = job.reservations?.find(reservation =>
-			reservation.type === 'storage' && reservation.metadata?.isOutgoing
+			reservation.type === JobReservationType.Storage && reservation.metadata?.isOutgoing
 		)
 		if (outgoingReservation) {
 			this.storageManager.releaseReservation(outgoingReservation.id)
@@ -1337,19 +1351,18 @@ export class JobsManager {
 			return false
 		}
 
-		// Add items to target building storage
-		if (!this.storageManager.addToStorage(job.buildingInstanceId, job.itemType, job.quantity)) {
-			this.logger.warn(`[JOBS] Cannot handle building delivery: Failed to add ${job.quantity} ${job.itemType} to target building ${job.buildingInstanceId}`)
-			return false
-		}
-
-		// Release incoming storage reservation if it exists
 		const incomingReservation = job.reservations?.find(reservation =>
-			reservation.type === 'storage' && !reservation.metadata?.isOutgoing
+			reservation.type === JobReservationType.Storage && !reservation.metadata?.isOutgoing
 		)
 		if (incomingReservation) {
 			this.storageManager.releaseReservation(incomingReservation.id)
 			this.removeReservation(job, incomingReservation.id)
+		}
+
+		// Add items to target building storage
+		if (!this.storageManager.addToStorage(job.buildingInstanceId, job.itemType, job.quantity)) {
+			this.logger.warn(`[JOBS] Cannot handle building delivery: Failed to add ${job.quantity} ${job.itemType} to target building ${job.buildingInstanceId}`)
+			return false
 		}
 
 		// Clear carriedItemId

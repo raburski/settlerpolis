@@ -145,6 +145,10 @@ export class HarvestManager {
 			return
 		}
 
+		if (this.requestOutputToConsumers(buildingInstanceId, itemType, quantity, priority)) {
+			return
+		}
+
 		const OVERFLOW_THRESHOLD = 0.8
 		if (current / capacity < OVERFLOW_THRESHOLD) {
 			return
@@ -161,6 +165,106 @@ export class HarvestManager {
 
 		const transportQuantity = Math.min(quantity, available)
 		this.jobsManager.requestTransport(buildingInstanceId, warehouseId, itemType, transportQuantity, priority)
+	}
+
+	private requestOutputToConsumers(buildingInstanceId: string, itemType: string, quantity: number, priority: number): boolean {
+		const building = this.buildingManager.getBuildingInstance(buildingInstanceId)
+		if (!building) {
+			return false
+		}
+
+		if (this.jobsManager.hasActiveJobForBuilding(buildingInstanceId, itemType)) {
+			return false
+		}
+
+		const available = this.storageManager.getAvailableQuantity(buildingInstanceId, itemType)
+		if (available === 0) {
+			return false
+		}
+
+		const transportQuantity = Math.min(quantity, available)
+		const targetBuildingId = this.findClosestTargetBuilding(
+			buildingInstanceId,
+			itemType,
+			transportQuantity,
+			building.mapName,
+			building.playerId,
+			building.position
+		)
+
+		if (!targetBuildingId) {
+			return false
+		}
+
+		this.jobsManager.requestTransport(buildingInstanceId, targetBuildingId, itemType, transportQuantity, priority)
+		return true
+	}
+
+	private findClosestTargetBuilding(
+		sourceBuildingInstanceId: string,
+		itemType: string,
+		quantity: number,
+		mapName: string,
+		playerId: string,
+		position: { x: number, y: number }
+	): string | null {
+		const targets = this.findTargetBuildings(itemType, quantity, mapName, playerId)
+			.filter(buildingId => buildingId !== sourceBuildingInstanceId)
+
+		if (targets.length === 0) {
+			return null
+		}
+
+		let closest = targets[0]
+		let closestDistance = calculateDistance(position, this.buildingManager.getBuildingInstance(closest)!.position)
+
+		for (let i = 1; i < targets.length; i++) {
+			const building = this.buildingManager.getBuildingInstance(targets[i])
+			if (!building) {
+				continue
+			}
+			const distance = calculateDistance(position, building.position)
+			if (distance < closestDistance) {
+				closest = targets[i]
+				closestDistance = distance
+			}
+		}
+
+		return closest
+	}
+
+	private findTargetBuildings(itemType: string, quantity: number, mapName: string, playerId: string): string[] {
+		const buildings: string[] = []
+
+		const allBuildings = this.buildingManager.getBuildingsForMap(mapName)
+			.filter(building => building.playerId === playerId)
+
+		for (const building of allBuildings) {
+			const definition = this.buildingManager.getBuildingDefinition(building.buildingId)
+			if (!definition || !definition.productionRecipe) {
+				continue
+			}
+
+			const requiredInput = definition.productionRecipe.inputs.find(input => input.itemType === itemType)
+			if (!requiredInput) {
+				continue
+			}
+
+			const current = this.storageManager.getCurrentQuantity(building.id, itemType)
+			const needed = requiredInput.quantity - current
+			if (needed <= 0) {
+				continue
+			}
+
+			const requestQuantity = Math.min(quantity, needed)
+			if (!this.storageManager.hasAvailableStorage(building.id, itemType, requestQuantity)) {
+				continue
+			}
+
+			buildings.push(building.id)
+		}
+
+		return buildings
 	}
 
 
