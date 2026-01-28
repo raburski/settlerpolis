@@ -6,6 +6,7 @@
     "activeFile": "map1.tmx",
     "expandedProjectPaths": [
     ],
+    "file.lastUsedOpenFilter": "All Files (*)",
     "fileStates": {
         "": {
             "scaleInDock": 1
@@ -17,8 +18,8 @@
             "scale": 0.6687,
             "selectedLayer": 6,
             "viewCenter": {
-                "x": 780.6191117092867,
-                "y": 494.9902796470764
+                "x": 1414.6852101091672,
+                "y": 909.2268580828475
             }
         },
         "map1.tmx#CL_Buildings": {
