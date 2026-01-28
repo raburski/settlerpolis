@@ -11,6 +11,7 @@ import { Position } from '../types'
 import { Receiver } from '../Receiver'
 import { calculateDistance } from '../utils'
 import { JobType } from '../Population/types'
+import { ConstructionStage } from '../Buildings/types'
 import { SimulationEvents } from '../Simulation/events'
 import { SimulationTickData } from '../Simulation/types'
 
@@ -400,6 +401,7 @@ export class ProductionManager {
 				this.retryInputRequests(buildingInstanceId, production)
 			}
 		}
+		this.processHarvestOutputs()
 	}
 
 	private retryInputRequests(buildingInstanceId: string, production: BuildingProduction): void {
@@ -408,6 +410,69 @@ export class ProductionManager {
 			return
 		}
 		this.checkAndStartProduction(buildingInstanceId)
+	}
+
+	private processHarvestOutputs(): void {
+		const buildings = this.buildingManager.getAllBuildings()
+		if (buildings.length === 0) {
+			return
+		}
+
+		for (const building of buildings) {
+			if (building.stage !== ConstructionStage.Completed) {
+				continue
+			}
+
+			const definition = this.buildingManager.getBuildingDefinition(building.buildingId)
+			if (!definition || !definition.harvest || definition.productionRecipe) {
+				continue
+			}
+
+			const storage = this.storageManager.getBuildingStorage(building.id)
+			if (!storage || storage.buffer.size === 0) {
+				continue
+			}
+
+			const buildingPriority = definition.priority ?? 1
+			const priority = 20 + buildingPriority
+
+			for (const [itemType, current] of storage.buffer.entries()) {
+				if (current <= 0) {
+					continue
+				}
+
+				const available = this.storageManager.getAvailableQuantity(building.id, itemType)
+				if (available <= 0) {
+					continue
+				}
+
+				const batchQuantity = Math.min(available, 1)
+				if (this.requestOutputTransportToConsumers(building.id, itemType, batchQuantity, priority)) {
+					continue
+				}
+
+				const capacity = this.storageManager.getStorageCapacity(building.id, itemType)
+				if (capacity === 0) {
+					continue
+				}
+
+				const OVERFLOW_THRESHOLD = 0.8
+				if (current / capacity < OVERFLOW_THRESHOLD) {
+					continue
+				}
+
+				if (this.jobsManager.hasActiveJobForBuilding(building.id, itemType)) {
+					continue
+				}
+
+				const warehouseId = this.findClosestWarehouse(itemType, batchQuantity, building.mapName, building.playerId, building.position)
+				if (!warehouseId) {
+					continue
+				}
+
+				this.jobsManager.requestTransport(building.id, warehouseId, itemType, batchQuantity, priority)
+			}
+		}
 	}
 
 	// Request input resources (delegate to JobsManager for transport)
@@ -637,7 +702,9 @@ export class ProductionManager {
 			}
 
 			const current = this.storageManager.getCurrentQuantity(building.id, itemType)
-			const needed = requiredInput.quantity - current
+			const capacity = this.storageManager.getStorageCapacity(building.id, itemType)
+			const desired = capacity > 0 ? capacity : requiredInput.quantity
+			const needed = desired - current
 			if (needed <= 0) {
 				continue
 			}

@@ -9,7 +9,6 @@ import { SimulationEvents } from '../Simulation/events'
 import { SimulationTickData } from '../Simulation/types'
 import { ConstructionStage } from '../Buildings/types'
 import { SettlerState } from '../Population/types'
-import { calculateDistance } from '../utils'
 
 const HARVEST_TICK_INTERVAL_MS = 1000
 
@@ -68,8 +67,6 @@ export class HarvestManager {
 
 			const outputItemType = nodeDefinition.outputItemType
 			const harvestQuantity = nodeDefinition.harvestQuantity
-			const buildingPriority = definition.priority ?? 1
-			const overflowPriority = 20 + buildingPriority
 
 			if (!this.storageManager.acceptsItemType(building.id, outputItemType)) {
 				continue
@@ -112,193 +109,7 @@ export class HarvestManager {
 			if (jobId) {
 				this.logger.log(`[HarvestManager] Assigned harvest job ${jobId} for building ${building.id}`)
 			}
-
-			this.handleOutputOverflow(
-				building.id,
-				building.position,
-				building.mapName,
-				building.playerId,
-				outputItemType,
-				harvestQuantity,
-				overflowPriority
-			)
 		}
-	}
-
-	private handleOutputOverflow(
-		buildingInstanceId: string,
-		buildingPosition: { x: number, y: number },
-		mapName: string,
-		playerId: string,
-		itemType: string,
-		quantity: number,
-		priority: number
-	): void {
-		const capacity = this.storageManager.getStorageCapacity(buildingInstanceId, itemType)
-		if (capacity === 0) {
-			return
-		}
-
-		const current = this.storageManager.getCurrentQuantity(buildingInstanceId, itemType)
-		const available = this.storageManager.getAvailableQuantity(buildingInstanceId, itemType)
-		if (available === 0 || current === 0) {
-			return
-		}
-
-		if (this.requestOutputToConsumers(buildingInstanceId, itemType, quantity, priority)) {
-			return
-		}
-
-		const OVERFLOW_THRESHOLD = 0.8
-		if (current / capacity < OVERFLOW_THRESHOLD) {
-			return
-		}
-
-		if (this.jobsManager.hasActiveJobForBuilding(buildingInstanceId, itemType)) {
-			return
-		}
-
-		const warehouseId = this.findClosestWarehouse(itemType, quantity, mapName, playerId, buildingPosition)
-		if (!warehouseId) {
-			return
-		}
-
-		const transportQuantity = Math.min(quantity, available)
-		this.jobsManager.requestTransport(buildingInstanceId, warehouseId, itemType, transportQuantity, priority)
-	}
-
-	private requestOutputToConsumers(buildingInstanceId: string, itemType: string, quantity: number, priority: number): boolean {
-		const building = this.buildingManager.getBuildingInstance(buildingInstanceId)
-		if (!building) {
-			return false
-		}
-
-		if (this.jobsManager.hasActiveJobForBuilding(buildingInstanceId, itemType)) {
-			return false
-		}
-
-		const available = this.storageManager.getAvailableQuantity(buildingInstanceId, itemType)
-		if (available === 0) {
-			return false
-		}
-
-		const transportQuantity = Math.min(quantity, available)
-		const targetBuildingId = this.findClosestTargetBuilding(
-			buildingInstanceId,
-			itemType,
-			transportQuantity,
-			building.mapName,
-			building.playerId,
-			building.position
-		)
-
-		if (!targetBuildingId) {
-			return false
-		}
-
-		this.jobsManager.requestTransport(buildingInstanceId, targetBuildingId, itemType, transportQuantity, priority)
-		return true
-	}
-
-	private findClosestTargetBuilding(
-		sourceBuildingInstanceId: string,
-		itemType: string,
-		quantity: number,
-		mapName: string,
-		playerId: string,
-		position: { x: number, y: number }
-	): string | null {
-		const targets = this.findTargetBuildings(itemType, quantity, mapName, playerId)
-			.filter(buildingId => buildingId !== sourceBuildingInstanceId)
-
-		if (targets.length === 0) {
-			return null
-		}
-
-		let closest = targets[0]
-		let closestDistance = calculateDistance(position, this.buildingManager.getBuildingInstance(closest)!.position)
-
-		for (let i = 1; i < targets.length; i++) {
-			const building = this.buildingManager.getBuildingInstance(targets[i])
-			if (!building) {
-				continue
-			}
-			const distance = calculateDistance(position, building.position)
-			if (distance < closestDistance) {
-				closest = targets[i]
-				closestDistance = distance
-			}
-		}
-
-		return closest
-	}
-
-	private findTargetBuildings(itemType: string, quantity: number, mapName: string, playerId: string): string[] {
-		const buildings: string[] = []
-
-		const allBuildings = this.buildingManager.getBuildingsForMap(mapName)
-			.filter(building => building.playerId === playerId)
-
-		for (const building of allBuildings) {
-			const definition = this.buildingManager.getBuildingDefinition(building.buildingId)
-			if (!definition || !definition.productionRecipe) {
-				continue
-			}
-
-			const requiredInput = definition.productionRecipe.inputs.find(input => input.itemType === itemType)
-			if (!requiredInput) {
-				continue
-			}
-
-			const current = this.storageManager.getCurrentQuantity(building.id, itemType)
-			const needed = requiredInput.quantity - current
-			if (needed <= 0) {
-				continue
-			}
-
-			const requestQuantity = Math.min(quantity, needed)
-			if (!this.storageManager.hasAvailableStorage(building.id, itemType, requestQuantity)) {
-				continue
-			}
-
-			buildings.push(building.id)
-		}
-
-		return buildings
-	}
-
-
-	private findClosestWarehouse(
-		itemType: string,
-		quantity: number,
-		mapName: string,
-		playerId: string,
-		position: { x: number, y: number }
-	): string | null {
-		const warehouses = this.buildingManager.getBuildingsForMap(mapName)
-			.filter(building => building.playerId === playerId)
-			.filter(building => {
-				const definition = this.buildingManager.getBuildingDefinition(building.buildingId)
-				return !!definition?.isWarehouse
-			})
-			.filter(building => this.storageManager.hasAvailableStorage(building.id, itemType, quantity))
-
-		if (warehouses.length === 0) {
-			return null
-		}
-
-		let closest = warehouses[0]
-		let closestDistance = calculateDistance(position, closest.position)
-
-		for (let i = 1; i < warehouses.length; i++) {
-			const distance = calculateDistance(position, warehouses[i].position)
-			if (distance < closestDistance) {
-				closest = warehouses[i]
-				closestDistance = distance
-			}
-		}
-
-		return closest.id
 	}
 
 	private processHarvestingJobs(): void {
