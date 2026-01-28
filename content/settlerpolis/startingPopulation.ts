@@ -8,7 +8,6 @@ export const startingPopulation: StartingPopulation[] = [
 	},
 	{
 		profession: ProfessionType.Carrier,
-		count: 1
+		count: 6
 	}
 ]
-
