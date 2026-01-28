@@ -393,8 +393,21 @@ export class ProductionManager {
 		for (const [buildingInstanceId, production] of this.buildingProductions.entries()) {
 			if (production.isProducing) {
 				this.processProduction(buildingInstanceId)
+				continue
+			}
+
+			if (production.status === ProductionStatus.NoInput) {
+				this.retryInputRequests(buildingInstanceId, production)
 			}
 		}
+	}
+
+	private retryInputRequests(buildingInstanceId: string, production: BuildingProduction): void {
+		const RETRY_INTERVAL_MS = 5000
+		if (production.lastInputRequestAtMs && (this.simulationTimeMs - production.lastInputRequestAtMs) < RETRY_INTERVAL_MS) {
+			return
+		}
+		this.checkAndStartProduction(buildingInstanceId)
 	}
 
 	// Request input resources (delegate to JobsManager for transport)
@@ -403,6 +416,10 @@ export class ProductionManager {
 		const building = this.buildingManager.getBuildingInstance(buildingInstanceId)
 		if (!building) {
 			return
+		}
+		const production = this.buildingProductions.get(buildingInstanceId)
+		if (production) {
+			production.lastInputRequestAtMs = this.simulationTimeMs
 		}
 		const buildingDef = this.buildingManager.getBuildingDefinition(building.buildingId)
 		const buildingPriority = buildingDef?.priority ?? 1

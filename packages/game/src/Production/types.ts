@@ -16,6 +16,7 @@ export interface BuildingProduction {
 	progress: number // 0-100
 	currentBatchStartTime?: number
 	isProducing: boolean
+	lastInputRequestAtMs?: number
 }
 
 export enum ProductionStatus {
@@ -24,4 +25,3 @@ export enum ProductionStatus {
 	InProduction = 'in_production',
 	NoWorker = 'no_worker' // Building requires worker but none assigned
 }
-
