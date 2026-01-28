@@ -332,6 +332,12 @@ export class JobsManager {
 					}
 					this.advanceJobPhase(job, 'arrived')
 					this.completeJob(job.jobId)
+					if (job.jobType === JobType.Harvest) {
+						const assignedWorkers = this.buildingManager.getBuildingWorkers(job.buildingInstanceId)
+						if (assignedWorkers.includes(settler.id)) {
+							return SettlerState.Working
+						}
+					}
 					return SettlerState.Idle
 				}
 
