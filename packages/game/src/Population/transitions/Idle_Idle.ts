@@ -13,7 +13,7 @@ export interface IdleWanderContext {
 export const Idle_Idle: StateTransition<IdleWanderContext> = {
 	condition: (settler, context) => {
 		// Only wander if settler has no job assignment
-		return settler.state === SettlerState.Idle && !settler.currentJob && !settler.stateContext.jobId
+		return settler.state === SettlerState.Idle && !settler.stateContext.jobId
 	},
 	
 	validate: (settler, context, managers) => {
@@ -71,4 +71,3 @@ export const Idle_Idle: StateTransition<IdleWanderContext> = {
 		return null
 	}
 }
-

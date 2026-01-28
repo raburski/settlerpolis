@@ -29,6 +29,7 @@ export const Idle_MovingToBuilding: StateTransition<RequestWorkerHasProfessionCo
 		settler.stateContext = {
 			targetId: context.buildingInstanceId,
 			targetPosition: context.buildingPosition,
+			targetType: 'building',
 			jobId: jobId
 		}
 		
@@ -55,8 +56,9 @@ export const Idle_MovingToBuilding: StateTransition<RequestWorkerHasProfessionCo
 	},
 	
 	completed: (settler, managers) => {
-		// When movement to building completes, transition to Working
-		return SettlerState.Working
+		if (!managers.jobsManager) {
+			return null
+		}
+		return managers.jobsManager.handleSettlerArrival(settler)
 	}
 }
-

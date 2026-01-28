@@ -126,6 +126,8 @@ export const SettlerInfoPanel: React.FC = () => {
 		}
 	}
 
+	const job = settler ? populationService.getJob(settler.stateContext.jobId) : undefined
+
 	return (
 		<DraggablePanel
 			icon={professionIcons[settler.profession]}
@@ -143,52 +145,58 @@ export const SettlerInfoPanel: React.FC = () => {
 					<span className={sharedStyles.value}>{getStateLabel(settler.state)}</span>
 				</div>
 
-				{settler.currentJob && (
+				{job && (
 					<>
 						<div className={sharedStyles.infoRow}>
 							<span className={sharedStyles.label}>Job Type:</span>
 							<span className={sharedStyles.value}>
-								{settler.currentJob.jobType === JobType.Construction && '🏗️ Construction'}
-								{settler.currentJob.jobType === JobType.Production && '⚙️ Production'}
-								{settler.currentJob.jobType === JobType.Transport && '📦 Transport'}
-								{settler.currentJob.jobType === JobType.Harvest && '🪓 Harvest'}
+								{job.jobType === JobType.Construction && '🏗️ Construction'}
+								{job.jobType === JobType.Production && '⚙️ Production'}
+								{job.jobType === JobType.Transport && '📦 Transport'}
+								{job.jobType === JobType.Harvest && '🪓 Harvest'}
 							</span>
 						</div>
 						<div className={sharedStyles.infoRow}>
 							<span className={sharedStyles.label}>Job Status:</span>
 							<span className={sharedStyles.value}>
-								{settler.currentJob.status === 'pending' && '⏳ Pending'}
-								{settler.currentJob.status === 'active' && '✅ Active'}
-								{settler.currentJob.status === 'completed' && '✔️ Completed'}
-								{settler.currentJob.status === 'cancelled' && '❌ Cancelled'}
+								{job.status === 'pending' && '⏳ Pending'}
+								{job.status === 'active' && '✅ Active'}
+								{job.status === 'completed' && '✔️ Completed'}
+								{job.status === 'cancelled' && '❌ Cancelled'}
 							</span>
 						</div>
-						{settler.currentJob.buildingInstanceId && (
+						{job.buildingInstanceId && (
 							<div className={sharedStyles.infoRow}>
 								<span className={sharedStyles.label}>Building:</span>
 								<span className={sharedStyles.value}>
-									{buildingService.getBuildingInstance(settler.currentJob.buildingInstanceId)?.buildingId || 'Unknown'}
+									{buildingService.getBuildingInstance(job.buildingInstanceId)?.buildingId || 'Unknown'}
 								</span>
 							</div>
 						)}
-						{settler.currentJob.jobType === JobType.Transport && settler.currentJob.itemType && (
+						{job.jobType === JobType.Transport && job.itemType && (
 							<div className={sharedStyles.infoRow}>
 								<span className={sharedStyles.label}>
-									{settler.currentJob.carriedItemId ? 'Carrying:' : 'Picking up:'}
+									{job.carriedItemId ? 'Carrying:' : 'Picking up:'}
 								</span>
 								<span className={sharedStyles.value}>
-									<ItemEmoji itemType={settler.currentJob.itemType} /> {settler.currentJob.itemType}
-									{settler.currentJob.quantity && ` (${settler.currentJob.quantity})`}
+									<ItemEmoji itemType={job.itemType} /> {job.itemType}
+									{job.quantity && ` (${job.quantity})`}
 								</span>
 							</div>
 						)}
-						{settler.currentJob.requiredProfession && (
+						{job.requiredProfession && (
 							<div className={sharedStyles.infoRow}>
 								<span className={sharedStyles.label}>Required Profession:</span>
-								<span className={sharedStyles.value}>{professionLabels[settler.currentJob.requiredProfession]}</span>
+								<span className={sharedStyles.value}>{professionLabels[job.requiredProfession]}</span>
 							</div>
 						)}
 					</>
+				)}
+				{!job && settler.stateContext.jobId && (
+					<div className={sharedStyles.infoRow}>
+						<span className={sharedStyles.label}>Job:</span>
+						<span className={sharedStyles.value}>In progress</span>
+					</div>
 				)}
 
 				{settler.houseId && (

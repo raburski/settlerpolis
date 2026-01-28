@@ -380,6 +380,10 @@ export class StorageManager {
 		}
 	}
 
+	public hasReservation(reservationId: string): boolean {
+		return this.reservations.has(reservationId)
+	}
+
 	// Get all buildings with available items of a specific type
 	public getBuildingsWithAvailableItems(itemType: string, quantity: number, mapName: string, playerId: string): string[] {
 		const buildings: string[] = []

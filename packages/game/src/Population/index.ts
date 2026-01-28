@@ -580,103 +580,20 @@ export class PopulationManager {
 		const settlers = Array.from(this.settlers.values())
 		for (const settler of settlers) {
 			const jobId = settler.stateContext.jobId
-			if (jobId && this.jobsManager) {
-				const job = this.jobsManager.getJob(jobId)
-				if (!job || job.status === 'cancelled' || job.status === 'completed') {
-					this.recoverSettlerToIdle(settler, 'job_missing')
-					continue
-				}
+			if (!jobId || !this.jobsManager) {
+				continue
 			}
 
-			if (settler.state === SettlerState.MovingToTool) {
-				const toolId = settler.stateContext.targetId
-				if (!toolId) {
-					this.recoverSettlerToIdle(settler, 'tool_target_missing')
-					continue
-				}
-				if (!this.lootManager.getItem(toolId)) {
-					this.lootManager.releaseReservation(toolId, settler.id)
-					this.recoverSettlerToIdle(settler, 'tool_missing')
-					continue
-				}
-				if (!this.lootManager.isReservationValid(toolId, settler.id)) {
-					this.recoverSettlerToIdle(settler, 'tool_reservation_lost')
-					continue
-				}
+			const job = this.jobsManager.getJob(jobId)
+			if (!job || job.status === 'cancelled' || job.status === 'completed') {
+				this.resetSettlerFromJob(jobId, job ? `job_${job.status}` : 'job_missing')
+				continue
 			}
 
-			if (settler.state === SettlerState.MovingToBuilding || settler.state === SettlerState.Working) {
-				if (jobId && this.jobsManager) {
-					const job = this.jobsManager.getJob(jobId)
-					if (!job) {
-						this.recoverSettlerToIdle(settler, 'building_job_missing')
-						continue
-					}
-					const building = this.buildingManager.getBuildingInstance(job.buildingInstanceId)
-					if (!building) {
-						this.jobsManager.cancelJob(jobId, 'building_missing')
-						this.recoverSettlerToIdle(settler, 'building_missing')
-						continue
-					}
-				} else if (settler.buildingId) {
-					const building = this.buildingManager.getBuildingInstance(settler.buildingId)
-					if (!building) {
-						this.recoverSettlerToIdle(settler, 'building_missing')
-						continue
-					}
-				}
-			}
-
-			if (settler.state === SettlerState.MovingToResource || settler.state === SettlerState.Harvesting) {
-				if (!jobId || !this.jobsManager) {
-					this.recoverSettlerToIdle(settler, 'harvest_job_missing')
-					continue
-				}
-				const job = this.jobsManager.getJob(jobId)
-				if (!job || !job.resourceNodeId) {
-					this.recoverSettlerToIdle(settler, 'harvest_job_missing')
-					continue
-				}
-				const node = this.resourceNodesManager.getNode(job.resourceNodeId)
-				if (!node || node.reservedBy !== jobId) {
-					this.jobsManager.cancelJob(jobId, 'resource_missing')
-					this.recoverSettlerToIdle(settler, 'resource_missing')
-					continue
-				}
-			}
-
-			if (settler.state === SettlerState.MovingToItem || settler.state === SettlerState.CarryingItem) {
-				if (jobId && this.jobsManager) {
-					const job = this.jobsManager.getJob(jobId)
-					if (!job || job.status === 'cancelled' || job.status === 'completed') {
-						this.recoverSettlerToIdle(settler, 'transport_job_missing')
-						continue
-					}
-				}
+			if (job.settlerId !== settler.id) {
+				this.resetSettlerFromJob(jobId, 'job_owner_mismatch')
 			}
 		}
-	}
-
-	private recoverSettlerToIdle(settler: Settler, reason: string): void {
-		if (this.movementManager.hasActiveMovement(settler.id)) {
-			this.movementManager.cancelMovement(settler.id)
-		}
-
-		if (settler.stateContext.targetId && settler.state === SettlerState.MovingToTool) {
-			this.lootManager.releaseReservation(settler.stateContext.targetId, settler.id)
-		}
-
-		if (settler.currentJob && this.jobsManager) {
-			this.jobsManager.cancelJob(settler.currentJob.jobId, reason)
-		}
-
-		settler.currentJob = undefined
-		settler.buildingId = undefined
-		settler.state = SettlerState.Idle
-		settler.stateContext = {}
-
-		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
-		this.logger.warn(`[RECOVERY] Settler ${settler.id} reset to Idle (${reason})`)
 	}
 
 	private requestRevertToCarrier(data: RequestRevertToCarrierData, client: EventClient): void {
@@ -862,6 +779,10 @@ export class PopulationManager {
 		return null
 	}
 
+	public getToolItemType(profession: ProfessionType): string | null {
+		return this.findToolForProfession(profession)
+	}
+
 	// Find tool on map
 	private findToolOnMap(mapName: string, itemType: string): { id: string, position: Position } | null {
 		const availableItem = this.lootManager.getAvailableItemByType(mapName, itemType)
@@ -875,6 +796,10 @@ export class PopulationManager {
 		return null
 	}
 
+	public findAvailableToolOnMap(mapName: string, itemType: string): { id: string, position: Position } | null {
+		return this.findToolOnMap(mapName, itemType)
+	}
+
 	// Assign worker to transport job (called by JobsManager)
 	public assignWorkerToTransportJob(
 		settlerId: string,
@@ -886,8 +811,6 @@ export class PopulationManager {
 			return
 		}
 
-		// Assign job to settler
-		settler.currentJob = jobAssignment
 		settler.stateContext.jobId = jobId
 
 		// Execute state transition: Idle -> MovingToItem
@@ -908,9 +831,6 @@ export class PopulationManager {
 			return
 		}
 
-		if (!settler.currentJob) {
-			settler.currentJob = jobAssignment
-		}
 		settler.stateContext.jobId = jobId
 
 		this.stateMachine.executeTransition(settler, SettlerState.MovingToResource, {
@@ -919,23 +839,10 @@ export class PopulationManager {
 	}
 
 	public completeHarvestJob(settlerId: string, jobId: string): void {
-		const settler = this.settlers.get(settlerId)
-		if (!settler) {
+		if (!this.jobsManager) {
 			return
 		}
-
-		if (settler.state !== SettlerState.Harvesting) {
-			return
-		}
-
-		settler.stateContext.jobId = jobId
-		const success = this.stateMachine.executeTransition(settler, SettlerState.CarryingItem, {
-			jobId
-		})
-		if (!success && this.jobsManager) {
-			this.jobsManager.cancelJob(jobId, 'harvest_failed')
-			this.clearSettlerJob(settlerId, jobId)
-		}
+		this.jobsManager.handleHarvestComplete(jobId)
 	}
 
 	public clearSettlerJob(settlerId: string, jobId?: string): void {
@@ -944,13 +851,13 @@ export class PopulationManager {
 			return
 		}
 
-		if (jobId && settler.currentJob?.jobId !== jobId) {
+		if (jobId && settler.stateContext.jobId !== jobId) {
 			return
 		}
 
-		settler.currentJob = undefined
 		settler.state = SettlerState.Idle
 		settler.stateContext = {}
+		settler.buildingId = undefined
 		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
 	}
 
@@ -965,8 +872,6 @@ export class PopulationManager {
 			return
 		}
 
-		// Assign job to settler
-		settler.currentJob = jobAssignment
 		settler.stateContext.jobId = jobId
 
 		// Get building to get position
@@ -974,28 +879,6 @@ export class PopulationManager {
 		if (!building) {
 			return
 		}
-
-		// Check if settler needs tool
-		if (jobAssignment.requiredProfession && settler.profession !== jobAssignment.requiredProfession) {
-			// Find tool for profession
-			const toolItemType = this.findToolForProfession(jobAssignment.requiredProfession)
-			if (toolItemType) {
-				const tool = this.findToolOnMap(building.mapName, toolItemType)
-				if (tool) {
-					// Execute transition: Idle -> MovingToTool
-					// jobId is already set in stateContext, but we still need to pass context for condition/validate checks
-					this.stateMachine.executeTransition(settler, SettlerState.MovingToTool, {
-						toolId: tool.id,
-						toolPosition: tool.position,
-						buildingInstanceId: jobAssignment.buildingInstanceId,
-						requiredProfession: jobAssignment.requiredProfession!
-					})
-					return
-				}
-			}
-		}
-
-		// No tool needed or tool not found - go directly to building
 
 		// Execute transition: Idle -> MovingToBuilding
 		this.stateMachine.executeTransition(settler, SettlerState.MovingToBuilding, {
@@ -1014,16 +897,10 @@ export class PopulationManager {
 			return
 		}
 
-		// Execute transition: Working -> Idle
-		// State machine handles cancellation, unassignment, events
-		const success = this.stateMachine.executeTransition(settler, SettlerState.Idle, {})
-		
-		if (success) {
-			// Handle internal state management after transition
-			// JobsManager handles job tracking
-			if (settler.currentJob && this.jobsManager) {
-				this.jobsManager.cancelJob(settler.currentJob.jobId, 'unassigned')
-			}
+		if (settler.stateContext.jobId && this.jobsManager) {
+			this.jobsManager.cancelJob(settler.stateContext.jobId, 'unassigned')
+		} else {
+			this.stateMachine.executeTransition(settler, SettlerState.Idle, {})
 		}
 
 		// 7. Emit sc:population:stats-updated
@@ -1052,7 +929,7 @@ export class PopulationManager {
 			}
 
 			// Only transition builders that are currently working on this building
-			if (settler.state === SettlerState.Working && settler.currentJob?.jobId === job.jobId) {
+			if (settler.state === SettlerState.Working && settler.stateContext.jobId === job.jobId) {
 				this.logger.log(`[CONSTRUCTION COMPLETED] Completing construction job ${job.jobId} for settler ${settler.id}`)
 				
 				// Complete the job
@@ -1080,7 +957,7 @@ export class PopulationManager {
 		}
 
 		// Only assign if settler is still Idle and has no job
-		if (settler.state !== SettlerState.Idle || settler.currentJob) {
+		if (settler.state !== SettlerState.Idle || settler.stateContext.jobId) {
 			return
 		}
 
@@ -1259,19 +1136,12 @@ export class PopulationManager {
 		// 3. Unassign from jobs if working
 		settlersFromHouse.forEach(settlerId => {
 			const settler = this.settlers.get(settlerId)
-			if (settler && settler.currentJob) {
-				// Cancel job (JobsManager handles job tracking)
-				if (this.jobsManager) {
-					this.jobsManager.cancelJob(settler.currentJob.jobId, 'house_destroyed')
-				}
-				
-				if (settler.buildingId) {
-					this.buildingManager.unassignWorker(settler.buildingId, settlerId)
-				}
+			if (settler?.stateContext.jobId && this.jobsManager) {
+				this.jobsManager.cancelJob(settler.stateContext.jobId, 'house_destroyed')
+			}
 
-				settler.currentJob = undefined
-				settler.buildingId = undefined
-				settler.state = SettlerState.Idle
+			if (settler?.buildingId) {
+				this.buildingManager.unassignWorker(settler.buildingId, settlerId)
 			}
 
 			// Remove settler
@@ -1319,7 +1189,7 @@ export class PopulationManager {
 			}
 			
 			// Must have no job assignment
-			if (settler.currentJob || settler.stateContext.jobId) {
+			if (settler.stateContext.jobId) {
 				return false
 			}
 			
@@ -1390,6 +1260,37 @@ export class PopulationManager {
 		}
 		
 		return null // No valid position found after 10 attempts
+	}
+
+	public transitionSettlerState<TContext = any>(settlerId: string, toState: SettlerState, context: TContext): boolean {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return false
+		}
+
+		return this.stateMachine.executeTransition(settler, toState, context)
+	}
+
+	public resetSettlerFromJob(jobId: string, reason: string): void {
+		const settler = Array.from(this.settlers.values()).find(candidate => candidate.stateContext.jobId === jobId)
+		if (!settler) {
+			return
+		}
+
+		if (this.movementManager.hasActiveMovement(settler.id)) {
+			this.movementManager.cancelMovement(settler.id)
+		}
+
+		if (settler.state === SettlerState.MovingToTool && settler.stateContext.targetId) {
+			this.lootManager.releaseReservation(settler.stateContext.targetId, settler.id)
+		}
+
+		settler.state = SettlerState.Idle
+		settler.stateContext = {}
+		settler.buildingId = undefined
+
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+		this.logger.warn(`[RECOVERY] Settler ${settler.id} reset to Idle (${reason})`)
 	}
 
 	// Public getters

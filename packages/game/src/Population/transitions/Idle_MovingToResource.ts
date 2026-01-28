@@ -1,20 +1,10 @@
 import { StateTransition } from './types'
 import { SettlerState, JobType } from '../types'
 import { Receiver } from '../../Receiver'
-import { PopulationEvents } from '../events'
 import { MovementEvents } from '../../Movement/events'
 
 export interface MovingToResourceContext {
 	jobId: string
-}
-
-function resetSettler(settler: any, managers: any, jobIdToClear?: string): void {
-	if (jobIdToClear && settler.currentJob?.jobId === jobIdToClear) {
-		settler.currentJob = undefined
-	}
-	settler.state = SettlerState.Idle
-	settler.stateContext = {}
-	managers.eventManager.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
 }
 
 export const Idle_MovingToResource: StateTransition<MovingToResourceContext> = {
@@ -55,7 +45,8 @@ export const Idle_MovingToResource: StateTransition<MovingToResourceContext> = {
 		settler.stateContext = {
 			jobId: context.jobId,
 			targetId: node.id,
-			targetPosition: node.position
+			targetPosition: node.position,
+			targetType: 'resource'
 		}
 
 		const movementStarted = managers.movementManager.moveToPosition(settler.id, node.position, {
@@ -80,45 +71,9 @@ export const Idle_MovingToResource: StateTransition<MovingToResourceContext> = {
 	},
 
 	completed: (settler, managers) => {
-		const jobId = settler.stateContext.jobId
-		if (!jobId || !managers.jobsManager || !managers.resourceNodesManager) {
-			managers.logger.error('[Idle_MovingToResource.completed] Missing jobId or managers')
+		if (!managers.jobsManager) {
 			return null
 		}
-
-		const job = managers.jobsManager.getJob(jobId)
-		if (!job || job.jobType !== JobType.Harvest || !job.resourceNodeId) {
-			managers.logger.warn(`[Idle_MovingToResource.completed] Job ${jobId} not found or invalid`)
-			return null
-		}
-
-		if (job.status === 'cancelled') {
-			resetSettler(settler, managers, jobId)
-			return null
-		}
-
-		const node = managers.resourceNodesManager.getNode(job.resourceNodeId)
-		if (!node || node.remainingHarvests <= 0) {
-			managers.jobsManager.cancelJob(jobId, 'node_not_found')
-			resetSettler(settler, managers, jobId)
-			return null
-		}
-
-		if (node.reservedBy && node.reservedBy !== jobId) {
-			managers.jobsManager.cancelJob(jobId, 'node_reserved')
-			resetSettler(settler, managers, jobId)
-			return null
-		}
-
-		if (!node.reservedBy) {
-			const reserved = managers.resourceNodesManager.reserveNode(node.id, jobId)
-			if (!reserved) {
-				managers.jobsManager.cancelJob(jobId, 'node_reserved')
-				resetSettler(settler, managers, jobId)
-				return null
-			}
-		}
-
-		return SettlerState.Harvesting
+		return managers.jobsManager.handleSettlerArrival(settler)
 	}
 }

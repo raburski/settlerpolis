@@ -53,16 +53,22 @@ export class SettlerController {
 
 	private handleWorkerAssigned = (data: { jobAssignment: any, settlerId: string, buildingInstanceId: string }) => {
 		if (data.settlerId === this.settler.id) {
-			this.settler.currentJob = data.jobAssignment
+			this.settler.stateContext = {
+				...this.settler.stateContext,
+				jobId: data.jobAssignment.jobId
+			}
 			this.settler.buildingId = data.buildingInstanceId
 			this.settler.state = SettlerState.Working
 			this.view.updateState(SettlerState.Working)
 		}
 	}
 
-	private handleWorkerUnassigned = (data: { settlerId: string }) => {
+	private handleWorkerUnassigned = (data: { settlerId: string, jobId: string }) => {
 		if (data.settlerId === this.settler.id) {
-			this.settler.currentJob = undefined
+			this.settler.stateContext = {
+				...this.settler.stateContext,
+				jobId: undefined
+			}
 			this.settler.buildingId = undefined
 			this.settler.state = SettlerState.Idle
 			this.view.updateState(SettlerState.Idle)

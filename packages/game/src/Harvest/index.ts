@@ -210,7 +210,6 @@ export class HarvestManager {
 			}
 
 			if (job.status !== 'active') {
-				this.populationManager.clearSettlerJob(job.settlerId, job.jobId)
 				continue
 			}
 
@@ -224,7 +223,7 @@ export class HarvestManager {
 				continue
 			}
 
-			this.populationManager.completeHarvestJob(job.settlerId, job.jobId)
+			this.jobsManager.handleHarvestComplete(job.jobId)
 		}
 	}
 }

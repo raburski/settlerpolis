@@ -1,8 +1,5 @@
 import { StateTransition, BuildingArrivalContext } from './types'
-import { SettlerState, JobType } from '../types'
-import { Receiver } from '../../Receiver'
-import { PopulationEvents } from '../events'
-import { ConstructionStage } from '../../Buildings/types'
+import { SettlerState } from '../types'
 
 export const MovingToBuilding_Working: StateTransition<BuildingArrivalContext> = {
 	condition: (settler, context) => {
@@ -19,11 +16,7 @@ export const MovingToBuilding_Working: StateTransition<BuildingArrivalContext> =
 		// Verify job exists
 		if (!managers.jobsManager) return false
 		const job = managers.jobsManager.getJob(jobId)
-		if (!job) return false
-		
-		// Verify building still needs workers
-		const building = managers.buildingManager.getBuildingInstance(job.buildingInstanceId)
-		return building !== undefined && managers.buildingManager.getBuildingNeedsWorkers(job.buildingInstanceId)
+		return !!job
 	},
 	
 	action: (settler, context, managers) => {
@@ -36,31 +29,19 @@ export const MovingToBuilding_Working: StateTransition<BuildingArrivalContext> =
 		if (!managers.jobsManager) {
 			throw new Error(`[MovingToBuilding_Working] JobsManager not available`)
 		}
-		
+
 		const job = managers.jobsManager.getJob(jobId)
 		if (!job) {
 			throw new Error(`[MovingToBuilding_Working] Job ${jobId} not found`)
 		}
 		
 		const buildingInstanceId = job.buildingInstanceId
-		
-		// Assign worker to job (JobsManager will update job status and assign worker to building)
-		managers.jobsManager.assignWorkerToJob(jobId, settler.id)
-		
+
 		// Update state
 		settler.state = SettlerState.Working
 		settler.stateContext = {
 			jobId: jobId
 		}
-		settler.currentJob = job
 		settler.buildingId = buildingInstanceId
-		
-		// Emit worker assigned event
-		managers.eventManager.emit(Receiver.Group, PopulationEvents.SC.WorkerAssigned, {
-			jobAssignment: job,
-			settlerId: settler.id,
-			buildingInstanceId
-		}, settler.mapName)
 	}
 }
-
