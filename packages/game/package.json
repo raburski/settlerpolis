@@ -7,7 +7,10 @@
         "build": "tsc",
         "check-types": "tsc --noEmit",
         "export-maps": "node scripts/export-maps.js",
-        "export-types": "ts-node scripts/types-export.ts"
+        "export-types": "ts-node scripts/types-export.ts",
+        "test": "vitest",
+        "test:ui": "vitest --ui",
+        "test:coverage": "vitest --coverage"
     },
     "dependencies": {
         "cron-parser": "^5.1.1",
@@ -15,7 +18,9 @@
     },
     "devDependencies": {
         "@types/node": "^20.11.24",
+        "@vitest/ui": "^2.1.8",
         "typescript": "^5.2.2",
-        "ts-node": "^10.9.2"
+        "ts-node": "^10.9.2",
+        "vitest": "^2.1.8"
     }
 }

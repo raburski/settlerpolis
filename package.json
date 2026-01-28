@@ -6,6 +6,7 @@
     ],
     "scripts": {
         "prepare": "husky install",
+        "test": "cd packages/game; npm test",
         "check-backend": "cd packages/backend && npm run check-types",
         "check-consistency": "cd packages/backend && ts-node scripts/consistency.ts",
         "export-types": "npm run export-types --workspace=@rugged/game",

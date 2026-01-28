@@ -27,6 +27,8 @@ import { PopulationManager } from './Population'
 import { MovementManager } from './Movement'
 import { ProfessionType } from './Population/types'
 import { JobsManager } from './Jobs'
+import { StorageManager } from './Storage'
+import { ProductionManager } from './Production'
 
 // Export types and events
 export * from './types'
@@ -62,6 +64,8 @@ export class GameManager {
 	private timeManager: TimeManager
 	private contentLoader: ContentLoader
 	private logsManager: LogsManager
+	private storageManager: StorageManager
+	private productionManager: ProductionManager
 
 	constructor(
 		private event: EventManager,
@@ -101,15 +105,27 @@ export class GameManager {
 		})) || []
 		this.populationManager = new PopulationManager(event, this.buildingManager, this.scheduler, this.mapManager, this.lootManager, this.itemsManager, this.movementManager, startingPopulation, this.logsManager.getLogger('PopulationManager'))
 		
-		// Create JobsManager after BuildingManager and PopulationManager (to avoid circular dependency)
+		// Create StorageManager after BuildingManager (to avoid circular dependency)
+		this.storageManager = new StorageManager(event, this.buildingManager, this.itemsManager, this.logsManager.getLogger('StorageManager'))
+		
+		// Create JobsManager after BuildingManager, PopulationManager, and StorageManager (to avoid circular dependency)
 		const jobsManager = new JobsManager(event, this.buildingManager, this.populationManager, this.lootManager, this.mapManager, this.logsManager.getLogger('JobsManager'))
+		jobsManager.setStorageManager(this.storageManager)
+		
+		// Create ProductionManager after BuildingManager, StorageManager, JobsManager, and LootManager
+		this.productionManager = new ProductionManager(event, this.buildingManager, this.storageManager, jobsManager, this.lootManager, this.logsManager.getLogger('ProductionManager'))
 		
 		// Set JobsManager references (to avoid circular dependency in constructors)
 		this.buildingManager.setJobsManager(jobsManager)
 		this.populationManager.setJobsManager(jobsManager)
+		this.populationManager.setStorageManager(this.storageManager)
 		
 		// Set LootManager reference in BuildingManager (for refunding resources)
 		this.buildingManager.setLootManager(this.lootManager)
+		
+		// Set StorageManager and ProductionManager references in BuildingManager (for initializing storage/production on building completion)
+		this.buildingManager.setStorageManager(this.storageManager)
+		this.buildingManager.setProductionManager(this.productionManager)
 		
 		this.triggerManager = new TriggerManager(
 			event,
@@ -194,7 +210,9 @@ export class GameManager {
 			'TriggerManager',
 			'PlayersManager',
 			'ConditionEffectManager',
-			'ContentLoader'
+			'ContentLoader',
+			'StorageManager',
+			'ProductionManager'
 		]
 		for (const managerName of quietManagers) {
 			this.logsManager.setManagerLevel(managerName, LogLevel.Warn)

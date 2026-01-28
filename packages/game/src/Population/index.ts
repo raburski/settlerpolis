@@ -98,6 +98,12 @@ export class PopulationManager {
 		this.stateMachine.setJobsManager(jobsManager)
 	}
 
+	// Set StorageManager after construction to avoid circular dependency
+	public setStorageManager(storageManager: any): void {
+		// Update state machine managers to include storageManager
+		this.stateMachine.setStorageManager(storageManager)
+	}
+
 	// Movement is now handled by MovementManager
 	// Settlers are registered with MovementManager on spawn
 	// MovementManager emits MovementEvents.SS.PathComplete when movement completes (with optional target info)
@@ -145,6 +151,12 @@ export class PopulationManager {
 			} else {
 				this.logger.warn(`House completed event received but building ${data.buildingId} is not configured to spawn settlers`)
 			}
+		})
+
+		// Handle construction completion - complete construction jobs and reassign builders
+		this.event.on(Event.Buildings.SS.ConstructionCompleted, (data: { buildingInstanceId: string, buildingId: string, mapName: string, playerId: string }, client) => {
+			this.logger.log(`[CONSTRUCTION COMPLETED] Building ${data.buildingInstanceId} (${data.buildingId}) completed construction`)
+			this.onConstructionCompleted(data.buildingInstanceId, data.mapName, data.playerId)
 		})
 
 		// Handle CS events
@@ -737,6 +749,101 @@ export class PopulationManager {
 
 		// 7. Emit sc:population:stats-updated
 		this.stats.emitPopulationStatsUpdate(client, settler.mapName)
+	}
+
+	// Handle construction completion - complete construction jobs and reassign builders
+	private onConstructionCompleted(buildingInstanceId: string, mapName: string, playerId: string): void {
+		if (!this.jobsManager) {
+			this.logger.warn(`[CONSTRUCTION COMPLETED] JobsManager not available, cannot complete construction jobs`)
+			return
+		}
+
+		// Get all active construction jobs for this building
+		const activeJobs = this.jobsManager.getActiveJobsForBuilding(buildingInstanceId)
+		const constructionJobs = activeJobs.filter(job => job.jobType === JobType.Construction)
+
+		this.logger.log(`[CONSTRUCTION COMPLETED] Found ${constructionJobs.length} construction jobs for building ${buildingInstanceId}`)
+
+		// Complete construction jobs and transition builders to Idle
+		for (const job of constructionJobs) {
+			const settler = this.settlers.get(job.settlerId)
+			if (!settler) {
+				this.logger.warn(`[CONSTRUCTION COMPLETED] Settler ${job.settlerId} not found for job ${job.jobId}`)
+				continue
+			}
+
+			// Only transition builders that are currently working on this building
+			if (settler.state === SettlerState.Working && settler.currentJob?.jobId === job.jobId) {
+				this.logger.log(`[CONSTRUCTION COMPLETED] Completing construction job ${job.jobId} for settler ${settler.id}`)
+				
+				// Complete the job
+				this.jobsManager.completeJob(job.jobId)
+				
+				// Transition builder to Idle
+				const success = this.stateMachine.executeTransition(settler, SettlerState.Idle, {})
+				if (success) {
+					this.logger.log(`[CONSTRUCTION COMPLETED] Builder ${settler.id} transitioned to Idle`)
+					
+					// After transitioning to Idle, check for other buildings needing builders
+					// Use setTimeout to ensure state transition completes first
+					setTimeout(() => {
+						this.assignBuilderToNextConstructionJob(settler, mapName, playerId)
+					}, 0)
+				}
+			}
+		}
+	}
+
+	// Automatically assign idle builder to next construction job
+	private assignBuilderToNextConstructionJob(settler: Settler, mapName: string, playerId: string): void {
+		if (!this.jobsManager) {
+			return
+		}
+
+		// Only assign if settler is still Idle and has no job
+		if (settler.state !== SettlerState.Idle || settler.currentJob) {
+			return
+		}
+
+		// Find buildings in Constructing stage that need builders
+		const buildings = this.buildingManager.getBuildingsForMap(mapName)
+		const buildingsNeedingBuilders = buildings.filter(building => {
+			// Only check buildings for the same player
+			if (building.playerId !== playerId) {
+				return false
+			}
+
+			// Building must be in Constructing stage
+			if (building.stage !== ConstructionStage.Constructing) {
+				return false
+			}
+
+			// Building must need workers
+			if (!this.buildingManager.getBuildingNeedsWorkers(building.id)) {
+				return false
+			}
+
+			return true
+		})
+
+		if (buildingsNeedingBuilders.length === 0) {
+			this.logger.debug(`[AUTO ASSIGN] No buildings needing builders for settler ${settler.id}`)
+			return
+		}
+
+		// Sort by distance to find the closest building
+		buildingsNeedingBuilders.sort((a, b) => {
+			const distanceA = calculateDistance(settler.position, a.position)
+			const distanceB = calculateDistance(settler.position, b.position)
+			return distanceA - distanceB
+		})
+
+		// Assign builder to the closest building
+		const targetBuilding = buildingsNeedingBuilders[0]
+		this.logger.log(`[AUTO ASSIGN] Assigning builder ${settler.id} to building ${targetBuilding.id} (${targetBuilding.buildingId})`)
+		
+		// Request worker for the building (JobsManager will handle assignment)
+		this.jobsManager.requestWorker(targetBuilding.id)
 	}
 
 	// Handle house completion - start spawn timer

@@ -4,6 +4,8 @@ import { Event, BuildingInstance, BuildingDefinition, ConstructionStage, Settler
 import { buildingService } from '../services/BuildingService'
 import { populationService } from '../services/PopulationService'
 import { itemService } from '../services/ItemService'
+import { storageService } from '../services/StorageService'
+import { productionService, ProductionStatus } from '../services/ProductionService'
 import { DraggablePanel } from './DraggablePanel'
 import sharedStyles from './PanelShared.module.css'
 
@@ -190,6 +192,22 @@ export const BuildingInfoPanel: React.FC = () => {
 			}
 		}
 
+		// Listen for storage updates
+		const handleStorageUpdated = (data: { buildingInstanceId: string, storage: any }) => {
+			if (buildingInstance && buildingInstance.id === data.buildingInstanceId) {
+				// Force re-render to show updated storage
+				setBuildingInstance({ ...buildingInstance })
+			}
+		}
+
+		// Listen for production updates
+		const handleProductionUpdated = (data: { buildingInstanceId: string, production: any }) => {
+			if (buildingInstance && buildingInstance.id === data.buildingInstanceId) {
+				// Force re-render to show updated production
+				setBuildingInstance({ ...buildingInstance })
+			}
+		}
+
 		EventBus.on('ui:building:select', handleBuildingSelect)
 		EventBus.on(Event.Buildings.SC.Progress, handleBuildingProgress)
 		EventBus.on(Event.Buildings.SC.Completed, handleBuildingCompleted)
@@ -202,6 +220,8 @@ export const BuildingInfoPanel: React.FC = () => {
 		EventBus.on('ui:population:settler-updated', checkWorkerMovingToBuilding)
 		EventBus.on('ui:population:worker-assigned', handleWorkerAssigned)
 		EventBus.on('ui:population:worker-unassigned', handleWorkerUnassigned)
+		EventBus.on('ui:storage:updated', handleStorageUpdated)
+		EventBus.on('ui:production:updated', handleProductionUpdated)
 
 		// Check immediately when building is selected
 		checkWorkerMovingToBuilding()
@@ -219,6 +239,8 @@ export const BuildingInfoPanel: React.FC = () => {
 			EventBus.off('ui:population:settler-updated', checkWorkerMovingToBuilding)
 			EventBus.off('ui:population:worker-assigned', handleWorkerAssigned)
 			EventBus.off('ui:population:worker-unassigned', handleWorkerUnassigned)
+			EventBus.off('ui:storage:updated', handleStorageUpdated)
+			EventBus.off('ui:production:updated', handleProductionUpdated)
 		}
 	}, [buildingInstance])
 
@@ -312,18 +334,6 @@ export const BuildingInfoPanel: React.FC = () => {
 						<span className={sharedStyles.value}>{Math.round(buildingInstance.progress)}%</span>
 					</div>
 				)}
-
-				<div className={sharedStyles.infoRow}>
-					<span className={sharedStyles.label}>Footprint:</span>
-					<span className={sharedStyles.value}>
-						{buildingDefinition.footprint.width} × {buildingDefinition.footprint.height} tiles
-					</span>
-				</div>
-
-				<div className={sharedStyles.infoRow}>
-					<span className={sharedStyles.label}>Category:</span>
-					<span className={sharedStyles.value}>{buildingDefinition.category}</span>
-				</div>
 			</div>
 
 			{hasWorkerSlots && isCompleted && (
@@ -384,7 +394,88 @@ export const BuildingInfoPanel: React.FC = () => {
 				</div>
 			)}
 
-			{isCompleted && (
+			{isCompleted && buildingDefinition.storage && (
+				<div className={sharedStyles.info}>
+					<div className={sharedStyles.infoRow}>
+						<span className={sharedStyles.label}>Storage:</span>
+						<span className={sharedStyles.value}>
+							<div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
+								{Object.entries(buildingDefinition.storage.capacities).map(([itemType, capacity]) => {
+									const quantity = storageService.getItemQuantity(buildingInstance.id, itemType)
+									const percentage = capacity > 0 ? Math.round((quantity / capacity) * 100) : 0
+									return (
+										<div key={itemType} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+											<ItemEmoji itemType={itemType} />
+											<span>
+												{quantity}/{capacity} {itemType} ({percentage}%)
+											</span>
+										</div>
+									)
+								})}
+							</div>
+						</span>
+					</div>
+				</div>
+			)}
+
+			{isCompleted && buildingDefinition.productionRecipe && (
+				<div className={sharedStyles.info}>
+					<div className={sharedStyles.infoRow}>
+						<span className={sharedStyles.label}>Production:</span>
+						<span className={sharedStyles.value}>
+							{(() => {
+								const production = productionService.getBuildingProduction(buildingInstance.id)
+								const status = production?.status || ProductionStatus.Idle
+								const progress = production?.progress || 0
+								
+								if (status === ProductionStatus.InProduction) {
+									return (
+										<div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+											<span>🔄 Producing... {Math.round(progress)}%</span>
+											<div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
+												<span style={{ fontSize: '0.9em' }}>Inputs:</span>
+												{buildingDefinition.productionRecipe.inputs.map((input, idx) => (
+													<div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+														<ItemEmoji itemType={input.itemType} />
+														<span>{input.quantity}x {input.itemType}</span>
+													</div>
+												))}
+												<span style={{ fontSize: '0.9em', marginTop: '4px' }}>Outputs:</span>
+												{buildingDefinition.productionRecipe.outputs.map((output, idx) => (
+													<div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+														<ItemEmoji itemType={output.itemType} />
+														<span>{output.quantity}x {output.itemType}</span>
+													</div>
+												))}
+											</div>
+										</div>
+									)
+								} else if (status === ProductionStatus.NoInput) {
+									return (
+										<div>
+											<span>⏸️ Waiting for inputs</span>
+											<div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
+												{buildingDefinition.productionRecipe.inputs.map((input, idx) => (
+													<div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+														<ItemEmoji itemType={input.itemType} />
+														<span>Need {input.quantity}x {input.itemType}</span>
+													</div>
+												))}
+											</div>
+										</div>
+									)
+								} else if (status === ProductionStatus.NoWorker) {
+									return <span>👷 Needs worker</span>
+								} else {
+									return <span>✅ Idle</span>
+								}
+							})()}
+						</span>
+					</div>
+				</div>
+			)}
+
+			{isCompleted && !buildingDefinition.storage && !buildingDefinition.productionRecipe && (
 				<div className={sharedStyles.actions}>
 					<div className={sharedStyles.completedMessage}>
 						Building is ready for use

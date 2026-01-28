@@ -39,6 +39,11 @@ export class SettlerStateMachine {
 	public setJobsManager(jobsManager: any): void {
 		this.managers.jobsManager = jobsManager
 	}
+
+	// Set StorageManager after construction to avoid circular dependency
+	public setStorageManager(storageManager: any): void {
+		this.managers.storageManager = storageManager
+	}
 	
 	/**
 	 * Attempt to execute a state transition

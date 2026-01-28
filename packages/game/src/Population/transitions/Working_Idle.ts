@@ -1,5 +1,5 @@
 import { StateTransition, WorkerUnassignContext } from './types'
-import { SettlerState } from '../types'
+import { SettlerState, JobType } from '../types'
 import { Receiver } from '../../Receiver'
 import { PopulationEvents } from '../events'
 

@@ -18,6 +18,8 @@ import { TimeEvents } from './Time/events'
 import { BuildingsEvents } from './Buildings/events'
 import { PopulationEvents } from './Population/events'
 import { MovementEvents } from './Movement/events'
+import { StorageEvents } from './Storage/events'
+import { ProductionEvents } from './Production/events'
 
 // Interface for client operations
 export interface EventClient {
@@ -59,6 +61,8 @@ export const Event = {
 	Buildings: BuildingsEvents,
 	Population: PopulationEvents,
 	Movement: MovementEvents,
+	Storage: StorageEvents,
+	Production: ProductionEvents
 } as const
 
 export default Event 

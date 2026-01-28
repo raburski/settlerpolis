@@ -37,6 +37,8 @@ export class BuildingManager {
 	private resourceRequests: Map<string, Set<string>> = new Map() // buildingInstanceId -> Set<itemType> (resources still needed)
 	private jobsManager?: JobsManager // Optional - set after construction to avoid circular dependency
 	private lootManager?: LootManager // Optional - set after construction to avoid circular dependency
+	private storageManager?: any // StorageManager - Optional - set after construction to avoid circular dependency
+	private productionManager?: any // ProductionManager - Optional - set after construction to avoid circular dependency
 
 	constructor(
 		private event: EventManager,
@@ -70,6 +72,16 @@ export class BuildingManager {
 	// Set LootManager after construction to avoid circular dependency
 	public setLootManager(lootManager: LootManager): void {
 		this.lootManager = lootManager
+	}
+
+	// Set StorageManager after construction to avoid circular dependency
+	public setStorageManager(storageManager: any): void {
+		this.storageManager = storageManager
+	}
+
+	// Set ProductionManager after construction to avoid circular dependency
+	public setProductionManager(productionManager: any): void {
+		this.productionManager = productionManager
 	}
 
 	private setupEventHandlers() {
@@ -557,6 +569,16 @@ export class BuildingManager {
 		// Update building stage
 		building.stage = ConstructionStage.Completed
 
+		// Initialize storage for building if it has storage capacity
+		if (this.storageManager) {
+			this.storageManager.initializeBuildingStorage(building.id)
+		}
+
+		// Initialize production for building if it has production recipe
+		if (this.productionManager) {
+			this.productionManager.initializeBuildingProduction(building.id)
+		}
+
 		// Update MapObject metadata to reflect completion
 		const mapObjectId = this.buildingToMapObject.get(building.id)
 		if (mapObjectId) {
@@ -581,6 +603,15 @@ export class BuildingManager {
 				buildingId: building.buildingId
 			})
 		}
+
+		// Emit internal construction completed event for PopulationManager to handle builder reassignment
+		// This event is emitted for ALL completed buildings (not just houses)
+		this.event.emit(Receiver.All, BuildingsEvents.SS.ConstructionCompleted, {
+			buildingInstanceId: building.id,
+			buildingId: building.buildingId,
+			mapName: building.mapName,
+			playerId: building.playerId
+		})
 
 		// Emit completed event to clients
 		const clientBuilding = {

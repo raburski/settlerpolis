@@ -40,6 +40,7 @@ export interface StateMachineManagers {
 	itemsManager: ItemsManager
 	mapManager: MapManager
 	jobsManager?: any // JobsManager - type imported to avoid circular dependency
+	storageManager?: any // StorageManager - type imported to avoid circular dependency
 	logger: Logger
 }
 

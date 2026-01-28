@@ -4,6 +4,7 @@ import { Receiver } from '../../Receiver'
 import { PopulationEvents } from '../events'
 import { StateMachineManagers } from './types'
 import { EventClient } from '../../events'
+import { ConstructionStage } from '../../Buildings/types'
 
 export interface ItemPickupContext {
 	jobId: string
@@ -18,25 +19,78 @@ export interface ItemPickupContext {
 function handleJobCancellation(settler: Settler, job: JobAssignment, managers: StateMachineManagers): void {
 	// Drop item if carrying
 	if (job.carriedItemId && job.itemType) {
-		// Create fake client for dropping item
-		const fakeClient: EventClient = {
-			id: settler.playerId,
-			currentGroup: settler.mapName,
-			emit: (receiver: any, event: string, data: any, target?: any) => {
-				managers.eventManager.emit(receiver, event, data, target)
-			},
-			setGroup: () => {
-				// No-op for fake client
+		// Check if this is a building storage item (no physical item) or ground item
+		if (job.carriedItemId.startsWith('building-')) {
+			// Building storage item - return to source building storage if possible
+			// Otherwise, drop as ground item
+			if (job.sourceBuildingInstanceId && managers.storageManager && job.quantity) {
+				// Try to return items to source building storage
+				const returned = managers.storageManager.addToStorage(job.sourceBuildingInstanceId, job.itemType, job.quantity)
+				if (returned) {
+					managers.logger.log(`[JOB CANCELLATION] Returned ${job.quantity} ${job.itemType} to source building ${job.sourceBuildingInstanceId} storage`)
+				} else {
+					// Failed to return - drop as ground item
+					const fakeClient: EventClient = {
+						id: settler.playerId,
+						currentGroup: settler.mapName,
+						emit: (receiver: any, event: string, data: any, target?: any) => {
+							managers.eventManager.emit(receiver, event, data, target)
+						},
+						setGroup: () => {
+							// No-op for fake client
+						}
+					}
+					
+					// Drop item at settler's current position
+					const item = {
+						id: job.carriedItemId,
+						itemType: job.itemType
+					}
+					managers.lootManager.dropItem(item, settler.position, fakeClient)
+					managers.logger.log(`[JOB CANCELLATION] Dropped item ${job.carriedItemId} (${job.itemType}) at settler position (${Math.round(settler.position.x)}, ${Math.round(settler.position.y)})`)
+				}
+			} else {
+				// No source building or storage manager - drop as ground item
+				const fakeClient: EventClient = {
+					id: settler.playerId,
+					currentGroup: settler.mapName,
+					emit: (receiver: any, event: string, data: any, target?: any) => {
+						managers.eventManager.emit(receiver, event, data, target)
+					},
+					setGroup: () => {
+						// No-op for fake client
+					}
+				}
+				
+				// Drop item at settler's current position
+				const item = {
+					id: job.carriedItemId,
+					itemType: job.itemType
+				}
+				managers.lootManager.dropItem(item, settler.position, fakeClient)
+				managers.logger.log(`[JOB CANCELLATION] Dropped item ${job.carriedItemId} (${job.itemType}) at settler position (${Math.round(settler.position.x)}, ${Math.round(settler.position.y)})`)
 			}
+		} else {
+			// Ground item - drop at settler's current position
+			const fakeClient: EventClient = {
+				id: settler.playerId,
+				currentGroup: settler.mapName,
+				emit: (receiver: any, event: string, data: any, target?: any) => {
+					managers.eventManager.emit(receiver, event, data, target)
+				},
+				setGroup: () => {
+					// No-op for fake client
+				}
+			}
+			
+			// Drop item at settler's current position
+			const item = {
+				id: job.carriedItemId,
+				itemType: job.itemType
+			}
+			managers.lootManager.dropItem(item, settler.position, fakeClient)
+			managers.logger.log(`[JOB CANCELLATION] Dropped item ${job.carriedItemId} (${job.itemType}) at settler position (${Math.round(settler.position.x)}, ${Math.round(settler.position.y)})`)
 		}
-		
-		// Drop item at settler's current position
-		const item = {
-			id: job.carriedItemId,
-			itemType: job.itemType
-		}
-		managers.lootManager.dropItem(item, settler.position, fakeClient)
-		managers.logger.log(`[JOB CANCELLATION] Dropped item ${job.carriedItemId} (${job.itemType}) at settler position (${Math.round(settler.position.x)}, ${Math.round(settler.position.y)})`)
 	}
 	
 	// Cancel job if not already cancelled
@@ -184,12 +238,47 @@ export const MovingToItem_CarryingItem: StateTransition<ItemPickupContext> = {
 			return null
 		}
 
-		// Deliver item to building (using BuildingManager)
-		// Quantity is always 1 for ground items
-		const delivered = managers.buildingManager.addResourceToBuilding(job.buildingInstanceId, job.itemType, 1)
-		if (!delivered) {
-			managers.logger.warn(`[MovingToItem_CarryingItem.completed] Failed to deliver item to building ${job.buildingInstanceId} - dropping item and cancelling job`)
-			// Delivery failed (building might have been cancelled) - drop item and cancel job
+		// Check if target building has storage (for production buildings) or is a construction site
+		const building = managers.buildingManager.getBuildingInstance(job.buildingInstanceId)
+		if (!building) {
+			managers.logger.warn(`[MovingToItem_CarryingItem.completed] Building ${job.buildingInstanceId} not found - dropping item and cancelling job`)
+			handleJobCancellation(settler, job, managers)
+			return null
+		}
+
+		// Determine delivery method based on building stage and storage availability
+		let delivered = false
+		const quantity = job.quantity || 1 // Use job quantity (for building storage) or default to 1 (for ground items)
+
+		if (building.stage === ConstructionStage.Completed && managers.storageManager) {
+			// Completed building - check if it has storage
+			if (managers.storageManager.acceptsItemType(job.buildingInstanceId, job.itemType)) {
+				// Deliver to storage (building-to-building transport or ground-to-storage)
+				delivered = managers.jobsManager.handleBuildingDelivery(jobId)
+				if (!delivered) {
+					managers.logger.warn(`[MovingToItem_CarryingItem.completed] Failed to deliver to storage for building ${job.buildingInstanceId} - dropping item and cancelling job`)
+					handleJobCancellation(settler, job, managers)
+					return null
+				}
+			} else {
+				// Building is completed but has no storage for this item type
+				// This shouldn't happen for building-to-building transport, but handle gracefully
+				managers.logger.warn(`[MovingToItem_CarryingItem.completed] Building ${job.buildingInstanceId} does not accept item type ${job.itemType} - dropping item and cancelling job`)
+				handleJobCancellation(settler, job, managers)
+				return null
+			}
+		} else if (building.stage === ConstructionStage.CollectingResources || building.stage === ConstructionStage.Constructing) {
+			// Construction site - deliver to BuildingManager
+			// Quantity is always 1 for ground items
+			delivered = managers.buildingManager.addResourceToBuilding(job.buildingInstanceId, job.itemType, 1)
+			if (!delivered) {
+				managers.logger.warn(`[MovingToItem_CarryingItem.completed] Failed to deliver item to construction site ${job.buildingInstanceId} - dropping item and cancelling job`)
+				// Delivery failed (building might have been cancelled) - drop item and cancel job
+				handleJobCancellation(settler, job, managers)
+				return null
+			}
+		} else {
+			managers.logger.warn(`[MovingToItem_CarryingItem.completed] Building ${job.buildingInstanceId} is in unexpected stage ${building.stage} - dropping item and cancelling job`)
 			handleJobCancellation(settler, job, managers)
 			return null
 		}

@@ -15,7 +15,8 @@ export const BuildingsEvents = {
 	},
 	SS: {
 		Tick: 'ss:buildings:tick',
-		HouseCompleted: 'ss:buildings:house-completed' // Internal event for PopulationManager
+		HouseCompleted: 'ss:buildings:house-completed', // Internal event for PopulationManager
+		ConstructionCompleted: 'ss:buildings:construction-completed' // Internal event when construction completes (for builder reassignment)
 	}
 } as const
 

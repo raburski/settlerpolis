@@ -84,11 +84,13 @@ export interface JobAssignment {
 	assignedAt: number
 	status: 'pending' | 'active' | 'completed' | 'cancelled'
 	// Transport-specific fields (only populated when jobType === JobType.Transport)
-	sourceItemId?: string        // Item ID on the ground (from LootManager) - before pickup
-	carriedItemId?: string       // Item ID being carried - after pickup (item removed from LootManager)
-	sourcePosition?: Position    // Position of item on the ground
+	sourceItemId?: string        // Item ID on the ground (from LootManager) - before pickup (ground-to-building transport)
+	sourceBuildingInstanceId?: string // Source building instance ID (building-to-building transport)
+	carriedItemId?: string       // Item ID being carried - after pickup (item removed from LootManager or building storage)
+	sourcePosition?: Position    // Position of item on the ground (for ground items)
 	itemType?: string            // Item type to transport (logs, stone, etc.)
-	quantity?: number            // Quantity to transport (always 1 for ground items)
+	quantity?: number            // Quantity to transport (always 1 for ground items, variable for building storage)
+	reservationId?: string       // Storage reservation ID (for building-to-building transport)
 	// Worker assignment fields (for construction/production jobs that need tool pickup first)
 	requiredProfession?: ProfessionType // Required profession for this job (if settler needs tool)
 }

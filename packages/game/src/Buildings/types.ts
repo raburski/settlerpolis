@@ -36,6 +36,9 @@ export interface BuildingDefinition {
 	requiredProfession?: string // ProfessionType required to work in this building (e.g., 'builder', 'woodcutter')
 	spawnRate?: number // Seconds between settler spawns (default: 60)
 	workerSlots?: number // Maximum number of workers that can be assigned to this building (for production/work)
+	// Phase C: Production and storage
+	productionRecipe?: import('../Production/types').ProductionRecipe
+	storage?: import('../Storage/types').StorageCapacity
 }
 
 export interface BuildingInstance {

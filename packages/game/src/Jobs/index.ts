@@ -3,6 +3,7 @@ import { BuildingManager } from '../Buildings'
 import { PopulationManager } from '../Population'
 import { LootManager } from '../Loot'
 import { MapManager } from '../Map'
+import { StorageManager } from '../Storage'
 import { JobAssignment, JobType, Settler } from '../Population/types'
 import { Position } from '../types'
 import { v4 as uuidv4 } from 'uuid'
@@ -16,6 +17,7 @@ import { Logger } from '../Logs'
 export class JobsManager {
 	private jobs = new Map<string, JobAssignment>() // jobId -> JobAssignment
 	private activeJobsByBuilding = new Map<string, Set<string>>() // buildingInstanceId -> Set<jobId>
+	private storageManager?: StorageManager // Optional - set after construction to avoid circular dependency
 
 	constructor(
 		private event: EventManager,
@@ -26,6 +28,11 @@ export class JobsManager {
 		private logger: Logger
 	) {
 		this.setupEventHandlers()
+	}
+
+	// Set StorageManager after construction to avoid circular dependency
+	public setStorageManager(storageManager: StorageManager): void {
+		this.storageManager = storageManager
 	}
 
 	private setupEventHandlers() {
@@ -266,12 +273,31 @@ export class JobsManager {
 
 		job.status = 'cancelled'
 
+		// Release storage reservations if this is a building-to-building transport
+		if (this.storageManager && job.reservationId) {
+			this.storageManager.releaseReservation(job.reservationId)
+		}
+
+		// If carrier is carrying items from building storage, we should handle that in the state transition
+		// The state transition will handle dropping items if needed
+
 		// Remove from active jobs
 		const buildingJobs = this.activeJobsByBuilding.get(job.buildingInstanceId)
 		if (buildingJobs) {
 			buildingJobs.delete(jobId)
 			if (buildingJobs.size === 0) {
 				this.activeJobsByBuilding.delete(job.buildingInstanceId)
+			}
+		}
+
+		// Also remove from source building if it exists
+		if (job.sourceBuildingInstanceId) {
+			const sourceBuildingJobs = this.activeJobsByBuilding.get(job.sourceBuildingInstanceId)
+			if (sourceBuildingJobs) {
+				sourceBuildingJobs.delete(jobId)
+				if (sourceBuildingJobs.size === 0) {
+					this.activeJobsByBuilding.delete(job.sourceBuildingInstanceId)
+				}
 			}
 		}
 
@@ -332,5 +358,210 @@ export class JobsManager {
 		}
 
 		return closest
+	}
+
+	// NEW: Request transport from source building to target building
+	public requestTransport(
+		sourceBuildingInstanceId: string,
+		targetBuildingInstanceId: string,
+		itemType: string,
+		quantity: number,
+		priority: number = 1
+	): string | null {
+		if (!this.storageManager) {
+			this.logger.warn(`[JOBS] Cannot request transport: StorageManager not set`)
+			return null
+		}
+
+		this.logger.log(`[JOBS] Requesting transport: source=${sourceBuildingInstanceId}, target=${targetBuildingInstanceId}, itemType=${itemType}, quantity=${quantity}`)
+
+		// 1. Validate source and target buildings exist
+		const sourceBuilding = this.buildingManager.getBuildingInstance(sourceBuildingInstanceId)
+		if (!sourceBuilding) {
+			this.logger.warn(`[JOBS] Cannot request transport: Source building ${sourceBuildingInstanceId} not found`)
+			return null
+		}
+
+		const targetBuilding = this.buildingManager.getBuildingInstance(targetBuildingInstanceId)
+		if (!targetBuilding) {
+			this.logger.warn(`[JOBS] Cannot request transport: Target building ${targetBuildingInstanceId} not found`)
+			return null
+		}
+
+		// 2. Check if source building has available output items
+		const availableQuantity = this.storageManager.getAvailableQuantity(sourceBuildingInstanceId, itemType)
+		if (availableQuantity < quantity) {
+			this.logger.warn(`[JOBS] Cannot request transport: Source building ${sourceBuildingInstanceId} has insufficient ${itemType}. Available: ${availableQuantity}, Requested: ${quantity}`)
+			return null
+		}
+
+		// 3. Check if target building has available input storage
+		if (!this.storageManager.hasAvailableStorage(targetBuildingInstanceId, itemType, quantity)) {
+			this.logger.warn(`[JOBS] Cannot request transport: Target building ${targetBuildingInstanceId} has no available storage for ${itemType}`)
+			return null
+		}
+
+		// 4. Reserve storage at source (output) and target (input) buildings
+		// Source reservation is outgoing (items already in storage, will be removed)
+		const sourceReservationId = this.storageManager.reserveStorage(sourceBuildingInstanceId, itemType, quantity, `transport-${targetBuildingInstanceId}`, true)
+		if (!sourceReservationId) {
+			this.logger.warn(`[JOBS] Cannot request transport: Failed to reserve storage at source building ${sourceBuildingInstanceId}`)
+			return null
+		}
+
+		// Target reservation is incoming (empty space needed for delivery)
+		const targetReservationId = this.storageManager.reserveStorage(targetBuildingInstanceId, itemType, quantity, `transport-${sourceBuildingInstanceId}`, false)
+		if (!targetReservationId) {
+			this.logger.warn(`[JOBS] Cannot request transport: Failed to reserve storage at target building ${targetBuildingInstanceId}`)
+			// Release source reservation
+			this.storageManager.releaseReservation(sourceReservationId)
+			return null
+		}
+
+		// 5. Find available carrier
+		const availableCarriers = this.populationManager.getAvailableCarriers(
+			sourceBuilding.mapName,
+			sourceBuilding.playerId
+		)
+
+		if (availableCarriers.length === 0) {
+			this.logger.log(`[JOBS] No available carriers for transport from ${sourceBuildingInstanceId} to ${targetBuildingInstanceId}`)
+			// Release reservations
+			this.storageManager.releaseReservation(sourceReservationId)
+			this.storageManager.releaseReservation(targetReservationId)
+			return null
+		}
+
+		// Find closest carrier to source building
+		const closestCarrier = this.findClosestCarrier(availableCarriers, sourceBuilding.position)
+		if (!closestCarrier) {
+			this.logger.warn(`[JOBS] Could not find closest carrier for transport`)
+			// Release reservations
+			this.storageManager.releaseReservation(sourceReservationId)
+			this.storageManager.releaseReservation(targetReservationId)
+			return null
+		}
+
+		// 6. Create transport job with sourceBuildingInstanceId (not sourceItemId)
+		const jobAssignment: JobAssignment = {
+			jobId: uuidv4(),
+			settlerId: closestCarrier.id,
+			buildingInstanceId: targetBuildingInstanceId, // Target building
+			jobType: JobType.Transport,
+			priority,
+			assignedAt: Date.now(),
+			status: 'active',
+			// Transport-specific fields
+			sourceBuildingInstanceId: sourceBuildingInstanceId, // Source building
+			itemType: itemType,
+			quantity: quantity,
+			reservationId: targetReservationId // Store reservation ID for release on completion
+		}
+
+		// 7. Store job
+		this.jobs.set(jobAssignment.jobId, jobAssignment)
+		if (!this.activeJobsByBuilding.has(targetBuildingInstanceId)) {
+			this.activeJobsByBuilding.set(targetBuildingInstanceId, new Set())
+		}
+		this.activeJobsByBuilding.get(targetBuildingInstanceId)!.add(jobAssignment.jobId)
+
+		// Also track source building jobs
+		if (!this.activeJobsByBuilding.has(sourceBuildingInstanceId)) {
+			this.activeJobsByBuilding.set(sourceBuildingInstanceId, new Set())
+		}
+		this.activeJobsByBuilding.get(sourceBuildingInstanceId)!.add(jobAssignment.jobId)
+
+		this.logger.log(`[JOBS] Created transport job ${jobAssignment.jobId} from ${sourceBuildingInstanceId} to ${targetBuildingInstanceId}, itemType: ${itemType}, quantity: ${quantity}, carrier: ${closestCarrier.id}`)
+
+		// 8. Assign worker to job (delegate to PopulationManager)
+		this.populationManager.assignWorkerToTransportJob(
+			closestCarrier.id,
+			jobAssignment.jobId,
+			jobAssignment
+		)
+
+		return jobAssignment.jobId
+	}
+
+	// NEW: Handle building pickup (remove from source building storage)
+	public handleBuildingPickup(jobId: string): boolean {
+		if (!this.storageManager) {
+			this.logger.warn(`[JOBS] Cannot handle building pickup: StorageManager not set`)
+			return false
+		}
+
+		const job = this.jobs.get(jobId)
+		if (!job || !job.sourceBuildingInstanceId) {
+			this.logger.warn(`[JOBS] Cannot handle building pickup: Job ${jobId} not found or not a building-to-building transport`)
+			return false
+		}
+
+		const sourceBuilding = this.buildingManager.getBuildingInstance(job.sourceBuildingInstanceId)
+		if (!sourceBuilding) {
+			this.logger.warn(`[JOBS] Cannot handle building pickup: Source building ${job.sourceBuildingInstanceId} not found`)
+			return false
+		}
+
+		if (!job.itemType || !job.quantity) {
+			this.logger.warn(`[JOBS] Cannot handle building pickup: Job ${jobId} missing itemType or quantity`)
+			return false
+		}
+
+		// Remove items from source building storage
+		if (!this.storageManager.removeFromStorage(job.sourceBuildingInstanceId, job.itemType, job.quantity)) {
+			this.logger.warn(`[JOBS] Cannot handle building pickup: Failed to remove ${job.quantity} ${job.itemType} from source building ${job.sourceBuildingInstanceId}`)
+			return false
+		}
+
+		// Set carriedItemId (generate UUID for tracking)
+		job.carriedItemId = uuidv4()
+		job.sourceBuildingInstanceId = undefined // Clear source building ID after pickup
+
+		this.logger.log(`[JOBS] Building pickup completed: Job ${jobId}, removed ${job.quantity} ${job.itemType} from ${sourceBuilding.id}`)
+
+		return true
+	}
+
+	// NEW: Handle building delivery (add to target building storage)
+	public handleBuildingDelivery(jobId: string): boolean {
+		if (!this.storageManager) {
+			this.logger.warn(`[JOBS] Cannot handle building delivery: StorageManager not set`)
+			return false
+		}
+
+		const job = this.jobs.get(jobId)
+		if (!job) {
+			this.logger.warn(`[JOBS] Cannot handle building delivery: Job ${jobId} not found`)
+			return false
+		}
+
+		const targetBuilding = this.buildingManager.getBuildingInstance(job.buildingInstanceId)
+		if (!targetBuilding) {
+			this.logger.warn(`[JOBS] Cannot handle building delivery: Target building ${job.buildingInstanceId} not found`)
+			return false
+		}
+
+		if (!job.itemType || !job.quantity) {
+			this.logger.warn(`[JOBS] Cannot handle building delivery: Job ${jobId} missing itemType or quantity`)
+			return false
+		}
+
+		// Add items to target building storage
+		if (!this.storageManager.addToStorage(job.buildingInstanceId, job.itemType, job.quantity)) {
+			this.logger.warn(`[JOBS] Cannot handle building delivery: Failed to add ${job.quantity} ${job.itemType} to target building ${job.buildingInstanceId}`)
+			return false
+		}
+
+		// Release storage reservation if it exists
+		if (job.reservationId) {
+			this.storageManager.releaseReservation(job.reservationId)
+		}
+
+		// Clear carriedItemId
+		job.carriedItemId = undefined
+
+		this.logger.log(`[JOBS] Building delivery completed: Job ${jobId}, added ${job.quantity} ${job.itemType} to ${targetBuilding.id}`)
+
+		return true
 	}
 }

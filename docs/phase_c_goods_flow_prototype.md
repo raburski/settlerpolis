@@ -7,33 +7,35 @@ Implement a production and logistics system where buildings can produce goods (l
 
 **Note:** Phase C focuses on a simple two-resource chain (logs → planks) and basic point-to-point carrier routing. Road networks, advanced logistics, and production queues will be added in later phases.
 
+**Important:** This phase builds on Phase B+ which introduced `JobsManager` for centralized job management and transport jobs for construction resource collection. Phase C extends the existing transport system to support building-to-building transport and adds production/storage systems.
+
 ---
 
-### Existing Building Blocks
+### Existing Building Blocks (from Phase B+)
+
+- **JobsManager (`packages/game/src/Jobs`)**  
+	Centralized job management for all job types (Construction, Production, Transport). Handles job creation, tracking, assignment coordination, and completion/cancellation. Already supports transport jobs for construction resource collection (ground items → buildings).
 
 - **BuildingManager (`packages/game/src/Buildings`)**  
-	Manages building instances, construction progress, and worker assignments. Needs extension for production pipelines, input/output buffers, and status management.
+	Manages building instances, construction progress, and worker assignments. Already integrated with JobsManager for resource collection and worker assignment.
 
 - **PopulationManager (`packages/game/src/Population`)**  
-	Tracks settlers by profession (including Carrier). State machine handles worker assignment. Needs extension for carrier job assignment and transport tasks.
+	Tracks settlers by profession (including Carrier). State machine handles worker assignment and transport jobs. Already supports transport state transitions (`MovingToItem`, `CarryingItem`).
 
 - **MovementManager (`packages/game/src/Movement`)**  
 	Provides unified, entity-agnostic movement system. Used by settlers for all movement, including transport.
 
-- **InventoryManager (`packages/game/src/Inventory`)**  
-	Manages player inventories. Used for building costs. Will be extended to support building storage buffers.
-
 - **LootManager (`packages/game/src/Loot`)**  
-	Manages dropped items on the map. Can be used as a source for raw resources (trees drop logs).
+	Manages dropped items on the map. Currently used as source for construction resources. In Phase C, also used as fallback source for production inputs (priority 2, after building storage).
 
 - **MapManager (`packages/game/src/Map`)**  
-	Provides pathfinding for movement. CarrierRoutingService will leverage this for transport pathfinding.
+	Provides pathfinding for movement. Already used by JobsManager for transport pathfinding.
 
 - **Scheduler (`packages/game/src/Scheduler`)**  
 	Provides timed event infrastructure. Used for production ticks and periodic state updates.
 
 - **SettlerStateMachine (`packages/game/src/Population/StateMachine`)**  
-	Manages settler state transitions. Needs new states for carrying goods and transport jobs.
+	Manages settler state transitions. Already supports `MovingToItem` and `CarryingItem` states for transport jobs.
 
 ---
 
@@ -41,48 +43,32 @@ Implement a production and logistics system where buildings can produce goods (l
 
 #### 1. Content Schema Extensions
 
-**Extend `GameContent` with:**
-- `productionPipelines?: ProductionPipelineDefinition[]` - Define production recipes (inputs → outputs)
-- `storageConfigs?: StorageConfigDefinition[]` - Define storage capacities and classes
+**Note:** No changes to `GameContent` needed - storage capacities and production recipes are defined directly on `BuildingDefinition`.
 
 **Extend `BuildingDefinition` to include:**
-- `productionPipelineId?: string` - ID of production pipeline this building uses
-- `inputBufferSize?: number` - Maximum input items this building can store
-- `outputBufferSize?: number` - Maximum output items this building can store
-- `productionTime?: number` - Time (seconds) to produce one batch of output
-- `requiresCarrier?: boolean` - Whether this building requires carriers to transport inputs/outputs
+- `productionRecipe?: ProductionRecipe` - Production recipe (inputs → outputs) - if defined, building can produce items
+- `storage?: StorageCapacity` - Storage capacity per item type (used for both inputs and outputs - item types won't collide)
 
-**Extend `ItemMetadata` to include:**
-- `storageClass?: StorageClass` - Storage class for organization (raw, refined, food, etc.)
-- `productionTime?: number` - Time to produce this item (for production pipelines)
-- `isRawResource?: boolean` - Whether this is a raw resource (can be harvested)
+**Note:** All storage items are moved by carriers - no `requiresCarrier` property needed.
+**Note:** Input and output item types are different (e.g., logs → planks), so a single storage buffer is sufficient.
+
+**Note:** ItemMetadata does not need changes - items are generic and don't define how they're produced or stored. Production and storage are building-specific concerns.
 
 **New Type Definitions (`src/Storage/types.ts`):**
 ```typescript
-export enum StorageClass {
-	Raw = 'raw',           // Raw resources (logs, stone, ore)
-	Refined = 'refined',   // Processed goods (planks, bricks, tools)
-	Food = 'food',         // Food items (bread, meat)
-	Luxury = 'luxury'      // Luxury goods (jewelry, wine)
-}
-
-export interface StorageConfigDefinition {
-	id: string
-	name: string
-	buildingId: string // Building this storage config applies to
-	capacity: number   // Maximum items this building can store
-	storageClasses: StorageClass[] // Which storage classes this building accepts
+export interface StorageCapacity {
+	// Record of itemType -> maximum capacity for that item type
+	// If itemType is not in the record, that item type cannot be stored
+	// Empty record = no storage capacity
+	capacities: Record<string, number> // itemType -> max capacity
 }
 
 export interface BuildingStorage {
 	buildingInstanceId: string
-	inputBuffer: Map<string, number>  // itemType -> quantity
-	outputBuffer: Map<string, number> // itemType -> quantity
-	reservedInputs: Map<string, number>  // itemType -> reserved quantity (for incoming deliveries)
-	reservedOutputs: Map<string, number> // itemType -> reserved quantity (for outgoing deliveries)
-	maxInputBuffer: number
-	maxOutputBuffer: number
-	storageClasses: StorageClass[]
+	buffer: Map<string, number>  // itemType -> quantity (runtime only)
+	reserved: Map<string, number>  // itemType -> reserved quantity (for incoming/outgoing deliveries) (runtime only)
+	// Note: Storage capacities are defined in BuildingDefinition, not stored here
+	// StorageManager reads capacities from BuildingDefinition when needed
 }
 
 export interface StorageReservation {
@@ -98,10 +84,7 @@ export interface StorageReservation {
 
 **New Type Definitions (`src/Production/types.ts`):**
 ```typescript
-export interface ProductionPipelineDefinition {
-	id: string
-	name: string
-	description: string
+export interface ProductionRecipe {
 	inputs: Array<{
 		itemType: string
 		quantity: number
@@ -111,68 +94,21 @@ export interface ProductionPipelineDefinition {
 		quantity: number
 	}>
 	productionTime: number // Time in seconds to produce one batch
-	requiresWorker: boolean // Whether a worker is required for production
-}
-```
-
-**New Type Definitions (`src/Carrier/types.ts`):**
-```typescript
-export interface CarrierJob {
-	jobId: string
-	carrierId: string // settlerId of the carrier
-	sourceBuildingInstanceId: string
-	targetBuildingInstanceId: string
-	itemType: string
-	quantity: number
-	status: 'pending' | 'picking_up' | 'transporting' | 'delivering' | 'completed' | 'cancelled'
-	reservationId?: string // Storage reservation ID
-	createdAt: number
-	startedAt?: number
-	completedAt?: number
 }
 
-export interface TransportRequest {
-	requestId: string
-	sourceBuildingInstanceId: string
-	targetBuildingInstanceId: string
-	itemType: string
-	quantity: number
-	priority: number
-	createdAt: number
+export interface BuildingProduction {
+	buildingInstanceId: string
+	status: ProductionStatus
+	progress: number // 0-100
+	currentBatchStartTime?: number
+	isProducing: boolean
 }
-```
 
-**Extend `SettlerState` enum in `src/Population/types.ts`:**
-```typescript
-export enum SettlerState {
+export enum ProductionStatus {
 	Idle = 'idle',
-	Spawned = 'spawned',
-	MovingToTool = 'moving_to_tool',
-	MovingToBuilding = 'moving_to_building',
-	Working = 'working',
-	WaitingForWork = 'waiting_for_work',
-	Carrying = 'carrying',              // NEW: Carrying goods between buildings
-	MovingToPickup = 'moving_to_pickup', // NEW: Moving to pickup goods
-	MovingToDelivery = 'moving_to_delivery', // NEW: Moving to deliver goods
-	AssignmentFailed = 'assignment_failed'
-}
-```
-
-**Extend `SettlerStateContext` in `src/Population/types.ts`:**
-```typescript
-export interface SettlerStateContext {
-	targetId?: string
-	targetPosition?: Position
-	buildingInstanceId?: string
-	jobId?: string
-	carrierJobId?: string              // NEW: Carrier job ID when carrying goods
-	carriedItemType?: string           // NEW: Item type being carried
-	carriedQuantity?: number           // NEW: Quantity being carried
-	pendingAssignment?: {
-		buildingInstanceId: string
-		requiredProfession?: ProfessionType
-	}
-	errorReason?: string
+	NoInput = 'no_input',
+	InProduction = 'in_production',
+	NoWorker = 'no_worker' // Building requires worker but none assigned
 }
 ```
 
@@ -181,35 +117,48 @@ export interface SettlerStateContext {
 export interface JobAssignment {
 	jobId: string
 	settlerId: SettlerId
-	buildingInstanceId: string
-	jobType: 'construction' | 'production' | 'transport' // NEW: Added 'transport'
+	buildingInstanceId: string // Target building (destination)
+	jobType: JobType // Construction, Production, or Transport
 	priority: number
 	assignedAt: number
 	status: 'pending' | 'active' | 'completed' | 'cancelled'
+	
+	// Transport-specific fields (only populated when jobType === JobType.Transport)
+	sourceItemId?: string        // Item ID on the ground (from LootManager) - for ground-to-building transport
+	sourceBuildingInstanceId?: string // Source building ID - for building-to-building transport (NEW)
+	sourcePosition?: Position    // Position of item on the ground or source building
+	carriedItemId?: string       // Item ID being carried - after pickup (for ground items)
+	itemType?: string            // Item type to transport (logs, stone, etc.)
+	quantity?: number            // Quantity to transport
+	reservationId?: string       // Storage reservation ID for building-to-building transport (NEW)
+	
+	// Worker assignment fields (for construction/production jobs that need tool pickup first)
+	requiredProfession?: ProfessionType // Required profession for this job (if settler needs tool)
 }
 ```
 
-#### 2. Events (`src/Storage/events.ts`, `src/Production/events.ts`, `src/Carrier/events.ts`)
+**Note:** No changes to `SettlerState` enum needed - existing `MovingToItem` and `CarryingItem` states will handle both ground items and building pickups.
+
+**Note:** No changes to `SettlerStateContext` needed - `jobId` is sufficient to look up all job details from `JobAssignment`.
+
+#### 2. Events (`src/Storage/events.ts`, `src/Production/events.ts`)
 
 **Storage Events:**
 ```typescript
 export const StorageEvents = {
-	CS: {
-		RequestStorage: 'cs:storage:request-storage',      // Request storage space
-		ReleaseStorage: 'cs:storage:release-storage'       // Release storage reservation
-	},
 	SC: {
-		StorageUpdated: 'sc:storage:storage-updated',      // Building storage updated
+		StorageUpdated: 'sc:storage:storage-updated',      // Building storage updated (includes itemType, quantity)
 		ReservationCreated: 'sc:storage:reservation-created',
 		ReservationCancelled: 'sc:storage:reservation-cancelled'
 	},
 	SS: {
 		StorageTick: 'ss:storage:storage-tick',            // Internal storage management tick
-		InputRequested: 'ss:storage:input-requested',      // Building requested input
-		OutputReady: 'ss:storage:output-ready'             // Building output ready for pickup
+		InputRequested: 'ss:storage:input-requested'       // Building requested input (itemType, quantity)
 	}
 } as const
 ```
+
+**Note:** No client-to-server (CS) events needed for storage - reservations are handled automatically by the system when transport jobs are created/completed/cancelled. Clients only receive server-to-client (SC) events for notifications.
 
 **Production Events:**
 ```typescript
@@ -223,7 +172,7 @@ export const ProductionEvents = {
 		ProductionStopped: 'sc:production:production-stopped',
 		ProductionProgress: 'sc:production:production-progress',
 		ProductionCompleted: 'sc:production:production-completed',
-		StatusChanged: 'sc:production:status-changed'      // no_input, in_production, output_ready, idle
+		StatusChanged: 'sc:production:status-changed'      // no_input, in_production, idle, no_worker
 	},
 	SS: {
 		ProductionTick: 'ss:production:production-tick'    // Internal production processing tick
@@ -231,88 +180,65 @@ export const ProductionEvents = {
 } as const
 ```
 
-**Carrier Events:**
-```typescript
-export const CarrierEvents = {
-	CS: {
-		RequestTransport: 'cs:carrier:request-transport',  // Request carrier to transport goods
-		CancelTransport: 'cs:carrier:cancel-transport'
-	},
-	SC: {
-		TransportRequested: 'sc:carrier:transport-requested',
-		TransportAssigned: 'sc:carrier:transport-assigned',
-		TransportCompleted: 'sc:carrier:transport-completed',
-		TransportCancelled: 'sc:carrier:transport-cancelled',
-		CarrierJobUpdated: 'sc:carrier:carrier-job-updated'
-	},
-	SS: {
-		TransportTick: 'ss:carrier:transport-tick',        // Internal transport processing tick
-		PickupCompleted: 'ss:carrier:pickup-completed',    // Carrier picked up goods
-		DeliveryCompleted: 'ss:carrier:delivery-completed' // Carrier delivered goods
-	}
-} as const
-```
+**Note:** No separate `CarrierEvents` needed - carrier functionality is handled by `JobsManager` and existing `PopulationEvents`. Transport jobs are tracked via `JobAssignment` and state changes are surfaced through `PopulationEvents.SC.SettlerUpdated`.
 
 #### 3. StorageManager (`src/Storage/index.ts`)
 
 **Responsibilities:**
-- Manage per-building storage buffers (input/output)
+- Manage per-building storage buffers - runtime state only
 - Handle storage reservations for incoming/outgoing deliveries
-- Track storage capacity and storage classes
+- Read storage capacities from BuildingDefinition (capacities are per building type, not instance)
 - Emit storage update events
 - Provide APIs for buildings to request/release storage
+- Distinguish between input and output items based on production recipe (inputs are consumed, outputs are produced)
 
 **Key Methods:**
 ```typescript
 export class StorageManager {
 	private buildingStorages: Map<string, BuildingStorage> = new Map() // buildingInstanceId -> BuildingStorage
 	private reservations: Map<string, StorageReservation> = new Map()  // reservationId -> StorageReservation
-	private storageConfigs: Map<string, StorageConfigDefinition> = new Map() // configId -> StorageConfigDefinition
 
 	constructor(
 		private event: EventManager,
 		private buildingManager: BuildingManager,
-		private itemsManager: ItemsManager
+		private itemsManager: ItemsManager,
+		private logger: Logger
 	) {
 		this.setupEventHandlers()
 		this.startStorageTickLoop()
 	}
 
 	// Initialize storage for a building
-	public initializeBuildingStorage(buildingInstanceId: string, buildingId: string): void
+	// Creates BuildingStorage with empty buffer (capacities are read from BuildingDefinition when needed)
+	public initializeBuildingStorage(buildingInstanceId: string): void
 
 	// Get building storage
 	public getBuildingStorage(buildingInstanceId: string): BuildingStorage | undefined
 
-	// Reserve storage space for incoming delivery
-	public reserveInputStorage(buildingInstanceId: string, itemType: string, quantity: number, reservedBy: string): string | null // Returns reservationId
+	// Reserve storage space for delivery (incoming or outgoing)
+	public reserveStorage(buildingInstanceId: string, itemType: string, quantity: number, reservedBy: string): string | null // Returns reservationId
 
-	// Reserve storage space for outgoing delivery
-	public reserveOutputStorage(buildingInstanceId: string, itemType: string, quantity: number, reservedBy: string): string | null // Returns reservationId
+	// Add items to building storage
+	public addToStorage(buildingInstanceId: string, itemType: string, quantity: number): boolean
 
-	// Add items to building storage (input buffer)
-	public addToInputBuffer(buildingInstanceId: string, itemType: string, quantity: number): boolean
+	// Remove items from building storage
+	public removeFromStorage(buildingInstanceId: string, itemType: string, quantity: number): boolean
 
-	// Remove items from building storage (input buffer)
-	public removeFromInputBuffer(buildingInstanceId: string, itemType: string, quantity: number): boolean
+	// Check if building has available storage for item type
+	public hasAvailableStorage(buildingInstanceId: string, itemType: string, quantity: number): boolean
 
-	// Add items to building storage (output buffer)
-	public addToOutputBuffer(buildingInstanceId: string, itemType: string, quantity: number): boolean
+	// Check if building accepts item type
+	// Returns true if itemType has a capacity defined in BuildingDefinition
+	public acceptsItemType(buildingInstanceId: string, itemType: string): boolean
 
-	// Remove items from building storage (output buffer)
-	public removeFromOutputBuffer(buildingInstanceId: string, itemType: string, quantity: number): boolean
+	// Get storage capacity for item type (reads from BuildingDefinition)
+	public getStorageCapacity(buildingInstanceId: string, itemType: string): number
 
-	// Check if building has available input storage
-	public hasAvailableInputStorage(buildingInstanceId: string, itemType: string, quantity: number): boolean
+	// Get available quantity for an item type (capacity - current - reserved)
+	public getAvailableQuantity(buildingInstanceId: string, itemType: string): number
 
-	// Check if building has available output storage
-	public hasAvailableOutputStorage(buildingInstanceId: string, itemType: string, quantity: number): boolean
-
-	// Get available input quantity for an item type
-	public getAvailableInputQuantity(buildingInstanceId: string, itemType: string): number
-
-	// Get available output quantity for an item type
-	public getAvailableOutputQuantity(buildingInstanceId: string, itemType: string): number
+	// Get current quantity for an item type
+	public getCurrentQuantity(buildingInstanceId: string, itemType: string): number
 
 	// Release storage reservation
 	public releaseReservation(reservationId: string): void
@@ -329,27 +255,29 @@ export class StorageManager {
 - Manage production pipelines for buildings
 - Process production ticks (convert inputs to outputs)
 - Track production progress and status
-- Emit production status updates (no_input, in_production, output_ready, idle)
-- Integrate with StorageManager for input/output buffers
+- Emit production status updates (no_input, in_production, idle, no_worker)
+- Integrate with StorageManager for storage
+- Request input resources via JobsManager when inputs are missing
 
 **Key Methods:**
 ```typescript
 export class ProductionManager {
-	private productionPipelines: Map<string, ProductionPipelineDefinition> = new Map() // pipelineId -> ProductionPipelineDefinition
 	private buildingProductions: Map<string, BuildingProduction> = new Map() // buildingInstanceId -> BuildingProduction
 
 	constructor(
 		private event: EventManager,
 		private buildingManager: BuildingManager,
 		private storageManager: StorageManager,
-		private populationManager: PopulationManager
+		private jobsManager: JobsManager,
+		private lootManager: LootManager,
+		private logger: Logger
 	) {
 		this.setupEventHandlers()
 		this.startProductionTickLoop()
 	}
 
-	// Initialize production for a building
-	public initializeBuildingProduction(buildingInstanceId: string, pipelineId: string): void
+	// Initialize production for a building (gets recipe from BuildingDefinition)
+	public initializeBuildingProduction(buildingInstanceId: string): void
 
 	// Start production for a building
 	public startProduction(buildingInstanceId: string): boolean
@@ -360,113 +288,112 @@ export class ProductionManager {
 	// Process production tick (convert inputs to outputs)
 	private processProduction(buildingInstanceId: string): void
 
+	// Get production recipe for a building (from BuildingDefinition)
+	private getProductionRecipe(buildingInstanceId: string): ProductionRecipe | null
+
 	// Check if building has required inputs
-	private hasRequiredInputs(buildingInstanceId: string, pipeline: ProductionPipelineDefinition): boolean
+	private hasRequiredInputs(buildingInstanceId: string, recipe: ProductionRecipe): boolean
 
 	// Consume inputs from storage
-	private consumeInputs(buildingInstanceId: string, pipeline: ProductionPipelineDefinition): boolean
+	private consumeInputs(buildingInstanceId: string, recipe: ProductionRecipe): boolean
 
 	// Produce outputs to storage
-	private produceOutputs(buildingInstanceId: string, pipeline: ProductionPipelineDefinition): void
+	private produceOutputs(buildingInstanceId: string, recipe: ProductionRecipe): void
 
-	// Get production status (no_input, in_production, output_ready, idle)
+	// Get production status (no_input, in_production, idle, no_worker)
 	public getProductionStatus(buildingInstanceId: string): ProductionStatus
 
 	// Production tick loop
 	private startProductionTickLoop(): void
 	private productionTick(): void
 
-	// Request input resources (emit event for CarrierRoutingService)
-	private requestInputResources(buildingInstanceId: string, pipeline: ProductionPipelineDefinition): void
+	// Request input resources (delegate to JobsManager for transport)
+	// Priority: 1) Buildings with available outputs, 2) Ground items from LootManager
+	private requestInputResources(buildingInstanceId: string, recipe: ProductionRecipe): void
+
+	// Request output transport (delegate to JobsManager for building-to-building transport)
+	// Finds target buildings that need the output items
+	private requestOutputTransport(buildingInstanceId: string, recipe: ProductionRecipe): void
+
+	// Find source buildings with available output items (for input requests, priority 1)
+	// Returns buildings with available output items
+	private findSourceBuildings(itemType: string, quantity: number, mapName: string, playerId: string): string[] // Returns buildingInstanceId[]
+
+	// Find ground items from LootManager (for input requests, priority 2, fallback)
+	// Returns ground items of the required type
+	private findGroundItems(itemType: string, quantity: number, mapName: string, playerId: string): Array<{ itemId: string, position: Position }> // Returns ground items
+
+	// Find target buildings that need input items (for output requests)
+	// Returns buildings that need the input items
+	private findTargetBuildings(itemType: string, quantity: number, mapName: string, playerId: string): string[] // Returns buildingInstanceId[]
 }
 ```
 
-**BuildingProduction Interface:**
+#### 5. JobsManager Extensions (`src/Jobs/index.ts`)
+
+**New Methods for Building-to-Building Transport:**
 ```typescript
-export interface BuildingProduction {
-	buildingInstanceId: string
-	pipelineId: string
-	status: ProductionStatus
-	progress: number // 0-100
-	currentBatchStartTime?: number
-	isProducing: boolean
-}
+export class JobsManager {
+	// ... existing methods ...
 
-export enum ProductionStatus {
-	Idle = 'idle',
-	NoInput = 'no_input',
-	InProduction = 'in_production',
-	OutputReady = 'output_ready',
-	NoWorker = 'no_worker' // Building requires worker but none assigned
-}
-```
-
-#### 5. CarrierRoutingService (`src/Carrier/index.ts`)
-
-**Responsibilities:**
-- Manage carrier jobs (transport requests)
-- Assign carriers to transport jobs
-- Route goods from source buildings to target buildings
-- Integrate with MovementManager for carrier movement
-- Handle pickup and delivery at buildings
-- Integrate with StorageManager for reservations
-
-**Key Methods:**
-```typescript
-export class CarrierRoutingService {
-	private carrierJobs: Map<string, CarrierJob> = new Map() // jobId -> CarrierJob
-	private transportRequests: Map<string, TransportRequest> = new Map() // requestId -> TransportRequest
-	private activeCarriers: Map<string, string> = new Map() // carrierId -> jobId
-
-	constructor(
-		private event: EventManager,
-		private populationManager: PopulationManager,
-		private storageManager: StorageManager,
-		private buildingManager: BuildingManager,
-		private movementManager: MovementManager,
-		private mapManager: MapManager
-	) {
-		this.setupEventHandlers()
-		this.startTransportTickLoop()
-	}
-
-	// Request transport from source to target building
+	// NEW: Request transport from source building to target building
 	public requestTransport(
 		sourceBuildingInstanceId: string,
 		targetBuildingInstanceId: string,
 		itemType: string,
 		quantity: number,
-		priority: number
-	): string | null // Returns requestId
+		priority: number = 1
+	): string | null // Returns jobId or null if transport cannot be created
 
-	// Assign carrier to transport job
-	private assignCarrierToJob(jobId: string): boolean
+	// NEW: Find source building with available output items
+	private findSourceBuilding(
+		mapName: string,
+		playerId: string,
+		itemType: string,
+		quantity: number
+	): { buildingInstanceId: string, buildingPosition: Position } | null
 
-	// Find available carrier for transport job
-	private findAvailableCarrier(job: CarrierJob): Settler | null
+	// NEW: Handle building pickup (remove from source building storage)
+	private handleBuildingPickup(jobId: string): boolean
 
-	// Start carrier job (move to pickup location)
-	private startCarrierJob(carrierId: string, jobId: string): void
-
-	// Handle carrier pickup (remove from source storage, add to carrier inventory)
-	private handlePickup(carrierId: string, jobId: string): void
-
-	// Handle carrier delivery (remove from carrier inventory, add to target storage)
-	private handleDelivery(carrierId: string, jobId: string): void
-
-	// Complete carrier job
-	private completeCarrierJob(jobId: string): void
-
-	// Cancel carrier job
-	public cancelCarrierJob(jobId: string): void
-
-	// Transport tick loop
-	private startTransportTickLoop(): void
-	private transportTick(): void
+	// NEW: Handle building delivery (add to target building storage)
+	private handleBuildingDelivery(jobId: string): boolean
 }
 ```
 
-#### 6. BuildingManager Integration
+**Updated `requestResourceCollection` method:**
+- Keep existing functionality (ground items → buildings for construction)
+- No changes needed - this handles construction resource collection
+
+**New `requestTransport` method implementation:**
+1. Validate source and target buildings exist
+2. Check if source building has available output items (via StorageManager)
+3. Check if target building has available input storage (via StorageManager)
+4. Reserve storage at source (output) and target (input) buildings
+5. Find available carrier
+6. Create transport job with `sourceBuildingInstanceId` (not `sourceItemId`)
+7. Assign carrier to job (delegate to PopulationManager)
+
+#### 6. State Transition Extensions
+
+**Extend `Idle_MovingToItem` transition (`src/Population/transitions/Idle_MovingToItem.ts`):**
+- Update `validate` to check for both `sourceItemId` (ground items) and `sourceBuildingInstanceId` (building storage)
+- Update `action` to handle both cases:
+	- If `sourceItemId` exists: Move to item position (existing behavior)
+	- If `sourceBuildingInstanceId` exists: Move to source building position (new behavior)
+- Update `completed` to handle both cases:
+	- If `sourceItemId` exists: Pick up item from LootManager (existing behavior)
+	- If `sourceBuildingInstanceId` exists: Remove items from source building storage via StorageManager (new behavior)
+
+**Extend `MovingToItem_CarryingItem` transition (`src/Population/transitions/MovingToItem_CarryingItem.ts`):**
+- Update `validate` to check if building exists (already handles this)
+- Update `completed` to handle both delivery types:
+	- If target is construction site: Deliver to BuildingManager.addResourceToBuilding() (existing behavior)
+	- If target has storage: Deliver to StorageManager.addToStorage() (new behavior)
+
+**Note:** The transition name `MovingToItem` is slightly misleading for building pickups, but we'll keep it for consistency. The transition handles both ground items and building storage pickups.
+
+#### 7. BuildingManager Integration
 
 **New Methods:**
 ```typescript
@@ -484,57 +411,20 @@ public requestInputResources(buildingInstanceId: string): void
 ```
 
 **Updated Methods:**
-- `completeBuilding`: Initialize production and storage when building completes
-- `tick`: Include production tick processing
+- `completeBuilding`: Initialize production and storage when building completes (if building has production recipe)
+- `tick`: Include production tick processing (delegate to ProductionManager)
 
-#### 7. PopulationManager Integration
+#### 8. PopulationManager Integration
 
-**New Methods:**
-```typescript
-// Assign carrier to transport job
-public assignCarrierToJob(carrierId: string, jobId: string): boolean
+**No new methods needed** - existing `assignWorkerToTransportJob` already handles transport job assignment. The state machine transitions will handle building pickups automatically.
 
-// Handle carrier pickup
-public handleCarrierPickup(carrierId: string, jobId: string): void
+**Note:** Existing state transitions (`Idle_MovingToItem`, `MovingToItem_CarryingItem`, `CarryingItem_Idle`) will work for building-to-building transport with minimal changes.
 
-// Handle carrier delivery
-public handleCarrierDelivery(carrierId: string, jobId: string): void
-```
+#### 9. Content Loader Updates
 
-**New State Transitions:**
-- `Idle -> MovingToPickup`: Carrier assigned to transport job, moving to pickup location
-- `MovingToPickup -> Carrying`: Carrier picked up goods, moving to delivery location
-- `Carrying -> MovingToDelivery`: Carrier moving to deliver goods (redundant, but explicit)
-- `MovingToDelivery -> Idle`: Carrier delivered goods, job complete
-
-**New State Transition Files:**
-- `IdleToMovingToPickup.ts`: Assign carrier to transport job, start movement to pickup
-- `MovingToPickupToCarrying.ts`: Handle pickup, start movement to delivery
-- `CarryingToIdle.ts`: Handle delivery, complete job
-
-#### 8. Content Loader Updates
-
-**Load Production Pipelines:**
-```typescript
-private async loadProductionPipelines(): Promise<void> {
-	if (!this.content.productionPipelines) return
-
-	for (const pipeline of this.content.productionPipelines) {
-		this.productionManager.loadPipeline(pipeline)
-	}
-}
-```
-
-**Load Storage Configs:**
-```typescript
-private async loadStorageConfigs(): Promise<void> {
-	if (!this.content.storageConfigs) return
-
-	for (const config of this.content.storageConfigs) {
-		this.storageManager.loadStorageConfig(config)
-	}
-}
-```
+**Note:** Storage capacities and production recipes are loaded directly from `BuildingDefinition` - no separate loading needed.
+- Storage capacities come from `BuildingDefinition.storage`
+- Production recipes come from `BuildingDefinition.productionRecipe`
 
 ---
 
@@ -543,57 +433,43 @@ private async loadStorageConfigs(): Promise<void> {
 **No new backend files needed** - Events auto-routed via `EventBusManager`.
 
 **Event Routing:**
-- `cs:storage:*`, `cs:production:*`, `cs:carrier:*` → Routed to respective managers
-- `sc:storage:*`, `sc:production:*`, `sc:carrier:*` → Broadcast to clients in map group
-- `ss:storage:*`, `ss:production:*`, `ss:carrier:*` → Internal server events
+- `cs:storage:*`, `cs:production:*` → Routed to respective managers
+- `sc:storage:*`, `sc:production:*` → Broadcast to clients in map group
+- `ss:storage:*`, `ss:production:*` → Internal server events
+
+**Note:** Transport jobs are handled by `JobsManager` and don't need separate events - state changes are surfaced through existing `PopulationEvents.SC.SettlerUpdated` events.
 
 ---
 
 ### Frontend Adapter Scope
 
-#### 1. Storage UI Components
-
-**BuildingStoragePanel.tsx:**
-- Display building input/output buffers
-- Show storage capacity and usage
-- Display reserved storage
-- Show storage classes
-
-#### 2. Production UI Components
-
-**BuildingProductionPanel.tsx:**
-- Display production status (no_input, in_production, output_ready, idle)
-- Show production progress bar
-- Display input requirements and current inputs
-- Display output items and quantities
-- Start/stop production buttons
-
-#### 3. Carrier UI Components
-
-**CarrierJobPanel.tsx:**
-- Display active carrier jobs
-- Show carrier assignments
-- Display transport requests queue
-- Cancel transport requests
-
-#### 4. Building Info Panel Updates
+#### 1. Building Info Panel Updates
 
 **BuildingInfoPanel.tsx:**
-- Add production status section
-- Add storage section (input/output buffers)
-- Add transport requests section
-- Show carrier assignments
+- **Storage Section:** Display building storage
+  - Show storage capacity and usage per item type
+  - Display reserved storage per item type
+  - Show which item types can be stored (based on capacity definitions)
+- **Production Section:** Display production information (if building has production recipe)
+  - Show production status (no_input, in_production, idle, no_worker)
+  - Show production progress bar
+  - Display input requirements and current input quantities
+  - Display output items and quantities
+  - Show production recipe (inputs → outputs)
+  - Display production time remaining
+- Integrate storage and production information into existing building info display
+- Show construction requirements and collected resources (existing Phase B+ functionality)
+- Show transport jobs (via existing settler state display)
 
-#### 5. Game Scene Updates
+#### 2. Game Scene Updates
 
 **GameScene.ts:**
 - Handle `sc:storage:storage-updated` events
 - Handle `sc:production:status-changed` events
-- Handle `sc:carrier:carrier-job-updated` events
 - Update building visuals based on production status
 - Display storage indicators on buildings
 
-#### 6. Services
+#### 3. Services
 
 **StorageService.ts:**
 - Cache building storage state
@@ -605,80 +481,63 @@ private async loadStorageConfigs(): Promise<void> {
 - Subscribe to production status events
 - Provide methods to query production status
 
-**CarrierService.ts:**
-- Cache carrier jobs and transport requests
-- Subscribe to carrier events
-- Provide methods to request transport
+**Note:** No separate `CarrierService` needed - carrier jobs are tracked via existing `PopulationService` and `JobAssignment` interface.
 
 ---
 
 ### Content Pack Updates
 
-#### 1. Production Pipelines (`content/<pack>/productionPipelines.ts`)
+#### 1. Building Definitions with Production Recipes and Storage (`content/<pack>/buildings.ts`)
 
 ```typescript
-import { ProductionPipelineDefinition } from '@rugged/game'
+import { BuildingDefinition, ProductionRecipe, StorageCapacity } from '@rugged/game'
 
-export const productionPipelines: ProductionPipelineDefinition[] = [
+export const buildings: BuildingDefinition[] = [
 	{
-		id: 'logs_to_planks',
-		name: 'Logs to Planks',
-		description: 'Convert logs into planks',
-		inputs: [
-			{ itemType: 'logs', quantity: 2 }
-		],
-		outputs: [
-			{ itemType: 'planks', quantity: 1 }
-		],
-		productionTime: 10, // 10 seconds
-		requiresWorker: true
-	}
-]
-```
-
-#### 2. Storage Configs (`content/<pack>/storageConfigs.ts`)
-
-```typescript
-import { StorageConfigDefinition, StorageClass } from '@rugged/game'
-
-export const storageConfigs: StorageConfigDefinition[] = [
-	{
-		id: 'storehouse_storage',
-		name: 'Storehouse Storage',
-		buildingId: 'storehouse',
-		capacity: 100,
-		storageClasses: [StorageClass.Raw, StorageClass.Refined, StorageClass.Food, StorageClass.Luxury]
+		id: 'sawmill',
+		name: 'Sawmill',
+		description: 'Converts logs into planks',
+		// ... existing properties (category, icon, sprite, footprint, constructionTime, costs) ...
+		productionRecipe: {
+			inputs: [
+				{ itemType: 'logs', quantity: 2 }
+			],
+			outputs: [
+				{ itemType: 'planks', quantity: 1 }
+			],
+			productionTime: 10 // 10 seconds
+		},
+		storage: {
+			capacities: {
+				'logs': 20, // Can store up to 20 logs (input)
+				'planks': 10 // Can store up to 10 planks (output)
+			}
+		},
+		workerSlots: 1,
+		requiredProfession: 'woodcutter'
 	},
 	{
-		id: 'woodcutter_hut_storage',
-		name: 'Woodcutter Hut Storage',
-		buildingId: 'woodcutter_hut',
-		capacity: 20,
-		storageClasses: [StorageClass.Raw, StorageClass.Refined]
+		id: 'storehouse',
+		name: 'Storehouse',
+		description: 'General storage building',
+		// ... existing properties ...
+		// No productionRecipe - this is a storage-only building
+		storage: {
+			capacities: {
+				'logs': 50,
+				'planks': 50,
+				'stone': 50
+				// Add more item types as needed
+			}
+		}
 	}
 ]
 ```
 
-#### 3. Building Definitions Updates (`content/<pack>/buildings.ts`)
+#### 3. Item Metadata (`content/<pack>/items/planks.ts`)
 
 ```typescript
-{
-	id: 'woodcutter_hut',
-	// ... existing properties ...
-	productionPipelineId: 'logs_to_planks',
-	inputBufferSize: 20,
-	outputBufferSize: 10,
-	productionTime: 10,
-	requiresCarrier: true,
-	workerSlots: 1,
-	requiredProfession: 'woodcutter'
-}
-```
-
-#### 4. Item Metadata Updates (`content/<pack>/items/planks.ts`)
-
-```typescript
-import { ItemMetadata, ItemCategory, StorageClass } from '@rugged/game'
+import { ItemMetadata, ItemCategory } from '@rugged/game'
 
 export default {
 	id: 'planks',
@@ -687,8 +546,7 @@ export default {
 	description: 'Processed wooden planks',
 	category: ItemCategory.Material,
 	stackable: true,
-	maxStackSize: 50,
-	storageClass: StorageClass.Refined
+	maxStackSize: 50
 } as ItemMetadata
 ```
 
@@ -700,128 +558,196 @@ export default {
 
 1. Building completes construction
 2. `BuildingManager.completeBuilding()` called
-3. `StorageManager.initializeBuildingStorage()` called
-4. `ProductionManager.initializeBuildingProduction()` called (if building has production pipeline)
+3. `StorageManager.initializeBuildingStorage()` called (if building has storage)
+4. `ProductionManager.initializeBuildingProduction()` called (if building has production recipe)
 5. `sc:buildings:completed` event emitted
 6. Frontend receives event and updates building visual
 
 #### 2. Production Start & Input Request
 
-1. Building has production pipeline and worker assigned
-2. `ProductionManager.startProduction()` called
-3. Check if building has required inputs in storage
-4. If no inputs:
+1. Building has production recipe and worker assigned
+2. `ProductionManager.startProduction()` called (or automatically started)
+3. Get production recipe from `BuildingDefinition.productionRecipe`
+4. Check if building has required inputs in storage
+5. If no inputs:
 	- Set status to `no_input`
 	- `ProductionManager.requestInputResources()` called
-	- `ss:storage:input-requested` event emitted
-	- `CarrierRoutingService.requestTransport()` called to find source
-5. If inputs available:
+	- **Priority 1:** `ProductionManager.findSourceBuildings()` finds buildings with available output items
+		- If source building found: `JobsManager.requestTransport()` called for building-to-building transport
+		- Carrier assigned to transport job
+	- **Priority 2:** If no source buildings found, `ProductionManager.findGroundItems()` searches for ground items
+		- If ground items found: `JobsManager.requestResourceCollection()` called (existing Phase B+ functionality)
+		- Carrier assigned to collect ground items
+	- If no sources found (neither buildings nor ground items), building remains in `no_input` status
+6. If inputs available:
 	- Set status to `in_production`
 	- Start production timer
 	- `sc:production:production-started` event emitted
 
-#### 3. Carrier Assignment & Transport
+#### 3. Carrier Assignment & Transport (Building-to-Building)
 
-1. `CarrierRoutingService.requestTransport()` called
-2. Find available carrier (Carrier profession, Idle state)
-3. Create `CarrierJob` and assign to carrier
-4. Reserve storage at source and target buildings
-5. `PopulationManager.assignCarrierToJob()` called
-6. State transition: `Idle -> MovingToPickup`
-7. Carrier moves to source building using `MovementManager`
-8. `sc:carrier:transport-assigned` event emitted
+1. `JobsManager.requestTransport()` called
+2. Find source building with available output items (via StorageManager)
+3. Reserve storage at source (output) and target (input) buildings
+4. Find available carrier (Carrier profession, Idle state)
+5. Create `JobAssignment` with `sourceBuildingInstanceId` (not `sourceItemId`)
+6. Assign carrier to job via `PopulationManager.assignWorkerToTransportJob()`
+7. State transition: `Idle -> MovingToItem` (carrier moves to source building)
+8. Carrier moves to source building using `MovementManager`
+9. `PopulationEvents.SC.SettlerUpdated` event emitted (state: `MovingToItem`)
 
-#### 4. Carrier Pickup
+#### 4. Carrier Pickup (Building Storage)
 
 1. Carrier arrives at source building
-2. `MovementEvents.SS.PathComplete` event emitted (targetType: 'pickup', targetId: jobId)
-3. `CarrierRoutingService.handlePickup()` called
-4. Remove items from source building output buffer
-5. Add items to carrier inventory (stored in `SettlerStateContext`)
-6. Update carrier state: `MovingToPickup -> Carrying`
-7. `ss:carrier:pickup-completed` event emitted
+2. `MovementEvents.SS.PathComplete` event emitted (targetType: 'building', targetId: sourceBuildingInstanceId)
+3. `Idle_MovingToItem.completed` callback called
+4. Check if `sourceBuildingInstanceId` exists (building-to-building transport)
+5. Remove items from source building storage (via StorageManager)
+6. Update job: Set `carriedItemId` (generated UUID) and clear `sourceBuildingInstanceId`
+7. Update carrier state: `MovingToItem -> CarryingItem`
 8. Carrier starts moving to target building
-9. `sc:carrier:carrier-job-updated` event emitted
+9. `PopulationEvents.SC.SettlerUpdated` event emitted (state: `CarryingItem`)
 
-#### 5. Carrier Delivery
+#### 5. Carrier Delivery (Building Storage)
 
 1. Carrier arrives at target building
-2. `MovementEvents.SS.PathComplete` event emitted (targetType: 'delivery', targetId: jobId)
-3. `CarrierRoutingService.handleDelivery()` called
-4. Remove items from carrier inventory
-5. Add items to target building input buffer
+2. `MovementEvents.SS.PathComplete` event emitted (targetType: 'building', targetId: targetBuildingInstanceId)
+3. `MovingToItem_CarryingItem.completed` callback called
+4. Check if target building has storage (via StorageManager)
+5. Add items to target building storage (via StorageManager)
 6. Release storage reservations
-7. Update carrier state: `Carrying -> Idle`
-8. Complete carrier job
-9. `ss:carrier:delivery-completed` event emitted
-10. `sc:carrier:transport-completed` event emitted
-11. `sc:storage:storage-updated` event emitted for target building
+7. Complete transport job via `JobsManager.completeJob()`
+8. Update carrier state: `CarryingItem -> Idle`
+9. `PopulationEvents.SC.SettlerUpdated` event emitted (state: `Idle`)
+10. `StorageEvents.SC.StorageUpdated` event emitted for target building
+11. If target building is production building and was waiting for inputs, production may start
 
 #### 6. Production Completion
 
 1. Production timer completes
 2. `ProductionManager.processProduction()` called
-3. Consume inputs from storage
-4. Produce outputs to storage
-5. `sc:production:production-completed` event emitted
-6. If output buffer full:
-	- Set status to `output_ready`
-	- Request carrier to transport outputs (if `requiresCarrier` is true)
-7. If inputs available:
-	- Start next production batch
-8. If no inputs:
-	- Set status to `no_input`
-	- Request input resources
+3. Get production recipe from `BuildingDefinition.productionRecipe`
+4. Consume inputs from storage (via StorageManager)
+5. Produce outputs to storage (via StorageManager)
+6. `sc:production:production-completed` event emitted
+7. `sc:storage:storage-updated` event emitted
+8. Request carrier to transport outputs if needed (via `ProductionManager.requestOutputTransport()`)
+	- `ProductionManager.findTargetBuildings()` finds buildings that need the output items
+	- `JobsManager.requestTransport()` called for first available target building
+9. Immediately check if next batch can start:
+	- If inputs available:
+		- Start next production batch
+		- Set status to `in_production`
+	- If no inputs:
+		- Set status to `no_input`
+		- Request input resources via `ProductionManager.requestInputResources()`
+		- Checks buildings first (priority 1), then ground items (priority 2)
+
+**Note:** Production status transitions immediately after completion - either to `in_production` (next batch started) or `no_input` (waiting for inputs). Transport of outputs is handled automatically based on storage state and doesn't require a separate status. If storage becomes full during production, the `produceOutputs()` method will handle capacity checks before adding outputs.
 
 ---
 
 ### Design Decisions
 
-#### 1. Storage Reservations
+#### 1. Recipes Defined on Buildings
+
+**Rationale:** Production recipes are defined directly on `BuildingDefinition` rather than in a separate `ProductionPipelineDefinition`. This simplifies the design, reduces indirection, and makes it easier to understand what each building produces. By aggregating recipes from all buildings, we can determine what buildings require and produce.
+
+**Implementation:**
+- `BuildingDefinition.productionRecipe` contains the production recipe (inputs → outputs)
+- `ProductionManager` reads recipes directly from `BuildingDefinition` via `BuildingManager`
+- No separate pipeline loading needed - recipes are part of building definitions
+- When multiple buildings need the same input, `ProductionManager.requestInputResources()` checks:
+	1. Buildings with available outputs (priority 1) - `findSourceBuildings()` returns first available building
+	2. Ground items from LootManager (priority 2, fallback) - `findGroundItems()` returns closest ground items
+- When multiple buildings can accept the same output, `ProductionManager.findTargetBuildings()` returns the first available building
+- Buildings have priority over ground items to encourage production chains and use of processed materials
+
+#### 2. Reuse Existing JobsManager
+
+**Rationale:** Phase B+ already introduced `JobsManager` for centralized job management. Phase C extends it rather than creating a new `CarrierRoutingService`.
+
+**Implementation:**
+- Add `requestTransport()` method to `JobsManager` for building-to-building transport
+- Keep `requestResourceCollection()` for ground-to-building transport (construction)
+- Both methods create `JobAssignment` with `JobType.Transport`
+- Transport jobs distinguished by `sourceItemId` (ground) vs `sourceBuildingInstanceId` (building)
+
+#### 3. Extend Existing State Transitions
+
+**Rationale:** Existing `MovingToItem` and `CarryingItem` states can handle both ground items and building storage pickups. No new states needed.
+
+**Implementation:**
+- `Idle_MovingToItem` transition handles both `sourceItemId` and `sourceBuildingInstanceId`
+- `MovingToItem_CarryingItem` transition handles delivery to both construction sites and storage
+- Transition logic checks job type and routes to appropriate manager (LootManager vs StorageManager)
+
+#### 4. Storage Reservations
 
 **Rationale:** Prevent multiple carriers from picking up the same items or delivering to a full storage. Reservations are created when a transport request is made and released when delivery is complete or cancelled.
 
 **Implementation:**
-- Reservations track reserved quantity for incoming/outgoing deliveries
+- Reservations track reserved quantity for deliveries (incoming or outgoing)
 - Reservations have status: `pending`, `in_transit`, `delivered`, `cancelled`
-- Storage capacity checks include reserved quantities
+- Storage capacity checks include reserved quantities (capacities read from BuildingDefinition)
+- Reservations are created in `JobsManager.requestTransport()` and released in `MovingToItem_CarryingItem.completed`
+- Single reservation system handles both input and output items (item types won't collide)
 
-#### 2. Carrier Inventory
+#### 5. Carrier Inventory
 
-**Rationale:** Carriers need to carry items between buildings. Instead of creating physical item entities, we store carried items in `SettlerStateContext` for simplicity.
-
-**Implementation:**
-- `SettlerStateContext.carriedItemType` and `carriedQuantity` track carried items
-- Items are removed from source storage on pickup and added to target storage on delivery
-- No physical item entities are created for transport
-
-#### 3. Production Status
-
-**Rationale:** Buildings need to communicate their state to the UI and other systems. Status indicates whether building is idle, waiting for inputs, producing, or has outputs ready.
+**Rationale:** Carriers need to carry items between buildings. For building-to-building transport, we don't create physical item entities - items are transferred directly between storage.
 
 **Implementation:**
-- Status enum: `idle`, `no_input`, `in_production`, `output_ready`, `no_worker`
+- For ground items: Item is removed from LootManager and `carriedItemId` is set (existing behavior)
+- For building storage: Items are removed from source storage and `carriedItemId` is set to a generated UUID (for tracking)
+- On delivery: Items are added to target storage and `carriedItemId` is cleared
+- No physical item entities are created for building-to-building transport
+- Input and output items use the same storage buffer (item types are different, so no collision)
+
+#### 6. Production Status
+
+**Rationale:** Buildings need to communicate their state to the UI and other systems. Status indicates whether building is idle, waiting for inputs, producing, or missing a worker. After production completes, the status immediately transitions to either `in_production` (if inputs available for next batch) or `no_input` (if no inputs). There is no `output_ready` status - transport requests for outputs are handled automatically based on storage state, not via a separate status. The status reflects what the building is actively doing, not what's sitting in storage.
+
+**Implementation:**
+- Status enum: `idle`, `no_input`, `in_production`, `no_worker`
 - Status changes trigger `sc:production:status-changed` events
 - UI can display status indicators on buildings
 
-#### 4. Automatic Input Request
+#### 6. Automatic Input Request
 
-**Rationale:** Buildings should automatically request inputs when they run out, rather than requiring manual player intervention. This enables autonomous production chains.
+**Rationale:** Buildings should automatically request inputs when they run out, rather than requiring manual player intervention. This enables autonomous production chains. Inputs can come from two sources: building storage (priority 1) or ground items (priority 2).
 
 **Implementation:**
 - `ProductionManager` checks for required inputs before starting production
 - If inputs are missing, `requestInputResources()` is called
-- `CarrierRoutingService` finds available source buildings and assigns carriers
-- Source buildings are found by checking which buildings have the required item type in their output buffer
+- **Priority 1 - Building Storage:** `ProductionManager.findSourceBuildings()` finds available source buildings (buildings with output items)
+	- Source buildings are found by querying `StorageManager` for buildings with available items of the required type
+	- If source building found, `JobsManager.requestTransport()` is called for building-to-building transport
+- **Priority 2 - Ground Items:** If no source buildings found, `ProductionManager.findGroundItems()` searches for ground items via `LootManager`
+	- Ground items are found by querying `LootManager` for items of the required type on the map
+	- If ground items found, `JobsManager.requestResourceCollection()` is called (existing Phase B+ functionality)
+- Buildings have priority over ground items - production chains should use processed materials from buildings when available
+- Ground items serve as fallback for raw materials or when building storage is empty
 
-#### 5. Point-to-Point Routing
+#### 7. Point-to-Point Routing
 
 **Rationale:** Phase C focuses on simple point-to-point routing. Advanced routing (multiple stops, road networks, priority queues) will be added in later phases.
 
 **Implementation:**
-- `CarrierRoutingService` routes directly from source to target building
+- `JobsManager.requestTransport()` routes directly from source to target building
 - Uses `MapManager.findPath()` for pathfinding
 - No road network bonuses or multi-stop routing in Phase C
+
+#### 8. Storage Capacities Per Building Type
+
+**Rationale:** Storage capacities are a property of the building type, not the instance. All instances of the same building type share the same capacity definitions.
+
+**Implementation:**
+- Storage capacities (`storage`) are defined in `BuildingDefinition` (per building type)
+- `BuildingStorage` only tracks runtime state: buffer (current quantities) and reservations
+- `StorageManager` reads capacities from `BuildingDefinition` via `BuildingManager` when needed
+- Methods like `getStorageCapacity()` look up the building instance, get its `buildingId`, then read the capacity from the `BuildingDefinition`
+- Input and output items share the same storage buffer (item types are different, so no collision)
 
 ---
 
@@ -839,33 +765,32 @@ export default {
 
 #### 2. Source Building Empty
 
-**Scenario:** Source building output buffer is empty when carrier arrives.
+**Scenario:** Source building storage is empty when carrier arrives (no items of requested type available).
 
 **Handling:**
 - Check output availability before creating transport request
 - Reserve output items when transport request is created
 - If output becomes unavailable after reservation, job is cancelled
-- Emit `sc:carrier:transport-cancelled` event
+- Carrier returns to Idle state (existing cancellation handling)
 
 #### 3. Carrier Unavailable
 
 **Scenario:** No available carriers when transport request is made.
 
 **Handling:**
-- Transport request is queued
+- Transport request is queued in `JobsManager` (tracked via `activeJobsByBuilding`)
 - When carrier becomes available, assign to queued request
-- Emit `sc:carrier:transport-requested` event for UI feedback
-- UI can show pending transport requests
+- `ProductionManager` will retry input request on next tick if no carrier available
 
 #### 4. Building Destroyed During Transport
 
 **Scenario:** Source or target building is destroyed while carrier is transporting.
 
 **Handling:**
-- Cancel transport request when building is destroyed
+- Cancel transport job when building is destroyed (existing cancellation handling)
 - Release storage reservations
 - Return carrier to Idle state
-- If carrier is carrying items, drop them at current location (using LootManager)
+- If carrier is carrying items, drop them at current location (using LootManager) - existing `handleJobCancellation` handles this
 
 #### 5. Production Interruption
 
@@ -882,103 +807,91 @@ export default {
 ### Files To Touch (Implementation)
 
 #### Game Core (`packages/game/src`)
-- `src/types.ts` - Extend `GameContent` with `productionPipelines`, `storageConfigs`
-- `src/events.ts` - Register `Storage`, `Production`, `Carrier` namespaces
+- `src/types.ts` - No changes needed (storage capacities in BuildingDefinition)
+- `src/events.ts` - Register `Storage`, `Production` namespaces
 - `src/Storage/` - New directory:
-	- `types.ts` - Storage-related types
+	- `types.ts` - Storage-related types (StorageCapacity, BuildingStorage, StorageReservation)
 	- `events.ts` - Storage events
 	- `index.ts` - StorageManager implementation
 - `src/Production/` - New directory:
-	- `types.ts` - Production-related types
+	- `types.ts` - Production-related types (ProductionRecipe, BuildingProduction, ProductionStatus)
 	- `events.ts` - Production events
 	- `index.ts` - ProductionManager implementation
-- `src/Carrier/` - New directory:
-	- `types.ts` - Carrier-related types
-	- `events.ts` - Carrier events
-	- `index.ts` - CarrierRoutingService implementation
-- `src/Buildings/types.ts` - Extend BuildingDefinition with production/storage properties
+- `src/Jobs/index.ts` - Add `requestTransport()` method for building-to-building transport
+- `src/Jobs/index.ts` - Add `handleBuildingPickup()` and `handleBuildingDelivery()` methods
+- `src/Buildings/types.ts` - Extend BuildingDefinition with `productionRecipe` and `storage` (single storage, not input/output separate)
 - `src/Buildings/index.ts` - Add production/storage integration methods
-- `src/Items/types.ts` - Extend ItemMetadata with storage class properties
-- `src/Population/types.ts` - Extend SettlerState, SettlerStateContext, JobAssignment
-- `src/Population/transitions/` - Add new state transitions:
-	- `IdleToMovingToPickup.ts`
-	- `MovingToPickupToCarrying.ts`
-	- `CarryingToIdle.ts`
-- `src/Population/transitions/index.ts` - Register new transitions
-- `src/Population/StateMachine.ts` - Handle carrier job state transitions
-- `src/Population/index.ts` - Add carrier job assignment methods
-- `src/ContentLoader/index.ts` - Load production pipelines and storage configs
-- `src/index.ts` - Initialize StorageManager, ProductionManager, CarrierRoutingService in GameManager
+- `src/Items/types.ts` - No changes needed (items are generic)
+- `src/Population/types.ts` - Extend JobAssignment with `sourceBuildingInstanceId` and `reservationId`
+- `src/Population/transitions/Idle_MovingToItem.ts` - Extend to handle building storage pickups
+- `src/Population/transitions/MovingToItem_CarryingItem.ts` - Extend to handle storage delivery
+- `src/Population/transitions/types.ts` - Add StorageManager to StateMachineManagers
+- `src/ContentLoader/index.ts` - No changes needed (storage and production loaded from BuildingDefinition)
+- `src/index.ts` - Initialize StorageManager and ProductionManager in GameManager
 
 #### Backend (`packages/backend/src`)
 - No new files needed (events auto-routed)
 
 #### Frontend (`packages/frontend/src/game`)
-- `components/BuildingStoragePanel.tsx` - Storage UI component
-- `components/BuildingProductionPanel.tsx` - Production UI component
-- `components/CarrierJobPanel.tsx` - Carrier job UI component
-- `components/BuildingInfoPanel.tsx` - Add production/storage sections
-- `components/UIContainer.tsx` - Include new components
+- `components/BuildingInfoPanel.tsx` - Extend existing panel with storage and production information
 - `services/StorageService.ts` - Storage state management
 - `services/ProductionService.ts` - Production state management
-- `services/CarrierService.ts` - Carrier job state management
-- `scenes/base/GameScene.ts` - Handle storage/production/carrier events
+- `scenes/base/GameScene.ts` - Handle storage/production events
 - `network/index.ts` - Initialize new services
 
 #### Content (`content/<pack>/`)
-- `productionPipelines.ts` - Production pipeline definitions
-- `storageConfigs.ts` - Storage config definitions
-- `buildings.ts` - Extend with production/storage properties
+- `buildings.ts` - Extend with production recipes and storage capacities (single `storage` property)
 - `items/planks.ts` - New item: planks
 - `items/index.ts` - Export planks item
-- `index.ts` - Export production pipelines and storage configs
+- `index.ts` - Export buildings (storage and production are in BuildingDefinition)
 
 ---
 
 ### Testing & Verification
 
 #### Unit Tests
-- Test `StorageManager` storage buffer management
+- Test `StorageManager` storage management
 - Test `StorageManager` reservation system
 - Test `ProductionManager` production pipeline processing
 - Test `ProductionManager` input/output handling
-- Test `CarrierRoutingService` transport request handling
-- Test `CarrierRoutingService` carrier assignment
-- Test state transitions for carrier jobs
+- Test `JobsManager.requestTransport()` transport request handling
+- Test `JobsManager` building-to-building transport
+- Test state transitions for building storage pickups
 
 #### Integration Tests
 - Test building completion initializes production and storage
 - Test production requests inputs when missing
-- Test carrier transports goods from source to target
+- Test carrier transports goods from source building to target building
 - Test production completes when inputs are available
 - Test storage reservations prevent double-booking
 - Test carrier job cancellation releases reservations
+- Test building-to-building transport works alongside ground-to-building transport
 
 #### Manual Testing
 1. **Local Simulation - Basic Production:**
-	- Place woodcutter hut
+	- Place sawmill (production building)
 	- Wait for completion
 	- Assign woodcutter worker
-	- Add logs to input buffer (manually or via carrier)
-	- Verify production starts
-	- Verify planks are produced to output buffer
+- Manually add logs to storage (via StorageManager API or carrier)
+- Verify production starts
+- Verify planks are produced to storage
 	- Verify production status updates
 
-2. **Local Simulation - Carrier Transport:**
-	- Place storehouse (source) and woodcutter hut (target)
-	- Add logs to storehouse output buffer
+2. **Local Simulation - Building-to-Building Transport:**
+	- Place storehouse (source) and sawmill (target)
+	- Add logs to storehouse storage
 	- Verify carrier is assigned to transport job
 	- Verify carrier moves to storehouse
-	- Verify carrier picks up logs
-	- Verify carrier moves to woodcutter hut
-	- Verify carrier delivers logs
-	- Verify logs are added to woodcutter hut input buffer
+	- Verify carrier picks up logs from storehouse storage
+	- Verify carrier moves to sawmill
+	- Verify carrier delivers logs to sawmill storage
+	- Verify logs are added to sawmill storage
 
 3. **Local Simulation - Production Chain:**
-	- Place storehouse with logs
-	- Place woodcutter hut
+	- Place storehouse with logs in storage
+	- Place sawmill
 	- Assign woodcutter worker
-	- Verify carrier transports logs from storehouse to woodcutter hut
+	- Verify carrier transports logs from storehouse to sawmill
 	- Verify production starts when logs arrive
 	- Verify planks are produced
 	- Verify carrier can transport planks to storehouse
@@ -1018,10 +931,19 @@ export default {
 ### Summary
 
 Phase C establishes the foundation for the economy loop by implementing:
-1. **Storage System** - Per-building storage buffers with reservations
-2. **Production System** - Production pipelines that convert inputs to outputs
-3. **Carrier System** - Automatic transport of goods between buildings
-4. **Integration** - Seamless integration with existing building and population systems
+1. **Storage System** - Per-building storage with per-item-type capacities and reservations
+2. **Production System** - Production recipes defined directly on buildings that convert inputs to outputs
+3. **Extended Transport System** - Building-to-building transport via JobsManager (extends existing ground-to-building transport)
+4. **Integration** - Seamless integration with existing JobsManager, BuildingManager, and PopulationManager systems
 
 The phase demonstrates the full flow: resource production → storage → transport → consumption, enabling players to build sustainable production chains and manage their settlement's economy.
 
+**Key Differences from Original Plan:**
+- Uses existing `JobsManager` instead of creating `CarrierRoutingService`
+- Extends existing `JobAssignment` interface instead of creating `CarrierJob`
+- Reuses existing state transitions (`MovingToItem`, `CarryingItem`) instead of creating new states
+- Integrates with existing transport job system from Phase B+
+- **Recipes defined directly on buildings** instead of separate `ProductionPipelineDefinition` - simpler design, easier to understand
+- **Storage capacities defined per building type** - no separate `StorageConfigDefinition`, capacities defined directly on `BuildingDefinition`
+- **Per-item-type storage capacities** - each building defines capacity for each item type it can store
+- **Simplified resource allocation** - first available building is used (no priority system for now)
