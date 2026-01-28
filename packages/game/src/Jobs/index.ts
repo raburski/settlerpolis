@@ -5,7 +5,8 @@ import { LootManager } from '../Loot'
 import { MapManager } from '../Map'
 import { StorageManager } from '../Storage'
 import { ResourceNodesManager } from '../ResourceNodes'
-import { JobAssignment, JobType, Settler, SettlerState } from '../Population/types'
+import { ItemsManager } from '../Items'
+import { JobAssignment, JobPhase, JobReservation, JobReservationType, JobType, Settler, SettlerState } from '../Population/types'
 import { Position } from '../types'
 import { v4 as uuidv4 } from 'uuid'
 import { calculateDistance } from '../utils'
@@ -16,6 +17,8 @@ import { Receiver } from '../Receiver'
 import { Logger } from '../Logs'
 import { SimulationEvents } from '../Simulation/events'
 import { SimulationTickData } from '../Simulation/types'
+import { JOB_DEFINITIONS, JobEvent, getNextPhase } from './definitions'
+import { ReservationService } from './ReservationService'
 
 type PendingTransportRequest =
 	| {
@@ -46,6 +49,7 @@ export class JobsManager {
 	private dispatchAccumulatorMs = 0
 	private simulationTimeMs = 0
 	private readonly DISPATCH_INTERVAL_MS = 500
+	private reservationService: ReservationService
 
 	constructor(
 		private event: EventManager,
@@ -54,14 +58,17 @@ export class JobsManager {
 		private lootManager: LootManager,
 		private mapManager: MapManager,
 		private resourceNodesManager: ResourceNodesManager,
+		private itemsManager: ItemsManager,
 		private logger: Logger
 	) {
+		this.reservationService = new ReservationService(this.lootManager, this.resourceNodesManager, this.logger)
 		this.setupEventHandlers()
 	}
 
 	// Set StorageManager after construction to avoid circular dependency
 	public setStorageManager(storageManager: StorageManager): void {
 		this.storageManager = storageManager
+		this.reservationService.setStorageManager(storageManager)
 	}
 
 	private setupEventHandlers() {
@@ -78,6 +85,383 @@ export class JobsManager {
 		}
 		this.dispatchAccumulatorMs -= this.DISPATCH_INTERVAL_MS
 		this.dispatchPendingTransportJobs()
+	}
+
+	private setJobPhase(job: JobAssignment, phase: JobPhase): void {
+		job.phase = phase
+		job.phaseStartedAtMs = this.simulationTimeMs || Date.now()
+		job.lastProgressAtMs = job.phaseStartedAtMs
+
+		if (phase === JobPhase.Completed) {
+			job.status = 'completed'
+			return
+		}
+		if (phase === JobPhase.Cancelled) {
+			job.status = 'cancelled'
+			return
+		}
+
+		if (job.jobType === JobType.Construction || job.jobType === JobType.Production) {
+			job.status = phase === JobPhase.Working ? 'active' : 'pending'
+		} else {
+			job.status = 'active'
+		}
+	}
+
+	private advanceJobPhase(job: JobAssignment, event: JobEvent): JobPhase | null {
+		const nextPhase = getNextPhase(job, event)
+		if (!nextPhase) {
+			return null
+		}
+		this.setJobPhase(job, nextPhase)
+		return nextPhase
+	}
+
+	private addReservation(job: JobAssignment, reservation: JobReservation | null): void {
+		if (!reservation) {
+			return
+		}
+		if (!job.reservations) {
+			job.reservations = []
+		}
+		job.reservations.push(reservation)
+	}
+
+	private removeReservation(job: JobAssignment, reservationId: string): void {
+		if (!job.reservations || job.reservations.length === 0) {
+			return
+		}
+		job.reservations = job.reservations.filter(reservation => reservation.id !== reservationId)
+	}
+
+	private releaseAllReservations(job: JobAssignment): void {
+		if (!job.reservations || job.reservations.length === 0) {
+			return
+		}
+		this.reservationService.releaseAll(job.reservations)
+		job.reservations = []
+	}
+
+	private getSettler(job: JobAssignment): Settler | null {
+		const settler = this.populationManager.getSettler(job.settlerId)
+		if (!settler) {
+			return null
+		}
+		return settler
+	}
+
+	private startJob(job: JobAssignment): void {
+		const definition = JOB_DEFINITIONS[job.jobType]
+		if (!definition) {
+			return
+		}
+
+		const phase = definition.initialPhase(job)
+		this.setJobPhase(job, phase)
+		this.dispatchPhase(job, phase)
+	}
+
+	private dispatchPhase(job: JobAssignment, phase: JobPhase): void {
+		const settler = this.getSettler(job)
+		if (!settler) {
+			this.cancelJob(job.jobId, 'settler_missing')
+			return
+		}
+
+		if (phase === JobPhase.MovingToTool) {
+			if (!job.toolItemId) {
+				this.logger.warn(`[JOBS] Job ${job.jobId} in moving_to_tool without toolItemId`)
+				this.advanceJobPhase(job, 'arrived')
+				this.dispatchPhase(job, job.phase || phase)
+				return
+			}
+
+			const toolItem = this.lootManager.getItem(job.toolItemId)
+			if (!this.reservationService.isValid({ type: JobReservationType.Tool, id: job.toolItemId, ownerId: job.jobId, targetId: job.toolItemId })) {
+				this.logger.warn(`[JOBS] Tool reservation invalid for job ${job.jobId}`)
+				job.toolItemId = undefined
+				this.advanceJobPhase(job, 'arrived')
+				this.dispatchPhase(job, job.phase || phase)
+				return
+			}
+			if (!toolItem) {
+				this.logger.warn(`[JOBS] Tool ${job.toolItemId} not found for job ${job.jobId}`)
+				job.toolItemId = undefined
+				this.advanceJobPhase(job, 'arrived')
+				this.dispatchPhase(job, job.phase || phase)
+				return
+			}
+
+			settler.stateContext.jobId = job.jobId
+			this.populationManager.transitionSettlerState(settler.id, SettlerState.MovingToTool, {
+				toolId: toolItem.id,
+				toolPosition: toolItem.position,
+				buildingInstanceId: job.buildingInstanceId,
+				requiredProfession: job.requiredProfession
+			})
+			return
+		}
+
+		if (phase === JobPhase.MovingToSource) {
+			settler.stateContext.jobId = job.jobId
+			this.populationManager.transitionSettlerState(settler.id, SettlerState.MovingToItem, {
+				jobId: job.jobId
+			})
+			return
+		}
+
+		if (phase === JobPhase.MovingToResource) {
+			settler.stateContext.jobId = job.jobId
+			this.populationManager.transitionSettlerState(settler.id, SettlerState.MovingToResource, {
+				jobId: job.jobId
+			})
+			return
+		}
+
+		if (phase === JobPhase.MovingToTarget) {
+			settler.stateContext.jobId = job.jobId
+			if (job.jobType === JobType.Construction || job.jobType === JobType.Production) {
+				const buildingPosition = this.buildingManager.getBuildingPosition(job.buildingInstanceId)
+				if (!buildingPosition) {
+					this.cancelJob(job.jobId, 'building_missing')
+					return
+				}
+				this.populationManager.transitionSettlerState(settler.id, SettlerState.MovingToBuilding, {
+					buildingInstanceId: job.buildingInstanceId,
+					buildingPosition,
+					requiredProfession: job.requiredProfession
+				})
+				return
+			}
+
+			this.populationManager.transitionSettlerState(settler.id, SettlerState.CarryingItem, {
+				jobId: job.jobId
+			})
+			return
+		}
+	}
+
+	public handleSettlerArrival(settler: Settler): SettlerState | null {
+		const jobId = settler.stateContext.jobId
+		if (!jobId) {
+			return null
+		}
+
+		const job = this.jobs.get(jobId)
+		if (!job) {
+			return null
+		}
+
+		job.lastProgressAtMs = this.simulationTimeMs || Date.now()
+
+		switch (job.phase) {
+			case JobPhase.MovingToTool: {
+				if (job.toolItemId) {
+					const toolItem = this.lootManager.getItem(job.toolItemId)
+					if (toolItem && this.reservationService.isValid({ type: JobReservationType.Tool, id: job.toolItemId, ownerId: job.jobId, targetId: job.toolItemId })) {
+						const itemMetadata = this.itemsManager.getItemMetadata(toolItem.itemType)
+						if (itemMetadata?.changesProfession) {
+							const targetProfession = itemMetadata.changesProfession as ProfessionType
+							const oldProfession = settler.profession
+							settler.profession = targetProfession
+
+							const fakeClient: any = {
+								id: settler.playerId,
+								currentGroup: settler.mapName,
+								emit: (receiver: any, event: string, data: any, target?: any) => {
+									this.event.emit(receiver, event, data, target)
+								},
+								setGroup: () => {}
+							}
+							this.lootManager.pickItem(job.toolItemId, fakeClient)
+
+							this.event.emit(Receiver.Group, PopulationEvents.SC.ProfessionChanged, {
+								settlerId: settler.id,
+								oldProfession,
+								newProfession: targetProfession
+							}, settler.mapName)
+						}
+					} else {
+						this.logger.warn(`[JOBS] Tool reservation invalid for job ${job.jobId}`)
+					}
+					this.reservationService.release({ type: JobReservationType.Tool, id: job.toolItemId, ownerId: job.jobId, targetId: job.toolItemId })
+					this.removeReservation(job, job.toolItemId)
+					job.toolItemId = undefined
+				}
+
+				const nextPhase = this.advanceJobPhase(job, 'arrived')
+				if (nextPhase === JobPhase.MovingToTarget) {
+					return SettlerState.MovingToBuilding
+				}
+				return null
+			}
+			case JobPhase.MovingToSource: {
+				if (job.jobType !== JobType.Transport) {
+					return null
+				}
+
+				const targetBuilding = this.buildingManager.getBuildingInstance(job.buildingInstanceId)
+				if (!targetBuilding) {
+					this.cancelJob(job.jobId, 'building_missing')
+					return SettlerState.Idle
+				}
+
+				const pickupSuccess = this.handleTransportPickup(job, settler)
+				if (!pickupSuccess) {
+					this.cancelJob(job.jobId, 'pickup_failed')
+					return SettlerState.Idle
+				}
+
+				this.advanceJobPhase(job, 'arrived')
+				return SettlerState.CarryingItem
+			}
+			case JobPhase.MovingToResource: {
+				if (job.jobType !== JobType.Harvest) {
+					return null
+				}
+				this.advanceJobPhase(job, 'arrived')
+				job.harvestStartedAtMs = this.simulationTimeMs || Date.now()
+				return SettlerState.Harvesting
+			}
+			case JobPhase.MovingToTarget: {
+				if (job.jobType === JobType.Transport || job.jobType === JobType.Harvest) {
+					const delivered = this.handleDelivery(job, settler)
+					if (!delivered) {
+						this.cancelJob(job.jobId, 'delivery_failed')
+						return SettlerState.Idle
+					}
+					this.advanceJobPhase(job, 'arrived')
+					this.completeJob(job.jobId)
+					if (job.jobType === JobType.Harvest) {
+						const assignedWorkers = this.buildingManager.getBuildingWorkers(job.buildingInstanceId)
+						if (assignedWorkers.includes(settler.id)) {
+							return SettlerState.Working
+						}
+					}
+					return SettlerState.Idle
+				}
+
+				if (job.jobType === JobType.Construction || job.jobType === JobType.Production) {
+					const building = this.buildingManager.getBuildingInstance(job.buildingInstanceId)
+					if (!building || !this.buildingManager.getBuildingNeedsWorkers(job.buildingInstanceId)) {
+						this.cancelJob(job.jobId, 'building_not_needing_worker')
+						return SettlerState.Idle
+					}
+					this.assignWorkerToJob(job.jobId, settler.id)
+					this.advanceJobPhase(job, 'arrived')
+					return SettlerState.Working
+				}
+				return null
+			}
+			default:
+				return null
+		}
+	}
+
+	public handleHarvestComplete(jobId: string): void {
+		const job = this.jobs.get(jobId)
+		if (!job || job.jobType !== JobType.Harvest) {
+			return
+		}
+
+		if (job.phase !== JobPhase.Harvesting) {
+			return
+		}
+
+		if (!job.resourceNodeId) {
+			this.cancelJob(jobId, 'resource_missing')
+			return
+		}
+
+		const node = this.resourceNodesManager.getNode(job.resourceNodeId)
+		if (!node || node.remainingHarvests <= 0) {
+			this.cancelJob(jobId, 'resource_missing')
+			return
+		}
+
+		const harvestedItem = this.resourceNodesManager.harvestNode(node.id, job.jobId)
+		if (!harvestedItem) {
+			this.cancelJob(jobId, 'harvest_failed')
+			return
+		}
+
+		job.carriedItemId = harvestedItem.id
+		job.itemType = harvestedItem.itemType
+		job.quantity = job.quantity || 1
+		this.removeReservation(job, job.resourceNodeId)
+
+		this.advanceJobPhase(job, 'harvest_complete')
+		this.dispatchPhase(job, job.phase || JobPhase.MovingToTarget)
+	}
+
+	private handleTransportPickup(job: JobAssignment, settler: Settler): boolean {
+		if (job.sourceItemId) {
+			const item = this.lootManager.getItem(job.sourceItemId)
+			if (!item || !this.reservationService.isValid({ type: JobReservationType.Loot, id: job.sourceItemId, ownerId: job.jobId, targetId: job.sourceItemId })) {
+				return false
+			}
+
+			const fakeClient: any = {
+				id: settler.playerId,
+				currentGroup: settler.mapName,
+				emit: (receiver: any, event: string, data: any, target?: any) => {
+					this.event.emit(receiver, event, data, target)
+				},
+				setGroup: () => {}
+			}
+
+			const pickedItem = this.lootManager.pickItem(job.sourceItemId, fakeClient)
+			if (!pickedItem) {
+				return false
+			}
+
+			job.carriedItemId = pickedItem.id
+			job.sourceItemId = undefined
+			this.removeReservation(job, item.id)
+			return true
+		}
+
+		if (job.sourceBuildingInstanceId) {
+			const pickup = this.handleBuildingPickup(job.jobId)
+			return pickup
+		}
+
+		return false
+	}
+
+	private handleDelivery(job: JobAssignment, settler: Settler): boolean {
+		if (!job.itemType || !job.quantity) {
+			return false
+		}
+
+		const building = this.buildingManager.getBuildingInstance(job.buildingInstanceId)
+		if (!building) {
+			return false
+		}
+
+		if (job.jobType === JobType.Harvest) {
+			if (!this.storageManager) {
+				return false
+			}
+			const delivered = this.storageManager.addToStorage(job.buildingInstanceId, job.itemType, job.quantity)
+			return delivered
+		}
+
+		if (job.jobType === JobType.Transport) {
+			if (building.stage === ConstructionStage.Completed && this.storageManager) {
+				if (!this.storageManager.acceptsItemType(job.buildingInstanceId, job.itemType)) {
+					return false
+				}
+				const delivered = this.handleBuildingDelivery(job.jobId)
+				return delivered
+			}
+
+			if (building.stage === ConstructionStage.CollectingResources || building.stage === ConstructionStage.Constructing) {
+				return this.buildingManager.addResourceToBuilding(job.buildingInstanceId, job.itemType, 1)
+			}
+		}
+
+		return false
 	}
 
 	// Transport Jobs
@@ -126,7 +510,8 @@ export class JobsManager {
 
 		const harvestDurationMs = definition.harvestTimeMs ?? 1000
 		const jobId = uuidv4()
-		if (!this.resourceNodesManager.reserveNode(resourceNodeId, jobId)) {
+		const nodeReservation = this.reservationService.reserveNode(resourceNodeId, jobId)
+		if (!nodeReservation) {
 			this.logger.log(`[JOBS] Cannot request harvest: Resource node ${resourceNodeId} already reserved`)
 			return null
 		}
@@ -144,6 +529,7 @@ export class JobsManager {
 			quantity: definition.harvestQuantity,
 			harvestDurationMs
 		}
+		this.addReservation(jobAssignment, nodeReservation)
 
 		this.jobs.set(jobAssignment.jobId, jobAssignment)
 		if (!this.activeJobsByBuilding.has(buildingInstanceId)) {
@@ -153,7 +539,7 @@ export class JobsManager {
 
 		this.logger.log(`[JOBS] Created harvest job ${jobAssignment.jobId} for building ${buildingInstanceId}, node=${resourceNodeId}, settler=${settlerId}`)
 
-		this.populationManager.assignWorkerToHarvestJob(settlerId, jobAssignment.jobId, jobAssignment)
+		this.startJob(jobAssignment)
 
 		return jobAssignment.jobId
 	}
@@ -288,7 +674,9 @@ export class JobsManager {
 
 		// Fall back to ground items
 		const mapItems = this.lootManager.getMapItems(building.mapName)
-		const itemsOfType = mapItems.filter(item => item.itemType === request.itemType)
+		const itemsOfType = mapItems.filter(item =>
+			item.itemType === request.itemType && this.lootManager.isItemAvailable(item.id)
+		)
 		if (itemsOfType.length === 0) {
 			return 'drop'
 		}
@@ -394,18 +782,37 @@ export class JobsManager {
 			return
 		}
 
+		const jobId = uuidv4()
+		let toolItemId: string | undefined
+		let toolReservation: JobReservation | null = null
+
+		if (requiredProfession && worker.profession !== requiredProfession) {
+			const toolItemType = this.populationManager.getToolItemType(requiredProfession)
+			if (toolItemType) {
+				const toolItem = this.populationManager.findAvailableToolOnMap(building.mapName, toolItemType)
+				if (toolItem) {
+					toolReservation = this.reservationService.reserveTool(toolItem.id, jobId)
+					if (toolReservation) {
+						toolItemId = toolItem.id
+					}
+				}
+			}
+		}
+
 		// 6. Create job assignment immediately with status='pending'
 		// This allows us to store jobId in SettlerStateContext and look up all job details from the job
 		const jobAssignment: JobAssignment = {
-			jobId: uuidv4(),
+			jobId,
 			settlerId: worker.id,
 			buildingInstanceId: buildingInstanceId,
 			jobType: jobType,
 			priority: 1,
 			assignedAt: Date.now(),
 			status: 'pending', // Will be 'active' when worker arrives
-			requiredProfession // Store required profession in job
+			requiredProfession, // Store required profession in job
+			toolItemId
 		}
+		this.addReservation(jobAssignment, toolReservation)
 
 		// 7. Store job
 		this.jobs.set(jobAssignment.jobId, jobAssignment)
@@ -416,11 +823,7 @@ export class JobsManager {
 
 		// 8. Assign worker to job (delegate to PopulationManager)
 		// PopulationManager will store jobId in settler.stateContext and execute state transition
-		this.populationManager.assignWorkerToJob(
-			worker.id,
-			jobAssignment.jobId,
-			jobAssignment
-		)
+		this.startJob(jobAssignment)
 
 		// 9. No event needed - settler state change (MovingToTool or MovingToBuilding) will be emitted by PopulationManager
 		// via PopulationEvents.SC.SettlerUpdated
@@ -500,7 +903,20 @@ export class JobsManager {
 		}
 
 		this.logger.log(`[JOBS] Completing job ${jobId}: building=${job.buildingInstanceId}, type=${job.jobType}, itemType=${job.itemType || 'none'}`)
-		job.status = 'completed'
+		this.setJobPhase(job, JobPhase.Completed)
+		this.releaseAllReservations(job)
+
+		if (job.jobType === JobType.Construction || job.jobType === JobType.Production) {
+			this.buildingManager.unassignWorker(job.buildingInstanceId, job.settlerId)
+			const building = this.buildingManager.getBuildingInstance(job.buildingInstanceId)
+			if (building) {
+				this.event.emit(Receiver.Group, PopulationEvents.SC.WorkerUnassigned, {
+					settlerId: job.settlerId,
+					buildingInstanceId: job.buildingInstanceId,
+					jobId: job.jobId
+				}, building.mapName)
+			}
+		}
 
 		// Remove from active jobs
 		const buildingJobs = this.activeJobsByBuilding.get(job.buildingInstanceId)
@@ -523,24 +939,41 @@ export class JobsManager {
 		}
 	}
 
-	public cancelJob(jobId: string, reason?: string): void {
+	public cancelJob(jobId: string, reason?: string, options?: { skipSettlerReset?: boolean }): void {
 		const job = this.jobs.get(jobId)
 		if (!job) {
 			return
 		}
 
-		job.status = 'cancelled'
-
-		// Release storage reservations if this is a building-to-building transport
-		if (this.storageManager && job.reservationId) {
-			this.storageManager.releaseReservation(job.reservationId)
-		}
-
-		// If carrier is carrying items from building storage, we should handle that in the state transition
-		// The state transition will handle dropping items if needed
+		this.setJobPhase(job, JobPhase.Cancelled)
+		this.releaseAllReservations(job)
 
 		if (job.resourceNodeId) {
 			this.resourceNodesManager.releaseReservation(job.resourceNodeId, jobId)
+		}
+
+		const settler = this.populationManager.getSettler(job.settlerId)
+		if (settler && job.carriedItemId && job.itemType) {
+			if (job.sourceBuildingInstanceId && this.storageManager && job.quantity) {
+				const returned = this.storageManager.addToStorage(job.sourceBuildingInstanceId, job.itemType, job.quantity)
+				if (!returned) {
+					this.dropCarriedItem(job, settler)
+				}
+			} else {
+				this.dropCarriedItem(job, settler)
+			}
+		}
+
+		if (job.jobType === JobType.Construction || job.jobType === JobType.Production) {
+			this.buildingManager.unassignWorker(job.buildingInstanceId, job.settlerId)
+			const building = this.buildingManager.getBuildingInstance(job.buildingInstanceId)
+			if (building) {
+				this.event.emit(Receiver.Group, PopulationEvents.SC.WorkerUnassigned, {
+					settlerId: job.settlerId,
+					buildingInstanceId: job.buildingInstanceId,
+					jobId: job.jobId
+				}, building.mapName)
+			}
 		}
 
 		// Remove from active jobs
@@ -563,9 +996,27 @@ export class JobsManager {
 			}
 		}
 
-		// No event needed - job cancellation is reflected by:
-		// - Settler state change to Idle (PopulationEvents.SC.SettlerUpdated)
-		// - Building state remains unchanged (no resource delivered)
+		if (!options?.skipSettlerReset) {
+			this.populationManager.resetSettlerFromJob(jobId, reason || 'job_cancelled')
+		}
+	}
+
+	private dropCarriedItem(job: JobAssignment, settler: Settler): void {
+		if (!job.carriedItemId || !job.itemType) {
+			return
+		}
+
+		const fakeClient: any = {
+			id: settler.playerId,
+			currentGroup: settler.mapName,
+			emit: (receiver: any, event: string, data: any, target?: any) => {
+				this.event.emit(receiver, event, data, target)
+			},
+			setGroup: () => {}
+		}
+
+		this.lootManager.dropItem({ id: job.carriedItemId, itemType: job.itemType }, settler.position, fakeClient, job.quantity || 1)
+		this.logger.log(`[JOBS] Dropped carried item ${job.carriedItemId} for cancelled job ${job.jobId}`)
 	}
 
 	public assignWorkerToJob(jobId: string, settlerId: string): void {
@@ -574,12 +1025,17 @@ export class JobsManager {
 			return
 		}
 
-		// Update job status to active
-		job.status = 'active'
-
 		// Assign worker to building (for construction/production jobs)
 		if (job.jobType === JobType.Construction || job.jobType === JobType.Production) {
 			this.buildingManager.assignWorker(job.buildingInstanceId, settlerId)
+			const building = this.buildingManager.getBuildingInstance(job.buildingInstanceId)
+			if (building) {
+				this.event.emit(Receiver.Group, PopulationEvents.SC.WorkerAssigned, {
+					jobAssignment: job,
+					settlerId,
+					buildingInstanceId: job.buildingInstanceId
+				}, building.mapName)
+			}
 		}
 	}
 
@@ -671,8 +1127,15 @@ export class JobsManager {
 			return null
 		}
 
+		const jobId = uuidv4()
+		const lootReservation = this.reservationService.reserveLoot(itemId, jobId)
+		if (!lootReservation) {
+			this.logger.warn(`[JOBS] Cannot reserve ground item ${itemId} for transport`)
+			return null
+		}
+
 		const jobAssignment: JobAssignment = {
-			jobId: uuidv4(),
+			jobId,
 			settlerId: closestCarrier.id,
 			buildingInstanceId: targetBuildingInstanceId,
 			jobType: JobType.Transport,
@@ -684,6 +1147,7 @@ export class JobsManager {
 			itemType,
 			quantity: 1
 		}
+		this.addReservation(jobAssignment, lootReservation)
 
 		this.jobs.set(jobAssignment.jobId, jobAssignment)
 		if (!this.activeJobsByBuilding.has(targetBuildingInstanceId)) {
@@ -693,11 +1157,7 @@ export class JobsManager {
 
 		this.logger.log(`[JOBS] Created ground transport job ${jobAssignment.jobId} for building ${targetBuildingInstanceId}, itemType: ${itemType}, carrier: ${closestCarrier.id}`)
 
-		this.populationManager.assignWorkerToTransportJob(
-			closestCarrier.id,
-			jobAssignment.jobId,
-			jobAssignment
-		)
+		this.startJob(jobAssignment)
 
 		return jobAssignment.jobId
 	}
@@ -731,19 +1191,31 @@ export class JobsManager {
 			return null
 		}
 
-		if (!this.storageManager.hasAvailableStorage(targetBuildingInstanceId, itemType, quantity)) {
+		const isConstructionTarget = targetBuilding.stage === ConstructionStage.CollectingResources
+			|| targetBuilding.stage === ConstructionStage.Constructing
+
+		if (isConstructionTarget) {
+			if (!this.buildingManager.buildingNeedsResource(targetBuildingInstanceId, itemType)) {
+				return null
+			}
+		} else if (!this.storageManager.hasAvailableStorage(targetBuildingInstanceId, itemType, quantity)) {
 			return null
 		}
 
-		const sourceReservationId = this.storageManager.reserveStorage(sourceBuildingInstanceId, itemType, quantity, `transport-${targetBuildingInstanceId}`, true)
-		if (!sourceReservationId) {
+		const jobId = uuidv4()
+
+		const sourceReservation = this.reservationService.reserveStorage(sourceBuildingInstanceId, itemType, quantity, jobId, true)
+		if (!sourceReservation) {
 			return null
 		}
 
-		const targetReservationId = this.storageManager.reserveStorage(targetBuildingInstanceId, itemType, quantity, `transport-${sourceBuildingInstanceId}`, false)
-		if (!targetReservationId) {
-			this.storageManager.releaseReservation(sourceReservationId)
-			return null
+		let targetReservation: JobReservation | null = null
+		if (!isConstructionTarget) {
+			targetReservation = this.reservationService.reserveStorage(targetBuildingInstanceId, itemType, quantity, jobId, false)
+			if (!targetReservation) {
+				this.reservationService.release(sourceReservation)
+				return null
+			}
 		}
 
 		const availableCarriers = this.populationManager.getAvailableCarriers(
@@ -752,20 +1224,24 @@ export class JobsManager {
 		)
 
 		if (availableCarriers.length === 0) {
-			this.storageManager.releaseReservation(sourceReservationId)
-			this.storageManager.releaseReservation(targetReservationId)
+			this.reservationService.release(sourceReservation)
+			if (targetReservation) {
+				this.reservationService.release(targetReservation)
+			}
 			return null
 		}
 
 		const closestCarrier = this.findClosestCarrier(availableCarriers, sourceBuilding.position)
 		if (!closestCarrier) {
-			this.storageManager.releaseReservation(sourceReservationId)
-			this.storageManager.releaseReservation(targetReservationId)
+			this.reservationService.release(sourceReservation)
+			if (targetReservation) {
+				this.reservationService.release(targetReservation)
+			}
 			return null
 		}
 
 		const jobAssignment: JobAssignment = {
-			jobId: uuidv4(),
+			jobId,
 			settlerId: closestCarrier.id,
 			buildingInstanceId: targetBuildingInstanceId,
 			jobType: JobType.Transport,
@@ -775,8 +1251,10 @@ export class JobsManager {
 			sourceBuildingInstanceId,
 			itemType,
 			quantity,
-			reservationId: targetReservationId
+			reservationId: targetReservation?.id
 		}
+		this.addReservation(jobAssignment, sourceReservation)
+		this.addReservation(jobAssignment, targetReservation)
 
 		this.jobs.set(jobAssignment.jobId, jobAssignment)
 		if (!this.activeJobsByBuilding.has(targetBuildingInstanceId)) {
@@ -791,11 +1269,7 @@ export class JobsManager {
 
 		this.logger.log(`[JOBS] Created transport job ${jobAssignment.jobId} from ${sourceBuildingInstanceId} to ${targetBuildingInstanceId}, itemType: ${itemType}, quantity: ${quantity}, carrier: ${closestCarrier.id}`)
 
-		this.populationManager.assignWorkerToTransportJob(
-			closestCarrier.id,
-			jobAssignment.jobId,
-			jobAssignment
-		)
+		this.startJob(jobAssignment)
 
 		return jobAssignment.jobId
 	}
@@ -846,7 +1320,15 @@ export class JobsManager {
 
 		// Set carriedItemId (generate UUID for tracking)
 		job.carriedItemId = uuidv4()
-		job.sourceBuildingInstanceId = undefined // Clear source building ID after pickup
+
+		// Release outgoing storage reservation now that items are removed
+		const outgoingReservation = job.reservations?.find(reservation =>
+			reservation.type === JobReservationType.Storage && reservation.metadata?.isOutgoing
+		)
+		if (outgoingReservation) {
+			this.storageManager.releaseReservation(outgoingReservation.id)
+			this.removeReservation(job, outgoingReservation.id)
+		}
 
 		this.logger.log(`[JOBS] Building pickup completed: Job ${jobId}, removed ${job.quantity} ${job.itemType} from ${sourceBuilding.id}`)
 
@@ -877,15 +1359,18 @@ export class JobsManager {
 			return false
 		}
 
+		const incomingReservation = job.reservations?.find(reservation =>
+			reservation.type === JobReservationType.Storage && !reservation.metadata?.isOutgoing
+		)
+		if (incomingReservation) {
+			this.storageManager.releaseReservation(incomingReservation.id)
+			this.removeReservation(job, incomingReservation.id)
+		}
+
 		// Add items to target building storage
 		if (!this.storageManager.addToStorage(job.buildingInstanceId, job.itemType, job.quantity)) {
 			this.logger.warn(`[JOBS] Cannot handle building delivery: Failed to add ${job.quantity} ${job.itemType} to target building ${job.buildingInstanceId}`)
 			return false
-		}
-
-		// Release storage reservation if it exists
-		if (job.reservationId) {
-			this.storageManager.releaseReservation(job.reservationId)
 		}
 
 		// Clear carriedItemId

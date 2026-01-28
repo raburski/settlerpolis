@@ -11,6 +11,7 @@ import { Position } from '../types'
 import { Receiver } from '../Receiver'
 import { calculateDistance } from '../utils'
 import { JobType } from '../Population/types'
+import { ConstructionStage } from '../Buildings/types'
 import { SimulationEvents } from '../Simulation/events'
 import { SimulationTickData } from '../Simulation/types'
 
@@ -393,6 +394,83 @@ export class ProductionManager {
 		for (const [buildingInstanceId, production] of this.buildingProductions.entries()) {
 			if (production.isProducing) {
 				this.processProduction(buildingInstanceId)
+				continue
+			}
+
+			if (production.status === ProductionStatus.NoInput) {
+				this.retryInputRequests(buildingInstanceId, production)
+			}
+		}
+		this.processHarvestOutputs()
+	}
+
+	private retryInputRequests(buildingInstanceId: string, production: BuildingProduction): void {
+		const RETRY_INTERVAL_MS = 5000
+		if (production.lastInputRequestAtMs && (this.simulationTimeMs - production.lastInputRequestAtMs) < RETRY_INTERVAL_MS) {
+			return
+		}
+		this.checkAndStartProduction(buildingInstanceId)
+	}
+
+	private processHarvestOutputs(): void {
+		const buildings = this.buildingManager.getAllBuildings()
+		if (buildings.length === 0) {
+			return
+		}
+
+		for (const building of buildings) {
+			if (building.stage !== ConstructionStage.Completed) {
+				continue
+			}
+
+			const definition = this.buildingManager.getBuildingDefinition(building.buildingId)
+			if (!definition || !definition.harvest || definition.productionRecipe) {
+				continue
+			}
+
+			const storage = this.storageManager.getBuildingStorage(building.id)
+			if (!storage || storage.buffer.size === 0) {
+				continue
+			}
+
+			const buildingPriority = definition.priority ?? 1
+			const priority = 20 + buildingPriority
+
+			for (const [itemType, current] of storage.buffer.entries()) {
+				if (current <= 0) {
+					continue
+				}
+
+				const available = this.storageManager.getAvailableQuantity(building.id, itemType)
+				if (available <= 0) {
+					continue
+				}
+
+				const batchQuantity = Math.min(available, 1)
+				if (this.requestOutputTransportToConsumers(building.id, itemType, batchQuantity, priority)) {
+					continue
+				}
+
+				const capacity = this.storageManager.getStorageCapacity(building.id, itemType)
+				if (capacity === 0) {
+					continue
+				}
+
+				const OVERFLOW_THRESHOLD = 0.8
+				if (current / capacity < OVERFLOW_THRESHOLD) {
+					continue
+				}
+
+				if (this.jobsManager.hasActiveJobForBuilding(building.id, itemType)) {
+					continue
+				}
+
+				const warehouseId = this.findClosestWarehouse(itemType, batchQuantity, building.mapName, building.playerId, building.position)
+				if (!warehouseId) {
+					continue
+				}
+
+				this.jobsManager.requestTransport(building.id, warehouseId, itemType, batchQuantity, priority)
 			}
 		}
 	}
@@ -404,6 +482,10 @@ export class ProductionManager {
 		if (!building) {
 			return
 		}
+		const production = this.buildingProductions.get(buildingInstanceId)
+		if (production) {
+			production.lastInputRequestAtMs = this.simulationTimeMs
+		}
 		const buildingDef = this.buildingManager.getBuildingDefinition(building.buildingId)
 		const buildingPriority = buildingDef?.priority ?? 1
 		const priority = 60 + buildingPriority
@@ -413,7 +495,9 @@ export class ProductionManager {
 		// Check each required input
 		for (const input of recipe.inputs) {
 			const current = this.storageManager.getCurrentQuantity(buildingInstanceId, input.itemType)
-			const needed = input.quantity - current
+			const capacity = this.storageManager.getStorageCapacity(buildingInstanceId, input.itemType)
+			const desired = capacity > 0 ? capacity : input.quantity
+			const needed = desired - current
 
 			if (needed <= 0) {
 				continue // Already have enough
@@ -618,7 +702,9 @@ export class ProductionManager {
 			}
 
 			const current = this.storageManager.getCurrentQuantity(building.id, itemType)
-			const needed = requiredInput.quantity - current
+			const capacity = this.storageManager.getStorageCapacity(building.id, itemType)
+			const desired = capacity > 0 ? capacity : requiredInput.quantity
+			const needed = desired - current
 			if (needed <= 0) {
 				continue
 			}

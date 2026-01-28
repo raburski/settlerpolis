@@ -956,6 +956,14 @@ export class BuildingManager {
 		return false
 	}
 
+	public buildingNeedsResource(buildingInstanceId: string, itemType: string): boolean {
+		const neededResources = this.resourceRequests.get(buildingInstanceId)
+		if (!neededResources) {
+			return false
+		}
+		return neededResources.has(itemType)
+	}
+
 	// Assign worker to building
 	public assignWorker(buildingInstanceId: string, settlerId: string): void {
 		const building = this.getBuildingInstance(buildingInstanceId)

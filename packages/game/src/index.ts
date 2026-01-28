@@ -126,7 +126,7 @@ export class GameManager {
 		this.storageManager = new StorageManager(event, this.buildingManager, this.itemsManager, this.logsManager.getLogger('StorageManager'))
 		
 		// Create JobsManager after BuildingManager, PopulationManager, and StorageManager (to avoid circular dependency)
-		const jobsManager = new JobsManager(event, this.buildingManager, this.populationManager, this.lootManager, this.mapManager, this.resourceNodesManager, this.logsManager.getLogger('JobsManager'))
+		const jobsManager = new JobsManager(event, this.buildingManager, this.populationManager, this.lootManager, this.mapManager, this.resourceNodesManager, this.itemsManager, this.logsManager.getLogger('JobsManager'))
 		jobsManager.setStorageManager(this.storageManager)
 		
 		// Create ProductionManager after BuildingManager, StorageManager, JobsManager, and LootManager

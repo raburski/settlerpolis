@@ -31,6 +31,33 @@ export enum JobType {
 	Harvest = 'harvest'             // Worker harvest job
 }
 
+export enum JobPhase {
+	Pending = 'pending',
+	MovingToTool = 'moving_to_tool',
+	MovingToSource = 'moving_to_source',
+	MovingToResource = 'moving_to_resource',
+	MovingToTarget = 'moving_to_target',
+	Harvesting = 'harvesting',
+	Working = 'working',
+	Completed = 'completed',
+	Cancelled = 'cancelled'
+}
+
+export enum JobReservationType {
+	Loot = 'loot',
+	Storage = 'storage',
+	Node = 'node',
+	Tool = 'tool'
+}
+
+export interface JobReservation {
+	type: JobReservationType
+	id: string
+	targetId?: string
+	ownerId: string
+	metadata?: Record<string, unknown>
+}
+
 export interface ProfessionDefinition {
 	type: ProfessionType
 	name: string
@@ -54,6 +81,7 @@ export interface ProfessionToolDefinition {
 export interface SettlerStateContext {
 	targetId?: string              // ID of tool, building, or item being moved to
 	targetPosition?: Position      // Target position for movement
+	targetType?: string            // Optional target type for debugging/recovery
 	jobId?: string                 // Current job assignment ID - look up JobAssignment to get all job details
 	errorReason?: string           // Reason for failure state
 	lastIdleWanderTime?: number    // Timestamp of last idle wander movement (for cooldown)
@@ -71,7 +99,6 @@ export interface Settler {
 	profession: ProfessionType
 	state: SettlerState
 	stateContext: SettlerStateContext  // Context for current state
-	currentJob?: JobAssignment
 	houseId?: string // House that spawned this settler
 	buildingId?: string  // Can be derived from stateContext
 	speed: number
@@ -86,6 +113,10 @@ export interface JobAssignment {
 	priority: number
 	assignedAt: number
 	status: 'pending' | 'active' | 'completed' | 'cancelled'
+	phase?: JobPhase
+	phaseStartedAtMs?: number
+	lastProgressAtMs?: number
+	reservations?: JobReservation[]
 	// Transport-specific fields (only populated when jobType === JobType.Transport)
 	sourceItemId?: string        // Item ID on the ground (from LootManager) - before pickup (ground-to-building transport)
 	sourceBuildingInstanceId?: string // Source building instance ID (building-to-building transport)
@@ -100,6 +131,7 @@ export interface JobAssignment {
 	harvestDurationMs?: number
 	// Worker assignment fields (for construction/production jobs that need tool pickup first)
 	requiredProfession?: ProfessionType // Required profession for this job (if settler needs tool)
+	toolItemId?: string
 }
 
 export interface SpawnSettlerData {

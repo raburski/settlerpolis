@@ -131,8 +131,8 @@ export const BuildingInfoPanel: React.FC = () => {
 			if (buildingInstance) {
 				const settlers = populationService.getSettlers()
 				const workerMoving = settlers.find(
-					s => (s.state === SettlerState.MovingToBuilding || s.state === SettlerState.MovingToTool) &&
-					s.currentJob?.buildingInstanceId === buildingInstance.id
+					s => s.state === SettlerState.MovingToBuilding &&
+					s.stateContext.targetId === buildingInstance.id
 				)
 				if (workerMoving) {
 					setWorkerStatus('Worker is moving to building...')
@@ -485,4 +485,3 @@ export const BuildingInfoPanel: React.FC = () => {
 		</DraggablePanel>
 	)
 }
-

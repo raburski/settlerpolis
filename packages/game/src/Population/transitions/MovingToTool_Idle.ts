@@ -16,7 +16,5 @@ export const MovingToTool_Idle: StateTransition<ToolPickupContext> = {
 		// Update state to Idle and clear context
 		settler.state = SettlerState.Idle
 		settler.stateContext = {}
-		settler.currentJob = undefined
 	}
 }
-

@@ -36,8 +36,10 @@ export const MovingToTool_MovingToBuilding: StateTransition<ToolPickupContext> =
 		}
 		
 		const buildingInstanceId = job.buildingInstanceId
-		const building = managers.buildingManager.getBuildingInstance(buildingInstanceId)!
-		const buildingPosition = managers.buildingManager.getBuildingPosition(buildingInstanceId)!
+		const buildingPosition = managers.buildingManager.getBuildingPosition(buildingInstanceId)
+		if (!buildingPosition) {
+			throw new Error(`Building ${buildingInstanceId} not found`)
+		}
 		
 		managers.logger.log(`[TRANSITION ACTION] MovingToTool -> MovingToBuilding | settler=${settler.id} | jobId=${jobId} | buildingId=${buildingInstanceId} | buildingPosition=(${Math.round(buildingPosition.x)},${Math.round(buildingPosition.y)})`)
 		
@@ -46,6 +48,7 @@ export const MovingToTool_MovingToBuilding: StateTransition<ToolPickupContext> =
 		settler.stateContext = {
 			targetId: buildingInstanceId,
 			targetPosition: buildingPosition,
+			targetType: 'building',
 			jobId: jobId
 		}
 		
@@ -58,8 +61,9 @@ export const MovingToTool_MovingToBuilding: StateTransition<ToolPickupContext> =
 	},
 	
 	completed: (settler, managers) => {
-		// When movement to building completes, transition to Working
-		return SettlerState.Working
+		if (!managers.jobsManager) {
+			return null
+		}
+		return managers.jobsManager.handleSettlerArrival(settler)
 	}
 }
-
