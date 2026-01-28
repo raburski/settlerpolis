@@ -699,6 +699,42 @@ export class PopulationManager {
 		})
 	}
 
+	public completeHarvestJob(settlerId: string, jobId: string): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return
+		}
+
+		if (settler.state !== SettlerState.Harvesting) {
+			return
+		}
+
+		settler.stateContext.jobId = jobId
+		const success = this.stateMachine.executeTransition(settler, SettlerState.CarryingItem, {
+			jobId
+		})
+		if (!success && this.jobsManager) {
+			this.jobsManager.cancelJob(jobId, 'harvest_failed')
+			this.clearSettlerJob(settlerId, jobId)
+		}
+	}
+
+	public clearSettlerJob(settlerId: string, jobId?: string): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return
+		}
+
+		if (jobId && settler.currentJob?.jobId !== jobId) {
+			return
+		}
+
+		settler.currentJob = undefined
+		settler.state = SettlerState.Idle
+		settler.stateContext = {}
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+	}
+
 	// Assign worker to job (called by JobsManager for construction/production jobs)
 	public assignWorkerToJob(
 		settlerId: string,

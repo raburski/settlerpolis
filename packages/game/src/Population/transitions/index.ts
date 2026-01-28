@@ -10,6 +10,7 @@ import { MovingToTool_Idle } from './MovingToTool_Idle'
 import { MovingToBuilding_Working } from './MovingToBuilding_Working'
 import { MovingToBuilding_Idle } from './MovingToBuilding_Idle'
 import { MovingToItem_CarryingItem } from './MovingToItem_CarryingItem'
+import { MovingToResource_Harvesting } from './MovingToResource_Harvesting'
 import { MovingToResource_CarryingItem } from './MovingToResource_CarryingItem'
 import { CarryingItem_Idle } from './CarryingItem_Idle'
 import { CarryingItem_Working } from './CarryingItem_Working'
@@ -35,6 +36,9 @@ export const SETTLER_STATE_TRANSITIONS: StateTransitionsConfig = {
 		[SettlerState.CarryingItem]: MovingToItem_CarryingItem
 	},
 	[SettlerState.MovingToResource]: {
+		[SettlerState.Harvesting]: MovingToResource_Harvesting
+	},
+	[SettlerState.Harvesting]: {
 		[SettlerState.CarryingItem]: MovingToResource_CarryingItem
 	},
 	[SettlerState.CarryingItem]: {
@@ -59,6 +63,7 @@ export {
 	MovingToBuilding_Idle,
 	MovingToItem_CarryingItem,
 	Idle_MovingToResource,
+	MovingToResource_Harvesting,
 	MovingToResource_CarryingItem,
 	CarryingItem_Idle,
 	CarryingItem_Working,

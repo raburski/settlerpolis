@@ -8,6 +8,7 @@ export const resourceNodeDefinitions: ResourceNodeDefinition[] = [
 		nodeItemType: ItemType.Logs,
 		outputItemType: ItemType.Logs,
 		harvestQuantity: 1,
+		harvestTimeMs: 2500,
 		maxHarvests: 6
 	},
 	{
@@ -16,6 +17,7 @@ export const resourceNodeDefinitions: ResourceNodeDefinition[] = [
 		nodeItemType: ItemType.Stone,
 		outputItemType: ItemType.Stone,
 		harvestQuantity: 1,
+		harvestTimeMs: 3500,
 		maxHarvests: 6
 	}
 ]

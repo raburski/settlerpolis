@@ -97,7 +97,7 @@ export const MovingToResource_CarryingItem: StateTransition<ResourceArrivalConte
 			targetType: 'building',
 			targetId: job.buildingInstanceId
 		})
-		managers.logger.log(`[MOVEMENT REQUESTED] MovingToResource -> CarryingItem | settler=${settler.id} | movementStarted=${movementStarted}`)
+		managers.logger.log(`[MOVEMENT REQUESTED] Harvest -> CarryingItem | settler=${settler.id} | movementStarted=${movementStarted}`)
 	},
 
 	completed: (settler, managers) => {

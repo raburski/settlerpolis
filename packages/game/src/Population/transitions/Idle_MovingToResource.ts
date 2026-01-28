@@ -104,6 +104,6 @@ export const Idle_MovingToResource: StateTransition<MovingToResourceContext> = {
 			}
 		}
 
-		return SettlerState.CarryingItem
+		return SettlerState.Harvesting
 	}
 }

@@ -45,6 +45,8 @@ export class HarvestManager {
 	}
 
 	private tick(): void {
+		this.processHarvestingJobs()
+
 		const buildings = this.buildingManager.getAllBuildings()
 		if (buildings.length === 0) return
 
@@ -107,6 +109,37 @@ export class HarvestManager {
 			if (jobId) {
 				this.logger.log(`[HarvestManager] Assigned harvest job ${jobId} for building ${building.id}`)
 			}
+		}
+	}
+
+	private processHarvestingJobs(): void {
+		const activeHarvestJobs = this.jobsManager.getActiveHarvestJobs()
+		if (activeHarvestJobs.length === 0) {
+			return
+		}
+
+		for (const job of activeHarvestJobs) {
+			const settler = this.populationManager.getSettler(job.settlerId)
+			if (!settler || settler.state !== SettlerState.Harvesting) {
+				continue
+			}
+
+			if (job.status !== 'active') {
+				this.populationManager.clearSettlerJob(job.settlerId, job.jobId)
+				continue
+			}
+
+			if (!job.harvestStartedAtMs) {
+				job.harvestStartedAtMs = this.simulationTimeMs
+				continue
+			}
+
+			const harvestDurationMs = job.harvestDurationMs ?? 0
+			if (this.simulationTimeMs - job.harvestStartedAtMs < harvestDurationMs) {
+				continue
+			}
+
+			this.populationManager.completeHarvestJob(job.settlerId, job.jobId)
 		}
 	}
 }

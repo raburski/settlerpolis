@@ -31,7 +31,7 @@ export class PopulationStats {
 
 			if (settler.state === SettlerState.Idle) {
 				idleCount++
-			} else if (settler.state === SettlerState.Working) {
+			} else if (settler.state === SettlerState.Working || settler.state === SettlerState.Harvesting) {
 				workingCount++
 			}
 		})
@@ -105,4 +105,3 @@ export class PopulationStats {
 		})
 	}
 }
-

@@ -115,6 +115,8 @@ export const SettlerInfoPanel: React.FC = () => {
 				return '🚶 Moving to Item'
 			case SettlerState.MovingToResource:
 				return '🚶 Moving to Resource'
+			case SettlerState.Harvesting:
+				return '⛏️ Harvesting'
 			case SettlerState.CarryingItem:
 				return '📦 Carrying Item'
 			case SettlerState.AssignmentFailed:

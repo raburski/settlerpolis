@@ -20,6 +20,7 @@ export enum SettlerState {
 	MovingToItem = 'moving_to_item',        // Moving to pick up item from ground
 	CarryingItem = 'carrying_item',         // Carrying item and moving to construction site for delivery
 	MovingToResource = 'moving_to_resource', // Moving to resource node for harvesting
+	Harvesting = 'harvesting',             // Harvesting at a resource node
 	AssignmentFailed = 'assignment_failed',    // Assignment failed, needs cleanup
 }
 
@@ -95,6 +96,8 @@ export interface JobAssignment {
 	reservationId?: string       // Storage reservation ID (for building-to-building transport)
 	// Harvest-specific fields
 	resourceNodeId?: string      // Resource node instance ID
+	harvestStartedAtMs?: number
+	harvestDurationMs?: number
 	// Worker assignment fields (for construction/production jobs that need tool pickup first)
 	requiredProfession?: ProfessionType // Required profession for this job (if settler needs tool)
 }

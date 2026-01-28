@@ -9,6 +9,7 @@ export interface ResourceNodeDefinition {
 	nodeItemType: ItemType // Item type used for map object rendering
 	outputItemType: ItemType // Item type produced by harvesting
 	harvestQuantity: number
+	harvestTimeMs?: number
 	maxHarvests: number // Number of harvest actions before depletion
 }
 

@@ -241,6 +241,7 @@ export class JobsManager {
 			return null
 		}
 
+		const harvestDurationMs = definition.harvestTimeMs ?? 1000
 		const jobId = uuidv4()
 		if (!this.resourceNodesManager.reserveNode(resourceNodeId, jobId)) {
 			this.logger.log(`[JOBS] Cannot request harvest: Resource node ${resourceNodeId} already reserved`)
@@ -257,7 +258,8 @@ export class JobsManager {
 			status: 'active',
 			resourceNodeId,
 			itemType: definition.outputItemType,
-			quantity: definition.harvestQuantity
+			quantity: definition.harvestQuantity,
+			harvestDurationMs
 		}
 
 		this.jobs.set(jobAssignment.jobId, jobAssignment)
@@ -271,6 +273,11 @@ export class JobsManager {
 		this.populationManager.assignWorkerToHarvestJob(settlerId, jobAssignment.jobId, jobAssignment)
 
 		return jobAssignment.jobId
+	}
+
+	public getActiveHarvestJobs(): JobAssignment[] {
+		return Array.from(this.jobs.values())
+			.filter(job => job.jobType === JobType.Harvest && job.status === 'active')
 	}
 
 	// Worker Jobs (construction/production)
