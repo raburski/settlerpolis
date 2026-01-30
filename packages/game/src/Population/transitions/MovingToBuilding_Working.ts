@@ -14,8 +14,8 @@ export const MovingToBuilding_Working: StateTransition<BuildingArrivalContext> =
 		if (!jobId) return false
 		
 		// Verify job exists
-		if (!managers.jobsManager) return false
-		const job = managers.jobsManager.getJob(jobId)
+		if (!managers.jobs) return false
+		const job = managers.jobs.getJob(jobId)
 		return !!job
 	},
 	
@@ -26,11 +26,11 @@ export const MovingToBuilding_Working: StateTransition<BuildingArrivalContext> =
 			throw new Error(`[MovingToBuilding_Working] No jobId found in stateContext`)
 		}
 		
-		if (!managers.jobsManager) {
+		if (!managers.jobs) {
 			throw new Error(`[MovingToBuilding_Working] JobsManager not available`)
 		}
 
-		const job = managers.jobsManager.getJob(jobId)
+		const job = managers.jobs.getJob(jobId)
 		if (!job) {
 			throw new Error(`[MovingToBuilding_Working] Job ${jobId} not found`)
 		}

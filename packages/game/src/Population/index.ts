@@ -8,35 +8,50 @@ import {
 	SettlerState,
 	ProfessionDefinition,
 	ProfessionToolDefinition,
-	JobAssignment,
-	JobType,
 	SpawnSettlerData,
 	RequestWorkerData,
 	UnassignWorkerData,
 	RequestProfessionToolPickupData,
 	RequestRevertToCarrierData
 } from './types'
+import { JobAssignment, JobStatus, JobType, RoleType } from '../Jobs/types'
 import { Receiver } from '../Receiver'
 import { v4 as uuidv4 } from 'uuid'
-import { BuildingManager } from '../Buildings'
-import { Scheduler } from '../Scheduler'
-import { MapManager } from '../Map'
-import { LootManager } from '../Loot'
-import { ItemsManager } from '../Items'
+import type { BuildingManager } from '../Buildings'
+import type { Scheduler } from '../Scheduler'
+import type { MapManager } from '../Map'
+import type { LootManager } from '../Loot'
+import type { ItemsManager } from '../Items'
 import { Position } from '../types'
-import { BuildingInstance, ConstructionStage } from '../Buildings/types'
-import { MovementManager, MovementEntity } from '../Movement'
-import { ResourceNodesManager } from '../ResourceNodes'
+import { ConstructionStage } from '../Buildings/types'
+import type { MovementManager } from '../Movement'
+import { MovementEntity } from '../Movement'
+import type { ResourceNodesManager } from '../ResourceNodes'
 import { SettlerStateMachine } from './StateMachine'
+import type { StateMachineManagers } from './transitions/types'
 import { PopulationStats } from './Stats'
 import { calculateDistance } from '../utils'
 import { PlayerJoinData } from '../Players/types'
-import { JobsManager } from '../Jobs'
+import type { JobsManager } from '../Jobs'
+import type { StorageManager } from '../Storage'
 import { Logger } from '../Logs'
+import { BaseManager } from '../Managers'
 
 const SETTLER_SPEED = 164 // pixels per second (2 tiles per second at 32px per tile)
 
-export class PopulationManager {
+export interface PopulationDeps {
+	buildings: BuildingManager
+	scheduler: Scheduler
+	map: MapManager
+	loot: LootManager
+	items: ItemsManager
+	movement: MovementManager
+	resourceNodes: ResourceNodesManager
+	jobs: JobsManager
+	storage: StorageManager
+}
+
+export class PopulationManager extends BaseManager<PopulationDeps> {
 	private settlers = new Map<string, Settler>() // settlerId -> Settler
 	// Note: jobs map removed - JobsManager tracks jobs now
 	private houseSettlers = new Map<string, string[]>() // houseBuildingInstanceId -> settlerIds[]
@@ -51,33 +66,19 @@ export class PopulationManager {
 	private startingPopulation: Array<{ profession: ProfessionType, count: number }> = []
 	// Note: Job type is determined by building state (Phase B only supports construction jobs)
 
-	private jobsManager?: JobsManager // Optional - set after construction to avoid circular dependency
-
 	constructor(
+		managers: PopulationDeps,
 		private event: EventManager,
-		private buildingManager: BuildingManager,
-		private scheduler: Scheduler,
-	private mapManager: MapManager,
-	private lootManager: LootManager,
-	private itemsManager: ItemsManager,
-	private movementManager: MovementManager,
-	private resourceNodesManager: ResourceNodesManager,
-	startingPopulation: Array<{ profession: ProfessionType, count: number }>,
-	private logger: Logger
+		startingPopulation: Array<{ profession: ProfessionType, count: number }>,
+		private logger: Logger
 	) {
+		super(managers)
 		this.startingPopulation = startingPopulation || []
 		
 		// Initialize state machine with managers
-		this.stateMachine = new SettlerStateMachine(
-			movementManager,
-			buildingManager,
-			event,
-			lootManager,
-			itemsManager,
-			mapManager,
-			resourceNodesManager,
-			this.logger
-		)
+		this.managers.event = this.event
+		this.managers.logger = this.logger
+		this.stateMachine = new SettlerStateMachine(this.managers as StateMachineManagers)
 		
 		// Initialize stats calculator with event manager and settlers getter
 		this.stats = new PopulationStats(
@@ -96,19 +97,6 @@ export class PopulationManager {
 		this.startIdleTickLoop()
 		this.startRecoveryTickLoop()
 		this.loadProfessionToolsFromItems()
-	}
-
-	// Set JobsManager after construction to avoid circular dependency
-	public setJobsManager(jobsManager: JobsManager): void {
-		this.jobsManager = jobsManager
-		// Update state machine managers to include jobsManager
-		this.stateMachine.setJobsManager(jobsManager)
-	}
-
-	// Set StorageManager after construction to avoid circular dependency
-	public setStorageManager(storageManager: any): void {
-		// Update state machine managers to include storageManager
-		this.stateMachine.setStorageManager(storageManager)
 	}
 
 	// Movement is now handled by MovementManager
@@ -150,7 +138,7 @@ export class PopulationManager {
 			})
 			
 			// Verify building definition has spawnsSettlers
-			const buildingDef = this.buildingManager.getBuildingDefinition(data.buildingId)
+			const buildingDef = this.managers.buildings.getBuildingDefinition(data.buildingId)
 			if (buildingDef && buildingDef.spawnsSettlers) {
 				this.logger.log(`✓ House detected! Starting spawn timer for house ${data.buildingInstanceId}`)
 				// This is a house - start spawn timer
@@ -218,7 +206,7 @@ export class PopulationManager {
 			}
 
 			// Sync position from MovementManager before state transition (StepComplete should have fired, but ensure sync)
-			const currentPosition = this.movementManager.getEntityPosition(settler.id)
+			const currentPosition = this.managers.movement.getEntityPosition(settler.id)
 			if (currentPosition) {
 				settler.position = currentPosition
 				this.logger.log(`[POSITION SYNC] PathComplete: synced final position: settler=${settler.id} | position=(${Math.round(currentPosition.x)},${Math.round(currentPosition.y)})`)
@@ -234,7 +222,7 @@ export class PopulationManager {
 			// This is important for idle wandering where the completed callback returns null (no next state)
 			if (!transitionResult) {
 				// Sync position one more time to ensure we have the latest position from MovementManager
-				const finalPosition = this.movementManager.getEntityPosition(settler.id)
+				const finalPosition = this.managers.movement.getEntityPosition(settler.id)
 				if (finalPosition) {
 					settler.position = { ...finalPosition } // Create a copy to ensure we're using the exact position
 				}
@@ -257,7 +245,7 @@ export class PopulationManager {
 					// This prevents position conflicts between the two events
 					setTimeout(() => {
 						// Re-sync position to ensure it's still correct
-						const currentPosition = this.movementManager.getEntityPosition(settler.id)
+						const currentPosition = this.managers.movement.getEntityPosition(settler.id)
 						if (currentPosition) {
 							settler.position = { ...currentPosition }
 						}
@@ -296,7 +284,7 @@ export class PopulationManager {
 		this.logger.debug(`spawnSettler called:`, { houseBuildingInstanceId: data.houseBuildingInstanceId, clientId: client.id })
 		
 		// 1. Verify house building exists and is completed
-		const building = this.buildingManager.getBuildingInstance(data.houseBuildingInstanceId)
+		const building = this.managers.buildings.getBuildingInstance(data.houseBuildingInstanceId)
 		if (!building) {
 			this.logger.error(`House building not found: ${data.houseBuildingInstanceId}`)
 			return
@@ -314,7 +302,7 @@ export class PopulationManager {
 			return
 		}
 
-		const buildingDef = this.buildingManager.getBuildingDefinition(building.buildingId)
+		const buildingDef = this.managers.buildings.getBuildingDefinition(building.buildingId)
 		if (!buildingDef) {
 			this.logger.error(`Building definition not found: ${building.buildingId}`)
 			return
@@ -374,7 +362,7 @@ export class PopulationManager {
 			mapName: settler.mapName,
 			speed: settler.speed
 		}
-		this.movementManager.registerEntity(movementEntity)
+		this.managers.movement.registerEntity(movementEntity)
 
 		// 6. Track settler in house
 		if (!this.houseSettlers.has(data.houseBuildingInstanceId)) {
@@ -449,7 +437,7 @@ export class PopulationManager {
 					mapName: settler.mapName,
 					speed: settler.speed
 				}
-				this.movementManager.registerEntity(movementEntity)
+				this.managers.movement.registerEntity(movementEntity)
 
 				// Emit settler spawned event
 				client.emit(Receiver.Group, PopulationEvents.SC.SettlerSpawned, {
@@ -470,7 +458,7 @@ export class PopulationManager {
 	// Request worker for building (automatic assignment)
 	private requestWorker(data: RequestWorkerData, client: EventClient): void {
 		// 1. Verify building exists and needs workers
-		const building = this.buildingManager.getBuildingInstance(data.buildingInstanceId)
+		const building = this.managers.buildings.getBuildingInstance(data.buildingInstanceId)
 		if (!building) {
 			this.logger.error(`Building not found: ${data.buildingInstanceId}`)
 			client.emit(Receiver.Sender, PopulationEvents.SC.WorkerRequestFailed, {
@@ -481,7 +469,7 @@ export class PopulationManager {
 		}
 
 		// 2. Get building definition to check required profession
-		const buildingDef = this.buildingManager.getBuildingDefinition(building.buildingId)
+		const buildingDef = this.managers.buildings.getBuildingDefinition(building.buildingId)
 		if (!buildingDef) {
 			this.logger.error(`Building definition not found: ${building.buildingId}`)
 			client.emit(Receiver.Sender, PopulationEvents.SC.WorkerRequestFailed, {
@@ -492,7 +480,7 @@ export class PopulationManager {
 		}
 
 		// 3. Check if building needs workers
-		if (!this.buildingManager.getBuildingNeedsWorkers(data.buildingInstanceId)) {
+		if (!this.managers.buildings.getBuildingNeedsWorkers(data.buildingInstanceId)) {
 			this.logger.warn(`Building does not need workers: ${data.buildingInstanceId}`)
 			client.emit(Receiver.Sender, PopulationEvents.SC.WorkerRequestFailed, {
 				reason: 'building_does_not_need_workers',
@@ -505,8 +493,8 @@ export class PopulationManager {
 		const buildingPosition = building.position
 
 		// 5. Delegate to JobsManager to create job and assign worker
-		if (this.jobsManager) {
-			this.jobsManager.requestWorker(data.buildingInstanceId)
+		if (this.managers.jobs) {
+			this.managers.jobs.requestWorker(data.buildingInstanceId)
 		} else {
 			this.logger.warn(`JobsManager not set, cannot assign worker`)
 			client.emit(Receiver.Sender, PopulationEvents.SC.WorkerRequestFailed, {
@@ -549,7 +537,7 @@ export class PopulationManager {
 		}
 
 		const closestSettler = this.findClosestSettler(idleCarriers, tool.position)
-		if (!this.lootManager.reserveItem(tool.id, closestSettler.id)) {
+		if (!this.managers.loot.reserveItem(tool.id, closestSettler.id)) {
 			this.logger.warn(`[PROFESSION TOOL PICKUP] Tool ${tool.id} already reserved`)
 			return
 		}
@@ -560,7 +548,7 @@ export class PopulationManager {
 			requiredProfession
 		})
 		if (!started) {
-			this.lootManager.releaseReservation(tool.id, closestSettler.id)
+			this.managers.loot.releaseReservation(tool.id, closestSettler.id)
 		}
 	}
 
@@ -580,12 +568,12 @@ export class PopulationManager {
 		const settlers = Array.from(this.settlers.values())
 		for (const settler of settlers) {
 			const jobId = settler.stateContext.jobId
-			if (!jobId || !this.jobsManager) {
+			if (!jobId || !this.managers.jobs) {
 				continue
 			}
 
-			const job = this.jobsManager.getJob(jobId)
-			if (!job || job.status === 'cancelled' || job.status === 'completed') {
+			const job = this.managers.jobs.getJob(jobId)
+			if (!job || job.status === JobStatus.Cancelled || job.status === JobStatus.Completed) {
 				this.resetSettlerFromJob(jobId, job ? `job_${job.status}` : 'job_missing')
 				continue
 			}
@@ -622,7 +610,7 @@ export class PopulationManager {
 		const settler = idleWorkers[0]
 		const toolItemType = this.findToolForProfession(data.profession)
 		if (toolItemType) {
-			this.lootManager.dropItem(
+			this.managers.loot.dropItem(
 				{ id: uuidv4(), itemType: toolItemType },
 				settler.position,
 				client,
@@ -651,6 +639,23 @@ export class PopulationManager {
 		)
 	}
 
+	public hasIdleSettler(mapName: string, playerId: string): boolean {
+		return Array.from(this.settlers.values()).some(settler =>
+			settler.mapName === mapName &&
+			settler.playerId === playerId &&
+			settler.state === SettlerState.Idle
+		)
+	}
+
+	public hasIdleSettlerWithProfession(mapName: string, playerId: string, profession: ProfessionType): boolean {
+		return Array.from(this.settlers.values()).some(settler =>
+			settler.mapName === mapName &&
+			settler.playerId === playerId &&
+			settler.state === SettlerState.Idle &&
+			settler.profession === profession
+		)
+	}
+
 	// Find worker for building (handles profession requirements and tool pickup)
 	// Returns Settler or null (updated signature for JobsManager)
 	public findWorkerForBuilding(
@@ -658,10 +663,11 @@ export class PopulationManager {
 		requiredProfession?: ProfessionType,
 		mapName?: string,
 		buildingPosition?: Position,
-		playerId?: string
+		playerId?: string,
+		allowToolPickup: boolean = true
 	): Settler | null {
 		// Get building to get mapName and playerId if not provided
-		const building = this.buildingManager.getBuildingInstance(buildingInstanceId)
+		const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
 		if (!building) {
 			return null
 		}
@@ -676,7 +682,8 @@ export class PopulationManager {
 			requiredProfession,
 			targetMapName,
 			targetPosition,
-			targetPlayerId
+			targetPlayerId,
+			allowToolPickup
 		)
 
 		if (!workerResult) {
@@ -692,7 +699,8 @@ export class PopulationManager {
 		requiredProfession: ProfessionType | undefined,
 		mapName: string,
 		buildingPosition: Position,
-		playerId: string
+		playerId: string,
+		allowToolPickup: boolean
 	): { settlerId: SettlerId, needsTool: boolean, toolId?: string, toolPosition?: Position } | null {
 		// 1. Get all idle settlers for this map and player
 		const idleSettlers = Array.from(this.settlers.values()).filter(
@@ -717,6 +725,10 @@ export class PopulationManager {
 					settlerId: closestSettler.id,
 					needsTool: false
 				}
+			}
+
+			if (!allowToolPickup) {
+				return null
 			}
 
 			// c. If not found, find profession-changing tool for this profession
@@ -785,7 +797,7 @@ export class PopulationManager {
 
 	// Find tool on map
 	private findToolOnMap(mapName: string, itemType: string): { id: string, position: Position } | null {
-		const availableItem = this.lootManager.getAvailableItemByType(mapName, itemType)
+		const availableItem = this.managers.loot.getAvailableItemByType(mapName, itemType)
 		if (availableItem) {
 			return {
 				id: availableItem.id,
@@ -839,10 +851,10 @@ export class PopulationManager {
 	}
 
 	public completeHarvestJob(settlerId: string, jobId: string): void {
-		if (!this.jobsManager) {
+		if (!this.managers.jobs) {
 			return
 		}
-		this.jobsManager.handleHarvestComplete(jobId)
+		this.managers.jobs.handleHarvestComplete(jobId)
 	}
 
 	public clearSettlerJob(settlerId: string, jobId?: string): void {
@@ -875,7 +887,7 @@ export class PopulationManager {
 		settler.stateContext.jobId = jobId
 
 		// Get building to get position
-		const building = this.buildingManager.getBuildingInstance(jobAssignment.buildingInstanceId)
+		const building = this.managers.buildings.getBuildingInstance(jobAssignment.buildingInstanceId)
 		if (!building) {
 			return
 		}
@@ -897,8 +909,8 @@ export class PopulationManager {
 			return
 		}
 
-		if (settler.stateContext.jobId && this.jobsManager) {
-			this.jobsManager.cancelJob(settler.stateContext.jobId, 'unassigned')
+		if (this.managers.jobs) {
+			this.managers.jobs.unassignWorker(settler.id)
 		} else {
 			this.stateMachine.executeTransition(settler, SettlerState.Idle, {})
 		}
@@ -909,18 +921,18 @@ export class PopulationManager {
 
 	// Handle construction completion - complete construction jobs and reassign builders
 	private onConstructionCompleted(buildingInstanceId: string, mapName: string, playerId: string): void {
-		if (!this.jobsManager) {
+		if (!this.managers.jobs) {
 			this.logger.warn(`[CONSTRUCTION COMPLETED] JobsManager not available, cannot complete construction jobs`)
 			return
 		}
 
 		// Get all active construction jobs for this building
-		const activeJobs = this.jobsManager.getActiveJobsForBuilding(buildingInstanceId)
+		const activeJobs = this.managers.jobs.getActiveJobsForBuilding(buildingInstanceId)
 		const constructionJobs = activeJobs.filter(job => job.jobType === JobType.Construction)
 
 		this.logger.log(`[CONSTRUCTION COMPLETED] Found ${constructionJobs.length} construction jobs for building ${buildingInstanceId}`)
 
-		// Complete construction jobs and transition builders to Idle
+		// Cancel construction jobs and transition builders to Idle
 		for (const job of constructionJobs) {
 			const settler = this.settlers.get(job.settlerId)
 			if (!settler) {
@@ -928,31 +940,21 @@ export class PopulationManager {
 				continue
 			}
 
-			// Only transition builders that are currently working on this building
-			if (settler.state === SettlerState.Working && settler.stateContext.jobId === job.jobId) {
-				this.logger.log(`[CONSTRUCTION COMPLETED] Completing construction job ${job.jobId} for settler ${settler.id}`)
-				
-				// Complete the job
-				this.jobsManager.completeJob(job.jobId)
-				
-				// Transition builder to Idle
-				const success = this.stateMachine.executeTransition(settler, SettlerState.Idle, {})
-				if (success) {
-					this.logger.log(`[CONSTRUCTION COMPLETED] Builder ${settler.id} transitioned to Idle`)
-					
-					// After transitioning to Idle, check for other buildings needing builders
-					// Use setTimeout to ensure state transition completes first
-					setTimeout(() => {
-						this.assignBuilderToNextConstructionJob(settler, mapName, playerId)
-					}, 0)
-				}
-			}
+			this.logger.log(`[CONSTRUCTION COMPLETED] Cancelling construction job ${job.jobId} for settler ${settler.id}`)
+			this.managers.jobs.cancelJob(job.jobId, 'construction_completed')
+
+			setTimeout(() => {
+				this.assignBuilderToNextConstructionJob(settler, mapName, playerId)
+			}, 0)
 		}
+
+		// Clear construction role assignments for this building
+		this.managers.jobs.clearRoleAssignmentsForBuilding(buildingInstanceId, RoleType.Construction, { skipJobCancel: true })
 	}
 
 	// Automatically assign idle builder to next construction job
 	private assignBuilderToNextConstructionJob(settler: Settler, mapName: string, playerId: string): void {
-		if (!this.jobsManager) {
+		if (!this.managers.jobs) {
 			return
 		}
 
@@ -962,7 +964,7 @@ export class PopulationManager {
 		}
 
 		// Find buildings in Constructing stage that need builders
-		const buildings = this.buildingManager.getBuildingsForMap(mapName)
+		const buildings = this.managers.buildings.getBuildingsForMap(mapName)
 		const buildingsNeedingBuilders = buildings.filter(building => {
 			// Only check buildings for the same player
 			if (building.playerId !== playerId) {
@@ -975,7 +977,7 @@ export class PopulationManager {
 			}
 
 			// Building must need workers
-			if (!this.buildingManager.getBuildingNeedsWorkers(building.id)) {
+			if (!this.managers.buildings.getBuildingNeedsWorkers(building.id)) {
 				return false
 			}
 
@@ -997,16 +999,16 @@ export class PopulationManager {
 		// Assign builder to the closest building
 		const targetBuilding = buildingsNeedingBuilders[0]
 		this.logger.log(`[AUTO ASSIGN] Assigning builder ${settler.id} to building ${targetBuilding.id} (${targetBuilding.buildingId})`)
-		
+
 		// Request worker for the building (JobsManager will handle assignment)
-		this.jobsManager.requestWorker(targetBuilding.id)
+		this.managers.jobs.requestWorker(targetBuilding.id)
 	}
 
 	// Handle house completion - start spawn timer
 	public onHouseCompleted(buildingInstanceId: string, buildingId: string): void {
 		this.logger.debug(`onHouseCompleted called:`, { buildingInstanceId, buildingId })
 		
-		const building = this.buildingManager.getBuildingInstance(buildingInstanceId)
+		const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
 		if (!building) {
 			this.logger.error(`House building instance not found: ${buildingInstanceId}`)
 			return
@@ -1020,7 +1022,7 @@ export class PopulationManager {
 			stage: building.stage
 		})
 
-		const buildingDef = this.buildingManager.getBuildingDefinition(buildingId)
+		const buildingDef = this.managers.buildings.getBuildingDefinition(buildingId)
 		if (!buildingDef) {
 			this.logger.error(`House building definition not found: ${buildingId}`)
 			return
@@ -1076,20 +1078,20 @@ export class PopulationManager {
 
 	// Schedule next spawn for house
 	private scheduleNextSpawn(buildingInstanceId: string, spawnRate: number): void {
-		const building = this.buildingManager.getBuildingInstance(buildingInstanceId)
+		const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
 		if (!building) {
 			return
 		}
 
 		const timer = setTimeout(() => {
 			// Check if house still exists and is completed
-			const currentBuilding = this.buildingManager.getBuildingInstance(buildingInstanceId)
+			const currentBuilding = this.managers.buildings.getBuildingInstance(buildingInstanceId)
 			if (!currentBuilding || currentBuilding.stage !== ConstructionStage.Completed) {
 				return
 			}
 
 			// Check house capacity
-			const buildingDef = this.buildingManager.getBuildingDefinition(currentBuilding.buildingId)
+			const buildingDef = this.managers.buildings.getBuildingDefinition(currentBuilding.buildingId)
 			if (!buildingDef || !buildingDef.spawnsSettlers) {
 				return
 			}
@@ -1136,12 +1138,8 @@ export class PopulationManager {
 		// 3. Unassign from jobs if working
 		settlersFromHouse.forEach(settlerId => {
 			const settler = this.settlers.get(settlerId)
-			if (settler?.stateContext.jobId && this.jobsManager) {
-				this.jobsManager.cancelJob(settler.stateContext.jobId, 'house_destroyed')
-			}
-
-			if (settler?.buildingId) {
-				this.buildingManager.unassignWorker(settler.buildingId, settlerId)
+			if (settler?.stateContext.jobId && this.managers.jobs) {
+				this.managers.jobs.cancelJob(settler.stateContext.jobId, 'house_destroyed')
 			}
 
 			// Remove settler
@@ -1200,7 +1198,7 @@ export class PopulationManager {
 			
 			// Check if MovementManager has an active movement task for this settler
 			// This prevents starting a new wander while movement is still in progress
-			if (this.movementManager.hasActiveMovement(settler.id)) {
+			if (this.managers.movement.hasActiveMovement(settler.id)) {
 				return false
 			}
 			
@@ -1252,7 +1250,7 @@ export class PopulationManager {
 			}
 			
 			// Check if path exists and is short enough
-			const path = this.mapManager.findPath(settler.mapName, settler.position, targetPosition)
+			const path = this.managers.map.findPath(settler.mapName, settler.position, targetPosition)
 			if (path && path.length > 0 && path.length <= 6) {
 				// Use the last position in the path (actual reachable position)
 				return path[path.length - 1]
@@ -1277,12 +1275,12 @@ export class PopulationManager {
 			return
 		}
 
-		if (this.movementManager.hasActiveMovement(settler.id)) {
-			this.movementManager.cancelMovement(settler.id)
+		if (this.managers.movement.hasActiveMovement(settler.id)) {
+			this.managers.movement.cancelMovement(settler.id)
 		}
 
 		if (settler.state === SettlerState.MovingToTool && settler.stateContext.targetId) {
-			this.lootManager.releaseReservation(settler.stateContext.targetId, settler.id)
+			this.managers.loot.releaseReservation(settler.stateContext.targetId, settler.id)
 		}
 
 		settler.state = SettlerState.Idle

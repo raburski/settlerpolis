@@ -13,7 +13,7 @@ export const Working_Idle: StateTransition<WorkerUnassignContext> = {
 	
 	action: (settler, context, managers) => {
 		// Cancel movement if any
-		managers.movementManager.cancelMovement(settler.id)
+		managers.movement.cancelMovement(settler.id)
 
 		// Update state
 		settler.state = SettlerState.Idle

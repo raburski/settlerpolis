@@ -97,7 +97,14 @@ class StorageServiceClass {
 		}
 		return { ...storage.items }
 	}
+
+	public getAllBuildingStorages(): BuildingStorage[] {
+		return Array.from(this.buildingStorages.values()).map((storage) => ({
+			buildingInstanceId: storage.buildingInstanceId,
+			items: { ...storage.items },
+			capacities: { ...storage.capacities }
+		}))
+	}
 }
 
 export const storageService = new StorageServiceClass()
-

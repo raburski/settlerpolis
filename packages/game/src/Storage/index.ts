@@ -1,16 +1,21 @@
 import { EventManager } from '../events'
-import { BuildingManager } from '../Buildings'
-import { ItemsManager } from '../Items'
+import type { BuildingManager } from '../Buildings'
+import type { ItemsManager } from '../Items'
 import { Logger } from '../Logs'
 import { StorageEvents } from './events'
 import { BuildingStorage, StorageReservation } from './types'
-import { BuildingInstance } from '../Buildings/types'
 import { v4 as uuidv4 } from 'uuid'
 import { Receiver } from '../Receiver'
 import { SimulationEvents } from '../Simulation/events'
 import { SimulationTickData } from '../Simulation/types'
+import { BaseManager } from '../Managers'
 
-export class StorageManager {
+export interface StorageDeps {
+	buildings: BuildingManager
+	items: ItemsManager
+}
+
+export class StorageManager extends BaseManager<StorageDeps> {
 	private buildingStorages: Map<string, BuildingStorage> = new Map() // buildingInstanceId -> BuildingStorage
 	private reservations: Map<string, StorageReservation> = new Map()  // reservationId -> StorageReservation
 	private readonly STORAGE_TICK_INTERVAL_MS = 5000
@@ -18,11 +23,11 @@ export class StorageManager {
 	private simulationTimeMs = 0
 
 	constructor(
+		managers: StorageDeps,
 		private event: EventManager,
-		private buildingManager: BuildingManager,
-		private itemsManager: ItemsManager,
 		private logger: Logger
 	) {
+		super(managers)
 		this.setupEventHandlers()
 	}
 
@@ -50,13 +55,13 @@ export class StorageManager {
 	// Initialize storage for a building
 	// Creates BuildingStorage with empty buffer (capacities are read from BuildingDefinition when needed)
 	public initializeBuildingStorage(buildingInstanceId: string): void {
-		const building = this.buildingManager.getBuildingInstance(buildingInstanceId)
+		const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
 		if (!building) {
 			this.logger.warn(`[StorageManager] Cannot initialize storage: Building ${buildingInstanceId} not found`)
 			return
 		}
 
-		const definition = this.buildingManager.getBuildingDefinition(building.buildingId)
+		const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
 		if (!definition) {
 			this.logger.warn(`[StorageManager] Cannot initialize storage: Building definition ${building.buildingId} not found`)
 			return
@@ -141,7 +146,7 @@ export class StorageManager {
 		this.logger.log(`[StorageManager] Reserved ${quantity} ${itemType} for building ${buildingInstanceId} (reservation: ${reservationId}, outgoing: ${isOutgoing})`)
 
 		// Emit reservation created event
-		const building = this.buildingManager.getBuildingInstance(buildingInstanceId)
+		const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
 		if (building) {
 			this.event.emit(Receiver.Group, StorageEvents.SC.ReservationCreated, {
 				reservationId,
@@ -198,7 +203,7 @@ export class StorageManager {
 		this.logger.log(`[StorageManager] Added ${quantity} ${itemType} to building ${buildingInstanceId} (current: ${current + quantity}/${capacity})`)
 
 		// Emit storage updated event
-		const building = this.buildingManager.getBuildingInstance(buildingInstanceId)
+		const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
 		if (building) {
 			this.event.emit(Receiver.Group, StorageEvents.SC.StorageUpdated, {
 				buildingInstanceId,
@@ -237,7 +242,7 @@ export class StorageManager {
 		this.logger.log(`[StorageManager] Removed ${quantity} ${itemType} from building ${buildingInstanceId} (current: ${newQuantity}/${capacity})`)
 
 		// Emit storage updated event
-		const building = this.buildingManager.getBuildingInstance(buildingInstanceId)
+		const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
 		if (building) {
 			this.event.emit(Receiver.Group, StorageEvents.SC.StorageUpdated, {
 				buildingInstanceId,
@@ -292,12 +297,12 @@ export class StorageManager {
 
 	// Get storage capacity for item type (reads from BuildingDefinition)
 	public getStorageCapacity(buildingInstanceId: string, itemType: string): number {
-		const building = this.buildingManager.getBuildingInstance(buildingInstanceId)
+		const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
 		if (!building) {
 			return 0
 		}
 
-		const definition = this.buildingManager.getBuildingDefinition(building.buildingId)
+		const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
 		if (!definition || !definition.storage) {
 			return 0
 		}
@@ -369,7 +374,7 @@ export class StorageManager {
 		this.logger.log(`[StorageManager] Released reservation ${reservationId}`)
 
 		// Emit reservation cancelled event
-		const building = this.buildingManager.getBuildingInstance(reservation.buildingInstanceId)
+		const building = this.managers.buildings.getBuildingInstance(reservation.buildingInstanceId)
 		if (building) {
 			this.event.emit(Receiver.Group, StorageEvents.SC.ReservationCancelled, {
 				reservationId,
@@ -389,7 +394,7 @@ export class StorageManager {
 		const buildings: string[] = []
 
 		for (const [buildingInstanceId, storage] of this.buildingStorages.entries()) {
-			const building = this.buildingManager.getBuildingInstance(buildingInstanceId)
+			const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
 			if (!building || building.mapName !== mapName || building.playerId !== playerId) {
 				continue
 			}

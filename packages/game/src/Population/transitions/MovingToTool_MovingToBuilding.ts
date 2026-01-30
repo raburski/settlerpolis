@@ -12,12 +12,12 @@ export const MovingToTool_MovingToBuilding: StateTransition<ToolPickupContext> =
 		const jobId = settler.stateContext.jobId
 		if (!jobId) return false
 		
-		if (!managers.jobsManager) return false
-		const job = managers.jobsManager.getJob(jobId)
+		if (!managers.jobs) return false
+		const job = managers.jobs.getJob(jobId)
 		if (!job) return false
 		
-		const building = managers.buildingManager.getBuildingInstance(job.buildingInstanceId)
-		return building !== undefined && managers.buildingManager.getBuildingNeedsWorkers(job.buildingInstanceId)
+		const building = managers.buildings.getBuildingInstance(job.buildingInstanceId)
+		return building !== undefined && managers.buildings.getBuildingNeedsWorkers(job.buildingInstanceId)
 	},
 	
 	action: (settler, context, managers) => {
@@ -26,17 +26,17 @@ export const MovingToTool_MovingToBuilding: StateTransition<ToolPickupContext> =
 			throw new Error(`No jobId found in stateContext`)
 		}
 		
-		if (!managers.jobsManager) {
+		if (!managers.jobs) {
 			throw new Error(`JobsManager not available`)
 		}
 		
-		const job = managers.jobsManager.getJob(jobId)
+		const job = managers.jobs.getJob(jobId)
 		if (!job) {
 			throw new Error(`Job ${jobId} not found`)
 		}
 		
 		const buildingInstanceId = job.buildingInstanceId
-		const buildingPosition = managers.buildingManager.getBuildingPosition(buildingInstanceId)
+		const buildingPosition = managers.buildings.getBuildingPosition(buildingInstanceId)
 		if (!buildingPosition) {
 			throw new Error(`Building ${buildingInstanceId} not found`)
 		}
@@ -53,7 +53,7 @@ export const MovingToTool_MovingToBuilding: StateTransition<ToolPickupContext> =
 		}
 		
 		// Start movement to building
-		const movementStarted = managers.movementManager.moveToPosition(settler.id, buildingPosition, {
+		const movementStarted = managers.movement.moveToPosition(settler.id, buildingPosition, {
 			targetType: 'building',
 			targetId: buildingInstanceId
 		})
@@ -61,9 +61,9 @@ export const MovingToTool_MovingToBuilding: StateTransition<ToolPickupContext> =
 	},
 	
 	completed: (settler, managers) => {
-		if (!managers.jobsManager) {
+		if (!managers.jobs) {
 			return null
 		}
-		return managers.jobsManager.handleSettlerArrival(settler)
+		return managers.jobs.handleSettlerArrival(settler)
 	}
 }

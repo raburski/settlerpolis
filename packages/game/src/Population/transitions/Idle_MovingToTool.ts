@@ -30,19 +30,19 @@ export const Idle_MovingToTool: StateTransition<RequestWorkerNeedToolContext> = 
 		}
 		
 		// Start movement to tool
-		const movementStarted = managers.movementManager.moveToPosition(settler.id, context.toolPosition, {
+		const movementStarted = managers.movement.moveToPosition(settler.id, context.toolPosition, {
 			targetType: 'tool',
 			targetId: context.toolId
 		})
 		managers.logger.log(`[MOVEMENT REQUESTED] Idle -> MovingToTool | settler=${settler.id} | movementStarted=${movementStarted}`)
 		if (!movementStarted) {
-			const currentPosition = managers.movementManager.getEntityPosition(settler.id) || settler.position
+			const currentPosition = managers.movement.getEntityPosition(settler.id) || settler.position
 			setTimeout(() => {
-				managers.eventManager.emit(Receiver.All, MovementEvents.SS.StepComplete, {
+				managers.event.emit(Receiver.All, MovementEvents.SS.StepComplete, {
 					entityId: settler.id,
 					position: currentPosition
 				})
-				managers.eventManager.emit(Receiver.All, MovementEvents.SS.PathComplete, {
+				managers.event.emit(Receiver.All, MovementEvents.SS.PathComplete, {
 					entityId: settler.id,
 					targetType: 'tool',
 					targetId: context.toolId
@@ -53,8 +53,8 @@ export const Idle_MovingToTool: StateTransition<RequestWorkerNeedToolContext> = 
 	
 	completed: (settler, managers) => {
 		const jobId = settler.stateContext.jobId
-		if (jobId && managers.jobsManager) {
-			return managers.jobsManager.handleSettlerArrival(settler)
+		if (jobId && managers.jobs) {
+			return managers.jobs.handleSettlerArrival(settler)
 		}
 
 		const toolId = settler.stateContext.targetId
@@ -62,13 +62,13 @@ export const Idle_MovingToTool: StateTransition<RequestWorkerNeedToolContext> = 
 			return SettlerState.Idle
 		}
 
-		if (!managers.lootManager.isReservationValid(toolId, settler.id)) {
+		if (!managers.loot.isReservationValid(toolId, settler.id)) {
 			return SettlerState.Idle
 		}
 
-		const tool = managers.lootManager.getItem(toolId)
+		const tool = managers.loot.getItem(toolId)
 		if (tool) {
-			const itemMetadata = managers.itemsManager.getItemMetadata(tool.itemType)
+			const itemMetadata = managers.items.getItemMetadata(tool.itemType)
 			if (itemMetadata?.changesProfession) {
 				const targetProfession = itemMetadata.changesProfession as ProfessionType
 				const oldProfession = settler.profession
@@ -78,20 +78,20 @@ export const Idle_MovingToTool: StateTransition<RequestWorkerNeedToolContext> = 
 					id: settler.playerId,
 					currentGroup: settler.mapName,
 					emit: (receiver: any, event: string, data: any, target?: any) => {
-						managers.eventManager.emit(receiver, event, data, target)
+						managers.event.emit(receiver, event, data, target)
 					},
 					setGroup: () => {}
 				}
-				managers.lootManager.pickItem(toolId, fakeClient)
+				managers.loot.pickItem(toolId, fakeClient)
 
-				managers.eventManager.emit(Receiver.Group, PopulationEvents.SC.ProfessionChanged, {
+				managers.event.emit(Receiver.Group, PopulationEvents.SC.ProfessionChanged, {
 					settlerId: settler.id,
 					oldProfession,
 					newProfession: targetProfession
 				}, settler.mapName)
 			}
 		} else {
-			managers.lootManager.releaseReservation(toolId, settler.id)
+			managers.loot.releaseReservation(toolId, settler.id)
 		}
 
 		return SettlerState.Idle

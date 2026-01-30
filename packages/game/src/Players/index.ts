@@ -1,18 +1,18 @@
 import { EventManager, Event, EventClient } from '../events'
-import { Player, PlayerJoinData, PlayerMoveData, PlayerAttackData, PlayerPlaceData, EquipmentSlotType, EquipItemData, UnequipItemData, EquipmentSlot } from './types'
+import { Player, PlayerJoinData, PlayerMoveData, EquipmentSlotType, EquipItemData, UnequipItemData, EquipmentSlot } from './types'
 import { Receiver } from '../Receiver'
-import { InventoryManager } from '../Inventory'
-import { LootManager } from '../Loot'
+import type { InventoryManager } from '../Inventory'
+import type { LootManager } from '../Loot'
 import { PICKUP_RANGE, PLACE_RANGE } from '../consts'
-import { ItemsManager } from '../Items'
-import { MapObjectsManager } from '../MapObjects'
+import type { ItemsManager } from '../Items'
+import type { MapObjectsManager } from '../MapObjects'
 import { PlaceObjectData } from '../MapObjects/types'
 import { Position, StartingItem } from '../types'
 import { Item } from '../Items/types'
 import { v4 as uuidv4 } from 'uuid'
-import { MapManager } from '../Map'
-import { MapEvents } from '../Map/events'
+import type { MapManager } from '../Map'
 import { Logger } from '../Logs'
+import { BaseManager } from '../Managers'
 
 // Define missing types
 interface PlayerTransitionData {
@@ -33,20 +33,25 @@ const INITIAL_EQUIPMENT: Record<EquipmentSlotType, null> = {
 	[EquipmentSlot.Hand]: null
 }
 
-export class PlayersManager {
+export interface PlayersDeps {
+	inventory: InventoryManager
+	loot: LootManager
+	items: ItemsManager
+	mapObjects: MapObjectsManager
+	map: MapManager
+}
+
+export class PlayersManager extends BaseManager<PlayersDeps> {
 	private players = new Map<string, Player>()
 	private startingItems: StartingItem[] = []
 
 	constructor(
+		managers: PlayersDeps,
 		private event: EventManager,
-		private inventoryManager: InventoryManager,
-		private lootManager: LootManager,
-		private itemsManager: ItemsManager,
-		private mapObjectsManager: MapObjectsManager,
-		private mapManager: MapManager,
 		startingItems: StartingItem[],
 		private logger: Logger
 	) {
+		super(managers)
 		this.startingItems = startingItems || []
 		this.setupEventHandlers()
 	}
@@ -65,7 +70,7 @@ export class PlayersManager {
 
 		this.startingItems.forEach((startingItem) => {
 			// Check if item type exists
-			if (!this.itemsManager.itemExists(startingItem.itemType)) {
+			if (!this.managers.items.itemExists(startingItem.itemType)) {
 				this.logger.warn(`Starting item type ${startingItem.itemType} does not exist, skipping spawn`)
 				return
 			}
@@ -103,7 +108,7 @@ export class PlayersManager {
 
 			// Drop item on the map using LootManager
 			const quantity = startingItem.quantity ?? 1
-			this.lootManager.dropItem(item, itemPosition, client, quantity)
+			this.managers.loot.dropItem(item, itemPosition, client, quantity)
 			
 			this.logger.debug(`Spawned starting item ${startingItem.itemType} at position (${itemPosition.x}, ${itemPosition.y}) for player ${client.id}`)
 		})
@@ -121,7 +126,7 @@ export class PlayersManager {
 			client.emit(Receiver.Sender, Event.Players.SC.Connected, playerInit)
 			
 			// Let the map manager handle everything about map loading and initial position
-			this.mapManager.loadPlayerMap(client)
+			this.managers.map.loadPlayerMap(client)
 		})
 
 		// Handle client lifecycle
@@ -143,7 +148,7 @@ export class PlayersManager {
 			const playerId = client.id
 			
 			// Use mapId from the data, or get default from MapManager
-			const mapId = data.mapId || this.mapManager.getDefaultMapId()
+			const mapId = data.mapId || this.managers.map.getDefaultMapId()
 			client.setGroup(mapId)
 
 			this.players.set(playerId, {
@@ -190,7 +195,7 @@ export class PlayersManager {
 				player.position = data.position
 
 				// Use map manager to load the new map with the provided position
-				this.mapManager.loadPlayerMap(client, data.mapId, data.position)
+				this.managers.map.loadPlayerMap(client, data.mapId, data.position)
 
 				// Send existing players in new map to transitioning player
 				this.sendPlayers(data.mapId, client)
@@ -206,11 +211,11 @@ export class PlayersManager {
 			if (!player) return
 
 			// Remove item from inventory
-			const removedItem = this.inventoryManager.removeItem(client, data.itemId)
+			const removedItem = this.managers.inventory.removeItem(client, data.itemId)
 			if (!removedItem) return
 
 			// Add item to scene's dropped items
-			this.lootManager.dropItem(removedItem, player.position, client)
+			this.managers.loot.dropItem(removedItem, player.position, client)
 		})
 
 		// Handle item pickup request
@@ -218,7 +223,7 @@ export class PlayersManager {
 			const player = this.players.get(client.id)
 			if (!player) return
 
-			const item = this.lootManager.getItem(data.itemId)
+			const item = this.managers.loot.getItem(data.itemId)
 			if (!item) return
 			
 			// Calculate distance between player and item
@@ -233,7 +238,7 @@ export class PlayersManager {
 			}
 
 			// Check if player has an empty slot in their inventory
-			if (!this.inventoryManager.hasEmptySlot(client.id)) {
+			if (!this.managers.inventory.hasEmptySlot(client.id)) {
 				client.emit(Receiver.Sender, Event.Chat.SC.System, { 
 					message: "Your inventory is full!" 
 				})
@@ -241,7 +246,7 @@ export class PlayersManager {
 			}
 
 			// Remove item from dropped items
-			const removedItem = this.lootManager.pickItem(data.itemId, client)
+			const removedItem = this.managers.loot.pickItem(data.itemId, client)
 			if (!removedItem) return
 
 			// Add item to player's inventory
@@ -264,18 +269,18 @@ export class PlayersManager {
 			}
 
 			// Find the source slot of the item being equipped
-			const sourceSlot = this.inventoryManager.getSlotForItem(client.id, data.itemId)
+			const sourceSlot = this.managers.inventory.getSlotForItem(client.id, data.itemId)
 			if (!sourceSlot || !sourceSlot.item) {
 				this.logger.debug('Source slot not found or item mismatch')
 				return
 			}
 
 			// Remove item from inventory
-			const item = this.inventoryManager.removeItem(client, data.itemId)
+			const item = this.managers.inventory.removeItem(client, data.itemId)
 			if (!item) return
 
 			// Get item metadata to check if it's equippable
-			const itemMeta = this.itemsManager.getItemMetadata(item.itemType)
+			const itemMeta = this.managers.items.getItemMetadata(item.itemType)
 			if (!itemMeta) return
 
 			// If there's already an item in the slot, move it to the source position
@@ -283,7 +288,7 @@ export class PlayersManager {
 				const oldItem = player.equipment[data.slotType]
 				if (oldItem) {
 					// Add the old item to the source position
-					this.inventoryManager.addItemToPosition(client, oldItem, sourceSlot.position)
+					this.managers.inventory.addItemToPosition(client, oldItem, sourceSlot.position)
 				}
 			}
 
@@ -309,10 +314,10 @@ export class PlayersManager {
 			// If a target position is provided, try to add the item to that slot
 			if (data.targetPosition) {
 				// Check if the target slot is empty
-				const targetSlot = this.inventoryManager.getSlotAtPosition(client.id, data.targetPosition)
+				const targetSlot = this.managers.inventory.getSlotAtPosition(client.id, data.targetPosition)
 				if (targetSlot && !targetSlot.item) {
 					// Add the item to the target slot
-					this.inventoryManager.addItemToPosition(client, equippedItem, data.targetPosition)
+					this.managers.inventory.addItemToPosition(client, equippedItem, data.targetPosition)
 					
 					// Clear the equipment slot
 					player.equipment[data.slotType] = null
@@ -327,10 +332,10 @@ export class PlayersManager {
 			}
 			
 			// If no target position or target slot is occupied, try to find an empty slot
-			const emptySlot = this.inventoryManager.findFirstEmptySlot(client.id)
+			const emptySlot = this.managers.inventory.findFirstEmptySlot(client.id)
 			if (emptySlot) {
 				// Found an empty slot, add the item there
-				this.inventoryManager.addItemToPosition(client, equippedItem, emptySlot)
+				this.managers.inventory.addItemToPosition(client, equippedItem, emptySlot)
 				
 				// Clear the equipment slot
 				player.equipment[data.slotType] = null
@@ -378,7 +383,7 @@ export class PlayersManager {
 		}
 
 		// Try to place the object
-		const placedObject = this.mapObjectsManager.placeObject(player.playerId, placeData, client)
+		const placedObject = this.managers.mapObjects.placeObject(player.playerId, placeData, client)
 
 		if (placedObject) {
 			// Remove item from player's equipment

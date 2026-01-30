@@ -1,23 +1,29 @@
-import { EventManager, Event, EventClient } from '../events'
+import { EventManager, Event } from '../events'
 import { MovementEntity, MovementTask, MovementCallbacks, MoveToPositionOptions } from './types'
 import { MovementEvents } from './events'
 import { Receiver } from '../Receiver'
-import { MapManager } from '../Map'
+import type { MapManager } from '../Map'
 import { Position } from '../types'
 import { calculateDistance } from '../utils'
 import { Logger } from '../Logs'
+import { BaseManager } from '../Managers'
 
 const MOVEMENT_STEP_LAG = 100 // milliseconds between steps
 
-export class MovementManager {
+export interface MovementDeps {
+	map: MapManager
+}
+
+export class MovementManager extends BaseManager<MovementDeps> {
 	private entities: Map<string, MovementEntity> = new Map()
 	private tasks: Map<string, MovementTask> = new Map()
 
 	constructor(
+		managers: MovementDeps,
 		private event: EventManager,
-		private mapManager: MapManager,
 		private logger: Logger
 	) {
+		super(managers)
 		// No event handlers needed - entity managers call methods directly
 	}
 
@@ -66,7 +72,7 @@ export class MovementManager {
 		this.cancelMovement(entityId)
 
 		// Calculate path
-		const path = this.mapManager.findPath(entity.mapName, entity.position, targetPosition)
+		const path = this.managers.map.findPath(entity.mapName, entity.position, targetPosition)
 		if (!path || path.length === 0) {
 			this.logger.warn(`No path found from ${entity.position.x},${entity.position.y} to ${targetPosition.x},${targetPosition.y}`)
 			return false

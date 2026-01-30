@@ -1,26 +1,33 @@
 import { v4 as uuidv4 } from 'uuid'
 import { EventManager, EventClient } from '../events'
-import { MapObjectsManager } from '../MapObjects'
-import { ItemsManager } from '../Items'
+import type { MapObjectsManager } from '../MapObjects'
+import type { ItemsManager } from '../Items'
 import { Item } from '../Items/types'
 import { Position } from '../types'
 import { ResourceNodeDefinition, ResourceNodeInstance, ResourceNodeSpawn } from './types'
 import { Logger } from '../Logs'
 import { calculateDistance } from '../utils'
+import { BaseManager } from '../Managers'
 
 const TILE_SIZE = 32
 const WORLD_PLAYER_ID = 'world'
 
-export class ResourceNodesManager {
+export interface ResourceNodesDeps {
+	mapObjects: MapObjectsManager
+	items: ItemsManager
+}
+
+export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	private definitions = new Map<string, ResourceNodeDefinition>()
 	private nodes = new Map<string, ResourceNodeInstance>()
 
 	constructor(
+		managers: ResourceNodesDeps,
 		private event: EventManager,
-		private mapObjectsManager: MapObjectsManager,
-		private itemsManager: ItemsManager,
 		private logger: Logger
-	) {}
+	) {
+		super(managers)
+	}
 
 	public loadDefinitions(definitions: ResourceNodeDefinition[]): void {
 		this.definitions.clear()
@@ -42,7 +49,7 @@ export class ResourceNodesManager {
 				continue
 			}
 
-			if (!this.itemsManager.itemExists(def.nodeItemType)) {
+			if (!this.managers.items.itemExists(def.nodeItemType)) {
 				this.logger.warn(`[ResourceNodesManager] Missing item metadata for node item ${def.nodeItemType}`)
 			}
 
@@ -71,7 +78,7 @@ export class ResourceNodesManager {
 				}
 			}
 
-			const mapObject = this.mapObjectsManager.placeObject(WORLD_PLAYER_ID, {
+			const mapObject = this.managers.mapObjects.placeObject(WORLD_PLAYER_ID, {
 				position,
 				item,
 				metadata: {
@@ -171,7 +178,7 @@ export class ResourceNodesManager {
 
 		if (node.remainingHarvests <= 0) {
 			if (node.mapObjectId) {
-				this.mapObjectsManager.removeObjectById(node.mapObjectId, node.mapName)
+				this.managers.mapObjects.removeObjectById(node.mapObjectId, node.mapName)
 			}
 			this.nodes.delete(node.id)
 		}

@@ -15,44 +15,52 @@ import {
 } from './types'
 import { Receiver } from '../Receiver'
 import { v4 as uuidv4 } from 'uuid'
-import { InventoryManager } from '../Inventory'
-import { MapObjectsManager } from '../MapObjects'
-import { ItemsManager } from '../Items'
-import { MapManager } from '../Map'
+import type { InventoryManager } from '../Inventory'
+import type { MapObjectsManager } from '../MapObjects'
+import type { ItemsManager } from '../Items'
+import type { MapManager } from '../Map'
 import { PlayerJoinData, PlayerTransitionData } from '../Players/types'
 import { PlaceObjectData } from '../MapObjects/types'
 import { Item } from '../Items/types'
 import { Position } from '../types'
-import { JobsManager } from '../Jobs'
-import { LootManager } from '../Loot'
+import type { JobsManager } from '../Jobs'
+import { JobType, RoleType } from '../Jobs/types'
+import type { LootManager } from '../Loot'
 import { Logger } from '../Logs'
 import { SimulationEvents } from '../Simulation/events'
 import { SimulationTickData } from '../Simulation/types'
+import type { StorageManager } from '../Storage'
+import type { ProductionManager } from '../Production'
+import { BaseManager } from '../Managers'
 
-export class BuildingManager {
+export interface BuildingDeps {
+	inventory: InventoryManager
+	mapObjects: MapObjectsManager
+	items: ItemsManager
+	map: MapManager
+	jobs: JobsManager
+	loot: LootManager
+	storage: StorageManager
+	production: ProductionManager
+}
+
+export class BuildingManager extends BaseManager<BuildingDeps> {
 	private buildings = new Map<string, BuildingInstance>() // buildingInstanceId -> BuildingInstance
 	private definitions = new Map<BuildingId, BuildingDefinition>() // buildingId -> BuildingDefinition
 	private constructionTimers = new Map<string, NodeJS.Timeout>() // buildingInstanceId -> timer
 	private buildingToMapObject = new Map<string, string>() // buildingInstanceId -> mapObjectId
 	private readonly TICK_INTERVAL_MS = 1000 // Update construction progress every second
 	private resourceRequests: Map<string, Set<string>> = new Map() // buildingInstanceId -> Set<itemType> (resources still needed)
-	private jobsManager?: JobsManager // Optional - set after construction to avoid circular dependency
-	private lootManager?: LootManager // Optional - set after construction to avoid circular dependency
-	private storageManager?: any // StorageManager - Optional - set after construction to avoid circular dependency
-	private productionManager?: any // ProductionManager - Optional - set after construction to avoid circular dependency
 	private simulationTimeMs = 0
 	private tickAccumulatorMs = 0
 
 	constructor(
+		managers: BuildingDeps,
 		private event: EventManager,
-		private inventoryManager: InventoryManager,
-		private mapObjectsManager: MapObjectsManager,
-		private itemsManager: ItemsManager,
-		private mapManager: MapManager,
 		private logger: Logger,
-		lootManager?: LootManager // Optional - set after construction to avoid circular dependency
+		// managers provides Loot/Jobs/Storage/Production
 	) {
-		this.lootManager = lootManager
+		super(managers)
 		this.setupEventHandlers()
 		
 		// Send building catalog to clients when they connect (in addition to when they join a map)
@@ -64,26 +72,6 @@ export class BuildingManager {
 				this.sendBuildingCatalog(client)
 			}
 		})
-	}
-
-	// Set JobsManager after construction to avoid circular dependency
-	public setJobsManager(jobsManager: JobsManager): void {
-		this.jobsManager = jobsManager
-	}
-
-	// Set LootManager after construction to avoid circular dependency
-	public setLootManager(lootManager: LootManager): void {
-		this.lootManager = lootManager
-	}
-
-	// Set StorageManager after construction to avoid circular dependency
-	public setStorageManager(storageManager: any): void {
-		this.storageManager = storageManager
-	}
-
-	// Set ProductionManager after construction to avoid circular dependency
-	public setProductionManager(productionManager: any): void {
-		this.productionManager = productionManager
 	}
 
 	private setupEventHandlers() {
@@ -148,8 +136,8 @@ export class BuildingManager {
 			const definition = this.definitions.get(building.buildingId)
 			if (!definition) continue
 
-			const elapsed = (now - building.startedAt) / 1000 // elapsed time in seconds
-			const progress = this.calculateConstructionProgress(building, elapsed)
+			const deltaSeconds = this.TICK_INTERVAL_MS / 1000
+			const progress = this.calculateConstructionProgress(building, deltaSeconds)
 
 			// Update building progress
 			building.progress = progress
@@ -237,7 +225,7 @@ export class BuildingManager {
 		this.initializeBuildingResources(buildingInstance, definition)
 
 		// Try to place the object
-		const placedObject = this.mapObjectsManager.placeObject(client.id, placeObjectData, client)
+		const placedObject = this.managers.mapObjects.placeObject(client.id, placeObjectData, client)
 		if (!placedObject) {
 			this.logger.error(`Failed to place building at position:`, position)
 			return
@@ -289,16 +277,16 @@ export class BuildingManager {
 		}
 
 		// Cancel active jobs for this building
-		if (this.jobsManager) {
-			const activeJobs = this.jobsManager.getActiveJobsForBuilding(buildingInstanceId)
+		if (this.managers.jobs) {
+			const activeJobs = this.managers.jobs.getActiveJobsForBuilding(buildingInstanceId)
 			for (const job of activeJobs) {
-				this.jobsManager.cancelJob(job.jobId, 'building_cancelled')
+				this.managers.jobs.cancelJob(job.jobId, 'building_cancelled')
 			}
 		}
 
 		// Refund collected resources (drop them on the ground)
 		const refundedItems: BuildingCost[] = []
-		if (this.lootManager) {
+		if (this.managers.loot) {
 			// Create fake client for dropping items
 			const fakeClient: EventClient = {
 				id: building.playerId,
@@ -323,7 +311,7 @@ export class BuildingManager {
 						y: building.position.y + Math.floor(i / 3) * 32
 					}
 					// Drop item on the ground using LootManager
-					this.lootManager.dropItem(item, dropPosition, fakeClient)
+					this.managers.loot.dropItem(item, dropPosition, fakeClient)
 					refundedItems.push({ itemType, quantity: 1 })
 				}
 			}
@@ -340,7 +328,7 @@ export class BuildingManager {
 		// Remove building from map objects
 		const mapObjectId = this.buildingToMapObject.get(buildingInstanceId)
 		if (mapObjectId) {
-			this.mapObjectsManager.removeObjectById(mapObjectId, building.mapName)
+			this.managers.mapObjects.removeObjectById(mapObjectId, building.mapName)
 			this.buildingToMapObject.delete(buildingInstanceId)
 		}
 
@@ -471,15 +459,15 @@ export class BuildingManager {
 			}, building.mapName)
 
 			// Automatically request builder for construction (similar to automatic carrier requests for resource collection)
-			if (this.jobsManager) {
+			if (this.managers.jobs) {
 				this.logger.log(`[RESOURCE DELIVERY] Requesting builder for building ${buildingInstanceId}`)
-				this.jobsManager.requestWorker(building.id)
+				this.managers.jobs.requestWorker(building.id)
 			}
 
 			// Update MapObject metadata
 			const mapObjectId = this.buildingToMapObject.get(building.id)
 			if (mapObjectId) {
-				const mapObject = this.mapObjectsManager.getObjectById(mapObjectId)
+				const mapObject = this.managers.mapObjects.getObjectById(mapObjectId)
 				if (mapObject && mapObject.metadata) {
 					mapObject.metadata.stage = ConstructionStage.Constructing
 				}
@@ -502,12 +490,12 @@ export class BuildingManager {
 	// Request carrier to collect resource (delegate to JobsManager)
 	public requestResourceCollection(buildingInstanceId: string, itemType: string, priority: number = 1): void {
 		// Simply delegate to JobsManager
-		if (!this.jobsManager) {
+		if (!this.managers.jobs) {
 			this.logger.warn(`[RESOURCE COLLECTION] Cannot request resource collection: JobsManager not set for building ${buildingInstanceId}, itemType: ${itemType}`)
 			return
 		}
 		this.logger.log(`[RESOURCE COLLECTION] Delegating resource collection request to JobsManager: building=${buildingInstanceId}, itemType=${itemType}, priority=${priority}`)
-		this.jobsManager.requestResourceCollection(buildingInstanceId, itemType, priority)
+		this.managers.jobs.requestResourceCollection(buildingInstanceId, itemType, priority)
 	}
 
 	// Check if construction can progress (resources collected AND builder present)
@@ -556,10 +544,10 @@ export class BuildingManager {
 		for (const itemType of neededResources) {
 			// Check if we already have an active transport job for this resource type
 			// JobsManager tracks active jobs per building
-			const hasActiveJob = this.jobsManager?.hasActiveJobForBuilding(building.id, itemType) || false
+			const hasActiveJob = this.managers.jobs?.hasActiveJobForBuilding(building.id, itemType) || false
 			this.logger.log(`[RESOURCE COLLECTION] Building ${building.id} resource ${itemType}: hasActiveJob=${hasActiveJob}`)
 			
-			if (this.jobsManager && !hasActiveJob) {
+			if (this.managers.jobs && !hasActiveJob) {
 				const buildingDef = this.definitions.get(building.buildingId)
 				const buildingPriority = buildingDef?.priority ?? 1
 				const priority = 100 + buildingPriority
@@ -583,19 +571,19 @@ export class BuildingManager {
 		building.stage = ConstructionStage.Completed
 
 		// Initialize storage for building if it has storage capacity
-		if (this.storageManager) {
-			this.storageManager.initializeBuildingStorage(building.id)
+		if (this.managers.storage) {
+			this.managers.storage.initializeBuildingStorage(building.id)
 		}
 
 		// Initialize production for building if it has production recipe
-		if (this.productionManager) {
-			this.productionManager.initializeBuildingProduction(building.id)
+		if (this.managers.production) {
+			this.managers.production.initializeBuildingProduction(building.id)
 		}
 
 		// Update MapObject metadata to reflect completion
 		const mapObjectId = this.buildingToMapObject.get(building.id)
 		if (mapObjectId) {
-			const mapObject = this.mapObjectsManager.getObjectById(mapObjectId)
+			const mapObject = this.managers.mapObjects.getObjectById(mapObjectId)
 			if (mapObject && mapObject.metadata) {
 				mapObject.metadata.stage = ConstructionStage.Completed
 				mapObject.metadata.progress = 100
@@ -644,10 +632,10 @@ export class BuildingManager {
 	private checkBuildingCollision(mapName: string, position: { x: number, y: number }, definition: BuildingDefinition): boolean {
 		// Get all existing buildings and map objects in this map
 		const existingBuildings = this.getBuildingsForMap(mapName)
-		const existingObjects = this.mapObjectsManager.getAllObjectsForMap(mapName)
+		const existingObjects = this.managers.mapObjects.getAllObjectsForMap(mapName)
 
 		// Get tile size from map (default to 32 if map not loaded)
-		const map = this.mapManager.getMap(mapName)
+		const map = this.managers.map.getMap(mapName)
 		const TILE_SIZE = map?.tiledMap?.tilewidth || 32
 		const buildingWidth = definition.footprint.width * TILE_SIZE
 		const buildingHeight = definition.footprint.height * TILE_SIZE
@@ -693,7 +681,7 @@ export class BuildingManager {
 				this.logger.debug(`Checking against map object (building) at (${obj.position.x}, ${obj.position.y}) with footprint ${obj.metadata.footprint.width}x${obj.metadata.footprint.height} (${objWidth}x${objHeight} pixels)`)
 			} else {
 				// Regular item: use placement size from metadata (already in pixels or tiles?)
-				const itemMetadata = this.itemsManager.getItemMetadata(obj.item.itemType)
+				const itemMetadata = this.managers.items.getItemMetadata(obj.item.itemType)
 				const placementWidth = itemMetadata?.placement?.size?.width || 1
 				const placementHeight = itemMetadata?.placement?.size?.height || 1
 				// Assume placement size is in tiles, convert to pixels
@@ -702,7 +690,7 @@ export class BuildingManager {
 			}
 
 			// Only check collision if the object blocks placement
-			const itemMetadata = this.itemsManager.getItemMetadata(obj.item.itemType)
+			const itemMetadata = this.managers.items.getItemMetadata(obj.item.itemType)
 			if (itemMetadata?.placement?.blocksPlacement || obj.metadata?.buildingId) {
 				if (this.doRectanglesOverlap(
 					position, buildingWidth, buildingHeight,
@@ -733,7 +721,7 @@ export class BuildingManager {
 		tileSize: number
 	): boolean {
 		// Get map data
-		const map = this.mapManager.getMap(mapName)
+		const map = this.managers.map.getMap(mapName)
 		if (!map) {
 			this.logger.warn(`Map ${mapName} not found, allowing placement`)
 			return false // Allow placement if map not loaded (shouldn't happen)
@@ -750,7 +738,7 @@ export class BuildingManager {
 				const checkTileY = startTileY + tileY
 
 				// Check if this tile has collision (non-zero value in collision data)
-				if (this.mapManager.isCollision(mapName, checkTileX, checkTileY)) {
+				if (this.managers.map.isCollision(mapName, checkTileX, checkTileY)) {
 					this.logger.debug(`Collision detected at tile (${checkTileX}, ${checkTileY})`)
 					return true
 				}
@@ -792,7 +780,7 @@ export class BuildingManager {
 
 	private hasRequiredResources(costs: BuildingCost[], playerId: string): boolean {
 		for (const cost of costs) {
-			if (!this.inventoryManager.doesHave(cost.itemType, cost.quantity, playerId)) {
+			if (!this.managers.inventory.doesHave(cost.itemType, cost.quantity, playerId)) {
 				return false
 			}
 		}
@@ -801,7 +789,7 @@ export class BuildingManager {
 
 	private removeRequiredResources(costs: BuildingCost[], client: EventClient) {
 		for (const cost of costs) {
-			this.inventoryManager.removeItemByType(client, cost.itemType, cost.quantity)
+			this.managers.inventory.removeItemByType(client, cost.itemType, cost.quantity)
 		}
 	}
 
@@ -904,10 +892,6 @@ export class BuildingManager {
 		return Array.from(this.buildings.values())
 	}
 
-	// Worker assignment methods for PopulationManager
-	private buildingWorkers = new Map<string, Set<string>>() // buildingInstanceId -> Set<settlerId>
-	private readonly WORKER_CONSTRUCTION_SPEEDUP = 2 // Workers double construction speed
-
 	// Get building instance (alias for consistency)
 	public getBuilding(buildingInstanceId: string): BuildingInstance | undefined {
 		return this.getBuildingInstance(buildingInstanceId)
@@ -949,7 +933,9 @@ export class BuildingManager {
 
 		// Building needs workers if it's completed and has worker slots available
 		if (building.stage === ConstructionStage.Completed && definition.workerSlots) {
-			const currentWorkers = this.getBuildingWorkers(buildingInstanceId).length
+			const currentWorkers = this.managers.jobs
+				? this.managers.jobs.getAssignedWorkerCountForBuilding(buildingInstanceId, RoleType.Production)
+				: 0
 			return currentWorkers < definition.workerSlots
 		}
 
@@ -964,67 +950,40 @@ export class BuildingManager {
 		return neededResources.has(itemType)
 	}
 
-	// Assign worker to building
-	public assignWorker(buildingInstanceId: string, settlerId: string): void {
-		const building = this.getBuildingInstance(buildingInstanceId)
-		if (!building) {
-			this.logger.error(`Cannot assign worker: building not found: ${buildingInstanceId}`)
-			return
-		}
-
-		if (!this.buildingWorkers.has(buildingInstanceId)) {
-			this.buildingWorkers.set(buildingInstanceId, new Set())
-		}
-
-		this.buildingWorkers.get(buildingInstanceId)!.add(settlerId)
-
-		this.logger.debug(`Assigned worker ${settlerId} to building ${buildingInstanceId}`)
-
-		// Apply construction speedup if building is under construction
-		if (building.stage === ConstructionStage.Constructing) {
-			// Construction speedup is applied by reducing construction time in tick calculation
-			// We'll adjust the progress calculation to account for workers
-			this.logger.debug(`Construction speedup applied to building ${buildingInstanceId}`)
-		}
-	}
-
-	// Unassign worker from building
-	public unassignWorker(buildingInstanceId: string, settlerId: string): void {
-		const workers = this.buildingWorkers.get(buildingInstanceId)
-		if (!workers) {
-			return
-		}
-
-		workers.delete(settlerId)
-
-		if (workers.size === 0) {
-			this.buildingWorkers.delete(buildingInstanceId)
-		}
-
-		this.logger.debug(`Unassigned worker ${settlerId} from building ${buildingInstanceId}`)
-	}
-
 	// Get workers for building
 	public getBuildingWorkers(buildingInstanceId: string): string[] {
-		const workers = this.buildingWorkers.get(buildingInstanceId)
-		return workers ? Array.from(workers) : []
+		if (this.managers.jobs) {
+			const building = this.getBuildingInstance(buildingInstanceId)
+			if (!building) {
+				return []
+			}
+			if (building.stage === ConstructionStage.Constructing) {
+				return this.managers.jobs.getActiveWorkerIdsForBuilding(buildingInstanceId, JobType.Construction)
+			}
+			if (building.stage === ConstructionStage.Completed) {
+				return this.managers.jobs.getActiveWorkerIdsForBuilding(buildingInstanceId, JobType.Production)
+			}
+			return []
+		}
+		return []
 	}
 
 	// Update tick to account for worker speedup
-	private calculateConstructionProgress(building: BuildingInstance, elapsedSeconds: number): number {
+	private calculateConstructionProgress(building: BuildingInstance, deltaSeconds: number): number {
 		const definition = this.definitions.get(building.buildingId)
 		if (!definition) {
 			return building.progress
 		}
 
-		const workers = this.buildingWorkers.get(building.id)
-		const workerCount = workers ? workers.size : 0
+		const workerCount = this.managers.jobs
+			? this.managers.jobs.getActiveWorkerCountForBuilding(building.id, JobType.Construction)
+			: 0
 		
 		// Apply speedup: each worker doubles construction speed (up to 4x with 2 workers for now)
 		const speedup = 1 + (workerCount * 0.5) // 1x base, 1.5x with 1 worker, 2x with 2 workers, etc.
 		
-		const effectiveElapsed = elapsedSeconds * speedup
-		const progress = Math.min(100, (effectiveElapsed / definition.constructionTime) * 100)
+		const progressIncrease = (deltaSeconds / definition.constructionTime) * 100 * speedup
+		const progress = Math.min(100, building.progress + progressIncrease)
 
 		return progress
 	}

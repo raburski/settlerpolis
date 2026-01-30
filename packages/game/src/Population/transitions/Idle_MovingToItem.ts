@@ -1,5 +1,6 @@
 import { StateTransition } from './types'
-import { SettlerState, ProfessionType, JobType } from '../types'
+import { SettlerState, ProfessionType } from '../types'
+import { JobType } from '../../Jobs/types'
 import { Receiver } from '../../Receiver'
 import { MovementEvents } from '../../Movement/events'
 import { Position } from '../../types'
@@ -18,18 +19,18 @@ export const Idle_MovingToItem: StateTransition<MovingToItemContext> = {
 	
 	validate: (settler, context, managers) => {
 		// Verify job exists and is a transport job
-		if (!managers.jobsManager) {
+		if (!managers.jobs) {
 			return false
 		}
-		const job = managers.jobsManager.getJob(context.jobId)
+		const job = managers.jobs.getJob(context.jobId)
 		return !!job && job.jobType === JobType.Transport
 	},
 	
 	action: (settler, context, managers) => {
-		if (!managers.jobsManager) {
+		if (!managers.jobs) {
 			throw new Error(`[Idle_MovingToItem] JobsManager not available`)
 		}
-		const job = managers.jobsManager.getJob(context.jobId)
+		const job = managers.jobs.getJob(context.jobId)
 		if (!job) {
 			throw new Error(`[Idle_MovingToItem] Job ${context.jobId} not found`)
 		}
@@ -43,7 +44,7 @@ export const Idle_MovingToItem: StateTransition<MovingToItemContext> = {
 			targetPosition = job.sourcePosition
 			targetType = 'item'
 		} else if (job.sourceBuildingInstanceId) {
-			const sourceBuilding = managers.buildingManager.getBuildingInstance(job.sourceBuildingInstanceId)
+			const sourceBuilding = managers.buildings.getBuildingInstance(job.sourceBuildingInstanceId)
 			if (!sourceBuilding) {
 				throw new Error(`[Idle_MovingToItem] Source building ${job.sourceBuildingInstanceId} not found`)
 			}
@@ -64,19 +65,19 @@ export const Idle_MovingToItem: StateTransition<MovingToItemContext> = {
 			targetType
 		}
 
-		const movementStarted = managers.movementManager.moveToPosition(settler.id, targetPosition, {
+		const movementStarted = managers.movement.moveToPosition(settler.id, targetPosition, {
 			targetType,
 			targetId
 		})
 		managers.logger.log(`[MOVEMENT REQUESTED] Idle -> MovingToItem | settler=${settler.id} | movementStarted=${movementStarted}`)
 		if (!movementStarted) {
-			const currentPosition = managers.movementManager.getEntityPosition(settler.id) || settler.position
+			const currentPosition = managers.movement.getEntityPosition(settler.id) || settler.position
 			setTimeout(() => {
-				managers.eventManager.emit(Receiver.All, MovementEvents.SS.StepComplete, {
+				managers.event.emit(Receiver.All, MovementEvents.SS.StepComplete, {
 					entityId: settler.id,
 					position: currentPosition
 				})
-				managers.eventManager.emit(Receiver.All, MovementEvents.SS.PathComplete, {
+				managers.event.emit(Receiver.All, MovementEvents.SS.PathComplete, {
 					entityId: settler.id,
 					targetType,
 					targetId
@@ -86,9 +87,9 @@ export const Idle_MovingToItem: StateTransition<MovingToItemContext> = {
 	},
 	
 	completed: (settler, managers) => {
-		if (!managers.jobsManager) {
+		if (!managers.jobs) {
 			return null
 		}
-		return managers.jobsManager.handleSettlerArrival(settler)
+		return managers.jobs.handleSettlerArrival(settler)
 	}
 }

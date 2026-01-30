@@ -1,5 +1,6 @@
 import { StateTransition } from './types'
-import { SettlerState, JobType } from '../types'
+import { SettlerState } from '../types'
+import { JobType } from '../../Jobs/types'
 import { Receiver } from '../../Receiver'
 import { MovementEvents } from '../../Movement/events'
 
@@ -13,20 +14,20 @@ export const MovingToItem_CarryingItem: StateTransition<ItemPickupContext> = {
 	},
 	
 	validate: (settler, context, managers) => {
-		if (!managers.jobsManager) {
+		if (!managers.jobs) {
 			return false
 		}
-		const job = managers.jobsManager.getJob(context.jobId)
+		const job = managers.jobs.getJob(context.jobId)
 		return !!job && job.jobType === JobType.Transport
 	},
 	
 	action: (settler, context, managers) => {
-		const job = managers.jobsManager!.getJob(context.jobId)
+		const job = managers.jobs!.getJob(context.jobId)
 		if (!job) {
 			throw new Error(`[MovingToItem_CarryingItem] Job ${context.jobId} not found`)
 		}
 
-		const buildingPosition = managers.buildingManager.getBuildingPosition(job.buildingInstanceId)
+		const buildingPosition = managers.buildings.getBuildingPosition(job.buildingInstanceId)
 		if (!buildingPosition) {
 			throw new Error(`[MovingToItem_CarryingItem] Building ${job.buildingInstanceId} not found`)
 		}
@@ -38,22 +39,23 @@ export const MovingToItem_CarryingItem: StateTransition<ItemPickupContext> = {
 			jobId: context.jobId,
 			targetId: job.buildingInstanceId,
 			targetPosition: buildingPosition,
-			targetType: 'building'
+			targetType: 'building',
+			carryingItemType: job.itemType
 		}
 
-		const movementStarted = managers.movementManager.moveToPosition(settler.id, buildingPosition, {
+		const movementStarted = managers.movement.moveToPosition(settler.id, buildingPosition, {
 			targetType: 'building',
 			targetId: job.buildingInstanceId
 		})
 		managers.logger.log(`[MOVEMENT REQUESTED] MovingToItem -> CarryingItem | settler=${settler.id} | movementStarted=${movementStarted}`)
 		if (!movementStarted) {
-			const currentPosition = managers.movementManager.getEntityPosition(settler.id) || settler.position
+			const currentPosition = managers.movement.getEntityPosition(settler.id) || settler.position
 			setTimeout(() => {
-				managers.eventManager.emit(Receiver.All, MovementEvents.SS.StepComplete, {
+				managers.event.emit(Receiver.All, MovementEvents.SS.StepComplete, {
 					entityId: settler.id,
 					position: currentPosition
 				})
-				managers.eventManager.emit(Receiver.All, MovementEvents.SS.PathComplete, {
+				managers.event.emit(Receiver.All, MovementEvents.SS.PathComplete, {
 					entityId: settler.id,
 					targetType: 'building',
 					targetId: job.buildingInstanceId
@@ -63,9 +65,9 @@ export const MovingToItem_CarryingItem: StateTransition<ItemPickupContext> = {
 	},
 	
 	completed: (settler, managers) => {
-		if (!managers.jobsManager) {
+		if (!managers.jobs) {
 			return null
 		}
-		return managers.jobsManager.handleSettlerArrival(settler)
+		return managers.jobs.handleSettlerArrival(settler)
 	}
 }

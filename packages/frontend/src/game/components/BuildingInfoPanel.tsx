@@ -7,6 +7,7 @@ import { itemService } from '../services/ItemService'
 import { storageService } from '../services/StorageService'
 import { productionService, ProductionStatus } from '../services/ProductionService'
 import { DraggablePanel } from './DraggablePanel'
+import { useResourceList } from './hooks/useResourceList'
 import sharedStyles from './PanelShared.module.css'
 
 // Component to display item emoji that reactively updates when metadata loads
@@ -44,6 +45,7 @@ export const BuildingInfoPanel: React.FC = () => {
 	const [buildingDefinition, setBuildingDefinition] = useState<BuildingDefinition | null>(null)
 	const [errorMessage, setErrorMessage] = useState<string | null>(null)
 	const [workerStatus, setWorkerStatus] = useState<string | null>(null)
+	const resourceTypes = useResourceList()
 
 	useEffect(() => {
 		// Listen for building selection
@@ -97,7 +99,7 @@ export const BuildingInfoPanel: React.FC = () => {
 						message = 'No available settler. Build a house to spawn settlers!'
 						break
 					case 'no_suitable_profession':
-						message = 'No settler with required profession. Drop a tool (hammer/axe) for a settler to pick up!'
+						message = 'No idle settler with required profession. Promote one in the Population panel.'
 						break
 					case 'no_available_tool':
 						message = 'No tool available to change profession. Drop a tool (hammer/axe) on the map!'
@@ -266,8 +268,14 @@ export const BuildingInfoPanel: React.FC = () => {
 	const isConstructing = buildingInstance.stage === ConstructionStage.Constructing
 	const isCollectingResources = buildingInstance.stage === ConstructionStage.CollectingResources
 	const hasWorkerSlots = buildingDefinition.workerSlots !== undefined
-	const currentWorkers = populationService.getBuildingWorkers(buildingInstance.id)
-	const workerCount = currentWorkers.length
+	const settlers = populationService.getSettlers()
+	const workingWorkers = settlers.filter(
+		settler => settler.state === SettlerState.Working && settler.buildingId === buildingInstance.id
+	)
+	const movingWorkers = settlers.filter(
+		settler => settler.state === SettlerState.MovingToBuilding && settler.stateContext.targetId === buildingInstance.id
+	)
+	const workerCount = workingWorkers.length + movingWorkers.length
 	const maxWorkers = buildingDefinition.workerSlots || 0
 	// Buildings only need workers during Constructing stage (builders) or Completed stage (production workers)
 	// During CollectingResources, carriers are automatically requested by the system
@@ -340,7 +348,9 @@ export const BuildingInfoPanel: React.FC = () => {
 				<div className={sharedStyles.infoRow}>
 					<span className={sharedStyles.label}>Workers:</span>
 					<span className={sharedStyles.value}>
-						{workerCount} / {maxWorkers}
+						{workingWorkers.length}
+						{movingWorkers.length > 0 && ` (+${movingWorkers.length} en route)`}
+						{' '} / {maxWorkers}
 					</span>
 				</div>
 			)}
@@ -360,7 +370,11 @@ export const BuildingInfoPanel: React.FC = () => {
 					)}
 					{isCompleted && hasWorkerSlots && workerCount < maxWorkers && (
 						<>
-							<button className={sharedStyles.requestWorkerButton} onClick={handleRequestWorker}>
+							<button
+								className={sharedStyles.requestWorkerButton}
+								onClick={handleRequestWorker}
+								disabled={workerCount >= maxWorkers}
+							>
 								Request Worker
 							</button>
 							{errorMessage && (
@@ -397,21 +411,24 @@ export const BuildingInfoPanel: React.FC = () => {
 			{isCompleted && buildingDefinition.storage && (
 				<div className={sharedStyles.info}>
 					<div className={sharedStyles.infoRow}>
-						<span className={sharedStyles.label}>Storage:</span>
+						<span className={sharedStyles.label}>Buffer:</span>
 						<span className={sharedStyles.value}>
 							<div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
-								{Object.entries(buildingDefinition.storage.capacities).map(([itemType, capacity]) => {
-									const quantity = storageService.getItemQuantity(buildingInstance.id, itemType)
-									const percentage = capacity > 0 ? Math.round((quantity / capacity) * 100) : 0
-									return (
-										<div key={itemType} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-											<ItemEmoji itemType={itemType} />
-											<span>
-												{quantity}/{capacity} {itemType} ({percentage}%)
-											</span>
-										</div>
-									)
-								})}
+								{(resourceTypes.length > 0 ? resourceTypes : Object.keys(buildingDefinition.storage.capacities))
+									.filter((itemType) => (buildingDefinition.storage?.capacities[itemType] || 0) > 0)
+									.map((itemType) => {
+										const capacity = buildingDefinition.storage!.capacities[itemType]
+										const quantity = storageService.getItemQuantity(buildingInstance.id, itemType)
+										const percentage = capacity > 0 ? Math.round((quantity / capacity) * 100) : 0
+										return (
+											<div key={itemType} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+												<ItemEmoji itemType={itemType} />
+												<span>
+													{quantity}/{capacity} {itemType} ({percentage}%)
+												</span>
+											</div>
+										)
+									})}
 							</div>
 						</span>
 					</div>

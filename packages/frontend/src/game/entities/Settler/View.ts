@@ -3,13 +3,17 @@ import { GameScene } from '../../scenes/base/GameScene'
 import { SettlerState, ProfessionType, Direction } from '@rugged/game'
 import { EventBus } from '../../EventBus'
 import { BaseMovementView } from '../Movement/BaseMovementView'
+import { itemService } from '../../services/ItemService'
 
 export class SettlerView extends BaseMovementView {
 	protected graphics: GameObjects.Graphics | null = null
 	protected emojiText: GameObjects.Text | null = null
+	protected carryText: GameObjects.Text | null = null
 	protected profession: ProfessionType
 	protected state: SettlerState
 	protected settlerId: string
+	private carryItemType: string | null = null
+	private carryItemUnsubscribe: (() => void) | null = null
 	private professionColors: Record<ProfessionType, number> = {
 		[ProfessionType.Carrier]: 0xffffff, // White
 		[ProfessionType.Builder]: 0xffaa00, // Orange
@@ -62,6 +66,16 @@ export class SettlerView extends BaseMovementView {
 		this.emojiText.setOrigin(0.5, 0.5)
 		// Add to container
 		this.add(this.emojiText)
+
+		// Add carried item emoji (hidden by default)
+		this.carryText = this.scene.add.text(0, -14, '📦', {
+			fontSize: '12px',
+			align: 'center',
+			color: '#000000'
+		})
+		this.carryText.setOrigin(0.5, 1)
+		this.carryText.setVisible(false)
+		this.add(this.carryText)
 
 		// Make settler clickable with a circular hit area
 		const hitArea = new Geom.Circle(0, 0, size / 2)
@@ -169,6 +183,41 @@ export class SettlerView extends BaseMovementView {
 		}
 	}
 
+	public updateCarriedItem(itemType?: string): void {
+		const nextType = itemType || null
+		if (this.carryItemType === nextType) {
+			return
+		}
+
+		this.carryItemType = nextType
+
+		if (this.carryItemUnsubscribe) {
+			this.carryItemUnsubscribe()
+			this.carryItemUnsubscribe = null
+		}
+
+		if (!nextType) {
+			if (this.carryText) {
+				this.carryText.setVisible(false)
+				this.carryText.setText('')
+			}
+			return
+		}
+
+		if (this.carryText) {
+			this.carryText.setText('📦')
+			this.carryText.setVisible(true)
+		}
+
+		this.carryItemUnsubscribe = itemService.subscribeToItemMetadata(nextType, (metadata) => {
+			if (!this.carryText || this.carryItemType !== nextType) {
+				return
+			}
+			this.carryText.setText(metadata?.emoji || '📦')
+			this.carryText.setVisible(true)
+		})
+	}
+
 	/**
 	 * Override onStateChange to sync SettlerState with movement state
 	 */
@@ -183,6 +232,10 @@ export class SettlerView extends BaseMovementView {
 	}
 
 	public destroy(): void {
+		if (this.carryItemUnsubscribe) {
+			this.carryItemUnsubscribe()
+			this.carryItemUnsubscribe = null
+		}
 		if (this.graphics) {
 			this.graphics.destroy()
 			this.graphics = null
@@ -190,6 +243,10 @@ export class SettlerView extends BaseMovementView {
 		if (this.emojiText) {
 			this.emojiText.destroy()
 			this.emojiText = null
+		}
+		if (this.carryText) {
+			this.carryText.destroy()
+			this.carryText = null
 		}
 		super.destroy()
 	}

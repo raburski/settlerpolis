@@ -8,6 +8,7 @@ import { Relationships } from './Relationships'
 import { SidePanel } from './SidePanel'
 import { Settings } from './Settings'
 import { World } from './World'
+import { StockPanel } from './StockPanel'
 import { SystemMessages } from './SystemMessages'
 import { ConstructionPanel } from './ConstructionPanel'
 import { BuildingInfoPanel } from './BuildingInfoPanel'
@@ -39,6 +40,7 @@ export const UIContainer = () => {
 	return (
 		<>
 			<World />
+			<StockPanel />
 			<Chat />
 			<Inventory />
 			<ChatLog />

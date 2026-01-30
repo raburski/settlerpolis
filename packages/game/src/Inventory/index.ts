@@ -3,10 +3,11 @@ import { Inventory, InventoryData, DropItemData, PickUpItemData, ConsumeItemData
 import { PlayerJoinData } from '../Players/types'
 import { Receiver } from '../Receiver'
 import { v4 as uuidv4 } from 'uuid'
-import { Item, ItemCategory, ItemType } from "../Items/types"
-import { ItemsManager } from "../Items"
+import { Item, ItemCategory } from "../Items/types"
+import type { ItemsManager } from "../Items"
 import { INVENTORY_GRID_ROWS, INVENTORY_GRID_COLUMNS } from '../consts'
 import { Logger } from '../Logs'
+import { BaseManager } from '../Managers'
 
 const DEFAULT_INVENTORY_ITEM_NAME = 'chainfolk_rug'
 
@@ -52,14 +53,19 @@ function getSlotAtPosition(inventory: Inventory, position: Position): InventoryS
 	return slot
 }
 
-export class InventoryManager {
+export interface InventoryDeps {
+	items: ItemsManager
+}
+
+export class InventoryManager extends BaseManager<InventoryDeps> {
 	private inventories = new Map<string, Inventory>()
 
 	constructor(
+		managers: InventoryDeps,
 		private event: EventManager,
-		private itemsManager: ItemsManager,
 		private logger: Logger
 	) {
+		super(managers)
 		this.setupEventHandlers()
 	}
 
@@ -252,7 +258,7 @@ export class InventoryManager {
 			if (!slot || !slot.item) return
 
 			// Check if item is consumable
-			const itemType = this.itemsManager.getItemMetadata(slot.item.itemType)
+			const itemType = this.managers.items.getItemMetadata(slot.item.itemType)
 			if (itemType?.category !== ItemCategory.Consumable) return
 
 			// Remove item from slot

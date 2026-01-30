@@ -3,35 +3,42 @@ import { NPC, NPCInteractData, NPCGoData, NPCRoutine, NPCRoutineStep } from './t
 import { NPCEvents } from './events'
 import { MovementEvents } from '../Movement/events'
 import { Receiver } from '../Receiver'
-import { DialogueManager } from '../Dialogue'
+import type { DialogueManager } from '../Dialogue'
 import { PlayerJoinData, PlayerTransitionData, Position } from '../types'
 import { AffinitySentimentType } from '../Affinity/types'
-import { MapManager } from '../Map'
-import { TimeManager } from '../Time'
+import type { MapManager } from '../Map'
+import type { TimeManager } from '../Time'
 import { DialogueEvents } from '../Dialogue/events'
 import { DialogueContinueData } from '../Dialogue/types'
 import { NPCState } from './types'
-import { QuestManager } from '../Quest'
-import { MovementManager, MovementEntity } from '../Movement'
+import type { QuestManager } from '../Quest'
+import type { MovementManager } from '../Movement'
+import { MovementEntity } from '../Movement'
 import { Logger } from '../Logs'
+import { BaseManager } from '../Managers'
 
 const ROUTINE_CHECK_INTERVAL = 60000 // Check routines every minute
 
-export class NPCManager {
+export interface NPCDeps {
+	dialogue: DialogueManager
+	map: MapManager
+	time: TimeManager
+	quest: QuestManager
+	movement: MovementManager
+}
+
+export class NPCManager extends BaseManager<NPCDeps> {
 	private npcs: Map<string, NPC> = new Map()
 	private routineTimeouts: Map<string, NodeJS.Timeout> = new Map()
 	private routineCheckInterval: NodeJS.Timeout | null = null
 	private pausedRoutines: Map<string, NPCRoutineStep> = new Map()
 
 	constructor(
+		managers: NPCDeps,
 		private event: EventManager,
-		private dialogueManager: DialogueManager,
-		private mapManager: MapManager,
-		private timeManager: TimeManager,
-		private questManager: QuestManager,
-		private movementManager: MovementManager,
 		private logger: Logger
 	) {
+		super(managers)
 		this.setupEventHandlers()
 		this.startRoutineCheck()
 	}
@@ -51,7 +58,7 @@ export class NPCManager {
 			// Check if NPC has an initialSpot defined
 			if (npc.initialSpot) {
 				// Try to get the spot from the map manager
-				const spot = this.mapManager.getNPCSpot(npc.mapId, npc.id, npc.initialSpot)
+				const spot = this.managers.map.getNPCSpot(npc.mapId, npc.id, npc.initialSpot)
 				if (spot) {
 					// Update the NPC's position with the spot position
 					npc.position = { ...spot.position }
@@ -69,7 +76,7 @@ export class NPCManager {
 				mapName: npc.mapId,
 				speed: npc.speed
 			}
-			this.movementManager.registerEntity(movementEntity)
+			this.managers.movement.registerEntity(movementEntity)
 		})
 	}
 
@@ -115,7 +122,7 @@ export class NPCManager {
 			if (npc && npc.state === NPCState.Moving) {
 				npc.state = NPCState.Idle
 				// Get final position from MovementManager
-				const finalPosition = this.movementManager.getEntityPosition(data.entityId)
+				const finalPosition = this.managers.movement.getEntityPosition(data.entityId)
 				if (finalPosition) {
 					npc.position = finalPosition
 				}
@@ -125,12 +132,12 @@ export class NPCManager {
 
 		// Handle dialogue end to resume routines
 		this.event.on<DialogueContinueData>(DialogueEvents.SC.End, (data, client) => {
-			const activeDialogues = this.dialogueManager.getNPCActiveDialogues(data.dialogueId)
+			const activeDialogues = this.managers.dialogue.getNPCActiveDialogues(data.dialogueId)
 			if (activeDialogues.length === 0) {
 				const pausedStep = this.pausedRoutines.get(data.dialogueId)
 				if (pausedStep) {
 					// Check if we should execute the paused step now
-					const currentTime = this.timeManager.getFormattedTime()
+					const currentTime = this.managers.time.getFormattedTime()
 					if (currentTime === pausedStep.time) {
 						this.executeRoutineStep(data.dialogueId, pausedStep)
 					}
@@ -169,7 +176,7 @@ export class NPCManager {
 		let targetPosition: Position | undefined
 
 		if (data.spotName) {
-			const spot = this.mapManager.getNPCSpot(npc.mapId, data.npcId, data.spotName)
+			const spot = this.managers.map.getNPCSpot(npc.mapId, data.npcId, data.spotName)
 			if (spot) {
 				targetPosition = spot.position
 				// Save the current spot name for future reference
@@ -189,7 +196,7 @@ export class NPCManager {
 		// Use MovementManager to move NPC
 		// MovementManager will handle pathfinding and emit movement events
 		// NPCManager listens to MovementEvents.SS.StepComplete to sync positions
-		this.movementManager.moveToPosition(npc.id, targetPosition, {
+		this.managers.movement.moveToPosition(npc.id, targetPosition, {
 			callbacks: {
 				onPathComplete: (task: any) => {
 					// Path completion is handled by MovementEvents.SS.PathComplete listener
@@ -210,12 +217,12 @@ export class NPCManager {
 			mapName: npc.mapId,
 			speed: npc.speed
 		}
-		this.movementManager.registerEntity(movementEntity)
+		this.managers.movement.registerEntity(movementEntity)
 	}
 
 	public removeNPC(npcId: string) {
 		// Unregister from MovementManager
-		this.movementManager.unregisterEntity(npcId)
+		this.managers.movement.unregisterEntity(npcId)
 		this.npcs.delete(npcId)
 	}
 
@@ -233,14 +240,14 @@ export class NPCManager {
 	}
 
 	private checkAllRoutines() {
-		const currentTime = this.timeManager.getFormattedTime()
+		const currentTime = this.managers.time.getFormattedTime()
 
 		for (const npc of this.npcs.values()) {
 			if (npc.routine && npc.active) {
 				const currentStep = npc.routine.steps.find(step => step.time === currentTime)
 				if (currentStep) {
 					// Check if NPC is in conversation
-					const activeDialogues = this.dialogueManager.getNPCActiveDialogues(npc.id)
+					const activeDialogues = this.managers.dialogue.getNPCActiveDialogues(npc.id)
 					if (activeDialogues.length > 0) {
 						// Pause the routine step for later
 						this.pausedRoutines.set(npc.id, currentStep)
@@ -295,7 +302,7 @@ export class NPCManager {
 	public cleanup() {
 		// Unregister all NPCs from MovementManager
 		for (const npcId of this.npcs.keys()) {
-			this.movementManager.unregisterEntity(npcId)
+			this.managers.movement.unregisterEntity(npcId)
 		}
 
 		// Clear routine check interval
@@ -367,10 +374,10 @@ export class NPCManager {
 		if (!npc || !npc.active) return
 
 		// Try to trigger dialogue first
-		const didTriggerDialogue = this.dialogueManager.triggerDialogue(client, npc.id)
+		const didTriggerDialogue = this.managers.dialogue.triggerDialogue(client, npc.id)
 		
 		// Check quest completion conditions for all active quests involving this NPC
-		this.questManager.checkQuestsForNPCInteraction(npc.id, client.id, client)
+		this.managers.quest.checkQuestsForNPCInteraction(npc.id, client.id, client)
 
 		// If no dialogue was triggered, fall back to messages
 		if (!didTriggerDialogue && npc.messages) {
@@ -426,7 +433,7 @@ export class NPCManager {
 
 		// If NPC is being deactivated, cancel any ongoing movement or routines
 		if (!active) {
-			this.movementManager.cancelMovement(npcId)
+			this.managers.movement.cancelMovement(npcId)
 			this.pausedRoutines.delete(npcId)
 		}
 

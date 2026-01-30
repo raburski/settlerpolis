@@ -2,29 +2,33 @@ import { EventManager, Event, EventClient } from '../events'
 import { Trigger, TriggerOption } from './types'
 import { TriggerEvents } from './events'
 import { Receiver } from '../Receiver'
-import { NPCManager } from '../NPC'
-import { ConditionEffectManager } from '../ConditionEffect'
+import type { ConditionEffectManager } from '../ConditionEffect'
 import { Position } from '../types'
-import { MapManager } from '../Map'
+import type { MapManager } from '../Map'
 import { Logger } from '../Logs'
+import { BaseManager } from '../Managers'
 
 const PROXIMITY_DEACTIVATION_BUFFER = 50 // pixels
 
-export class TriggerManager {
+export interface TriggerDeps {
+	map: MapManager
+	conditionEffect: ConditionEffectManager
+}
+
+export class TriggerManager extends BaseManager<TriggerDeps> {
 	private triggers: Map<string, Trigger> = new Map()
 	private activeTriggers: Set<string> = new Set()
 	private activeProximityTriggers: Set<string> = new Set()
-	private _conditionEffectManager: ConditionEffectManager | null = null
 	private usedTriggers: Set<string> = new Set()
 	private playerActiveTriggers: Map<string, Set<string>> = new Map() // playerId -> Set<triggerId>
 	private playerConditionTriggers: Map<string, Map<string, boolean>> = new Map() // playerId -> Map<triggerId, wasValid>
 
 	constructor(
+		managers: TriggerDeps,
 		private event: EventManager,
-		private npcManager: NPCManager,
-		private mapManager: MapManager,
 		private logger: Logger
 	) {
+		super(managers)
 		this.setupEventHandlers()
 	}
 
@@ -32,16 +36,6 @@ export class TriggerManager {
 		this.initializeTriggers(triggers)
 	}
 
-	set conditionEffectManager(manager: ConditionEffectManager) {
-		this._conditionEffectManager = manager
-	}
-
-	get conditionEffectManager(): ConditionEffectManager {
-		if (!this._conditionEffectManager) {
-			throw new Error('ConditionEffectManager not initialized')
-		}
-		return this._conditionEffectManager
-	}
 
 	private initializeTriggers(triggersToLoad: Trigger[]) {
 		triggersToLoad.forEach(trigger => {
@@ -91,7 +85,7 @@ export class TriggerManager {
 		const mapId = client.currentGroup
 		
 		if (mapId) {
-			const mapTriggers = this.mapManager.getTriggersAtPosition(mapId, position)
+			const mapTriggers = this.managers.map.getTriggersAtPosition(mapId, position)
 			const activeTriggers = this.getPlayerActiveTriggers(playerId)
 
 			// First check for triggers that should be deactivated
@@ -100,7 +94,7 @@ export class TriggerManager {
 				if (!trigger) continue
 
 				// Check if player is still in the trigger area
-				const mapTrigger = this.mapManager.getTriggerById(mapId, triggerId)
+				const mapTrigger = this.managers.map.getTriggerById(mapId, triggerId)
 				if (!mapTrigger) continue
 
 				const isInArea = this.isPositionInTriggerArea(position, mapTrigger)
@@ -220,13 +214,13 @@ export class TriggerManager {
 
 		// Check conditions
 		if (trigger.condition) {
-			if (!this.conditionEffectManager.checkCondition(trigger.condition, client)) {
+			if (!this.managers.conditionEffect.checkCondition(trigger.condition, client)) {
 				return false
 			}
 		}
 		if (trigger.conditions) {
 			if (!trigger.conditions.every(condition => 
-				this.conditionEffectManager.checkCondition(condition, client)
+				this.managers.conditionEffect.checkCondition(condition, client)
 			)) {
 				return false
 			}
@@ -238,7 +232,7 @@ export class TriggerManager {
 	private handleTrigger(trigger: Trigger, client: EventClient, position: Position) {
 		// Check conditions
 		if (trigger.conditions) {
-			const conditionsMet = this.conditionEffectManager.checkConditions(
+			const conditionsMet = this.managers.conditionEffect.checkConditions(
 				trigger.conditions,
 				client
 			)
@@ -247,7 +241,7 @@ export class TriggerManager {
 
 		// Apply effect
 		if (trigger.effect) {
-			this.conditionEffectManager.applyEffect(
+			this.managers.conditionEffect.applyEffect(
 				trigger.effect,
 				client
 			)
@@ -256,7 +250,7 @@ export class TriggerManager {
 		// Apply additional effects
 		if (trigger.effects) {
 			trigger.effects.forEach(effect => {
-				this.conditionEffectManager.applyEffect(
+				this.managers.conditionEffect.applyEffect(
 					effect,
 					client
 				)

@@ -19,6 +19,9 @@ export class SettlerController {
 		EventBus.on(Event.Population.SC.SettlerUpdated, this.handleSettlerUpdated, this)
 		EventBus.on(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
 		EventBus.on(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
+
+		this.view.updateState(this.settler.state)
+		this.view.updateCarriedItem(this.settler.state === SettlerState.CarryingItem ? this.settler.stateContext.carryingItemType : undefined)
 	}
 
 	private handleMoveToPosition = (data: { entityId: string, targetPosition: { x: number, y: number }, mapName: string }) => {
@@ -123,6 +126,7 @@ export class SettlerController {
 		// Always update state and profession
 		this.view.updateState(settlerData.state)
 		this.view.updateProfession(settlerData.profession)
+		this.view.updateCarriedItem(settlerData.state === SettlerState.CarryingItem ? settlerData.stateContext.carryingItemType : undefined)
 	}
 
 	public destroy(): void {

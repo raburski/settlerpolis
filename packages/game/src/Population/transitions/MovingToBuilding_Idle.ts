@@ -9,7 +9,7 @@ export const MovingToBuilding_Idle: StateTransition<BuildingArrivalContext> = {
 	
 	validate: (settler, context, managers) => {
 		// Verify building doesn't need workers
-		return !managers.buildingManager.getBuildingNeedsWorkers(context.buildingInstanceId)
+		return !managers.buildings.getBuildingNeedsWorkers(context.buildingInstanceId)
 	},
 	
 	action: (settler, context, managers) => {

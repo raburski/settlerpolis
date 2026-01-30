@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { EventBus } from '../EventBus'
-import { Settler, ProfessionType, SettlerState, JobType } from '@rugged/game'
+import { Settler, ProfessionType, SettlerState } from '@rugged/game'
+import { JobStatus, JobType } from '@rugged/game/Jobs/types'
 import { populationService } from '../services/PopulationService'
 import { itemService } from '../services/ItemService'
 import { buildingService } from '../services/BuildingService'
@@ -159,10 +160,10 @@ export const SettlerInfoPanel: React.FC = () => {
 						<div className={sharedStyles.infoRow}>
 							<span className={sharedStyles.label}>Job Status:</span>
 							<span className={sharedStyles.value}>
-								{job.status === 'pending' && '⏳ Pending'}
-								{job.status === 'active' && '✅ Active'}
-								{job.status === 'completed' && '✔️ Completed'}
-								{job.status === 'cancelled' && '❌ Cancelled'}
+								{job.status === JobStatus.Pending && '⏳ Pending'}
+								{job.status === JobStatus.Active && '✅ Active'}
+								{job.status === JobStatus.Completed && '✔️ Completed'}
+								{job.status === JobStatus.Cancelled && '❌ Cancelled'}
 							</span>
 						</div>
 						{job.buildingInstanceId && (

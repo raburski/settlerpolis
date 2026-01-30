@@ -1,30 +1,38 @@
 import { EventManager } from '../events'
-import { BuildingManager } from '../Buildings'
-import { PopulationManager } from '../Population'
-import { JobsManager } from '../Jobs'
-import { ResourceNodesManager } from '../ResourceNodes'
-import { StorageManager } from '../Storage'
+import type { BuildingManager } from '../Buildings'
+import type { PopulationManager } from '../Population'
+import type { JobsManager } from '../Jobs'
+import type { ResourceNodesManager } from '../ResourceNodes'
+import type { StorageManager } from '../Storage'
 import { Logger } from '../Logs'
 import { SimulationEvents } from '../Simulation/events'
 import { SimulationTickData } from '../Simulation/types'
 import { ConstructionStage } from '../Buildings/types'
+import { RoleType } from '../Jobs/types'
 import { SettlerState } from '../Population/types'
+import { JobStatus } from '../Jobs/types'
+import { BaseManager } from '../Managers'
 
 const HARVEST_TICK_INTERVAL_MS = 1000
 
-export class HarvestManager {
+export interface HarvestDeps {
+	buildings: BuildingManager
+	population: PopulationManager
+	jobs: JobsManager
+	resourceNodes: ResourceNodesManager
+	storage: StorageManager
+}
+
+export class HarvestManager extends BaseManager<HarvestDeps> {
 	private tickAccumulatorMs = 0
 	private simulationTimeMs = 0
 
 	constructor(
+		managers: HarvestDeps,
 		private event: EventManager,
-		private buildingManager: BuildingManager,
-		private populationManager: PopulationManager,
-		private jobsManager: JobsManager,
-		private resourceNodesManager: ResourceNodesManager,
-		private storageManager: StorageManager,
 		private logger: Logger
 	) {
+		super(managers)
 		this.setupEventHandlers()
 	}
 
@@ -47,7 +55,7 @@ export class HarvestManager {
 	private tick(): void {
 		this.processHarvestingJobs()
 
-		const buildings = this.buildingManager.getAllBuildings()
+		const buildings = this.managers.buildings.getAllBuildings()
 		if (buildings.length === 0) return
 
 		for (const building of buildings) {
@@ -55,12 +63,12 @@ export class HarvestManager {
 				continue
 			}
 
-			const definition = this.buildingManager.getBuildingDefinition(building.buildingId)
+			const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
 			if (!definition || !definition.harvest) {
 				continue
 			}
 
-			const nodeDefinition = this.resourceNodesManager.getDefinition(definition.harvest.nodeType)
+			const nodeDefinition = this.managers.resourceNodes.getDefinition(definition.harvest.nodeType)
 			if (!nodeDefinition) {
 				continue
 			}
@@ -68,33 +76,33 @@ export class HarvestManager {
 			const outputItemType = nodeDefinition.outputItemType
 			const harvestQuantity = nodeDefinition.harvestQuantity
 
-			if (!this.storageManager.acceptsItemType(building.id, outputItemType)) {
+			if (!this.managers.storage.acceptsItemType(building.id, outputItemType)) {
 				continue
 			}
 
-			if (!this.storageManager.hasAvailableStorage(building.id, outputItemType, harvestQuantity)) {
+			if (!this.managers.storage.hasAvailableStorage(building.id, outputItemType, harvestQuantity)) {
 				continue
 			}
 
-			if (this.jobsManager.hasActiveHarvestJobForBuilding(building.id)) {
+			if (this.managers.jobs.hasActiveHarvestJobForBuilding(building.id)) {
 				continue
 			}
 
-			const assignedWorkers = this.buildingManager.getBuildingWorkers(building.id)
+			const assignedWorkers = this.managers.jobs.getAssignedWorkerIdsForBuilding(building.id, RoleType.Production)
 			if (assignedWorkers.length === 0) {
 				continue
 			}
 
 			const availableWorkers = assignedWorkers
-				.map(workerId => this.populationManager.getSettler(workerId))
-				.filter(settler => settler && (settler.state === SettlerState.Idle || settler.state === SettlerState.Working))
+				.map(workerId => this.managers.population.getSettler(workerId))
+				.filter(settler => settler && settler.state === SettlerState.Idle && !settler.stateContext.jobId)
 				.map(settler => settler!)
 
 			if (availableWorkers.length === 0) {
 				continue
 			}
 
-			const node = this.resourceNodesManager.findClosestAvailableNode(
+			const node = this.managers.resourceNodes.findClosestAvailableNode(
 				building.mapName,
 				definition.harvest.nodeType,
 				building.position
@@ -105,7 +113,7 @@ export class HarvestManager {
 			}
 
 			const workerId = availableWorkers[0].id
-			const jobId = this.jobsManager.requestHarvestJob(workerId, building.id, node.id)
+			const jobId = this.managers.jobs.requestHarvestJob(workerId, building.id, node.id)
 			if (jobId) {
 				this.logger.log(`[HarvestManager] Assigned harvest job ${jobId} for building ${building.id}`)
 			}
@@ -113,18 +121,18 @@ export class HarvestManager {
 	}
 
 	private processHarvestingJobs(): void {
-		const activeHarvestJobs = this.jobsManager.getActiveHarvestJobs()
+		const activeHarvestJobs = this.managers.jobs.getActiveHarvestJobs()
 		if (activeHarvestJobs.length === 0) {
 			return
 		}
 
 		for (const job of activeHarvestJobs) {
-			const settler = this.populationManager.getSettler(job.settlerId)
+			const settler = this.managers.population.getSettler(job.settlerId)
 			if (!settler || settler.state !== SettlerState.Harvesting) {
 				continue
 			}
 
-			if (job.status !== 'active') {
+			if (job.status !== JobStatus.Active) {
 				continue
 			}
 
@@ -138,7 +146,7 @@ export class HarvestManager {
 				continue
 			}
 
-			this.jobsManager.handleHarvestComplete(job.jobId)
+			this.managers.jobs.handleHarvestComplete(job.jobId)
 		}
 	}
 }

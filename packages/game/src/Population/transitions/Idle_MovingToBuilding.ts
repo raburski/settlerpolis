@@ -11,8 +11,8 @@ export const Idle_MovingToBuilding: StateTransition<RequestWorkerHasProfessionCo
 	
 	validate: (settler, context, managers) => {
 		// Verify building exists and needs workers
-		const building = managers.buildingManager.getBuildingInstance(context.buildingInstanceId)
-		return building !== undefined && managers.buildingManager.getBuildingNeedsWorkers(context.buildingInstanceId)
+		const building = managers.buildings.getBuildingInstance(context.buildingInstanceId)
+		return building !== undefined && managers.buildings.getBuildingNeedsWorkers(context.buildingInstanceId)
 	},
 	
 	action: (settler, context, managers) => {
@@ -34,19 +34,19 @@ export const Idle_MovingToBuilding: StateTransition<RequestWorkerHasProfessionCo
 		}
 		
 		// Start movement to building
-		const movementStarted = managers.movementManager.moveToPosition(settler.id, context.buildingPosition, {
+		const movementStarted = managers.movement.moveToPosition(settler.id, context.buildingPosition, {
 			targetType: 'building',
 			targetId: context.buildingInstanceId
 		})
 		managers.logger.log(`[MOVEMENT REQUESTED] Idle -> MovingToBuilding | settler=${settler.id} | movementStarted=${movementStarted}`)
 		if (!movementStarted) {
-			const currentPosition = managers.movementManager.getEntityPosition(settler.id) || settler.position
+			const currentPosition = managers.movement.getEntityPosition(settler.id) || settler.position
 			setTimeout(() => {
-				managers.eventManager.emit(Receiver.All, MovementEvents.SS.StepComplete, {
+				managers.event.emit(Receiver.All, MovementEvents.SS.StepComplete, {
 					entityId: settler.id,
 					position: currentPosition
 				})
-				managers.eventManager.emit(Receiver.All, MovementEvents.SS.PathComplete, {
+				managers.event.emit(Receiver.All, MovementEvents.SS.PathComplete, {
 					entityId: settler.id,
 					targetType: 'building',
 					targetId: context.buildingInstanceId
@@ -56,9 +56,9 @@ export const Idle_MovingToBuilding: StateTransition<RequestWorkerHasProfessionCo
 	},
 	
 	completed: (settler, managers) => {
-		if (!managers.jobsManager) {
+		if (!managers.jobs) {
 			return null
 		}
-		return managers.jobsManager.handleSettlerArrival(settler)
+		return managers.jobs.handleSettlerArrival(settler)
 	}
 }

@@ -1,12 +1,8 @@
 import { Settler, SettlerState, ProfessionType } from '../types'
 import { Position } from '../../types'
-import { MovementManager } from '../../Movement'
-import { BuildingManager } from '../../Buildings'
+import type { Managers } from '../../Managers'
 import { EventManager } from '../../events'
-import { ItemsManager } from '../../Items'
 import { Logger } from '../../Logs'
-import { MapManager } from '../../Map'
-import { ResourceNodesManager } from '../../ResourceNodes'
 
 export interface RequestWorkerNeedToolContext {
 	toolId: string
@@ -33,16 +29,12 @@ export interface WorkerUnassignContext {
 	// Empty - no context needed
 }
 
-export interface StateMachineManagers {
-	movementManager: MovementManager
-	buildingManager: BuildingManager
-	eventManager: EventManager
-	lootManager: any // LootManager - type imported to avoid circular dependency
-	itemsManager: ItemsManager
-	mapManager: MapManager
-	resourceNodesManager?: ResourceNodesManager
-	jobsManager?: any // JobsManager - type imported to avoid circular dependency
-	storageManager?: any // StorageManager - type imported to avoid circular dependency
+export interface StateMachineManagers
+	extends Pick<
+		Managers,
+		'movement' | 'buildings' | 'loot' | 'items' | 'map' | 'resourceNodes' | 'jobs' | 'storage'
+	> {
+	event: EventManager
 	logger: Logger
 }
 

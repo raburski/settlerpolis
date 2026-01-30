@@ -1,24 +1,26 @@
-import { LootManager } from '../Loot'
-import { StorageManager } from '../Storage'
-import { ResourceNodesManager } from '../ResourceNodes'
+import type { LootManager } from '../Loot'
+import type { StorageManager } from '../Storage'
+import type { ResourceNodesManager } from '../ResourceNodes'
 import { Logger } from '../Logs'
-import { JobReservation, JobReservationType } from '../Population/types'
+import { JobReservation, JobReservationType } from './types'
+import { BaseManager } from '../Managers'
 
-export class ReservationService {
-	private storageManager?: StorageManager
+export interface ReservationDeps {
+	loot: LootManager
+	resourceNodes: ResourceNodesManager
+	storage: StorageManager
+}
 
+export class ReservationService extends BaseManager<ReservationDeps> {
 	constructor(
-		private lootManager: LootManager,
-		private resourceNodesManager: ResourceNodesManager,
+		managers: ReservationDeps,
 		private logger: Logger
-	) {}
-
-	public setStorageManager(storageManager: StorageManager): void {
-		this.storageManager = storageManager
+	) {
+		super(managers)
 	}
 
 	public reserveLoot(itemId: string, ownerId: string): JobReservation | null {
-		const reserved = this.lootManager.reserveItem(itemId, ownerId)
+		const reserved = this.managers.loot.reserveItem(itemId, ownerId)
 		if (!reserved) {
 			return null
 		}
@@ -26,7 +28,7 @@ export class ReservationService {
 	}
 
 	public reserveTool(itemId: string, ownerId: string): JobReservation | null {
-		const reserved = this.lootManager.reserveItem(itemId, ownerId)
+		const reserved = this.managers.loot.reserveItem(itemId, ownerId)
 		if (!reserved) {
 			return null
 		}
@@ -34,7 +36,7 @@ export class ReservationService {
 	}
 
 	public reserveNode(nodeId: string, ownerId: string): JobReservation | null {
-		const reserved = this.resourceNodesManager.reserveNode(nodeId, ownerId)
+		const reserved = this.managers.resourceNodes.reserveNode(nodeId, ownerId)
 		if (!reserved) {
 			return null
 		}
@@ -42,12 +44,12 @@ export class ReservationService {
 	}
 
 	public reserveStorage(buildingInstanceId: string, itemType: string, quantity: number, ownerId: string, isOutgoing: boolean): JobReservation | null {
-		if (!this.storageManager) {
+		if (!this.managers.storage) {
 			this.logger.warn('[ReservationService] StorageManager not set, cannot reserve storage')
 			return null
 		}
 
-		const reservationId = this.storageManager.reserveStorage(buildingInstanceId, itemType, quantity, ownerId, isOutgoing)
+		const reservationId = this.managers.storage.reserveStorage(buildingInstanceId, itemType, quantity, ownerId, isOutgoing)
 		if (!reservationId) {
 			return null
 		}
@@ -65,13 +67,13 @@ export class ReservationService {
 		switch (reservation.type) {
 			case JobReservationType.Loot:
 			case JobReservationType.Tool:
-				return this.lootManager.isReservationValid(reservation.id, reservation.ownerId)
+				return this.managers.loot.isReservationValid(reservation.id, reservation.ownerId)
 			case JobReservationType.Node: {
-				const node = this.resourceNodesManager.getNode(reservation.id)
+				const node = this.managers.resourceNodes.getNode(reservation.id)
 				return !!node && node.reservedBy === reservation.ownerId
 			}
 			case JobReservationType.Storage:
-				return this.storageManager?.hasReservation(reservation.id) ?? false
+				return this.managers.storage?.hasReservation(reservation.id) ?? false
 			default:
 				return false
 		}
@@ -81,13 +83,13 @@ export class ReservationService {
 		switch (reservation.type) {
 			case JobReservationType.Loot:
 			case JobReservationType.Tool:
-				this.lootManager.releaseReservation(reservation.id, reservation.ownerId)
+				this.managers.loot.releaseReservation(reservation.id, reservation.ownerId)
 				break
 			case JobReservationType.Node:
-				this.resourceNodesManager.releaseReservation(reservation.id, reservation.ownerId)
+				this.managers.resourceNodes.releaseReservation(reservation.id, reservation.ownerId)
 				break
 			case JobReservationType.Storage:
-				this.storageManager?.releaseReservation(reservation.id)
+				this.managers.storage?.releaseReservation(reservation.id)
 				break
 		}
 	}

@@ -23,7 +23,7 @@ export const Idle_Idle: StateTransition<IdleWanderContext> = {
 		}
 		
 		// Validate path exists and is not too long (max 6 tiles = ~192px at 32px/tile)
-		const path = managers.mapManager.findPath(
+		const path = managers.map.findPath(
 			settler.mapName,
 			settler.position,
 			context.targetPosition
@@ -53,7 +53,7 @@ export const Idle_Idle: StateTransition<IdleWanderContext> = {
 		}
 		
 		// Start movement to random position (no targetType/targetId - just wandering)
-		const movementStarted = managers.movementManager.moveToPosition(settler.id, context.targetPosition, {})
+		const movementStarted = managers.movement.moveToPosition(settler.id, context.targetPosition, {})
 		managers.logger.log(`[IDLE WANDER] Movement requested: settler=${settler.id} | movementStarted=${movementStarted}`)
 		
 		// Ensure state remains Idle (self-transition)

@@ -1,6 +1,7 @@
 import { EventBus } from '../EventBus'
 import { Event } from '@rugged/game'
-import { Settler, PopulationListData, PopulationStatsData, ProfessionType, SettlerState, JobAssignment } from '@rugged/game'
+import { Settler, PopulationListData, PopulationStatsData, ProfessionType, SettlerState } from '@rugged/game'
+import { JobAssignment } from '@rugged/game/Jobs/types'
 
 class PopulationServiceClass {
 	private settlers = new Map<string, Settler>() // settlerId -> Settler

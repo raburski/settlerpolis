@@ -3,7 +3,6 @@ import { StateTransitionsConfig, StateTransition, StateMachineManagers } from '.
 import { SETTLER_STATE_TRANSITIONS } from './transitions'
 import { Receiver } from '../Receiver'
 import { PopulationEvents } from './events'
-import { Logger } from '../Logs'
 
 export class SettlerStateMachine {
 	private transitions: StateTransitionsConfig
@@ -11,40 +10,14 @@ export class SettlerStateMachine {
 	private activeTransitions: Map<string, { fromState: SettlerState, toState: SettlerState }> = new Map() // Track active transitions by settlerId
 	
 	constructor(
-		movementManager: StateMachineManagers['movementManager'],
-		buildingManager: StateMachineManagers['buildingManager'],
-		eventManager: StateMachineManagers['eventManager'],
-		lootManager: StateMachineManagers['lootManager'],
-		itemsManager: StateMachineManagers['itemsManager'],
-		mapManager: StateMachineManagers['mapManager'],
-		resourceNodesManager: StateMachineManagers['resourceNodesManager'],
-		logger: Logger,
+		managers: StateMachineManagers,
 		transitions: StateTransitionsConfig = SETTLER_STATE_TRANSITIONS
 	) {
 		// Store managers for use in transition actions
-		this.managers = {
-			movementManager,
-			buildingManager,
-			eventManager,
-			lootManager,
-			itemsManager,
-			mapManager,
-			resourceNodesManager,
-			logger
-		}
+		this.managers = managers
 		
 		// Store transitions configuration
 		this.transitions = transitions
-	}
-
-	// Set JobsManager after construction to avoid circular dependency
-	public setJobsManager(jobsManager: any): void {
-		this.managers.jobsManager = jobsManager
-	}
-
-	// Set StorageManager after construction to avoid circular dependency
-	public setStorageManager(storageManager: any): void {
-		this.managers.storageManager = storageManager
 	}
 	
 	/**
@@ -115,14 +88,14 @@ export class SettlerStateMachine {
 			
 			// Get current position from MovementManager (source of truth during movement)
 			// This ensures we send the correct position even if settler.position hasn't been synced yet
-			const currentPosition = this.managers.movementManager.getEntityPosition(settler.id)
+			const currentPosition = this.managers.movement.getEntityPosition(settler.id)
 			if (currentPosition) {
 				settler.position = currentPosition
 				this.managers.logger.log(`[POSITION SYNC] Synced settler position from MovementManager: settler=${settler.id} | position=(${Math.round(currentPosition.x)},${Math.round(currentPosition.y)})`)
 			}
 			
 			// Emit settler updated event after successful transition
-			this.managers.eventManager.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, {
+			this.managers.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, {
 				settler
 			}, settler.mapName)
 			
