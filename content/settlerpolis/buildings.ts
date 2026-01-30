@@ -349,7 +349,9 @@ export const buildings: BuildingDefinition[] = [
 			plotRadiusTiles: 6,
 			plantTimeMs: 2000,
 			growTimeMs: 30000,
-			maxPlots: 12
+			maxPlots: 12,
+			spoilTimeMs: 20000,
+			despawnTimeMs: 20000
 		},
 		storage: {
 			capacities: {

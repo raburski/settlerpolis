@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { EventBus } from '../EventBus'
 import { logisticsService } from '../services/LogisticsService'
 import { buildingService } from '../services/BuildingService'
+import { itemService } from '../services/ItemService'
 import type { LogisticsRequest } from '@rugged/game/Settlers/WorkProvider/types'
 import styles from './LogisticsPanel.module.css'
 
@@ -11,13 +12,54 @@ type LogisticsPanelProps = {
 	offsetX?: number
 }
 
-const formatBuildingLabel = (buildingInstanceId: string): string => {
+const getBuildingMeta = (buildingInstanceId: string): { name: string, icon: string } => {
 	const building = buildingService.getBuildingInstance(buildingInstanceId)
 	if (!building) {
-		return buildingInstanceId.slice(0, 6)
+		return { name: buildingInstanceId.slice(0, 6), icon: '🏗️' }
 	}
 	const definition = buildingService.getBuildingDefinition(building.buildingId)
-	return definition?.name || building.buildingId
+	return {
+		name: definition?.name || building.buildingId,
+		icon: definition?.icon || '🏗️'
+	}
+}
+
+const ItemIcon: React.FC<{ itemType: string }> = ({ itemType }) => {
+	const [emoji, setEmoji] = useState(() => itemService.getItemType(itemType)?.emoji || '📦')
+
+	useEffect(() => {
+		const meta = itemService.getItemType(itemType)
+		if (meta?.emoji) {
+			setEmoji(meta.emoji)
+		}
+		const unsubscribe = itemService.subscribeToItemMetadata(itemType, (data) => {
+			if (data?.emoji) {
+				setEmoji(data.emoji)
+			}
+		})
+		return unsubscribe
+	}, [itemType])
+
+	return <span className={styles.itemIcon}>{emoji}</span>
+}
+
+const ItemLabel: React.FC<{ itemType: string }> = ({ itemType }) => {
+	const [label, setLabel] = useState(() => itemService.getItemType(itemType)?.name || itemType)
+
+	useEffect(() => {
+		const meta = itemService.getItemType(itemType)
+		if (meta?.name) {
+			setLabel(meta.name)
+		}
+		const unsubscribe = itemService.subscribeToItemMetadata(itemType, (data) => {
+			if (data?.name) {
+				setLabel(data.name)
+			}
+		})
+		return unsubscribe
+	}, [itemType])
+
+	return <span className={styles.itemName}>{label}</span>
 }
 
 export const LogisticsPanel: React.FC<LogisticsPanelProps> = ({ isVisible, anchorRect, offsetX = 0 }) => {
@@ -66,30 +108,22 @@ export const LogisticsPanel: React.FC<LogisticsPanelProps> = ({ isVisible, ancho
 				{sortedRequests.length === 0 ? (
 					<div className={styles.empty}>No active requests.</div>
 				) : (
-					sortedRequests.map((request) => (
-						<div key={request.id} className={styles.request}>
-							<div className={styles.row}>
-								<span className={styles.label}>Building</span>
-								<span className={styles.value}>{formatBuildingLabel(request.buildingInstanceId)}</span>
+					sortedRequests.map((request) => {
+						const building = getBuildingMeta(request.buildingInstanceId)
+						const arrow = request.type === 'output' ? '➡︎' : '⬅︎'
+						return (
+							<div key={request.id} className={styles.requestCard}>
+								<div className={styles.requestMain}>
+									<span className={styles.buildingIcon}>{building.icon}</span>
+									<span className={styles.buildingName}>{building.name}</span>
+									<span className={styles.arrow}>{arrow}</span>
+									<ItemIcon itemType={request.itemType} />
+									<ItemLabel itemType={request.itemType} />
+									<span className={styles.quantity}>x{request.quantity}</span>
+								</div>
 							</div>
-							<div className={styles.row}>
-								<span className={styles.label}>Type</span>
-								<span className={styles.value}>{request.type}</span>
-							</div>
-							<div className={styles.row}>
-								<span className={styles.label}>Item</span>
-								<span className={styles.value}>{request.itemType}</span>
-							</div>
-							<div className={styles.row}>
-								<span className={styles.label}>Qty</span>
-								<span className={styles.value}>{request.quantity}</span>
-							</div>
-							<div className={styles.row}>
-								<span className={styles.label}>Priority</span>
-								<span className={styles.value}>{request.priority}</span>
-							</div>
-						</div>
-					))
+						)
+					})
 				)}
 			</div>
 		</div>

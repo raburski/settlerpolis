@@ -130,7 +130,9 @@ export const FarmingWorkHandler: BuildingWorkHandler = {
 			nodeType: farm.cropNodeType,
 			position: targetPosition,
 			plantTimeMs: farm.plantTimeMs,
-			growTimeMs: farm.growTimeMs
+			growTimeMs: farm.growTimeMs,
+			spoilTimeMs: farm.spoilTimeMs,
+			despawnTimeMs: farm.despawnTimeMs
 		}
 	}
 }

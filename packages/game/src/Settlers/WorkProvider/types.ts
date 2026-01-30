@@ -75,7 +75,7 @@ export type WorkStep =
 	| { type: WorkStepType.Construct, buildingInstanceId: string, durationMs: number }
 	| { type: WorkStepType.Harvest, buildingInstanceId: string, resourceNodeId: string, outputItemType: ItemType, quantity: number, durationMs: number }
 	| { type: WorkStepType.Produce, buildingInstanceId: string, recipe: ProductionRecipe, durationMs: number }
-	| { type: WorkStepType.Plant, buildingInstanceId: string, nodeType: string, position: Position, plantTimeMs: number, growTimeMs: number }
+	| { type: WorkStepType.Plant, buildingInstanceId: string, nodeType: string, position: Position, plantTimeMs: number, growTimeMs: number, spoilTimeMs?: number, despawnTimeMs?: number }
 	| { type: WorkStepType.Transport, source: TransportSource, target: TransportTarget, itemType: ItemType, quantity: number }
 	| { type: WorkStepType.Wait, reason: WorkWaitReason, retryAtMs?: number }
 
@@ -94,11 +94,11 @@ export type WorkAction =
 	| { type: WorkActionType.PickupTool, itemId: string, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.PickupLoot, itemId: string, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.WithdrawStorage, buildingInstanceId: string, itemType: ItemType, quantity: number, reservationId?: string, setState?: import('../../Population/types').SettlerState }
-	| { type: WorkActionType.DeliverStorage, buildingInstanceId: string, itemType: ItemType, quantity: number, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.DeliverStorage, buildingInstanceId: string, itemType: ItemType, quantity: number, reservationId?: string, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.DeliverConstruction, buildingInstanceId: string, itemType: ItemType, quantity: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.HarvestNode, nodeId: string, quantity: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Produce, buildingInstanceId: string, recipe: ProductionRecipe, setState?: import('../../Population/types').SettlerState }
-	| { type: WorkActionType.Plant, buildingInstanceId: string, nodeType: string, position: Position, growTimeMs: number, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.Plant, buildingInstanceId: string, nodeType: string, position: Position, growTimeMs: number, spoilTimeMs?: number, despawnTimeMs?: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.ChangeProfession, profession: ProfessionType, setState?: import('../../Population/types').SettlerState }
 
 export interface WorkProvider {

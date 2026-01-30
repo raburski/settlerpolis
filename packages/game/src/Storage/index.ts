@@ -161,7 +161,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	// Add items to building storage
-	public addToStorage(buildingInstanceId: string, itemType: string, quantity: number): boolean {
+	public addToStorage(buildingInstanceId: string, itemType: string, quantity: number, reservationId?: string): boolean {
 		const storage = this.buildingStorages.get(buildingInstanceId)
 		if (!storage) {
 			this.logger.warn(`[StorageManager] Cannot add to storage: Building ${buildingInstanceId} has no storage`)
@@ -188,6 +188,19 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				incomingReserved += reservation.quantity
 			}
 		}
+
+		// Ignore the caller's reservation when checking capacity, since it's already allocated space.
+		if (reservationId) {
+			const reserved = this.reservations.get(reservationId)
+			if (reserved &&
+				reserved.buildingInstanceId === buildingInstanceId &&
+				reserved.itemType === itemType &&
+				reserved.status !== 'cancelled' &&
+				reserved.status !== 'delivered' &&
+				!reserved.isOutgoing) {
+				incomingReserved = Math.max(0, incomingReserved - reserved.quantity)
+			}
+		}
 		
 		// Available space = capacity - current items - incoming reservations
 		// Outgoing reservations don't reduce available space since those items will be removed
@@ -211,6 +224,10 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				quantity: current + quantity,
 				capacity
 			}, building.mapName)
+		}
+
+		if (reservationId) {
+			this.completeReservation(reservationId)
 		}
 
 		return true
@@ -356,6 +373,9 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			this.logger.warn(`[StorageManager] Cannot release reservation: Reservation ${reservationId} not found`)
 			return
 		}
+		if (reservation.status === 'cancelled' || reservation.status === 'delivered') {
+			return
+		}
 
 		const storage = this.buildingStorages.get(reservation.buildingInstanceId)
 		if (storage) {
@@ -383,6 +403,30 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				quantity: reservation.quantity
 			}, building.mapName)
 		}
+	}
+
+	public completeReservation(reservationId: string): void {
+		const reservation = this.reservations.get(reservationId)
+		if (!reservation) {
+			return
+		}
+		if (reservation.status === 'cancelled' || reservation.status === 'delivered') {
+			return
+		}
+
+		const storage = this.buildingStorages.get(reservation.buildingInstanceId)
+		if (storage) {
+			const reserved = storage.reserved.get(reservation.itemType) || 0
+			const newReserved = Math.max(0, reserved - reservation.quantity)
+			if (newReserved === 0) {
+				storage.reserved.delete(reservation.itemType)
+			} else {
+				storage.reserved.set(reservation.itemType, newReserved)
+			}
+		}
+
+		reservation.status = 'delivered'
+		this.logger.log(`[StorageManager] Completed reservation ${reservationId}`)
 	}
 
 	public hasReservation(reservationId: string): boolean {
@@ -415,7 +459,8 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		const RESERVATION_CLEANUP_AGE = 60000 // 1 minute
 
 		for (const [reservationId, reservation] of this.reservations.entries()) {
-			if (reservation.status === 'cancelled' && (now - reservation.createdAt) > RESERVATION_CLEANUP_AGE) {
+			if ((reservation.status === 'cancelled' || reservation.status === 'delivered') &&
+				(now - reservation.createdAt) > RESERVATION_CLEANUP_AGE) {
 				this.reservations.delete(reservationId)
 			}
 		}

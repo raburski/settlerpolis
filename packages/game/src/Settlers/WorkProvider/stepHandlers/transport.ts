@@ -52,13 +52,15 @@ export const TransportHandler: StepHandler = {
 				return { actions: [] }
 			}
 
+			let targetReservationId: string | null = null
 			if (step.target.type === TransportTargetType.Storage) {
-				const targetReservationId = reservationSystem.reserveStorageIncoming(step.target.buildingInstanceId, step.itemType, step.quantity, assignment.assignmentId)
+				targetReservationId = reservationSystem.reserveStorageIncoming(step.target.buildingInstanceId, step.itemType, step.quantity, assignment.assignmentId)
 				if (!targetReservationId) {
 					releaseFns.forEach(fn => fn())
 					return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
 				}
-				releaseFns.push(() => reservationSystem.releaseStorageReservation(targetReservationId))
+				const reservationToRelease = targetReservationId
+				releaseFns.push(() => reservationSystem.releaseStorageReservation(reservationToRelease))
 			}
 
 			return {
@@ -69,7 +71,7 @@ export const TransportHandler: StepHandler = {
 					// Construction consumes collectedResources (pre-storage), so it uses a dedicated action.
 					step.target.type === TransportTargetType.Construction
 						? { type: WorkActionType.DeliverConstruction, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, setState: SettlerState.Working }
-						: { type: WorkActionType.DeliverStorage, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, setState: SettlerState.Working }
+						: { type: WorkActionType.DeliverStorage, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, reservationId: targetReservationId || undefined, setState: SettlerState.Working }
 				],
 				releaseReservations: () => releaseFns.forEach(fn => fn())
 			}

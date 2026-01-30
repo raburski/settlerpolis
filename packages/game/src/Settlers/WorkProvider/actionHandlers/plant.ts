@@ -19,6 +19,8 @@ export const PlantActionHandler: ActionHandler = {
 			mapName: building.mapName,
 			position: action.position,
 			growTimeMs: action.growTimeMs,
+			spoilTimeMs: action.spoilTimeMs,
+			despawnTimeMs: action.despawnTimeMs,
 			tileBased: false
 		})
 

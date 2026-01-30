@@ -36,6 +36,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	private setupEventHandlers(): void {
 		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.simulationTimeMs = data.nowMs
+			this.processNodeDecay()
 		})
 	}
 
@@ -133,6 +134,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			if (node.mapName !== mapName) return false
 			if (nodeType && node.nodeType !== nodeType) return false
 			if (node.remainingHarvests <= 0) return false
+			if (node.isSpoiled) return false
 			if (!this.isNodeMature(node)) return false
 			if (node.reservedBy) return false
 			return true
@@ -163,6 +165,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		const node = this.nodes.get(nodeId)
 		if (!node) return false
 		if (node.remainingHarvests <= 0) return false
+		if (node.isSpoiled) return false
 		if (!this.isNodeMature(node)) return false
 		if (node.reservedBy) return false
 
@@ -181,6 +184,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		const node = this.nodes.get(nodeId)
 		if (!node) return null
 		if (node.remainingHarvests <= 0) return null
+		if (node.isSpoiled) return null
 		if (!this.isNodeMature(node)) return null
 		if (jobId && node.reservedBy && node.reservedBy !== jobId) return null
 
@@ -203,7 +207,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		}
 	}
 
-	public plantNode(options: { nodeType: string, mapName: string, position: Position, growTimeMs?: number, tileBased?: boolean }): ResourceNodeInstance | null {
+	public plantNode(options: { nodeType: string, mapName: string, position: Position, growTimeMs?: number, spoilTimeMs?: number, despawnTimeMs?: number, tileBased?: boolean }): ResourceNodeInstance | null {
 		const def = this.definitions.get(options.nodeType)
 		if (!def) {
 			this.logger.warn(`[ResourceNodesManager] Missing definition for node type ${options.nodeType}`)
@@ -269,6 +273,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			return null
 		}
 
+		const matureAtMs = this.simulationTimeMs + Math.max(0, options.growTimeMs ?? 0)
 		const node: ResourceNodeInstance = {
 			id: nodeId,
 			nodeType: def.id,
@@ -276,7 +281,15 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			position,
 			remainingHarvests,
 			mapObjectId: mapObject.id,
-			matureAtMs: this.simulationTimeMs + Math.max(0, options.growTimeMs ?? 0)
+			matureAtMs
+		}
+
+		if (options.spoilTimeMs !== undefined) {
+			node.spoilAtMs = matureAtMs + Math.max(0, options.spoilTimeMs)
+		}
+		if (options.despawnTimeMs !== undefined) {
+			const base = node.spoilAtMs ?? matureAtMs
+			node.despawnAtMs = base + Math.max(0, options.despawnTimeMs)
 		}
 
 		this.nodes.set(nodeId, node)
@@ -297,6 +310,33 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			return true
 		}
 		return this.simulationTimeMs >= node.matureAtMs
+	}
+
+	private processNodeDecay(): void {
+		if (this.nodes.size === 0) {
+			return
+		}
+
+		for (const node of this.nodes.values()) {
+			if (node.isSpoiled || node.spoilAtMs === undefined) {
+				// skip spoil check
+			} else if (this.simulationTimeMs >= node.spoilAtMs) {
+				node.isSpoiled = true
+				node.reservedBy = undefined
+			}
+
+			if (node.despawnAtMs === undefined) {
+				continue
+			}
+			if (this.simulationTimeMs < node.despawnAtMs) {
+				continue
+			}
+
+			if (node.mapObjectId) {
+				this.managers.mapObjects.removeObjectById(node.mapObjectId, node.mapName)
+			}
+			this.nodes.delete(node.id)
+		}
 	}
 
 	private resolvePosition(spawn: ResourceNodeSpawn): Position {

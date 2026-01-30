@@ -26,6 +26,7 @@ export const ProduceHandler: StepHandler = {
 			releaseFns.push(() => reservationSystem.releaseStorageReservation(reservationId))
 		}
 
+		const outputReservations: Array<string | null> = []
 		for (const output of step.recipe.outputs) {
 			const reservationId = reservationSystem.reserveStorageIncoming(building.id, output.itemType, output.quantity, assignment.assignmentId)
 			if (!reservationId) {
@@ -33,6 +34,7 @@ export const ProduceHandler: StepHandler = {
 				return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
 			}
 			releaseFns.push(() => reservationSystem.releaseStorageReservation(reservationId))
+			outputReservations.push(reservationId)
 		}
 
 		const actions: WorkAction[] = [
@@ -51,15 +53,17 @@ export const ProduceHandler: StepHandler = {
 
 		actions.push({ type: WorkActionType.Wait, durationMs: step.durationMs, setState: SettlerState.Working })
 
-		for (const output of step.recipe.outputs) {
+		step.recipe.outputs.forEach((output, index) => {
+			const reservationId = outputReservations[index]
 			actions.push({
 				type: WorkActionType.DeliverStorage,
 				buildingInstanceId: building.id,
 				itemType: output.itemType,
 				quantity: output.quantity,
+				reservationId: reservationId || undefined,
 				setState: SettlerState.Working
 			})
-		}
+		})
 
 		return {
 			actions,

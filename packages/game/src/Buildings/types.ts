@@ -76,6 +76,8 @@ export interface BuildingDefinition {
 		plantTimeMs: number
 		growTimeMs: number
 		maxPlots?: number
+		spoilTimeMs?: number
+		despawnTimeMs?: number
 	}
 	consumes?: Array<{
 		itemType: string

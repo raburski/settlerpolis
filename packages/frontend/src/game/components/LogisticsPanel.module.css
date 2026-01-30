@@ -40,28 +40,51 @@
 	font-size: 0.6rem;
 }
 
-.request {
+.requestCard {
 	border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-	padding: 8px 0;
+	padding: 10px 0;
 }
 
-.request:last-of-type {
+.requestCard:last-of-type {
 	border-bottom: none;
 }
 
-.row {
+.requestMain {
 	display: flex;
-	justify-content: space-between;
-	gap: 8px;
+	align-items: center;
+	gap: 6px;
 	color: #e2e8f0;
+	font-size: 0.6rem;
+	flex-wrap: wrap;
+}
+
+.buildingIcon {
+	font-size: 0.9rem;
+}
+
+.buildingName {
+	color: #f8fafc;
+	font-size: 0.6rem;
+	font-weight: 600;
+}
+
+.arrow {
+	color: #7dd3fc;
+	font-size: 0.7rem;
+	margin: 0 2px;
+}
+
+.itemIcon {
+	font-size: 0.85rem;
+}
+
+.itemName {
+	color: #dbeafe;
 	font-size: 0.6rem;
 }
 
-.label {
-	color: #94a3b8;
-}
-
-.value {
+.quantity {
 	color: #f8fafc;
-	text-align: right;
+	font-size: 0.6rem;
+	font-weight: 600;
 }

@@ -30,4 +30,7 @@ export interface ResourceNodeInstance {
 	reservedBy?: string
 	mapObjectId?: string
 	matureAtMs?: number
+	spoilAtMs?: number
+	despawnAtMs?: number
+	isSpoiled?: boolean
 }

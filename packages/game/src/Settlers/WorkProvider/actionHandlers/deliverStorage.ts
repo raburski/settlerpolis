@@ -7,7 +7,7 @@ export const DeliverStorageActionHandler: ActionHandler = {
 		if (action.type !== WorkActionType.DeliverStorage) {
 			return
 		}
-		const ok = managers.storage.addToStorage(action.buildingInstanceId, action.itemType, action.quantity)
+		const ok = managers.storage.addToStorage(action.buildingInstanceId, action.itemType, action.quantity, action.reservationId)
 		if (!ok) {
 			fail('storage_deliver_failed')
 			return

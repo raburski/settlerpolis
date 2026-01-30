@@ -164,7 +164,14 @@ export class LogisticsProvider implements WorkProvider {
 		}
 
 		if (request.type === 'input' || request.type === 'construction') {
-			const sourceResult = this.findSourceForItem(building.mapName, building.playerId, request.itemType, request.quantity, building.position)
+			const sourceResult = this.findSourceForItem(
+				building.mapName,
+				building.playerId,
+				request.itemType,
+				request.quantity,
+				building.position,
+				building.id
+			)
 			if (!sourceResult) {
 				return null
 			}
@@ -249,8 +256,17 @@ export class LogisticsProvider implements WorkProvider {
 		this.requests = this.requests.filter(r => !(r.type === type && r.buildingInstanceId === buildingInstanceId && r.itemType === itemType))
 	}
 
-	private findSourceForItem(mapName: string, playerId: string, itemType: string, quantity: number, position: { x: number, y: number }): { source: TransportSource, quantity: number } | null {
-		const sourceBuildings = this.managers.storage.getBuildingsWithAvailableItems(itemType, 1, mapName, playerId)
+	private findSourceForItem(
+		mapName: string,
+		playerId: string,
+		itemType: string,
+		quantity: number,
+		position: { x: number, y: number },
+		excludeBuildingId?: string
+	): { source: TransportSource, quantity: number } | null {
+		const sourceBuildings = this.managers.storage
+			.getBuildingsWithAvailableItems(itemType, 1, mapName, playerId)
+			.filter(buildingId => buildingId !== excludeBuildingId)
 		if (sourceBuildings.length > 0) {
 			const buildingId = this.findClosestBuilding(sourceBuildings, position)
 			if (buildingId) {

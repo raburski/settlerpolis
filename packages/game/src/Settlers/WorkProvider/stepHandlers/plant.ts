@@ -13,7 +13,7 @@ export const PlantHandler: StepHandler = {
 			actions: [
 				{ type: WorkActionType.Move, position: step.position, targetType: 'plot', targetId: `${step.position.x},${step.position.y}`, setState: SettlerState.MovingToResource },
 				{ type: WorkActionType.Wait, durationMs: step.plantTimeMs, setState: SettlerState.Working },
-				{ type: WorkActionType.Plant, buildingInstanceId: step.buildingInstanceId, nodeType: step.nodeType, position: step.position, growTimeMs: step.growTimeMs, setState: SettlerState.Working }
+				{ type: WorkActionType.Plant, buildingInstanceId: step.buildingInstanceId, nodeType: step.nodeType, position: step.position, growTimeMs: step.growTimeMs, spoilTimeMs: step.spoilTimeMs, despawnTimeMs: step.despawnTimeMs, setState: SettlerState.Working }
 			]
 		}
 	}
