@@ -381,18 +381,8 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	private sendPopulationList(client: EventClient): void {
 		const settlers = Array.from(this.settlers.values())
 		const totalCount = settlers.length
-		const byProfession: Record<ProfessionType, number> = {
-			[ProfessionType.Carrier]: 0,
-			[ProfessionType.Builder]: 0,
-			[ProfessionType.Woodcutter]: 0,
-			[ProfessionType.Miner]: 0
-		}
-		const byProfessionActive: Record<ProfessionType, number> = {
-			[ProfessionType.Carrier]: 0,
-			[ProfessionType.Builder]: 0,
-			[ProfessionType.Woodcutter]: 0,
-			[ProfessionType.Miner]: 0
-		}
+		const byProfession = this.getEmptyByProfession()
+		const byProfessionActive = this.getEmptyByProfession()
 		let idleCount = 0
 		let workingCount = 0
 
@@ -416,5 +406,13 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			idleCount,
 			workingCount
 		})
+	}
+
+	private getEmptyByProfession(): Record<ProfessionType, number> {
+		const byProfession = {} as Record<ProfessionType, number>
+		Object.values(ProfessionType).forEach(profession => {
+			byProfession[profession] = 0
+		})
+		return byProfession
 	}
 }

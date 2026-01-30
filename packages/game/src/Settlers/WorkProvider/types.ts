@@ -11,6 +11,7 @@ export enum WorkStepType {
 	Construct = 'construct',
 	Harvest = 'harvest',
 	Produce = 'produce',
+	Plant = 'plant',
 	Transport = 'transport',
 	Wait = 'wait'
 }
@@ -24,6 +25,8 @@ export enum WorkWaitReason {
 	OutputFull = 'output_full',
 	MissingInputs = 'missing_inputs',
 	CarryingItem = 'carrying_item',
+	NoPlots = 'no_plots',
+	WrongProfession = 'wrong_profession',
 	ProviderMissing = 'provider_missing',
 	NoWork = 'no_work',
 	NoRequests = 'no_requests',
@@ -41,6 +44,7 @@ export enum WorkActionType {
 	DeliverConstruction = 'deliver_construction',
 	HarvestNode = 'harvest_node',
 	Produce = 'produce',
+	Plant = 'plant',
 	ChangeProfession = 'change_profession'
 }
 
@@ -70,6 +74,7 @@ export type WorkStep =
 	| { type: WorkStepType.Construct, buildingInstanceId: string, durationMs: number }
 	| { type: WorkStepType.Harvest, buildingInstanceId: string, resourceNodeId: string, outputItemType: ItemType, quantity: number, durationMs: number }
 	| { type: WorkStepType.Produce, buildingInstanceId: string, recipe: ProductionRecipe, durationMs: number }
+	| { type: WorkStepType.Plant, buildingInstanceId: string, nodeType: string, position: Position, plantTimeMs: number, growTimeMs: number }
 	| { type: WorkStepType.Transport, source: TransportSource, target: TransportTarget, itemType: ItemType, quantity: number }
 	| { type: WorkStepType.Wait, reason: WorkWaitReason, retryAtMs?: number }
 
@@ -92,6 +97,7 @@ export type WorkAction =
 	| { type: WorkActionType.DeliverConstruction, buildingInstanceId: string, itemType: ItemType, quantity: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.HarvestNode, nodeId: string, quantity: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Produce, buildingInstanceId: string, recipe: ProductionRecipe, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.Plant, buildingInstanceId: string, nodeType: string, position: Position, growTimeMs: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.ChangeProfession, profession: ProfessionType, setState?: import('../../Population/types').SettlerState }
 
 export interface WorkProvider {

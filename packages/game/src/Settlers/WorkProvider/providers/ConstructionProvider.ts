@@ -51,7 +51,10 @@ export class ConstructionProvider implements WorkProvider {
 		}
 
 		if (settler.profession !== ProfessionType.Builder) {
-			return { type: WorkStepType.AcquireTool, profession: ProfessionType.Builder }
+			if (settler.profession === ProfessionType.Carrier) {
+				return { type: WorkStepType.AcquireTool, profession: ProfessionType.Builder }
+			}
+			return { type: WorkStepType.Wait, reason: WorkWaitReason.WrongProfession }
 		}
 
 		return { type: WorkStepType.Construct, buildingInstanceId: building.id, durationMs: 2000 }

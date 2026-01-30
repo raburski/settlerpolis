@@ -55,7 +55,10 @@ export class BuildingProvider implements WorkProvider {
 
 		const requiredProfession = definition.requiredProfession as ProfessionType | undefined
 		if (requiredProfession && settler.profession !== requiredProfession) {
-			return { type: WorkStepType.AcquireTool, profession: requiredProfession }
+			if (settler.profession === ProfessionType.Carrier) {
+				return { type: WorkStepType.AcquireTool, profession: requiredProfession }
+			}
+			return { type: WorkStepType.Wait, reason: WorkWaitReason.WrongProfession }
 		}
 
 		if (building.stage !== ConstructionStage.Completed) {

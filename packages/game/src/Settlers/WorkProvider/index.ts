@@ -11,6 +11,8 @@ import type { LootManager } from '../../Loot'
 import type { StorageManager } from '../../Storage'
 import type { ResourceNodesManager } from '../../ResourceNodes'
 import type { ItemsManager } from '../../Items'
+import type { MapManager } from '../../Map'
+import type { MapObjectsManager } from '../../MapObjects'
 import type { ReservationSystem } from '../../Reservation'
 import { Logger } from '../../Logs'
 import { Receiver } from '../../Receiver'
@@ -38,6 +40,8 @@ export interface WorkProviderDeps {
 	storage: StorageManager
 	resourceNodes: ResourceNodesManager
 	items: ItemsManager
+	map: MapManager
+	mapObjects: MapObjectsManager
 	reservations: ReservationSystem
 }
 
@@ -181,9 +185,14 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			allowFallbackToCarrier: !isConstruction
 		})
 		if (!candidate) {
+			const reason = isConstruction
+				? 'no_builder_available'
+				: requiredProfession
+					? 'no_suitable_profession'
+					: 'no_available_worker'
 			client.emit(Receiver.Sender, PopulationEvents.SC.WorkerRequestFailed, {
 				buildingInstanceId: building.id,
-				reason: isConstruction ? 'no_builder_available' : 'no_available_worker'
+				reason
 			})
 			return
 		}
@@ -365,6 +374,11 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		if (step.type === WorkStepType.Wait) {
 			this.managers.population.setSettlerWaitReason(settlerId, step.reason)
 			this.managers.population.setSettlerLastStep(settlerId, step.type, step.reason)
+			if (assignment.providerType === 'logistics' &&
+				(step.reason === WorkWaitReason.NoRequests || step.reason === WorkWaitReason.NoViableRequest)) {
+				this.unassignWorker({ settlerId })
+				return
+			}
 		} else {
 			this.managers.population.setSettlerWaitReason(settlerId, undefined)
 			this.managers.population.setSettlerLastStep(settlerId, step.type, undefined)
@@ -453,6 +467,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 					return this.findClosestSettler(carriers, position)
 				}
 			}
+			return null
 		}
 
 		return this.findClosestSettler(idleSettlers, position)
