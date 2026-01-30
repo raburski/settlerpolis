@@ -1,13 +1,5 @@
 import { EventBus } from '../EventBus'
-import { Event } from '@rugged/game'
-
-// ProductionStatus enum (duplicated from game package until it's exported)
-export enum ProductionStatus {
-	Idle = 'idle',
-	NoInput = 'no_input',
-	InProduction = 'in_production',
-	NoWorker = 'no_worker'
-}
+import { Event, ProductionStatus } from '@rugged/game'
 
 export interface BuildingProductionState {
 	buildingInstanceId: string
@@ -24,7 +16,7 @@ class ProductionServiceClass {
 
 	private setupEventHandlers(): void {
 		// Handle production started
-		EventBus.on(Event.Production.SC.ProductionStarted, (data: {
+		EventBus.on(Event.Buildings.SC.ProductionStarted, (data: {
 			buildingInstanceId: string
 			recipe: any
 		}) => {
@@ -48,7 +40,7 @@ class ProductionServiceClass {
 		})
 
 		// Handle production stopped
-		EventBus.on(Event.Production.SC.ProductionStopped, (data: {
+		EventBus.on(Event.Buildings.SC.ProductionStopped, (data: {
 			buildingInstanceId: string
 		}) => {
 			const production = this.buildingProductions.get(data.buildingInstanceId)
@@ -64,7 +56,7 @@ class ProductionServiceClass {
 		})
 
 		// Handle production progress
-		EventBus.on(Event.Production.SC.ProductionProgress, (data: {
+		EventBus.on(Event.Buildings.SC.ProductionProgress, (data: {
 			buildingInstanceId: string
 			progress: number
 		}) => {
@@ -80,7 +72,7 @@ class ProductionServiceClass {
 		})
 
 		// Handle production completed
-		EventBus.on(Event.Production.SC.ProductionCompleted, (data: {
+		EventBus.on(Event.Buildings.SC.ProductionCompleted, (data: {
 			buildingInstanceId: string
 			recipe: any
 		}) => {
@@ -97,7 +89,7 @@ class ProductionServiceClass {
 		})
 
 		// Handle status changed
-		EventBus.on(Event.Production.SC.StatusChanged, (data: {
+		EventBus.on(Event.Buildings.SC.ProductionStatusChanged, (data: {
 			buildingInstanceId: string
 			status: ProductionStatus
 		}) => {
@@ -139,4 +131,3 @@ class ProductionServiceClass {
 }
 
 export const productionService = new ProductionServiceClass()
-

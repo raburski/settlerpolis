@@ -25,12 +25,11 @@ import { BuildingManager } from './Buildings'
 import { PopulationManager } from './Population'
 import { MovementManager } from './Movement'
 import { ProfessionType } from './Population/types'
-import { JobsManager } from './Jobs'
 import { StorageManager } from './Storage'
-import { ProductionManager } from './Production'
+import { ReservationSystem } from './Reservation'
 import { SimulationManager } from './Simulation'
 import { ResourceNodesManager } from './ResourceNodes'
-import { HarvestManager } from './Harvest'
+import { WorkProviderManager } from './Settlers/WorkProvider'
 import { ManagersHub } from './Managers'
 
 // Export types and events
@@ -38,6 +37,7 @@ export * from './types'
 export * from './events'
 export * from './consts'
 export * from './utils'
+export * from './Settlers/WorkProvider'
 export { EquipmentSlot, EquipmentSlotType }
 // export { Event } from './events' 
 
@@ -45,6 +45,7 @@ import { LogsManager, LogLevel } from './Logs'
 
 export interface GameManagerOptions {
 	simulationTickMs?: number
+	logAllowlist?: string[]
 }
 
 export class GameManager {
@@ -60,6 +61,9 @@ export class GameManager {
 		// Initialize LogsManager first
 		this.managers = new ManagersHub()
 		this.managers.logs = new LogsManager()
+		if (options.logAllowlist && options.logAllowlist.length > 0) {
+			this.managers.logs.setAllowedManagers(options.logAllowlist)
+		}
 		this.managers.simulation = new SimulationManager(
 			event,
 			this.managers.logs.getLogger('SimulationManager'),
@@ -105,12 +109,11 @@ export class GameManager {
 		// Create StorageManager after BuildingManager (to avoid circular dependency)
 		this.managers.storage = new StorageManager(this.managers, event, this.managers.logs.getLogger('StorageManager'))
 		
-		// Create JobsManager after BuildingManager, PopulationManager, and StorageManager (to avoid circular dependency)
-		this.managers.jobs = new JobsManager(this.managers, event, this.managers.logs.getLogger('JobsManager'))
-		
-		// Create ProductionManager after BuildingManager, StorageManager, JobsManager, and LootManager
-		this.managers.production = new ProductionManager(this.managers, event, this.managers.logs.getLogger('ProductionManager'))
-		this.managers.harvest = new HarvestManager(this.managers, event, this.managers.logs.getLogger('HarvestManager'))
+		// Create ReservationSystem after Storage/Loot/ResourceNodes/Population
+		this.managers.reservations = new ReservationSystem(this.managers)
+
+		// Create WorkProviderManager after BuildingManager, PopulationManager, StorageManager, and ReservationSystem
+		this.managers.work = new WorkProviderManager(this.managers, event, this.managers.logs.getLogger('WorkProviderManager'))
 		
 		this.managers.trigger = new TriggerManager(
 			this.managers,
@@ -156,9 +159,9 @@ export class GameManager {
 		this.managers.logs.setManagerLevel('MovementManager', LogLevel.Info)
 		this.managers.logs.setManagerLevel('PopulationManager', LogLevel.Info)
 		
-		// Resource collection debugging - enable BuildingManager and JobsManager at Info level
+		// Resource collection debugging - enable BuildingManager and WorkProviderManager at Info level
 		this.managers.logs.setManagerLevel('BuildingManager', LogLevel.Info)
-		this.managers.logs.setManagerLevel('JobsManager', LogLevel.Info)
+		this.managers.logs.setManagerLevel('WorkProviderManager', LogLevel.Info)
 		
 		// Set most other managers to Warn level (only show warnings and errors)
 		const quietManagers = [
@@ -182,10 +185,9 @@ export class GameManager {
 			'ConditionEffectManager',
 			'ContentLoader',
 			'StorageManager',
-			'ProductionManager',
 			'SimulationManager',
 			'ResourceNodesManager',
-			'HarvestManager'
+			'WorkProviderManager'
 		]
 		for (const managerName of quietManagers) {
 			this.managers.logs.setManagerLevel(managerName, LogLevel.Warn)

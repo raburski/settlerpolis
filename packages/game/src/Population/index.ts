@@ -9,12 +9,8 @@ import {
 	ProfessionDefinition,
 	ProfessionToolDefinition,
 	SpawnSettlerData,
-	RequestWorkerData,
-	UnassignWorkerData,
-	RequestProfessionToolPickupData,
-	RequestRevertToCarrierData
+	RequestListData
 } from './types'
-import { JobAssignment, JobStatus, JobType, RoleType } from '../Jobs/types'
 import { Receiver } from '../Receiver'
 import { v4 as uuidv4 } from 'uuid'
 import type { BuildingManager } from '../Buildings'
@@ -22,20 +18,13 @@ import type { Scheduler } from '../Scheduler'
 import type { MapManager } from '../Map'
 import type { LootManager } from '../Loot'
 import type { ItemsManager } from '../Items'
-import { Position } from '../types'
-import { ConstructionStage } from '../Buildings/types'
 import type { MovementManager } from '../Movement'
-import { MovementEntity } from '../Movement'
-import type { ResourceNodesManager } from '../ResourceNodes'
-import { SettlerStateMachine } from './StateMachine'
-import type { StateMachineManagers } from './transitions/types'
-import { PopulationStats } from './Stats'
-import { calculateDistance } from '../utils'
-import { PlayerJoinData } from '../Players/types'
-import type { JobsManager } from '../Jobs'
 import type { StorageManager } from '../Storage'
+import { Position } from '../types'
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
+import { PopulationStats } from './Stats'
+import type { PlayerJoinData } from '../Players/types'
 
 const SETTLER_SPEED = 164 // pixels per second (2 tiles per second at 32px per tile)
 
@@ -46,25 +35,16 @@ export interface PopulationDeps {
 	loot: LootManager
 	items: ItemsManager
 	movement: MovementManager
-	resourceNodes: ResourceNodesManager
-	jobs: JobsManager
 	storage: StorageManager
 }
 
 export class PopulationManager extends BaseManager<PopulationDeps> {
 	private settlers = new Map<string, Settler>() // settlerId -> Settler
-	// Note: jobs map removed - JobsManager tracks jobs now
-	private houseSettlers = new Map<string, string[]>() // houseBuildingInstanceId -> settlerIds[]
 	private spawnTimers = new Map<string, NodeJS.Timeout>() // houseId -> timer
-	private jobTickInterval: NodeJS.Timeout | null = null
-	private idleTickInterval: NodeJS.Timeout | null = null
-	private recoveryTickInterval: NodeJS.Timeout | null = null
 	private professionTools = new Map<string, ProfessionType>() // itemType -> ProfessionType
 	private professions = new Map<ProfessionType, ProfessionDefinition>() // professionType -> ProfessionDefinition
-	private stateMachine: SettlerStateMachine
 	private stats: PopulationStats
 	private startingPopulation: Array<{ profession: ProfessionType, count: number }> = []
-	// Note: Job type is determined by building state (Phase B only supports construction jobs)
 
 	constructor(
 		managers: PopulationDeps,
@@ -74,13 +54,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	) {
 		super(managers)
 		this.startingPopulation = startingPopulation || []
-		
-		// Initialize state machine with managers
-		this.managers.event = this.event
-		this.managers.logger = this.logger
-		this.stateMachine = new SettlerStateMachine(this.managers as StateMachineManagers)
-		
-		// Initialize stats calculator with event manager and settlers getter
+
 		this.stats = new PopulationStats(
 			event,
 			(mapName: string, playerId: string) => {
@@ -89,25 +63,37 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 				)
 			}
 		)
-		
+
 		this.setupEventHandlers()
-		// Setup stats-related event handlers
 		this.stats.setupEventHandlers()
-		this.startJobTickLoop()
-		this.startIdleTickLoop()
-		this.startRecoveryTickLoop()
-		this.loadProfessionToolsFromItems()
 	}
 
-	// Movement is now handled by MovementManager
-	// Settlers are registered with MovementManager on spawn
-	// MovementManager emits MovementEvents.SS.PathComplete when movement completes (with optional target info)
-	// MovementManager emits MovementEvents.SS.StepComplete to sync positions
+	private setupEventHandlers(): void {
+		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
+			if (this.hasAnySettlersForPlayer(client.id)) {
+				return
+			}
+			const mapName = data.mapId || this.managers.map.getDefaultMapId()
+			this.spawnInitialPopulation(mapName, client.id, data.position)
+		})
 
-	// Load profession tools from item metadata (deprecated - now handled by ContentLoader)
-	private loadProfessionToolsFromItems(): void {
-		// This method is no longer needed - profession tools are loaded via ContentLoader
-		// Items with changesProfession are automatically registered as profession tools
+		this.event.on(Event.Buildings.SS.HouseCompleted, (data: { buildingInstanceId: string, buildingId: string }) => {
+			const buildingDef = this.managers.buildings.getBuildingDefinition(data.buildingId)
+			if (buildingDef && buildingDef.spawnsSettlers) {
+				this.onHouseCompleted(data.buildingInstanceId, data.buildingId)
+			}
+		})
+
+		this.event.on<RequestListData>(PopulationEvents.CS.RequestList, (data, client) => {
+			this.sendPopulationList(client)
+		})
+
+		this.event.on(MovementEvents.SS.StepComplete, (data: { entityId: string, position: Position }) => {
+			const settler = this.settlers.get(data.entityId)
+			if (settler) {
+				settler.position = data.position
+			}
+		})
 	}
 
 	// Public method to load profession tools (called from ContentLoader)
@@ -128,661 +114,138 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		this.logger.log(`Loaded ${professions.length} professions`)
 	}
 
-	private setupEventHandlers(): void {
-		// Handle building completion - listen to internal SS event for house completion
-		// This is more reliable than SC events which only go to clients
-		this.event.on(Event.Buildings.SS.HouseCompleted, (data: { buildingInstanceId: string, buildingId: string }, client) => {
-			this.logger.debug(`House completed SS event received:`, {
-				buildingId: data.buildingId,
-				buildingInstanceId: data.buildingInstanceId
-			})
-			
-			// Verify building definition has spawnsSettlers
-			const buildingDef = this.managers.buildings.getBuildingDefinition(data.buildingId)
-			if (buildingDef && buildingDef.spawnsSettlers) {
-				this.logger.log(`✓ House detected! Starting spawn timer for house ${data.buildingInstanceId}`)
-				// This is a house - start spawn timer
-				this.onHouseCompleted(data.buildingInstanceId, data.buildingId)
-			} else {
-				this.logger.warn(`House completed event received but building ${data.buildingId} is not configured to spawn settlers`)
-			}
-		})
-
-		// Handle construction completion - complete construction jobs and reassign builders
-		this.event.on(Event.Buildings.SS.ConstructionCompleted, (data: { buildingInstanceId: string, buildingId: string, mapName: string, playerId: string }, client) => {
-			this.logger.log(`[CONSTRUCTION COMPLETED] Building ${data.buildingInstanceId} (${data.buildingId}) completed construction`)
-			this.onConstructionCompleted(data.buildingInstanceId, data.mapName, data.playerId)
-		})
-
-		// Handle CS events
-		this.event.on<RequestWorkerData>(PopulationEvents.CS.RequestWorker, (data, client) => {
-			this.requestWorker(data, client)
-		})
-
-		this.event.on<UnassignWorkerData>(PopulationEvents.CS.UnassignWorker, (data, client) => {
-			this.unassignWorker(data, client)
-		})
-
-		this.event.on<RequestProfessionToolPickupData>(PopulationEvents.CS.RequestProfessionToolPickup, (data, client) => {
-			this.requestProfessionToolPickup(data, client)
-		})
-
-		this.event.on<RequestRevertToCarrierData>(PopulationEvents.CS.RequestRevertToCarrier, (data, client) => {
-			this.requestRevertToCarrier(data, client)
-		})
-
-		// Handle SS events (internal)
-		this.event.on(PopulationEvents.SS.SpawnTick, (data: { houseId: string }, client) => {
-			// Handle spawn tick for house
-			// This will be triggered by scheduler
-		})
-
-		// Listen for movement step completion to sync settler positions
-		this.event.on(MovementEvents.SS.StepComplete, (data: { entityId: string, position: Position }) => {
-			const settler = this.settlers.get(data.entityId)
-			if (settler) {
-				// Sync settler position with MovementManager
-				const oldPosition = { ...settler.position }
-				settler.position = data.position
-				this.logger.debug(`[POSITION SYNC] StepComplete: settler=${data.entityId} | oldPosition=(${Math.round(oldPosition.x)},${Math.round(oldPosition.y)}) | newPosition=(${Math.round(data.position.x)},${Math.round(data.position.y)})`)
-			}
-		})
-
-		// Listen to WorkerAssigned event
-		// State machine emits this event - JobsManager handles job tracking
-		this.event.on(PopulationEvents.SC.WorkerAssigned, (data: { jobAssignment: JobAssignment }) => {
-			// Job assignment is tracked by JobsManager and settler.stateContext.jobId
-			// No local tracking needed
-		})
-
-		// Listen for movement path completion - state machine handles all transitions automatically
-		this.event.on(MovementEvents.SS.PathComplete, (data: { entityId: string, targetType?: string, targetId?: string }) => {
-			const timestamp = Date.now()
-			this.logger.log(`[PATH COMPLETE RECEIVED] entityId=${data.entityId} | targetType=${data.targetType || 'none'} | targetId=${data.targetId || 'none'} | time=${timestamp}`)
-			const settler = this.settlers.get(data.entityId)
-			if (!settler) {
-				this.logger.warn(`[PATH COMPLETE ERROR] Settler not found for entityId=${data.entityId}`)
-				return
-			}
-
-			// Sync position from MovementManager before state transition (StepComplete should have fired, but ensure sync)
-			const currentPosition = this.managers.movement.getEntityPosition(settler.id)
-			if (currentPosition) {
-				settler.position = currentPosition
-				this.logger.log(`[POSITION SYNC] PathComplete: synced final position: settler=${settler.id} | position=(${Math.round(currentPosition.x)},${Math.round(currentPosition.y)})`)
-			}
-
-			this.logger.log(`[STATE BEFORE TRANSITION] entityId=${settler.id} | state=${settler.state} | position=(${Math.round(settler.position.x)},${Math.round(settler.position.y)}) | jobId=${settler.stateContext.jobId || 'none'} | targetId=${settler.stateContext.targetId || 'none'} | time=${timestamp}`)
-
-			// State machine handles all transitions automatically via completed callbacks
-			const transitionResult = this.stateMachine.completeTransition(settler)
-			
-			// If no transition was executed (transitionResult === false), we still need to emit events
-			// to notify the frontend that movement has completed and the settler is at the final position
-			// This is important for idle wandering where the completed callback returns null (no next state)
-			if (!transitionResult) {
-				// Sync position one more time to ensure we have the latest position from MovementManager
-				const finalPosition = this.managers.movement.getEntityPosition(settler.id)
-				if (finalPosition) {
-					settler.position = { ...finalPosition } // Create a copy to ensure we're using the exact position
-				}
-				
-				// For idle wandering, emit PositionUpdated to stop interpolation and sync position
-				// This ensures the frontend knows movement has stopped before a new movement might start
-				// We use a small delay to ensure events are processed in order and the frontend has time to sync
-				if (settler.state === SettlerState.Idle && !settler.stateContext.jobId) {
-					// Emit PositionUpdated immediately to stop interpolation
-					this.event.emit(Receiver.Group, MovementEvents.SC.PositionUpdated, {
-						entityId: settler.id,
-						position: { ...settler.position }, // Use exact position from MovementManager
-						mapName: settler.mapName
-					}, settler.mapName)
-					
-					this.logger.log(`[MOVEMENT COMPLETED] Emitted PositionUpdated for idle wander completion: settler=${settler.id} | position=(${Math.round(settler.position.x)},${Math.round(settler.position.y)})`)
-					
-					// Don't emit SettlerUpdated immediately - the PositionUpdated event already syncs the position
-					// Emit it with a small delay to ensure PositionUpdated is processed first
-					// This prevents position conflicts between the two events
-					setTimeout(() => {
-						// Re-sync position to ensure it's still correct
-						const currentPosition = this.managers.movement.getEntityPosition(settler.id)
-						if (currentPosition) {
-							settler.position = { ...currentPosition }
-						}
-						
-						// Emit SettlerUpdated to update state context (without position, since it's already synced)
-						this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, {
-							settler
-						}, settler.mapName)
-						
-						this.logger.log(`[MOVEMENT COMPLETED] Emitted SettlerUpdated (delayed) for movement completion: settler=${settler.id} | position=(${Math.round(settler.position.x)},${Math.round(settler.position.y)})`)
-					}, 50) // Small delay to ensure PositionUpdated is processed first
-				} else {
-					// For non-idle wandering (shouldn't happen, but handle it), emit SettlerUpdated immediately
-					this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, {
-						settler
-					}, settler.mapName)
-					
-					this.logger.log(`[MOVEMENT COMPLETED] Emitted SettlerUpdated for movement completion (no transition): settler=${settler.id} | position=(${Math.round(settler.position.x)},${Math.round(settler.position.y)})`)
-				}
-			}
-			
-			this.logger.log(`[STATE AFTER TRANSITION] entityId=${settler.id} | state=${settler.state} | position=(${Math.round(settler.position.x)},${Math.round(settler.position.y)}) | transitionResult=${transitionResult} | jobId=${settler.stateContext.jobId || 'none'} | targetId=${settler.stateContext.targetId || 'none'} | time=${Date.now()}`)
-		})
-		
-
-		// Handle player join to spawn starting population
-		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
-			if (data.mapId && this.startingPopulation.length > 0) {
-				this.spawnStartingPopulation(data.position, data.mapId, client)
-			}
-		})
+	public getSettler(settlerId: string): Settler | undefined {
+		return this.settlers.get(settlerId)
 	}
 
-	// Spawn settler from house
-	private spawnSettler(data: SpawnSettlerData, client: EventClient): void {
-		this.logger.debug(`spawnSettler called:`, { houseBuildingInstanceId: data.houseBuildingInstanceId, clientId: client.id })
-		
-		// 1. Verify house building exists and is completed
-		const building = this.managers.buildings.getBuildingInstance(data.houseBuildingInstanceId)
-		if (!building) {
-			this.logger.error(`House building not found: ${data.houseBuildingInstanceId}`)
-			return
-		}
-
-		this.logger.debug(`House building found:`, {
-			id: building.id,
-			buildingId: building.buildingId,
-			stage: building.stage,
-			position: building.position
-		})
-
-		if (building.stage !== ConstructionStage.Completed) {
-			this.logger.error(`House building not completed: ${data.houseBuildingInstanceId}, stage: ${building.stage}`)
-			return
-		}
-
-		const buildingDef = this.managers.buildings.getBuildingDefinition(building.buildingId)
-		if (!buildingDef) {
-			this.logger.error(`Building definition not found: ${building.buildingId}`)
-			return
-		}
-		
-		if (!buildingDef.spawnsSettlers) {
-			this.logger.error(`Building is not a house (spawnsSettlers: ${buildingDef.spawnsSettlers}): ${data.houseBuildingInstanceId}`)
-			return
-		}
-
-		// 2. Check house capacity (max settlers)
-		const settlersFromHouse = this.houseSettlers.get(data.houseBuildingInstanceId) || []
-		this.logger.debug(`House capacity check:`, {
-			currentSettlers: settlersFromHouse.length,
-			maxOccupants: buildingDef.maxOccupants
-		})
-		
-		if (buildingDef.maxOccupants && settlersFromHouse.length >= buildingDef.maxOccupants) {
-			this.logger.warn(`House at capacity: ${data.houseBuildingInstanceId} (${settlersFromHouse.length}/${buildingDef.maxOccupants})`)
-			return
-		}
-
-		// 3. Create settler with default Carrier profession
-		// Spawn settler near house (offset by half tile size, which is typically 32px)
-		// Building position is typically at top-left corner, so spawn to the right
-		const TILE_SIZE = 32
-		const settler: Settler = {
-			id: uuidv4(),
-			playerId: client.id,
-			mapName: building.mapName,
-			position: {
-				x: building.position.x + (buildingDef.footprint.width * TILE_SIZE) + TILE_SIZE, // Spawn to the right of house
-				y: building.position.y + (buildingDef.footprint.height * TILE_SIZE / 2) // Center vertically
-			},
-			profession: ProfessionType.Carrier,
-			state: SettlerState.Idle,
-			stateContext: {},
-			houseId: data.houseBuildingInstanceId,
-			speed: SETTLER_SPEED,
-			createdAt: Date.now()
-		}
-
-		this.logger.debug(`Created settler:`, {
-			id: settler.id,
-			position: settler.position,
-			profession: settler.profession,
-			houseId: settler.houseId
-		})
-
-		// 4. Add to settlers map
-		this.settlers.set(settler.id, settler)
-
-		// 5. Register settler with MovementManager
-		const movementEntity: MovementEntity = {
-			id: settler.id,
-			position: settler.position,
-			mapName: settler.mapName,
-			speed: settler.speed
-		}
-		this.managers.movement.registerEntity(movementEntity)
-
-		// 6. Track settler in house
-		if (!this.houseSettlers.has(data.houseBuildingInstanceId)) {
-			this.houseSettlers.set(data.houseBuildingInstanceId, [])
-		}
-		this.houseSettlers.get(data.houseBuildingInstanceId)!.push(settler.id)
-
-		// 6. Emit sc:population:settler-spawned
-		this.logger.debug(`Emitting settler spawned event to group: ${building.mapName}`)
-		client.emit(Receiver.Group, PopulationEvents.SC.SettlerSpawned, {
-			settler
-		}, building.mapName)
-
-		// 7. Emit sc:population:stats-updated with new stats
-		this.stats.emitPopulationStatsUpdate(client, building.mapName)
-
-		this.logger.log(`✓ Successfully spawned settler ${settler.id} from house ${data.houseBuildingInstanceId}`)
+	public getSettlers(): Settler[] {
+		return Array.from(this.settlers.values())
 	}
 
-	// Spawn starting population when player joins
-	private spawnStartingPopulation(playerPosition: Position, mapName: string, client: EventClient): void {
-		if (this.startingPopulation.length === 0) {
-			return // No starting population configured
-		}
-
-		const TILE_SIZE = 32
-		let settlerIndex = 0
-
-		this.startingPopulation.forEach((popEntry) => {
-			// Validate profession exists
-			if (!this.professions.has(popEntry.profession)) {
-				this.logger.warn(`Starting population profession ${popEntry.profession} does not exist, skipping`)
-				return
-			}
-
-			// Spawn the specified number of settlers with this profession
-			for (let i = 0; i < popEntry.count; i++) {
-				// Calculate offset in a grid pattern (3 columns)
-				const col = settlerIndex % 3
-				const row = Math.floor(settlerIndex / 3)
-				const offsetX = (col - 1) * TILE_SIZE * 2 // Spread horizontally
-				const offsetY = row * TILE_SIZE * 2 // Stack vertically
-
-				const settler: Settler = {
-					id: uuidv4(),
-					playerId: client.id,
-					mapName: mapName,
-					position: {
-						x: playerPosition.x + offsetX,
-						y: playerPosition.y + offsetY
-					},
-					profession: popEntry.profession,
-					state: SettlerState.Idle,
-					stateContext: {},
-					speed: SETTLER_SPEED,
-					createdAt: Date.now()
-				}
-
-				this.logger.debug(`Spawning starting settler:`, {
-					id: settler.id,
-					profession: settler.profession,
-					position: settler.position
-				})
-
-				// Add to settlers map
-				this.settlers.set(settler.id, settler)
-
-				// Register settler with MovementManager
-				const movementEntity: MovementEntity = {
-					id: settler.id,
-					position: settler.position,
-					mapName: settler.mapName,
-					speed: settler.speed
-				}
-				this.managers.movement.registerEntity(movementEntity)
-
-				// Emit settler spawned event
-				client.emit(Receiver.Group, PopulationEvents.SC.SettlerSpawned, {
-					settler
-				}, mapName)
-
-				settlerIndex++
-			}
-		})
-
-		// Emit stats update after spawning all starting population
-		if (settlerIndex > 0) {
-			this.stats.emitPopulationStatsUpdate(client, mapName)
-			this.logger.log(`✓ Spawned ${settlerIndex} starting settlers for player ${client.id}`)
-		}
-	}
-
-	// Request worker for building (automatic assignment)
-	private requestWorker(data: RequestWorkerData, client: EventClient): void {
-		// 1. Verify building exists and needs workers
-		const building = this.managers.buildings.getBuildingInstance(data.buildingInstanceId)
-		if (!building) {
-			this.logger.error(`Building not found: ${data.buildingInstanceId}`)
-			client.emit(Receiver.Sender, PopulationEvents.SC.WorkerRequestFailed, {
-				reason: 'building_not_found',
-				buildingInstanceId: data.buildingInstanceId
-			})
-			return
-		}
-
-		// 2. Get building definition to check required profession
-		const buildingDef = this.managers.buildings.getBuildingDefinition(building.buildingId)
-		if (!buildingDef) {
-			this.logger.error(`Building definition not found: ${building.buildingId}`)
-			client.emit(Receiver.Sender, PopulationEvents.SC.WorkerRequestFailed, {
-				reason: 'building_definition_not_found',
-				buildingInstanceId: data.buildingInstanceId
-			})
-			return
-		}
-
-		// 3. Check if building needs workers
-		if (!this.managers.buildings.getBuildingNeedsWorkers(data.buildingInstanceId)) {
-			this.logger.warn(`Building does not need workers: ${data.buildingInstanceId}`)
-			client.emit(Receiver.Sender, PopulationEvents.SC.WorkerRequestFailed, {
-				reason: 'building_does_not_need_workers',
-				buildingInstanceId: data.buildingInstanceId
-			})
-			return
-		}
-
-		// 4. Get building position
-		const buildingPosition = building.position
-
-		// 5. Delegate to JobsManager to create job and assign worker
-		if (this.managers.jobs) {
-			this.managers.jobs.requestWorker(data.buildingInstanceId)
-		} else {
-			this.logger.warn(`JobsManager not set, cannot assign worker`)
-			client.emit(Receiver.Sender, PopulationEvents.SC.WorkerRequestFailed, {
-				reason: 'jobs_manager_not_available',
-				buildingInstanceId: data.buildingInstanceId
-			})
-		}
-	}
-
-	private requestProfessionToolPickup(data: RequestProfessionToolPickupData, client: EventClient): void {
-		const mapName = client.currentGroup
-		if (!mapName) {
-			this.logger.warn(`[PROFESSION TOOL PICKUP] No map group available for client ${client.id}`)
-			return
-		}
-
-		const requiredProfession = data.profession
-		const toolItemType = this.findToolForProfession(requiredProfession)
-		if (!toolItemType) {
-			this.logger.warn(`[PROFESSION TOOL PICKUP] No tool item type found for profession ${requiredProfession}`)
-			return
-		}
-
-		const tool = this.findToolOnMap(mapName, toolItemType)
-		if (!tool) {
-			this.logger.warn(`[PROFESSION TOOL PICKUP] No tool found on map for profession ${requiredProfession}`)
-			return
-		}
-
-		const idleCarriers = Array.from(this.settlers.values()).filter(settler =>
-			settler.mapName === mapName &&
-			settler.playerId === client.id &&
-			settler.state === SettlerState.Idle &&
-			settler.profession === ProfessionType.Carrier
-		)
-
-		if (idleCarriers.length === 0) {
-			this.logger.warn(`[PROFESSION TOOL PICKUP] No idle carrier available for profession ${requiredProfession}`)
-			return
-		}
-
-		const closestSettler = this.findClosestSettler(idleCarriers, tool.position)
-		if (!this.managers.loot.reserveItem(tool.id, closestSettler.id)) {
-			this.logger.warn(`[PROFESSION TOOL PICKUP] Tool ${tool.id} already reserved`)
-			return
-		}
-		closestSettler.stateContext = {}
-		const started = this.stateMachine.executeTransition(closestSettler, SettlerState.MovingToTool, {
-			toolId: tool.id,
-			toolPosition: tool.position,
-			requiredProfession
-		})
-		if (!started) {
-			this.managers.loot.releaseReservation(tool.id, closestSettler.id)
-		}
-	}
-
-	private startRecoveryTickLoop(): void {
-		const RECOVERY_TICK_INTERVAL = 1000
-		const scheduleNextTick = () => {
-			this.recoveryTickInterval = setTimeout(() => {
-				this.processRecoveryTick()
-				scheduleNextTick()
-			}, RECOVERY_TICK_INTERVAL)
-		}
-
-		scheduleNextTick()
-	}
-
-	private processRecoveryTick(): void {
-		const settlers = Array.from(this.settlers.values())
-		for (const settler of settlers) {
-			const jobId = settler.stateContext.jobId
-			if (!jobId || !this.managers.jobs) {
-				continue
-			}
-
-			const job = this.managers.jobs.getJob(jobId)
-			if (!job || job.status === JobStatus.Cancelled || job.status === JobStatus.Completed) {
-				this.resetSettlerFromJob(jobId, job ? `job_${job.status}` : 'job_missing')
-				continue
-			}
-
-			if (job.settlerId !== settler.id) {
-				this.resetSettlerFromJob(jobId, 'job_owner_mismatch')
+	private hasAnySettlersForPlayer(playerId: string): boolean {
+		for (const settler of this.settlers.values()) {
+			if (settler.playerId === playerId) {
+				return true
 			}
 		}
+		return false
 	}
 
-	private requestRevertToCarrier(data: RequestRevertToCarrierData, client: EventClient): void {
-		const mapName = client.currentGroup
-		if (!mapName) {
-			this.logger.warn(`[REVERT TO CARRIER] No map group available for client ${client.id}`)
-			return
-		}
-
-		if (data.profession === ProfessionType.Carrier) {
-			return
-		}
-
-		const idleWorkers = Array.from(this.settlers.values()).filter(settler =>
-			settler.mapName === mapName &&
-			settler.playerId === client.id &&
-			settler.state === SettlerState.Idle &&
-			settler.profession === data.profession
-		)
-
-		if (idleWorkers.length === 0) {
-			this.logger.warn(`[REVERT TO CARRIER] No idle worker available for profession ${data.profession}`)
-			return
-		}
-
-		const settler = idleWorkers[0]
-		const toolItemType = this.findToolForProfession(data.profession)
-		if (toolItemType) {
-			this.managers.loot.dropItem(
-				{ id: uuidv4(), itemType: toolItemType },
-				settler.position,
-				client,
-				1
-			)
-		}
-
-		const oldProfession = settler.profession
-		settler.profession = ProfessionType.Carrier
-		this.event.emit(Receiver.Group, PopulationEvents.SC.ProfessionChanged, {
-			settlerId: settler.id,
-			oldProfession,
-			newProfession: settler.profession
-		}, settler.mapName)
-
-		this.stats.emitPopulationStatsUpdate(client, mapName)
+	public getAvailableSettlers(mapName: string, playerId: string): Settler[] {
+		return Array.from(this.settlers.values())
+			.filter(settler => settler.mapName === mapName && settler.playerId === playerId)
+			.filter(settler => settler.state === SettlerState.Idle)
 	}
 
-	// Query methods for JobsManager
 	public getAvailableCarriers(mapName: string, playerId: string): Settler[] {
-		return Array.from(this.settlers.values()).filter(settler =>
-			settler.mapName === mapName &&
-			settler.playerId === playerId &&
-			settler.profession === ProfessionType.Carrier &&
-			settler.state === SettlerState.Idle
-		)
+		return this.getAvailableSettlers(mapName, playerId)
+			.filter(settler => settler.profession === ProfessionType.Carrier)
 	}
 
-	public hasIdleSettler(mapName: string, playerId: string): boolean {
-		return Array.from(this.settlers.values()).some(settler =>
-			settler.mapName === mapName &&
-			settler.playerId === playerId &&
-			settler.state === SettlerState.Idle
-		)
-	}
-
-	public hasIdleSettlerWithProfession(mapName: string, playerId: string, profession: ProfessionType): boolean {
-		return Array.from(this.settlers.values()).some(settler =>
-			settler.mapName === mapName &&
-			settler.playerId === playerId &&
-			settler.state === SettlerState.Idle &&
-			settler.profession === profession
-		)
-	}
-
-	// Find worker for building (handles profession requirements and tool pickup)
-	// Returns Settler or null (updated signature for JobsManager)
-	public findWorkerForBuilding(
-		buildingInstanceId: string,
-		requiredProfession?: ProfessionType,
-		mapName?: string,
-		buildingPosition?: Position,
-		playerId?: string,
-		allowToolPickup: boolean = true
-	): Settler | null {
-		// Get building to get mapName and playerId if not provided
-		const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
-		if (!building) {
-			return null
+	public setSettlerState(settlerId: string, state: SettlerState): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return
 		}
+		settler.state = state
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+	}
 
-		const targetMapName = mapName || building.mapName
-		const targetPlayerId = playerId || building.playerId
-		const targetPosition = buildingPosition || building.position
+	public setSettlerAssignment(settlerId: string, assignmentId?: string, providerId?: string, buildingId?: string): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return
+		}
+		settler.stateContext = {
+			...settler.stateContext,
+			assignmentId,
+			providerId
+		}
+		settler.buildingId = buildingId
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+	}
 
-		// Use existing findWorkerForBuilding logic but return Settler directly
-		const workerResult = this.findWorkerForBuildingInternal(
-			buildingInstanceId,
-			requiredProfession,
-			targetMapName,
+	public setSettlerCarryingItem(settlerId: string, itemType?: string, quantity?: number): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return
+		}
+		settler.stateContext = {
+			...settler.stateContext,
+			carryingItemType: itemType,
+			carryingQuantity: itemType ? quantity : undefined
+		}
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+	}
+
+	public setSettlerWaitReason(settlerId: string, reason?: string): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return
+		}
+		settler.stateContext = {
+			...settler.stateContext,
+			waitReason: reason
+		}
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+	}
+
+	public setSettlerLastStep(settlerId: string, stepType?: string, reason?: string): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return
+		}
+		settler.stateContext = {
+			...settler.stateContext,
+			lastStepType: stepType,
+			lastStepReason: reason
+		}
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+	}
+
+	public setSettlerEquippedItem(settlerId: string, itemType?: string, quantity?: number): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return
+		}
+		settler.stateContext = {
+			...settler.stateContext,
+			equippedItemType: itemType,
+			equippedQuantity: itemType ? quantity : undefined
+		}
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+	}
+
+	public setSettlerTarget(settlerId: string, targetId?: string, targetPosition?: Position, targetType?: string): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return
+		}
+		settler.stateContext = {
+			...settler.stateContext,
+			targetId,
 			targetPosition,
-			targetPlayerId,
-			allowToolPickup
-		)
-
-		if (!workerResult) {
-			return null
+			targetType
 		}
-
-		return this.settlers.get(workerResult.settlerId) || null
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
 	}
 
-	// Internal method that returns worker result with tool info
-	private findWorkerForBuildingInternal(
-		buildingInstanceId: string,
-		requiredProfession: ProfessionType | undefined,
-		mapName: string,
-		buildingPosition: Position,
-		playerId: string,
-		allowToolPickup: boolean
-	): { settlerId: SettlerId, needsTool: boolean, toolId?: string, toolPosition?: Position } | null {
-		// 1. Get all idle settlers for this map and player
-		const idleSettlers = Array.from(this.settlers.values()).filter(
-			s => s.mapName === mapName &&
-				s.playerId === playerId &&
-				s.state === SettlerState.Idle
-		)
-
-		if (idleSettlers.length === 0) {
-			return null
+	public setSettlerProfession(settlerId: string, profession: ProfessionType): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return
 		}
-
-		// 2. If requiredProfession is set:
-		if (requiredProfession) {
-			// a. Filter settlers with matching profession
-			const settlersWithProfession = idleSettlers.filter(s => s.profession === requiredProfession)
-
-			if (settlersWithProfession.length > 0) {
-				// b. Find closest settler to building
-				const closestSettler = this.findClosestSettler(settlersWithProfession, buildingPosition)
-				return {
-					settlerId: closestSettler.id,
-					needsTool: false
-				}
-			}
-
-			if (!allowToolPickup) {
-				return null
-			}
-
-			// c. If not found, find profession-changing tool for this profession
-			const toolItemType = this.findToolForProfession(requiredProfession)
-			if (toolItemType) {
-				// Find tool on map
-				const tool = this.findToolOnMap(mapName, toolItemType)
-				if (tool) {
-					const toolPickupCandidates = idleSettlers.filter(s => s.profession === ProfessionType.Carrier)
-					if (toolPickupCandidates.length === 0) {
-						return null
-					}
-					// Find closest carrier to tool (will change profession)
-					const closestSettler = this.findClosestSettler(toolPickupCandidates, tool.position)
-					return {
-						settlerId: closestSettler.id,
-						needsTool: true,
-						toolId: tool.id,
-						toolPosition: tool.position
-					}
-				}
-			}
-
-			// No settler with profession and no tool available
-			return null
-		}
-
-		// 3. If no requiredProfession:
-		//    a. Find closest idle settler to building (any profession)
-		const closestSettler = this.findClosestSettler(idleSettlers, buildingPosition)
-		return {
-			settlerId: closestSettler.id,
-			needsTool: false
-		}
+		const oldProfession = settler.profession
+		settler.profession = profession
+		this.event.emit(Receiver.Group, PopulationEvents.SC.ProfessionChanged, {
+			settlerId,
+			oldProfession,
+			newProfession: profession
+		}, settler.mapName)
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
 	}
 
-	// Find closest settler to a position
-	private findClosestSettler(settlers: Settler[], position: Position): Settler {
-		let closest = settlers[0]
-		let closestDistance = calculateDistance(closest.position, position)
-
-		for (let i = 1; i < settlers.length; i++) {
-			const distance = calculateDistance(settlers[i].position, position)
-			if (distance < closestDistance) {
-				closest = settlers[i]
-				closestDistance = distance
-			}
-		}
-
-		return closest
-	}
-
-	// Find tool item type for a profession
-	private findToolForProfession(profession: ProfessionType): string | null {
+	public getToolItemType(profession: ProfessionType): string | null {
 		for (const [itemType, targetProfession] of this.professionTools.entries()) {
 			if (targetProfession === profession) {
 				return itemType
@@ -791,517 +254,167 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		return null
 	}
 
-	public getToolItemType(profession: ProfessionType): string | null {
-		return this.findToolForProfession(profession)
-	}
-
-	// Find tool on map
-	private findToolOnMap(mapName: string, itemType: string): { id: string, position: Position } | null {
-		const availableItem = this.managers.loot.getAvailableItemByType(mapName, itemType)
-		if (availableItem) {
-			return {
-				id: availableItem.id,
-				position: availableItem.position
-			}
-		}
-
-		return null
-	}
-
 	public findAvailableToolOnMap(mapName: string, itemType: string): { id: string, position: Position } | null {
-		return this.findToolOnMap(mapName, itemType)
+		const tool = this.findToolOnMap(mapName, itemType)
+		if (!tool) {
+			return null
+		}
+		if (!this.managers.loot.isItemAvailable(tool.id)) {
+			return null
+		}
+		return tool
 	}
 
-	// Assign worker to transport job (called by JobsManager)
-	public assignWorkerToTransportJob(
-		settlerId: string,
-		jobId: string,
-		jobAssignment: JobAssignment
-	): void {
-		const settler = this.settlers.get(settlerId)
-		if (!settler) {
-			return
+	public findToolOnMap(mapName: string, itemType: string): { id: string, position: Position } | null {
+		const mapItems = this.managers.loot.getMapItems(mapName)
+		const tool = mapItems.find(item => item.itemType === itemType)
+		if (!tool) {
+			return null
 		}
-
-		settler.stateContext.jobId = jobId
-
-		// Execute state transition: Idle -> MovingToItem
-		// Only jobId needed - transition will look up job details
-		this.stateMachine.executeTransition(settler, SettlerState.MovingToItem, {
-			jobId: jobAssignment.jobId
-		})
+		return { id: tool.id, position: tool.position }
 	}
 
-	// Assign worker to harvest job (called by JobsManager)
-	public assignWorkerToHarvestJob(
-		settlerId: string,
-		jobId: string,
-		jobAssignment: JobAssignment
-	): void {
-		const settler = this.settlers.get(settlerId)
-		if (!settler) {
-			return
-		}
-
-		settler.stateContext.jobId = jobId
-
-		this.stateMachine.executeTransition(settler, SettlerState.MovingToResource, {
-			jobId: jobAssignment.jobId
-		})
-	}
-
-	public completeHarvestJob(settlerId: string, jobId: string): void {
-		if (!this.managers.jobs) {
-			return
-		}
-		this.managers.jobs.handleHarvestComplete(jobId)
-	}
-
-	public clearSettlerJob(settlerId: string, jobId?: string): void {
-		const settler = this.settlers.get(settlerId)
-		if (!settler) {
-			return
-		}
-
-		if (jobId && settler.stateContext.jobId !== jobId) {
-			return
-		}
-
-		settler.state = SettlerState.Idle
-		settler.stateContext = {}
-		settler.buildingId = undefined
-		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
-	}
-
-	// Assign worker to job (called by JobsManager for construction/production jobs)
-	public assignWorkerToJob(
-		settlerId: string,
-		jobId: string,
-		jobAssignment: JobAssignment
-	): void {
-		const settler = this.settlers.get(settlerId)
-		if (!settler) {
-			return
-		}
-
-		settler.stateContext.jobId = jobId
-
-		// Get building to get position
-		const building = this.managers.buildings.getBuildingInstance(jobAssignment.buildingInstanceId)
-		if (!building) {
-			return
-		}
-
-		// Execute transition: Idle -> MovingToBuilding
-		this.stateMachine.executeTransition(settler, SettlerState.MovingToBuilding, {
-			buildingInstanceId: jobAssignment.buildingInstanceId,
-			buildingPosition: building.position,
-			requiredProfession: jobAssignment.requiredProfession
-		})
-	}
-
-
-	// Unassign settler from job
-	private unassignWorker(data: UnassignWorkerData, client: EventClient): void {
-		const settler = this.settlers.get(data.settlerId)
-		if (!settler) {
-			this.logger.error(`Settler not found: ${data.settlerId}`)
-			return
-		}
-
-		if (this.managers.jobs) {
-			this.managers.jobs.unassignWorker(settler.id)
-		} else {
-			this.stateMachine.executeTransition(settler, SettlerState.Idle, {})
-		}
-
-		// 7. Emit sc:population:stats-updated
-		this.stats.emitPopulationStatsUpdate(client, settler.mapName)
-	}
-
-	// Handle construction completion - complete construction jobs and reassign builders
-	private onConstructionCompleted(buildingInstanceId: string, mapName: string, playerId: string): void {
-		if (!this.managers.jobs) {
-			this.logger.warn(`[CONSTRUCTION COMPLETED] JobsManager not available, cannot complete construction jobs`)
-			return
-		}
-
-		// Get all active construction jobs for this building
-		const activeJobs = this.managers.jobs.getActiveJobsForBuilding(buildingInstanceId)
-		const constructionJobs = activeJobs.filter(job => job.jobType === JobType.Construction)
-
-		this.logger.log(`[CONSTRUCTION COMPLETED] Found ${constructionJobs.length} construction jobs for building ${buildingInstanceId}`)
-
-		// Cancel construction jobs and transition builders to Idle
-		for (const job of constructionJobs) {
-			const settler = this.settlers.get(job.settlerId)
-			if (!settler) {
-				this.logger.warn(`[CONSTRUCTION COMPLETED] Settler ${job.settlerId} not found for job ${job.jobId}`)
-				continue
+	public getServerClient(mapName?: string): EventClient {
+		return {
+			id: 'server',
+			currentGroup: mapName || 'GLOBAL',
+			setGroup: () => {},
+			emit: (to, event, data, groupName) => {
+				this.event.emit(to, event, data, groupName)
 			}
-
-			this.logger.log(`[CONSTRUCTION COMPLETED] Cancelling construction job ${job.jobId} for settler ${settler.id}`)
-			this.managers.jobs.cancelJob(job.jobId, 'construction_completed')
-
-			setTimeout(() => {
-				this.assignBuilderToNextConstructionJob(settler, mapName, playerId)
-			}, 0)
 		}
-
-		// Clear construction role assignments for this building
-		this.managers.jobs.clearRoleAssignmentsForBuilding(buildingInstanceId, RoleType.Construction, { skipJobCancel: true })
 	}
 
-	// Automatically assign idle builder to next construction job
-	private assignBuilderToNextConstructionJob(settler: Settler, mapName: string, playerId: string): void {
-		if (!this.managers.jobs) {
-			return
-		}
-
-		// Only assign if settler is still Idle and has no job
-		if (settler.state !== SettlerState.Idle || settler.stateContext.jobId) {
-			return
-		}
-
-		// Find buildings in Constructing stage that need builders
-		const buildings = this.managers.buildings.getBuildingsForMap(mapName)
-		const buildingsNeedingBuilders = buildings.filter(building => {
-			// Only check buildings for the same player
-			if (building.playerId !== playerId) {
-				return false
-			}
-
-			// Building must be in Constructing stage
-			if (building.stage !== ConstructionStage.Constructing) {
-				return false
-			}
-
-			// Building must need workers
-			if (!this.managers.buildings.getBuildingNeedsWorkers(building.id)) {
-				return false
-			}
-
-			return true
-		})
-
-		if (buildingsNeedingBuilders.length === 0) {
-			this.logger.debug(`[AUTO ASSIGN] No buildings needing builders for settler ${settler.id}`)
-			return
-		}
-
-		// Sort by distance to find the closest building
-		buildingsNeedingBuilders.sort((a, b) => {
-			const distanceA = calculateDistance(settler.position, a.position)
-			const distanceB = calculateDistance(settler.position, b.position)
-			return distanceA - distanceB
-		})
-
-		// Assign builder to the closest building
-		const targetBuilding = buildingsNeedingBuilders[0]
-		this.logger.log(`[AUTO ASSIGN] Assigning builder ${settler.id} to building ${targetBuilding.id} (${targetBuilding.buildingId})`)
-
-		// Request worker for the building (JobsManager will handle assignment)
-		this.managers.jobs.requestWorker(targetBuilding.id)
-	}
-
-	// Handle house completion - start spawn timer
-	public onHouseCompleted(buildingInstanceId: string, buildingId: string): void {
-		this.logger.debug(`onHouseCompleted called:`, { buildingInstanceId, buildingId })
-		
-		const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
-		if (!building) {
-			this.logger.error(`House building instance not found: ${buildingInstanceId}`)
-			return
-		}
-
-		this.logger.debug(`House building found:`, {
-			id: building.id,
-			buildingId: building.buildingId,
-			playerId: building.playerId,
-			mapName: building.mapName,
-			stage: building.stage
-		})
-
+	private onHouseCompleted(buildingInstanceId: string, buildingId: string): void {
 		const buildingDef = this.managers.buildings.getBuildingDefinition(buildingId)
-		if (!buildingDef) {
-			this.logger.error(`House building definition not found: ${buildingId}`)
-			return
-		}
-		
-		if (!buildingDef.spawnsSettlers) {
-			this.logger.warn(`Building ${buildingId} does not spawn settlers`)
+		if (!buildingDef || !buildingDef.spawnRate) {
 			return
 		}
 
-		// Check if timer already exists (house might complete multiple times)
+		const spawnRateMs = buildingDef.spawnRate * 1000
 		if (this.spawnTimers.has(buildingInstanceId)) {
-			this.logger.warn(`Spawn timer already exists for house ${buildingInstanceId}, clearing old timer`)
-			const oldTimer = this.spawnTimers.get(buildingInstanceId)
-			if (oldTimer) {
-				clearTimeout(oldTimer)
-			}
-		}
-
-		// Start spawn timer based on spawnRate
-		const spawnRate = buildingDef.spawnRate || 60 // Default 60 seconds
-		this.logger.debug(`Starting spawn timer for house ${buildingInstanceId} with spawn rate: ${spawnRate}s`)
-		
-		// Spawn first settler immediately when house completes (for testing/debugging)
-		const firstSpawnDelay = 1000 // 1 second delay for first spawn
-		
-		const timer = setTimeout(() => {
-			this.logger.debug(`Spawn timer fired for house ${buildingInstanceId}`)
-			
-			// Create fake client for spawning
-			const fakeClient: EventClient = {
-				id: building.playerId,
-				currentGroup: building.mapName,
-				emit: (receiver, event, data, target?) => {
-					this.event.emit(receiver, event, data, target)
-				},
-				setGroup: (group: string) => {
-					// No-op for fake client
-				}
-			}
-			
-			// Spawn settler
-			this.spawnSettler({ houseBuildingInstanceId: buildingInstanceId }, fakeClient)
-
-			// Schedule next spawn
-			this.scheduleNextSpawn(buildingInstanceId, spawnRate)
-		}, firstSpawnDelay)
-
-		this.spawnTimers.set(buildingInstanceId, timer)
-
-		this.logger.log(`✓ Started spawn timer for house ${buildingInstanceId} (first spawn in ${firstSpawnDelay}ms, then every ${spawnRate}s)`)
-	}
-
-	// Schedule next spawn for house
-	private scheduleNextSpawn(buildingInstanceId: string, spawnRate: number): void {
-		const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
-		if (!building) {
 			return
 		}
 
-		const timer = setTimeout(() => {
-			// Check if house still exists and is completed
-			const currentBuilding = this.managers.buildings.getBuildingInstance(buildingInstanceId)
-			if (!currentBuilding || currentBuilding.stage !== ConstructionStage.Completed) {
-				return
-			}
+		this.spawnSettler({ houseBuildingInstanceId: buildingInstanceId })
 
-			// Check house capacity
-			const buildingDef = this.managers.buildings.getBuildingDefinition(currentBuilding.buildingId)
-			if (!buildingDef || !buildingDef.spawnsSettlers) {
-				return
-			}
-
-			const settlersFromHouse = this.houseSettlers.get(buildingInstanceId) || []
-			if (buildingDef.maxOccupants && settlersFromHouse.length >= buildingDef.maxOccupants) {
-				// At capacity, don't spawn but keep timer running
-				this.scheduleNextSpawn(buildingInstanceId, spawnRate)
-				return
-			}
-
-			// Trigger spawn
-			const fakeClient: EventClient = {
-				id: building.playerId,
-				currentGroup: building.mapName,
-				emit: (receiver, event, data, target?) => {
-					this.event.emit(receiver, event, data, target)
-				},
-				setGroup: (group: string) => {
-					// No-op for fake client
-				}
-			}
-			this.spawnSettler({ houseBuildingInstanceId: buildingInstanceId }, fakeClient)
-
-			// Schedule next spawn
-			this.scheduleNextSpawn(buildingInstanceId, spawnRate)
-		}, spawnRate * 1000)
-
+		const timer = setInterval(() => {
+			this.spawnSettler({ houseBuildingInstanceId: buildingInstanceId })
+		}, spawnRateMs)
 		this.spawnTimers.set(buildingInstanceId, timer)
 	}
 
-	// Handle house destruction - stop spawn timer and remove settlers
-	public onHouseDestroyed(buildingInstanceId: string): void {
-		// 1. Stop spawn timer
-		const timer = this.spawnTimers.get(buildingInstanceId)
-		if (timer) {
-			clearTimeout(timer)
-			this.spawnTimers.delete(buildingInstanceId)
+	private spawnSettler(data: SpawnSettlerData): Settler | null {
+		const house = this.managers.buildings.getBuildingInstance(data.houseBuildingInstanceId)
+		if (!house) {
+			return null
 		}
 
-		// 2. Find settlers from this house
-		const settlersFromHouse = this.houseSettlers.get(buildingInstanceId) || []
+		const id = uuidv4()
+		const settler: Settler = {
+			id,
+			playerId: house.playerId,
+			mapName: house.mapName,
+			position: { ...house.position },
+			profession: ProfessionType.Carrier,
+			state: SettlerState.Idle,
+			stateContext: {},
+			houseId: house.id,
+			speed: SETTLER_SPEED,
+			createdAt: Date.now()
+		}
 
-		// 3. Unassign from jobs if working
-		settlersFromHouse.forEach(settlerId => {
-			const settler = this.settlers.get(settlerId)
-			if (settler?.stateContext.jobId && this.managers.jobs) {
-				this.managers.jobs.cancelJob(settler.stateContext.jobId, 'house_destroyed')
-			}
-
-			// Remove settler
-			this.settlers.delete(settlerId)
+		this.settlers.set(id, settler)
+		this.managers.movement.registerEntity({
+			id: settler.id,
+			position: settler.position,
+			mapName: settler.mapName,
+			speed: settler.speed
 		})
 
-		// 4. Remove house entry
-		this.houseSettlers.delete(buildingInstanceId)
-
-		this.logger.log(`Removed house ${buildingInstanceId} and ${settlersFromHouse.length} settlers`)
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerSpawned, { settler }, settler.mapName)
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+		return settler
 	}
 
-	// Start job tick loop
-	private startJobTickLoop(): void {
-		// Job processing will be handled by BuildingManager construction ticks
-		// This can be used for future production jobs in Phase C
-	}
-
-	private startIdleTickLoop(): void {
-		// Check idle settlers every 3-8 seconds (randomized to avoid all settlers moving at once)
-		const IDLE_TICK_INTERVAL = 300 // Base interval: 3 seconds
-		const IDLE_TICK_VARIANCE = 1000 // Random variance: 0-5 seconds
-		
-		const scheduleNextTick = () => {
-			const delay = IDLE_TICK_INTERVAL + Math.random() * IDLE_TICK_VARIANCE
-			this.idleTickInterval = setTimeout(() => {
-				this.processIdleSettlers()
-				scheduleNextTick()
-			}, delay)
-		}
-		
-		scheduleNextTick()
-	}
-
-	private processIdleSettlers(): void {
+	public spawnInitialPopulation(mapName: string, playerId: string, spawnPosition: Position): void {
 		const now = Date.now()
-		const MIN_IDLE_WANDER_COOLDOWN = 1000 // Minimum 5 seconds between wanders
-		const MAX_IDLE_WANDER_COOLDOWN = 5000 // Maximum 15 seconds between wanders
-		
-		// Get all idle settlers without jobs and not currently moving
-		const idleSettlers = Array.from(this.settlers.values()).filter(settler => {
-			// Must be in Idle state
-			if (settler.state !== SettlerState.Idle) {
-				return false
-			}
-			
-			// Must have no job assignment
-			if (settler.stateContext.jobId) {
-				return false
-			}
-			
-			// Must not have a target position (not currently wandering)
-			if (settler.stateContext.targetPosition) {
-				return false
-			}
-			
-			// Check if MovementManager has an active movement task for this settler
-			// This prevents starting a new wander while movement is still in progress
-			if (this.managers.movement.hasActiveMovement(settler.id)) {
-				return false
-			}
-			
-			return true
-		})
-		
-		for (const settler of idleSettlers) {
-			const lastWanderTime = settler.stateContext.lastIdleWanderTime || 0
-			const timeSinceLastWander = now - lastWanderTime
-			
-			// Check if cooldown has passed (randomized to avoid synchronized movement)
-			const cooldown = MIN_IDLE_WANDER_COOLDOWN + Math.random() * (MAX_IDLE_WANDER_COOLDOWN - MIN_IDLE_WANDER_COOLDOWN)
-			if (timeSinceLastWander < cooldown) {
+		for (const popEntry of this.startingPopulation) {
+			if (!this.professions.has(popEntry.profession)) {
+				this.logger.warn(`Starting population profession ${popEntry.profession} does not exist, skipping`)
 				continue
 			}
-			
-			// Generate random nearby position (2-3 tiles away)
-			const wanderPosition = this.generateRandomNearbyPosition(settler)
-			if (!wanderPosition) {
-				continue // No valid position found
-			}
-			
-			// Try to trigger idle wander transition
-			const context = { targetPosition: wanderPosition }
-			const success = this.stateMachine.executeTransition(settler, SettlerState.Idle, context)
-			
-			if (success) {
-				this.logger.debug(`[IDLE WANDER] Triggered idle wander for settler ${settler.id}`)
-			}
-		}
-	}
 
-	private generateRandomNearbyPosition(settler: Settler): Position | null {
-		const TILE_SIZE = 32
-		const MIN_DISTANCE_TILES = 1 // Minimum 2 tiles away
-		const MAX_DISTANCE_TILES = 3 // Maximum 3 tiles away
-		
-		// Try up to 10 random positions
-		for (let attempt = 0; attempt < 10; attempt++) {
-			// Generate random angle and distance
-			const angle = Math.random() * Math.PI * 2
-			const distanceTiles = MIN_DISTANCE_TILES + Math.random() * (MAX_DISTANCE_TILES - MIN_DISTANCE_TILES)
-			const distancePixels = distanceTiles * TILE_SIZE
-			
-			// Calculate target position
-			const targetPosition: Position = {
-				x: settler.position.x + Math.cos(angle) * distancePixels,
-				y: settler.position.y + Math.sin(angle) * distancePixels
-			}
-			
-			// Check if path exists and is short enough
-			const path = this.managers.map.findPath(settler.mapName, settler.position, targetPosition)
-			if (path && path.length > 0 && path.length <= 6) {
-				// Use the last position in the path (actual reachable position)
-				return path[path.length - 1]
+			for (let i = 0; i < popEntry.count; i++) {
+				const offset = 16
+				const position = {
+					x: spawnPosition.x + (i % 3) * offset,
+					y: spawnPosition.y + Math.floor(i / 3) * offset
+				}
+				const settlerId = uuidv4()
+				const settler: Settler = {
+					id: settlerId,
+					playerId,
+					mapName,
+					position,
+					profession: popEntry.profession,
+					state: SettlerState.Idle,
+					stateContext: {},
+					speed: SETTLER_SPEED,
+					createdAt: now
+				}
+
+				this.settlers.set(settlerId, settler)
+				this.managers.movement.registerEntity({
+					id: settler.id,
+					position: settler.position,
+					mapName: settler.mapName,
+					speed: settler.speed
+				})
+
+				this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerSpawned, { settler }, mapName)
+				this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, mapName)
 			}
 		}
-		
-		return null // No valid position found after 10 attempts
 	}
 
-	public transitionSettlerState<TContext = any>(settlerId: string, toState: SettlerState, context: TContext): boolean {
-		const settler = this.settlers.get(settlerId)
-		if (!settler) {
-			return false
+	private sendPopulationList(client: EventClient): void {
+		const settlers = Array.from(this.settlers.values())
+		const totalCount = settlers.length
+		const byProfession: Record<ProfessionType, number> = {
+			[ProfessionType.Carrier]: 0,
+			[ProfessionType.Builder]: 0,
+			[ProfessionType.Woodcutter]: 0,
+			[ProfessionType.Miner]: 0
+		}
+		const byProfessionActive: Record<ProfessionType, number> = {
+			[ProfessionType.Carrier]: 0,
+			[ProfessionType.Builder]: 0,
+			[ProfessionType.Woodcutter]: 0,
+			[ProfessionType.Miner]: 0
+		}
+		let idleCount = 0
+		let workingCount = 0
+
+		for (const settler of settlers) {
+			byProfession[settler.profession] = (byProfession[settler.profession] || 0) + 1
+			if (settler.state === SettlerState.Idle) {
+				idleCount += 1
+			} else {
+				byProfessionActive[settler.profession] = (byProfessionActive[settler.profession] || 0) + 1
+				if (settler.state === SettlerState.Working || settler.state === SettlerState.Harvesting) {
+					workingCount += 1
+				}
+			}
 		}
 
-		return this.stateMachine.executeTransition(settler, toState, context)
+		client.emit(Receiver.Sender, PopulationEvents.SC.List, {
+			settlers,
+			totalCount,
+			byProfession,
+			byProfessionActive,
+			idleCount,
+			workingCount
+		})
 	}
-
-	public resetSettlerFromJob(jobId: string, reason: string): void {
-		const settler = Array.from(this.settlers.values()).find(candidate => candidate.stateContext.jobId === jobId)
-		if (!settler) {
-			return
-		}
-
-		if (this.managers.movement.hasActiveMovement(settler.id)) {
-			this.managers.movement.cancelMovement(settler.id)
-		}
-
-		if (settler.state === SettlerState.MovingToTool && settler.stateContext.targetId) {
-			this.managers.loot.releaseReservation(settler.stateContext.targetId, settler.id)
-		}
-
-		settler.state = SettlerState.Idle
-		settler.stateContext = {}
-		settler.buildingId = undefined
-
-		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
-		this.logger.warn(`[RECOVERY] Settler ${settler.id} reset to Idle (${reason})`)
-	}
-
-	// Public getters
-	public getSettler(settlerId: string): Settler | undefined {
-		return this.settlers.get(settlerId)
-	}
-
-	public getSettlersForPlayer(playerId: string, mapName: string): Settler[] {
-		return Array.from(this.settlers.values()).filter(
-			s => s.playerId === playerId && s.mapName === mapName
-		)
-	}
-
-	// Note: getJob removed - JobsManager handles job tracking
-	// Use jobsManager.getJob() instead
 }

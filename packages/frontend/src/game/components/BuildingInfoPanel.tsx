@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react'
 import { EventBus } from '../EventBus'
-import { Event, BuildingInstance, BuildingDefinition, ConstructionStage, SettlerState } from '@rugged/game'
+import { Event, BuildingInstance, BuildingDefinition, ConstructionStage, SettlerState, ProductionStatus } from '@rugged/game'
 import { buildingService } from '../services/BuildingService'
 import { populationService } from '../services/PopulationService'
 import { itemService } from '../services/ItemService'
 import { storageService } from '../services/StorageService'
-import { productionService, ProductionStatus } from '../services/ProductionService'
+import { productionService } from '../services/ProductionService'
 import { DraggablePanel } from './DraggablePanel'
 import { useResourceList } from './hooks/useResourceList'
 import sharedStyles from './PanelShared.module.css'
@@ -97,6 +97,9 @@ export const BuildingInfoPanel: React.FC = () => {
 				switch (data.reason) {
 					case 'no_available_worker':
 						message = 'No available settler. Build a house to spawn settlers!'
+						break
+					case 'no_builder_available':
+						message = 'No idle builder available. Promote a settler with a hammer.'
 						break
 					case 'no_suitable_profession':
 						message = 'No idle settler with required profession. Promote one in the Population panel.'
@@ -269,19 +272,23 @@ export const BuildingInfoPanel: React.FC = () => {
 	const isCollectingResources = buildingInstance.stage === ConstructionStage.CollectingResources
 	const hasWorkerSlots = buildingDefinition.workerSlots !== undefined
 	const settlers = populationService.getSettlers()
-	const workingWorkers = settlers.filter(
-		settler => settler.state === SettlerState.Working && settler.buildingId === buildingInstance.id
+	const assignedWorkers = settlers.filter(
+		settler => settler.buildingId === buildingInstance.id && Boolean(settler.stateContext.assignmentId)
 	)
-	const movingWorkers = settlers.filter(
-		settler => settler.state === SettlerState.MovingToBuilding && settler.stateContext.targetId === buildingInstance.id
+	const workingWorkers = assignedWorkers.filter(
+		settler => settler.state === SettlerState.Working || settler.state === SettlerState.Harvesting
 	)
-	const workerCount = workingWorkers.length + movingWorkers.length
+	const movingWorkers = assignedWorkers.filter(
+		settler => settler.state === SettlerState.MovingToBuilding || settler.state === SettlerState.MovingToResource || settler.state === SettlerState.MovingToTool
+	)
+	const workerCount = assignedWorkers.length
 	const maxWorkers = buildingDefinition.workerSlots || 0
 	// Buildings only need workers during Constructing stage (builders) or Completed stage (production workers)
 	// During CollectingResources, carriers are automatically requested by the system
 	const needsWorkers = buildingInstance.stage === ConstructionStage.Constructing ||
 		(isCompleted && hasWorkerSlots && workerCount < maxWorkers)
-	const hasRequiredProfession = buildingDefinition.requiredProfession !== undefined
+	const requiredProfessionLabel = isConstructing ? 'builder' : buildingDefinition.requiredProfession
+	const hasRequiredProfession = requiredProfessionLabel !== undefined
 
 	// Get resource collection progress from building definition costs and collected resources
 	const requiredResources = buildingDefinition.costs || []
@@ -348,8 +355,10 @@ export const BuildingInfoPanel: React.FC = () => {
 				<div className={sharedStyles.infoRow}>
 					<span className={sharedStyles.label}>Workers:</span>
 					<span className={sharedStyles.value}>
-						{workingWorkers.length}
-						{movingWorkers.length > 0 && ` (+${movingWorkers.length} en route)`}
+						{workerCount}
+						{(workingWorkers.length > 0 || movingWorkers.length > 0) && (
+							` (${workingWorkers.length} active${movingWorkers.length > 0 ? `, ${movingWorkers.length} en route` : ''})`
+						)}
 						{' '} / {maxWorkers}
 					</span>
 				</div>
@@ -360,7 +369,7 @@ export const BuildingInfoPanel: React.FC = () => {
 					{hasRequiredProfession && (
 						<div className={sharedStyles.infoRow}>
 							<span className={sharedStyles.label}>Required Profession:</span>
-							<span className={sharedStyles.value}>{buildingDefinition.requiredProfession}</span>
+							<span className={sharedStyles.value}>{requiredProfessionLabel}</span>
 						</div>
 					)}
 					{isConstructing && (

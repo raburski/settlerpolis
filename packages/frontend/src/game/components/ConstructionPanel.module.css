@@ -1,112 +1,162 @@
+@import './variables.module.css';
+
 .panel {
 	position: fixed;
-	top: 70px;
-	left: 14px;
-	width: 180px;
-	background: rgba(0, 0, 0, 0.8);
-	border: 2px solid #555;
-	border-radius: 8px;
-	padding: 12px;
-	color: white;
-	z-index: 1000;
-	max-height: 80vh;
-	overflow-y: auto;
+	bottom: var(--spacing-md);
+	left: 50%;
+	transform: translateX(-50%);
+	width: min(92vw, 620px);
+	background: rgba(20, 20, 20, 0.95);
+	border: 4px solid #2c1810;
+	padding: var(--spacing-sm);
+	color: #fffbe7;
+	z-index: var(--z-index-modal);
+	height: 96px;
+	overflow: hidden;
+	box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
+	font-family: 'Press Start 2P', monospace;
+}
+
+.content {
+	display: flex;
+	gap: var(--spacing-sm);
+	align-items: stretch;
+	height: 100%;
+}
+
+.separator {
+	width: 2px;
+	background: #2c1810;
+	box-shadow: 2px 0 0 rgba(0, 0, 0, 0.4);
+	margin: 0 4px;
 }
 
 .header {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	margin-bottom: 12px;
+	margin-bottom: var(--spacing-sm);
 }
 
 .header h3 {
 	margin: 0;
-	font-size: 16px;
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	color: #ffd700;
+	text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.7);
 }
 
 .cancelButton {
-	background: #ff4444;
-	color: white;
-	border: none;
-	padding: 4px 8px;
-	border-radius: 4px;
+	background: #2c1810;
+	color: #fffbe7;
+	border: 2px solid #2c1810;
+	padding: 2px 8px;
 	cursor: pointer;
-	font-size: 12px;
+	font-size: 0.6rem;
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
 }
 
 .cancelButton:hover {
-	background: #cc0000;
+	background: #4a2c1f;
 }
 
 .buildingsList {
-	display: flex;
-	flex-direction: column;
+	flex: 1;
+	display: grid;
+	grid-template-columns: repeat(auto-fill, 46px);
+	grid-auto-rows: 40px;
 	gap: 6px;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding-bottom: var(--spacing-xs);
+	justify-content: start;
+	align-content: start;
 }
 
 .buildingItem {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	padding: 8px;
-	background: rgba(255, 255, 255, 0.1);
-	border: 2px solid transparent;
-	border-radius: 4px;
+	justify-content: center;
+	gap: 0;
+	padding: 2px;
+	margin-right: 6px;
+	background: rgba(44, 24, 16, 0.9);
+	border: 2px solid #2c1810;
+	border-radius: 0;
 	cursor: pointer;
 	transition: all 0.2s;
+	height: 40px;
+	width: 40px;
 }
 
 .buildingItem:hover {
-	background: rgba(255, 255, 255, 0.2);
-	border-color: #888;
+	background: rgba(74, 44, 31, 0.95);
+	border-color: #ffe066;
 }
 
 .buildingItem.selected {
-	background: rgba(100, 150, 255, 0.3);
-	border-color: #4a9eff;
+	background: rgba(74, 44, 31, 0.95);
+	border-color: #ffe066;
+	box-shadow: 0 0 0 2px #ffe066;
 }
 
 .buildingIcon {
-	font-size: 24px;
+	font-size: 22px;
 	line-height: 1;
 }
 
-.buildingInfo {
-	flex: 1;
+.cost {
+	font-size: 0.45rem;
+	padding: 1px 4px;
+	background: rgba(20, 20, 20, 0.95);
+	border: 2px solid #2c1810;
+	color: #fffbe7;
+}
+
+.detailPanel {
+	width: 200px;
+	min-width: 200px;
+	background: transparent;
+	border: none;
+	padding: var(--spacing-sm) var(--spacing-xs);
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
 }
 
-.buildingName {
-	font-weight: bold;
-	font-size: 13px;
+.detailIcon {
+	font-size: 26px;
+	line-height: 1;
 }
 
-.buildingDescription {
-	font-size: 11px;
-	color: #ccc;
+.detailName {
+	font-size: 0.6rem;
+	color: #ffd700;
+	text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.7);
+	text-align: center;
 }
 
-.buildingCosts {
+.detailCosts {
 	display: flex;
+	flex-direction: row;
+	gap: 6px;
+	align-items: center;
 	flex-wrap: wrap;
-	gap: 4px;
-	margin-top: 4px;
+	justify-content: center;
 }
 
-.cost {
-	font-size: 11px;
-	padding: 2px 6px;
-	background: rgba(255, 255, 255, 0.2);
-	border-radius: 3px;
+.detailEmpty {
+	font-size: 0.55rem;
+	color: #cdbb8b;
+	text-align: center;
 }
 
 .emptyState {
-	padding: 16px;
+	padding: var(--spacing-md);
 	text-align: center;
-	color: #ccc;
+	color: #fffbe7;
 }
 
 .emptyState p {
@@ -114,7 +164,6 @@
 }
 
 .emptyHint {
-	font-size: 12px;
-	color: #888;
+	font-size: 0.55rem;
+	color: #cdbb8b;
 }
-

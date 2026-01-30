@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Chat } from './Chat'
 import { Inventory } from './Inventory'
 import { ChatLog } from './ChatLog'
@@ -7,7 +7,7 @@ import { Quests } from './Quests'
 import { Relationships } from './Relationships'
 import { SidePanel } from './SidePanel'
 import { Settings } from './Settings'
-import { World } from './World'
+import { TopBar } from './TopBar'
 import { StockPanel } from './StockPanel'
 import { SystemMessages } from './SystemMessages'
 import { ConstructionPanel } from './ConstructionPanel'
@@ -19,6 +19,10 @@ import { Event, FXType } from '@rugged/game'
 
 export const UIContainer = () => {
 	const [isVisible, setIsVisible] = useState(true)
+	const [isStockOpen, setIsStockOpen] = useState(false)
+	const [isPopulationOpen, setIsPopulationOpen] = useState(false)
+	const populationButtonRef = useRef<HTMLButtonElement | null>(null)
+	const [populationAnchor, setPopulationAnchor] = useState<DOMRect | null>(null)
 
 	useEffect(() => {
         const handleEvent = (data) => {
@@ -33,14 +37,48 @@ export const UIContainer = () => {
 		}
 	}, [])
 
+	useEffect(() => {
+		if (!isPopulationOpen) {
+			return
+		}
+
+		const updateAnchor = () => {
+			if (populationButtonRef.current) {
+				setPopulationAnchor(populationButtonRef.current.getBoundingClientRect())
+			}
+		}
+
+		updateAnchor()
+		window.addEventListener('resize', updateAnchor)
+
+		return () => {
+			window.removeEventListener('resize', updateAnchor)
+		}
+	}, [isPopulationOpen])
+
 	if (!isVisible) {
 		return null
 	}
 
 	return (
 		<>
-			<World />
-			<StockPanel />
+			<TopBar
+				isStockOpen={isStockOpen}
+				onToggleStock={() => {
+					setIsPopulationOpen(false)
+					setIsStockOpen((prev) => !prev)
+				}}
+				isPopulationOpen={isPopulationOpen}
+				onTogglePopulation={() => {
+					setIsStockOpen(false)
+					setIsPopulationOpen((prev) => !prev)
+				}}
+				populationButtonRef={populationButtonRef}
+			/>
+			<StockPanel
+				isVisible={isStockOpen}
+				onClose={() => setIsStockOpen(false)}
+			/>
 			<Chat />
 			<Inventory />
 			<ChatLog />
@@ -53,7 +91,11 @@ export const UIContainer = () => {
 			<ConstructionPanel />
 			<BuildingInfoPanel />
 			<SettlerInfoPanel />
-			<PopulationPanel />
+			<PopulationPanel
+				isVisible={isPopulationOpen}
+				onClose={() => setIsPopulationOpen(false)}
+				anchorRect={populationAnchor}
+			/>
 		</>
 	)
-} 
+}

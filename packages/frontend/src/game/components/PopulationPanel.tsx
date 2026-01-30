@@ -5,8 +5,13 @@ import { toolAvailabilityService } from '../services/ToolAvailabilityService'
 import { ProfessionType, PopulationStatsData, SettlerState } from '@rugged/game'
 import styles from './PopulationPanel.module.css'
 
-export const PopulationPanel: React.FC = () => {
-	const [isVisible, setIsVisible] = useState(false)
+type PopulationPanelProps = {
+	isVisible: boolean
+	onClose?: () => void
+	anchorRect?: DOMRect | null
+}
+
+export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onClose, anchorRect }) => {
 	const [stats, setStats] = useState<PopulationStatsData>({
 		totalCount: 0,
 		byProfession: {
@@ -115,22 +120,22 @@ export const PopulationPanel: React.FC = () => {
 	}
 
 	if (!isVisible) {
-		return (
-			<button 
-				className={styles.toggleButton} 
-				onClick={() => setIsVisible(true)}
-				title="Show Population"
-			>
-				👥 {stats.totalCount}
-			</button>
-		)
+		return null
 	}
 
+	const panelStyle = anchorRect
+		? {
+			left: anchorRect.left + anchorRect.width / 2,
+			top: 'calc(var(--top-bar-height, 64px) + var(--spacing-md))',
+			transform: 'translateX(-50%)'
+		}
+		: undefined
+
 	return (
-		<div className={styles.panel}>
+		<div className={styles.panel} style={panelStyle}>
 			<div className={styles.header}>
 				<h3>Population</h3>
-				<button className={styles.closeButton} onClick={() => setIsVisible(false)}>×</button>
+				<button className={styles.closeButton} onClick={onClose} type="button" aria-label="Close population panel">×</button>
 			</div>
 
 			<div className={styles.content}>
@@ -205,4 +210,3 @@ export const PopulationPanel: React.FC = () => {
 		</div>
 	)
 }
-

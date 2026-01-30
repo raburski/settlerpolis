@@ -64,7 +64,11 @@ console.log('[Backend] Content loaded:', {
 // Create game manager instance with event bus, content, and map URL service
 const HOST_URL = process.env.PUBLIC_URL || process.env.RAILWAY_PUBLIC_URL || 'http://localhost:3000'
 const mapUrlService = new BackendMapUrlService('/api/maps/', HOST_URL)
-const game = new GameManager(eventBus, content, mapUrlService)
+const logAllowlist = (process.env.GAME_LOG_ALLOWLIST || 'WorkProviderManager')
+	.split(',')
+	.map(entry => entry.trim())
+	.filter(Boolean)
+const game = new GameManager(eventBus, content, mapUrlService, { logAllowlist })
 
 // Add base path for API routes
 const apiRouter = express.Router()

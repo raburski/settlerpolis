@@ -21,11 +21,10 @@ import type { TriggerManager } from '../Triggers'
 import type { TimeManager } from '../Time'
 import type { LogsManager } from '../Logs'
 import type { StorageManager } from '../Storage'
-import type { ProductionManager } from '../Production'
 import type { SimulationManager } from '../Simulation'
 import type { ResourceNodesManager } from '../ResourceNodes'
-import type { HarvestManager } from '../Harvest'
-import type { JobsManager } from '../Jobs'
+import type { ReservationSystem } from '../Reservation'
+import type { WorkProviderManager } from '../Settlers/WorkProvider'
 import type { EventManager } from '../events'
 import type { Logger } from '../Logs'
 
@@ -53,11 +52,10 @@ export interface Managers {
 	time: TimeManager
 	logs: LogsManager
 	storage: StorageManager
-	production: ProductionManager
 	simulation: SimulationManager
 	resourceNodes: ResourceNodesManager
-	harvest: HarvestManager
-	jobs: JobsManager
+	reservations: ReservationSystem
+	work: WorkProviderManager
 }
 
 export class ManagersHub implements Managers {
@@ -86,9 +84,8 @@ export class ManagersHub implements Managers {
 	time!: TimeManager
 	logs!: LogsManager
 	storage!: StorageManager
-	production!: ProductionManager
 	simulation!: SimulationManager
 	resourceNodes!: ResourceNodesManager
-	harvest!: HarvestManager
-	jobs!: JobsManager
+	reservations!: ReservationSystem
+	work!: WorkProviderManager
 }

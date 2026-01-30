@@ -13,6 +13,8 @@ export enum ProfessionType {
 export enum SettlerState {
 	Idle = 'idle',                    // No active task, available for work
 	Spawned = 'spawned',              // Just spawned from house (optional, could merge with Idle)
+	Moving = 'moving',                // Generic moving state (client-side smoothing)
+	Assigned = 'assigned',            // Assigned to a provider/building but not actively working
 	MovingToTool = 'moving_to_tool',           // Moving to pick up a profession tool
 	MovingToBuilding = 'moving_to_building',   // Moving to assigned building
 	Working = 'working',              // Actively working at a building
@@ -46,17 +48,21 @@ export interface ProfessionToolDefinition {
 }
 
 export interface SettlerStateContext {
+	assignmentId?: string          // Current work assignment ID
+	providerId?: string            // Current provider ID (building or logistics)
 	targetId?: string              // ID of tool, building, or item being moved to
 	targetPosition?: Position      // Target position for movement
 	targetType?: string            // Optional target type for debugging/recovery
-	jobId?: string                 // Current job assignment ID - look up JobAssignment to get all job details
+	equippedItemType?: string      // Item type equipped (e.g., profession tool)
+	equippedQuantity?: number      // Quantity equipped (usually 1)
 	carryingItemType?: string      // Item type being carried (used for visual indicators)
+	carryingQuantity?: number      // Quantity being carried
+	waitReason?: string            // WorkWaitReason (set by WorkProvider when waiting)
+	lastStepType?: string          // WorkStepType (debug)
+	lastStepReason?: string        // WorkWaitReason or failure reason (debug)
 	errorReason?: string           // Reason for failure state
 	lastIdleWanderTime?: number    // Timestamp of last idle wander movement (for cooldown)
-	// Note: buildingInstanceId, pendingAssignment, and carriedItemId removed from context
-	// - All job-related information is in JobAssignment (look up using jobId)
-	// - JobAssignment contains: buildingInstanceId, requiredProfession, carriedItemId (transport), sourceItemId (transport), etc.
-	// - JobAssignment is the single source of truth for assignment information
+	// Note: job-related data is now expressed via assignments and provider steps
 }
 
 export interface Settler {
@@ -98,14 +104,6 @@ export interface UnassignWorkerData {
 
 export interface RequestListData {
 	// No data needed - server sends full population state for current player and map
-}
-
-export interface RequestProfessionToolPickupData {
-	profession: ProfessionType
-}
-
-export interface RequestRevertToCarrierData {
-	profession: ProfessionType
 }
 
 export interface PopulationListData {

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { EventBus } from '../EventBus'
 import { itemService } from '../services/ItemService'
-import { storageService } from '../services/StorageService'
+import { useGlobalStockTotals } from './hooks/useGlobalStockTotals'
 import { useResourceList } from './hooks/useResourceList'
 import styles from './StockPanel.module.css'
 
@@ -26,42 +25,27 @@ const ItemEmoji: React.FC<{ itemType: string }> = ({ itemType }) => {
 	return <>{emoji}</>
 }
 
-export const StockPanel: React.FC = () => {
+type StockPanelProps = {
+	isVisible: boolean
+	onClose?: () => void
+}
+
+export const StockPanel: React.FC<StockPanelProps> = ({ isVisible, onClose }) => {
 	const resourceTypes = useResourceList()
-	const [totals, setTotals] = useState<Record<string, number>>({})
+	const totals = useGlobalStockTotals()
 
-	const updateTotals = () => {
-		const nextTotals: Record<string, number> = {}
-		storageService.getAllBuildingStorages().forEach((storage) => {
-			Object.entries(storage.items).forEach(([itemType, quantity]) => {
-				nextTotals[itemType] = (nextTotals[itemType] || 0) + quantity
-			})
-		})
-		setTotals(nextTotals)
-	}
-
-	useEffect(() => {
-		updateTotals()
-		EventBus.on('ui:storage:updated', updateTotals)
-
-		return () => {
-			EventBus.off('ui:storage:updated', updateTotals)
-		}
-	}, [])
-
-	useEffect(() => {
-		if (resourceTypes.length > 0) {
-			updateTotals()
-		}
-	}, [resourceTypes])
-
-	if (resourceTypes.length === 0) {
+	if (!isVisible || resourceTypes.length === 0) {
 		return null
 	}
 
 	return (
 		<div className={styles.panel}>
-			<div className={styles.title}>Global Stock</div>
+			<div className={styles.header}>
+				<div className={styles.title}>Global Stock</div>
+				<button className={styles.closeButton} onClick={onClose} type="button" aria-label="Close stock panel">
+					×
+				</button>
+			</div>
 			<div className={styles.list}>
 				{resourceTypes.map((itemType) => (
 					<div key={itemType} className={styles.row}>

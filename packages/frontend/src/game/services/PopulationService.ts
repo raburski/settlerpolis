@@ -1,11 +1,11 @@
 import { EventBus } from '../EventBus'
 import { Event } from '@rugged/game'
 import { Settler, PopulationListData, PopulationStatsData, ProfessionType, SettlerState } from '@rugged/game'
-import { JobAssignment } from '@rugged/game/Jobs/types'
+import type { WorkAssignment } from '@rugged/game/Settlers/WorkProvider/types'
 
 class PopulationServiceClass {
 	private settlers = new Map<string, Settler>() // settlerId -> Settler
-	private jobs = new Map<string, JobAssignment>() // jobId -> JobAssignment
+private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkAssignment
 	private stats: PopulationStatsData = {
 		totalCount: 0,
 		byProfession: {
@@ -65,16 +65,15 @@ class PopulationServiceClass {
 		})
 
 		// Handle worker assigned
-		EventBus.on(Event.Population.SC.WorkerAssigned, (data: { jobAssignment: JobAssignment, settlerId: string, buildingInstanceId: string }) => {
+		EventBus.on(Event.Population.SC.WorkerAssigned, (data: { assignment: WorkAssignment, settlerId: string, buildingInstanceId: string }) => {
 			const settler = this.settlers.get(data.settlerId)
 			if (settler) {
-				this.jobs.set(data.jobAssignment.jobId, data.jobAssignment)
+				this.assignments.set(data.assignment.assignmentId, data.assignment)
 				settler.stateContext = {
 					...settler.stateContext,
-					jobId: data.jobAssignment.jobId
+					assignmentId: data.assignment.assignmentId
 				}
 				settler.buildingId = data.buildingInstanceId
-				settler.state = SettlerState.Working
 				EventBus.emit('ui:population:worker-assigned', data)
 				EventBus.emit('ui:population:settler-updated', { settlerId: data.settlerId })
 				this.updateStatsFromSettlers()
@@ -90,13 +89,13 @@ class PopulationServiceClass {
 		})
 
 		// Handle worker unassigned
-		EventBus.on(Event.Population.SC.WorkerUnassigned, (data: { settlerId: string, jobId: string }) => {
+		EventBus.on(Event.Population.SC.WorkerUnassigned, (data: { settlerId: string, assignmentId: string }) => {
 			const settler = this.settlers.get(data.settlerId)
 			if (settler) {
-				this.jobs.delete(data.jobId)
+				this.assignments.delete(data.assignmentId)
 				settler.stateContext = {
 					...settler.stateContext,
-					jobId: undefined
+					assignmentId: undefined
 				}
 				settler.buildingId = undefined
 				settler.state = SettlerState.Idle
@@ -116,7 +115,7 @@ class PopulationServiceClass {
 	private handlePopulationList(data: PopulationListData): void {
 		// Clear existing settlers
 		this.settlers.clear()
-		this.jobs.clear()
+		this.assignments.clear()
 
 		// Add all settlers from list
 		data.settlers.forEach(settler => {
@@ -199,11 +198,11 @@ class PopulationServiceClass {
 		return Array.from(this.settlers.values())
 	}
 
-	public getJob(jobId?: string): JobAssignment | undefined {
-		if (!jobId) {
+	public getAssignment(assignmentId?: string): WorkAssignment | undefined {
+		if (!assignmentId) {
 			return undefined
 		}
-		return this.jobs.get(jobId)
+		return this.assignments.get(assignmentId)
 	}
 
 	public getStats(): PopulationStatsData {

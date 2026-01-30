@@ -53,6 +53,7 @@
 	--z-index-modal: 1000;
 	--z-index-overlay: 1000;
 	--z-index-dropdown: 1001;
+	--top-bar-height: 44px;
 
 	/* Dialog/Pixel UI Color Scheme */
 	--dialog-bg: rgba(20, 20, 20, 0.95);
