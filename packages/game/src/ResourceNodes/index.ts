@@ -8,6 +8,8 @@ import { ResourceNodeDefinition, ResourceNodeInstance, ResourceNodeSpawn } from 
 import { Logger } from '../Logs'
 import { calculateDistance } from '../utils'
 import { BaseManager } from '../Managers'
+import { SimulationEvents } from '../Simulation/events'
+import { SimulationTickData } from '../Simulation/types'
 
 const TILE_SIZE = 32
 const WORLD_PLAYER_ID = 'world'
@@ -20,6 +22,7 @@ export interface ResourceNodesDeps {
 export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	private definitions = new Map<string, ResourceNodeDefinition>()
 	private nodes = new Map<string, ResourceNodeInstance>()
+	private simulationTimeMs = 0
 
 	constructor(
 		managers: ResourceNodesDeps,
@@ -27,6 +30,13 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		private logger: Logger
 	) {
 		super(managers)
+		this.setupEventHandlers()
+	}
+
+	private setupEventHandlers(): void {
+		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+			this.simulationTimeMs = data.nowMs
+		})
 	}
 
 	public loadDefinitions(definitions: ResourceNodeDefinition[]): void {
@@ -100,7 +110,8 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 				mapName: spawn.mapName,
 				position,
 				remainingHarvests,
-				mapObjectId: mapObject.id
+				mapObjectId: mapObject.id,
+				matureAtMs: 0
 			}
 
 			this.nodes.set(nodeId, node)
@@ -122,6 +133,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			if (node.mapName !== mapName) return false
 			if (nodeType && node.nodeType !== nodeType) return false
 			if (node.remainingHarvests <= 0) return false
+			if (!this.isNodeMature(node)) return false
 			if (node.reservedBy) return false
 			return true
 		})
@@ -151,6 +163,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		const node = this.nodes.get(nodeId)
 		if (!node) return false
 		if (node.remainingHarvests <= 0) return false
+		if (!this.isNodeMature(node)) return false
 		if (node.reservedBy) return false
 
 		node.reservedBy = jobId
@@ -168,6 +181,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		const node = this.nodes.get(nodeId)
 		if (!node) return null
 		if (node.remainingHarvests <= 0) return null
+		if (!this.isNodeMature(node)) return null
 		if (jobId && node.reservedBy && node.reservedBy !== jobId) return null
 
 		const def = this.definitions.get(node.nodeType)
@@ -187,6 +201,102 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			id: uuidv4(),
 			itemType: def.outputItemType
 		}
+	}
+
+	public plantNode(options: { nodeType: string, mapName: string, position: Position, growTimeMs?: number, tileBased?: boolean }): ResourceNodeInstance | null {
+		const def = this.definitions.get(options.nodeType)
+		if (!def) {
+			this.logger.warn(`[ResourceNodesManager] Missing definition for node type ${options.nodeType}`)
+			return null
+		}
+
+		if (!this.managers.items.itemExists(def.nodeItemType)) {
+			this.logger.warn(`[ResourceNodesManager] Missing item metadata for node item ${def.nodeItemType}`)
+		}
+
+		const position = options.tileBased ? this.resolvePosition({
+			nodeType: options.nodeType,
+			mapName: options.mapName,
+			position: options.position,
+			tileBased: options.tileBased
+		}) : options.position
+
+		const existingAtPosition = Array.from(this.nodes.values()).find(node =>
+			node.mapName === options.mapName &&
+			node.position.x === position.x &&
+			node.position.y === position.y &&
+			node.remainingHarvests > 0
+		)
+		if (existingAtPosition) {
+			return null
+		}
+
+		const nodeId = uuidv4()
+		const remainingHarvests = Math.max(0, def.maxHarvests)
+		if (remainingHarvests === 0) {
+			this.logger.warn(`[ResourceNodesManager] Cannot plant node ${options.nodeType} with zero remaining harvests`)
+			return null
+		}
+
+		const item: Item = {
+			id: uuidv4(),
+			itemType: def.nodeItemType
+		}
+
+		const fakeClient: EventClient = {
+			id: WORLD_PLAYER_ID,
+			currentGroup: options.mapName,
+			emit: (receiver, event, data, target) => {
+				this.event.emit(receiver, event, data, target)
+			},
+			setGroup: () => {
+				// No-op for fake client
+			}
+		}
+
+		const mapObject = this.managers.mapObjects.placeObject(WORLD_PLAYER_ID, {
+			position,
+			item,
+			metadata: {
+				resourceNode: true,
+				resourceNodeId: nodeId,
+				resourceNodeType: def.id,
+				remainingHarvests
+			}
+		}, fakeClient)
+
+		if (!mapObject) {
+			return null
+		}
+
+		const node: ResourceNodeInstance = {
+			id: nodeId,
+			nodeType: def.id,
+			mapName: options.mapName,
+			position,
+			remainingHarvests,
+			mapObjectId: mapObject.id,
+			matureAtMs: this.simulationTimeMs + Math.max(0, options.growTimeMs ?? 0)
+		}
+
+		this.nodes.set(nodeId, node)
+		return node
+	}
+
+	public getNodes(mapName?: string, nodeType?: string): ResourceNodeInstance[] {
+		return Array.from(this.nodes.values()).filter(node => {
+			if (mapName && node.mapName !== mapName) return false
+			if (nodeType && node.nodeType !== nodeType) return false
+			if (node.remainingHarvests <= 0) return false
+			return true
+		})
+	}
+
+	private isNodeMature(node: ResourceNodeInstance): boolean {
+		if (node.matureAtMs === undefined) {
+			return true
+		}
+		return this.simulationTimeMs >= node.matureAtMs
 	}
 
 	private resolvePosition(spawn: ResourceNodeSpawn): Position {

@@ -10,6 +10,7 @@ import { DeliverStorageActionHandler } from './deliverStorage'
 import { DeliverConstructionActionHandler } from './deliverConstruction'
 import { HarvestNodeActionHandler } from './harvestNode'
 import { ProduceActionHandler } from './produce'
+import { PlantActionHandler } from './plant'
 import { ChangeProfessionActionHandler } from './changeProfession'
 
 export const ActionHandlers: Record<WorkActionType, ActionHandler> = {
@@ -23,6 +24,7 @@ export const ActionHandlers: Record<WorkActionType, ActionHandler> = {
 	[WorkActionType.DeliverConstruction]: DeliverConstructionActionHandler,
 	[WorkActionType.HarvestNode]: HarvestNodeActionHandler,
 	[WorkActionType.Produce]: ProduceActionHandler,
+	[WorkActionType.Plant]: PlantActionHandler,
 	[WorkActionType.ChangeProfession]: ChangeProfessionActionHandler
 }
 

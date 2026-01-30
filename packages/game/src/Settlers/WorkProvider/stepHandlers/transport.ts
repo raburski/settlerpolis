@@ -52,12 +52,14 @@ export const TransportHandler: StepHandler = {
 				return { actions: [] }
 			}
 
-			const targetReservationId = reservationSystem.reserveStorageIncoming(step.target.buildingInstanceId, step.itemType, step.quantity, assignment.assignmentId)
-			if (!targetReservationId) {
-				releaseFns.forEach(fn => fn())
-				return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
+			if (step.target.type === TransportTargetType.Storage) {
+				const targetReservationId = reservationSystem.reserveStorageIncoming(step.target.buildingInstanceId, step.itemType, step.quantity, assignment.assignmentId)
+				if (!targetReservationId) {
+					releaseFns.forEach(fn => fn())
+					return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
+				}
+				releaseFns.push(() => reservationSystem.releaseStorageReservation(targetReservationId))
 			}
-			releaseFns.push(() => reservationSystem.releaseStorageReservation(targetReservationId))
 
 			return {
 				actions: [

@@ -11,7 +11,9 @@ import {
 	BuildingPlacedData,
 	BuildingProgressData,
 	BuildingCompletedData,
-	BuildingCancelledData
+	BuildingCancelledData,
+	ProductionStatus,
+	ProductionRecipe
 } from './types'
 import { Receiver } from '../Receiver'
 import { v4 as uuidv4 } from 'uuid'
@@ -50,6 +52,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	private activeConstructionWorkers: Map<string, Set<string>> = new Map() // buildingInstanceId -> settlerIds (present at building)
 	private simulationTimeMs = 0
 	private tickAccumulatorMs = 0
+	private autoProductionState = new Map<string, { status: ProductionStatus, progressMs: number, progress: number }>()
 
 	constructor(
 		managers: BuildingDeps,
@@ -149,6 +152,18 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 				this.completeBuilding(building)
 			}
 		}
+
+		// Handle auto-production for completed buildings
+		for (const building of this.buildings.values()) {
+			if (building.stage !== ConstructionStage.Completed) {
+				continue
+			}
+			const definition = this.definitions.get(building.buildingId)
+			if (!definition?.autoProduction) {
+				continue
+			}
+			this.processAutoProduction(building, definition.autoProduction, this.TICK_INTERVAL_MS)
+		}
 	}
 
 	private placeBuilding(data: PlaceBuildingData, client: EventClient) {
@@ -211,7 +226,8 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			startedAt: 0, // Will be set when construction starts (resources collected)
 			createdAt: this.simulationTimeMs,
 			collectedResources: new Map(),
-			requiredResources: []
+			requiredResources: [],
+			productionPaused: false
 		}
 
 		// Initialize building resources
@@ -549,6 +565,117 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.logger.log(`✓ Building completed event emitted`)
 	}
 
+	private processAutoProduction(building: BuildingInstance, recipe: ProductionRecipe, deltaMs: number): void {
+		if (!this.managers.storage) {
+			return
+		}
+
+		const productionTimeMs = Math.max(1, (recipe.productionTime ?? 1) * 1000)
+		const state = this.autoProductionState.get(building.id) || {
+			status: ProductionStatus.Idle,
+			progressMs: 0,
+			progress: 0
+		}
+
+		for (const input of recipe.inputs) {
+			const current = this.managers.storage.getCurrentQuantity(building.id, input.itemType)
+			if (current < input.quantity) {
+				state.progressMs = 0
+				this.emitAutoProductionStatus(building, ProductionStatus.NoInput, 0, state.progressMs)
+				return
+			}
+		}
+
+		for (const output of recipe.outputs) {
+			if (!this.managers.storage.hasAvailableStorage(building.id, output.itemType, output.quantity)) {
+				state.progressMs = 0
+				this.emitAutoProductionStatus(building, ProductionStatus.Idle, 0, state.progressMs)
+				return
+			}
+		}
+
+		if (state.status !== ProductionStatus.InProduction) {
+			state.progressMs = 0
+			this.emitAutoProductionStarted(building, recipe)
+		}
+
+		state.progressMs += deltaMs
+		const progress = Math.min(100, Math.floor((state.progressMs / productionTimeMs) * 100))
+		this.emitAutoProductionStatus(building, ProductionStatus.InProduction, progress, state.progressMs)
+
+		if (state.progressMs < productionTimeMs) {
+			return
+		}
+
+		for (const input of recipe.inputs) {
+			const ok = this.managers.storage.removeFromStorage(building.id, input.itemType, input.quantity)
+			if (!ok) {
+				state.progressMs = 0
+				this.emitAutoProductionStatus(building, ProductionStatus.NoInput, 0, state.progressMs)
+				return
+			}
+		}
+
+		for (const output of recipe.outputs) {
+			const ok = this.managers.storage.addToStorage(building.id, output.itemType, output.quantity)
+			if (!ok) {
+				state.progressMs = 0
+				this.emitAutoProductionStatus(building, ProductionStatus.Idle, 0, state.progressMs)
+				return
+			}
+		}
+
+		state.progressMs = 0
+		this.emitAutoProductionCompleted(building, recipe)
+	}
+
+	private emitAutoProductionStarted(building: BuildingInstance, recipe: ProductionRecipe): void {
+		this.emitAutoProductionStatus(building, ProductionStatus.InProduction, 0, 0)
+		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionStarted, {
+			buildingInstanceId: building.id,
+			recipe
+		}, building.mapName)
+		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionProgress, {
+			buildingInstanceId: building.id,
+			progress: 0
+		}, building.mapName)
+	}
+
+	private emitAutoProductionCompleted(building: BuildingInstance, recipe: ProductionRecipe): void {
+		this.emitAutoProductionStatus(building, ProductionStatus.Idle, 100, 0)
+		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionCompleted, {
+			buildingInstanceId: building.id,
+			recipe
+		}, building.mapName)
+		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionProgress, {
+			buildingInstanceId: building.id,
+			progress: 100
+		}, building.mapName)
+	}
+
+	private emitAutoProductionStatus(building: BuildingInstance, status: ProductionStatus, progress: number, progressMs: number): void {
+		const current = this.autoProductionState.get(building.id)
+		const nextProgress = typeof progress === 'number' ? progress : (current?.progress ?? 0)
+		const nextProgressMs = typeof progressMs === 'number' ? progressMs : (current?.progressMs ?? 0)
+
+		if (current && current.status === status && current.progress === nextProgress) {
+			if (current.progressMs !== nextProgressMs) {
+				this.autoProductionState.set(building.id, { status, progress: nextProgress, progressMs: nextProgressMs })
+			}
+			return
+		}
+
+		this.autoProductionState.set(building.id, { status, progress: nextProgress, progressMs: nextProgressMs })
+		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionStatusChanged, {
+			buildingInstanceId: building.id,
+			status
+		}, building.mapName)
+		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionProgress, {
+			buildingInstanceId: building.id,
+			progress: nextProgress
+		}, building.mapName)
+	}
+
 	private checkBuildingCollision(mapName: string, position: { x: number, y: number }, definition: BuildingDefinition): boolean {
 		// Get all existing buildings and map objects in this map
 		const existingBuildings = this.getBuildingsForMap(mapName)
@@ -800,6 +927,22 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	public getBuildingInstance(buildingInstanceId: string): BuildingInstance | undefined {
 		return this.buildings.get(buildingInstanceId)
+	}
+
+	public isProductionPaused(buildingInstanceId: string): boolean {
+		const building = this.buildings.get(buildingInstanceId)
+		return Boolean(building?.productionPaused)
+	}
+
+	public setProductionPaused(buildingInstanceId: string, paused: boolean): void {
+		const building = this.buildings.get(buildingInstanceId)
+		if (!building) {
+			return
+		}
+		if (building.productionPaused === paused) {
+			return
+		}
+		building.productionPaused = paused
 	}
 
 	public getBuildingsForMap(mapName: string): BuildingInstance[] {

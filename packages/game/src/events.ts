@@ -38,9 +38,9 @@ import type { FXPlayEventData } from './FX/types'
 import type { CutsceneTriggerEventData } from './Cutscene/types'
 import type { MapLoadData, MapLoadResponseData, MapTransitionData, MapTransitionResponseData } from './Map/types'
 import type { TimeUpdateEventData, TimeSpeedUpdateEventData, TimePauseEventData, TimeSyncEventData } from './Time/types'
-import type { PlaceBuildingData, CancelBuildingData, BuildingPlacedData, BuildingProgressData, BuildingCompletedData, BuildingCancelledData, BuildingCatalogData } from './Buildings/types'
+import type { PlaceBuildingData, CancelBuildingData, SetProductionPausedData, BuildingPlacedData, BuildingProgressData, BuildingCompletedData, BuildingCancelledData, BuildingCatalogData } from './Buildings/types'
 import type { RequestWorkerData, UnassignWorkerData, RequestListData, PopulationListData, PopulationStatsData, Settler, ProfessionType } from './Population/types'
-import type { WorkAssignment, WorkStep, WorkAction } from './Settlers/WorkProvider/types'
+import type { WorkAssignment, WorkStep, WorkAction, LogisticsRequest } from './Settlers/WorkProvider/types'
 import type { ProductionRecipe, ProductionStatus } from './Buildings/types'
 import type { ScheduleOptions } from './Scheduler/types'
 import type { SimulationTickData } from './Simulation/types'
@@ -162,6 +162,7 @@ export type EventPayloads = Record<string, unknown> & {
 	[BuildingsEvents.CS.Place]: PlaceBuildingData
 	[BuildingsEvents.CS.Cancel]: CancelBuildingData
 	[BuildingsEvents.CS.RequestPreview]: { buildingId: string }
+	[BuildingsEvents.CS.SetProductionPaused]: SetProductionPausedData
 	[BuildingsEvents.SC.Placed]: BuildingPlacedData
 	[BuildingsEvents.SC.Progress]: BuildingProgressData
 	[BuildingsEvents.SC.Completed]: BuildingCompletedData
@@ -198,6 +199,8 @@ export type EventPayloads = Record<string, unknown> & {
 	[StorageEvents.SC.ReservationCancelled]: { reservationId: string, buildingInstanceId: string, itemType: string, quantity: number }
 	[StorageEvents.SS.StorageTick]: {}
 	[StorageEvents.SS.InputRequested]: { buildingInstanceId: string, itemType: string, quantity: number }
+
+	[WorkProviderEvents.SC.LogisticsUpdated]: { requests: LogisticsRequest[] }
 
 	[BuildingsEvents.SC.ProductionStarted]: { buildingInstanceId: string, recipe: ProductionRecipe }
 	[BuildingsEvents.SC.ProductionStopped]: { buildingInstanceId: string }

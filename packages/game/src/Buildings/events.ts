@@ -2,7 +2,8 @@ export const BuildingsEvents = {
 	CS: {
 		Place: 'cs:buildings:place',
 		Cancel: 'cs:buildings:cancel',
-		RequestPreview: 'cs:buildings:request-preview'
+		RequestPreview: 'cs:buildings:request-preview',
+		SetProductionPaused: 'cs:buildings:set-production-paused'
 	},
 	SC: {
 		Placed: 'sc:buildings:placed',

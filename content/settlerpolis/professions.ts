@@ -32,5 +32,29 @@ export const professions: ProfessionDefinition[] = [
 		canBuild: false,
 		canCarry: true,
 		canWorkBuildings: ['quarry']
+	},
+	{
+		type: ProfessionType.Farmer,
+		name: 'Farmer',
+		description: 'A settler skilled in farming',
+		canBuild: false,
+		canCarry: true,
+		canWorkBuildings: ['farm']
+	},
+	{
+		type: ProfessionType.Miller,
+		name: 'Miller',
+		description: 'A settler skilled in milling grain',
+		canBuild: false,
+		canCarry: true,
+		canWorkBuildings: ['windmill']
+	},
+	{
+		type: ProfessionType.Baker,
+		name: 'Baker',
+		description: 'A settler skilled in baking bread',
+		canBuild: false,
+		canCarry: true,
+		canWorkBuildings: ['bakery']
 	}
 ]

@@ -62,14 +62,20 @@ export const SettlerInfoPanel: React.FC = () => {
 		[ProfessionType.Carrier]: 'Carrier',
 		[ProfessionType.Builder]: 'Builder',
 		[ProfessionType.Woodcutter]: 'Woodcutter',
-		[ProfessionType.Miner]: 'Miner'
+		[ProfessionType.Miner]: 'Miner',
+		[ProfessionType.Farmer]: 'Farmer',
+		[ProfessionType.Miller]: 'Miller',
+		[ProfessionType.Baker]: 'Baker'
 	}
 
 	const professionIcons: Record<ProfessionType, string> = {
 		[ProfessionType.Carrier]: '👤',
 		[ProfessionType.Builder]: '🔨',
 		[ProfessionType.Woodcutter]: '🪓',
-		[ProfessionType.Miner]: '⛏️'
+		[ProfessionType.Miner]: '⛏️',
+		[ProfessionType.Farmer]: '🌾',
+		[ProfessionType.Miller]: '🌬️',
+		[ProfessionType.Baker]: '🥖'
 	}
 
 	const getStateLabel = (state: SettlerState): string => {

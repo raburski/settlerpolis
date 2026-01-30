@@ -30,7 +30,8 @@ export enum ProductionStatus {
 	Idle = 'idle',
 	NoInput = 'no_input',
 	InProduction = 'in_production',
-	NoWorker = 'no_worker' // Building requires worker but none assigned
+	NoWorker = 'no_worker', // Building requires worker but none assigned
+	Paused = 'paused'
 }
 
 export interface BuildingProduction {
@@ -69,8 +70,20 @@ export interface BuildingDefinition {
 	harvest?: {
 		nodeType: string
 	} // Optional resource node harvesting config
+	farm?: {
+		cropNodeType: string
+		plotRadiusTiles: number
+		plantTimeMs: number
+		growTimeMs: number
+		maxPlots?: number
+	}
+	consumes?: Array<{
+		itemType: string
+		desiredQuantity: number
+	}>
 	// Phase C: Production and storage
 	productionRecipe?: ProductionRecipe
+	autoProduction?: ProductionRecipe
 	storage?: import('../Storage/types').StorageCapacity
 }
 
@@ -86,6 +99,7 @@ export interface BuildingInstance {
 	createdAt: number // timestamp when building was placed
 	collectedResources: Map<string, number> // itemType -> quantity collected (server-side only, client tracks via events)
 	requiredResources: BuildingCost[] // Required resources (derived from definition.costs, server-side only)
+	productionPaused?: boolean
 }
 
 export interface PlaceBuildingData {
@@ -95,6 +109,11 @@ export interface PlaceBuildingData {
 
 export interface CancelBuildingData {
 	buildingInstanceId: string
+}
+
+export interface SetProductionPausedData {
+	buildingInstanceId: string
+	paused: boolean
 }
 
 export interface BuildingPlacedData {

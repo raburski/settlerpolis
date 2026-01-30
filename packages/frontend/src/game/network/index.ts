@@ -6,6 +6,8 @@ import { FrontendMapUrlService } from '../services/MapUrlService'
 import '../services/BuildingService'
 // Initialize PopulationService to start listening to events
 import '../services/PopulationService'
+// Initialize LogisticsService to start listening to events
+import '../services/LogisticsService'
 
 const IS_REMOTE_GAME = false
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'

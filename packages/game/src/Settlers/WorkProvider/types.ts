@@ -30,7 +30,8 @@ export enum WorkWaitReason {
 	ProviderMissing = 'provider_missing',
 	NoWork = 'no_work',
 	NoRequests = 'no_requests',
-	NoViableRequest = 'no_viable_request'
+	NoViableRequest = 'no_viable_request',
+	Paused = 'paused'
 }
 
 export enum WorkActionType {

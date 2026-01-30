@@ -13,6 +13,7 @@ import { SystemMessages } from './SystemMessages'
 import { ConstructionPanel } from './ConstructionPanel'
 import { BuildingInfoPanel } from './BuildingInfoPanel'
 import { PopulationPanel } from './PopulationPanel'
+import { LogisticsPanel } from './LogisticsPanel'
 import { SettlerInfoPanel } from './SettlerInfoPanel'
 import { EventBus } from "../EventBus"
 import { Event, FXType } from '@rugged/game'
@@ -21,8 +22,11 @@ export const UIContainer = () => {
 	const [isVisible, setIsVisible] = useState(true)
 	const [isStockOpen, setIsStockOpen] = useState(false)
 	const [isPopulationOpen, setIsPopulationOpen] = useState(false)
+	const [isLogisticsOpen, setIsLogisticsOpen] = useState(false)
 	const populationButtonRef = useRef<HTMLButtonElement | null>(null)
 	const [populationAnchor, setPopulationAnchor] = useState<DOMRect | null>(null)
+	const logisticsButtonRef = useRef<HTMLButtonElement | null>(null)
+	const [logisticsAnchor, setLogisticsAnchor] = useState<DOMRect | null>(null)
 
 	useEffect(() => {
         const handleEvent = (data) => {
@@ -56,6 +60,25 @@ export const UIContainer = () => {
 		}
 	}, [isPopulationOpen])
 
+	useEffect(() => {
+		if (!isLogisticsOpen) {
+			return
+		}
+
+		const updateAnchor = () => {
+			if (logisticsButtonRef.current) {
+				setLogisticsAnchor(logisticsButtonRef.current.getBoundingClientRect())
+			}
+		}
+
+		updateAnchor()
+		window.addEventListener('resize', updateAnchor)
+
+		return () => {
+			window.removeEventListener('resize', updateAnchor)
+		}
+	}, [isLogisticsOpen])
+
 	if (!isVisible) {
 		return null
 	}
@@ -66,6 +89,7 @@ export const UIContainer = () => {
 				isStockOpen={isStockOpen}
 				onToggleStock={() => {
 					setIsPopulationOpen(false)
+					setIsLogisticsOpen(false)
 					setIsStockOpen((prev) => !prev)
 				}}
 				isPopulationOpen={isPopulationOpen}
@@ -73,7 +97,13 @@ export const UIContainer = () => {
 					setIsStockOpen(false)
 					setIsPopulationOpen((prev) => !prev)
 				}}
+				isLogisticsOpen={isLogisticsOpen}
+				onToggleLogistics={() => {
+					setIsStockOpen(false)
+					setIsLogisticsOpen((prev) => !prev)
+				}}
 				populationButtonRef={populationButtonRef}
+				logisticsButtonRef={logisticsButtonRef}
 			/>
 			<StockPanel
 				isVisible={isStockOpen}
@@ -95,6 +125,10 @@ export const UIContainer = () => {
 				isVisible={isPopulationOpen}
 				onClose={() => setIsPopulationOpen(false)}
 				anchorRect={populationAnchor}
+			/>
+			<LogisticsPanel
+				isVisible={isLogisticsOpen}
+				anchorRect={logisticsAnchor}
 			/>
 		</>
 	)

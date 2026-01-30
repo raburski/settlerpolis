@@ -18,10 +18,30 @@ export const AcquireToolHandler: StepHandler = {
 			return { actions: [] }
 		}
 
-		const releaseFns: Array<() => void> = []
-		let toolItemId = step.toolItemId
-		let toolPosition = step.toolPosition
-		if (!toolItemId || !toolPosition) {
+	const releaseFns: Array<() => void> = []
+	const toolItemType = managers.population.getToolItemType(step.profession)
+	if (!toolItemType) {
+		const actions: WorkAction[] = [
+			{ type: WorkActionType.ChangeProfession, profession: step.profession, setState: SettlerState.Idle }
+		]
+		if (assignment.buildingInstanceId) {
+			const building = managers.buildings.getBuildingInstance(assignment.buildingInstanceId)
+			if (building) {
+				actions.push({
+					type: WorkActionType.Move,
+					position: building.position,
+					targetType: 'building',
+					targetId: building.id,
+					setState: SettlerState.MovingToBuilding
+				})
+			}
+		}
+		return { actions }
+	}
+
+	let toolItemId = step.toolItemId
+	let toolPosition = step.toolPosition
+	if (!toolItemId || !toolPosition) {
 			const reservedTool = reservationSystem.reserveToolForProfession(settler.mapName, step.profession, settlerId)
 			if (!reservedTool) {
 				return {

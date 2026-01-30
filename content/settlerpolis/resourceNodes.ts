@@ -19,6 +19,15 @@ export const resourceNodeDefinitions: ResourceNodeDefinition[] = [
 		harvestQuantity: 1,
 		harvestTimeMs: 3500,
 		maxHarvests: 6
+	},
+	{
+		id: 'wheat_crop',
+		name: 'Wheat',
+		nodeItemType: ItemType.Wheat,
+		outputItemType: ItemType.Grain,
+		harvestQuantity: 1,
+		harvestTimeMs: 3000,
+		maxHarvests: 1
 	}
 ]
 

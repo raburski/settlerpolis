@@ -12,7 +12,10 @@ type TopBarProps = {
 	onToggleStock: () => void
 	isPopulationOpen: boolean
 	onTogglePopulation: () => void
+	isLogisticsOpen: boolean
+	onToggleLogistics: () => void
 	populationButtonRef?: React.Ref<HTMLButtonElement>
+	logisticsButtonRef?: React.Ref<HTMLButtonElement>
 }
 
 const ResourceEmoji: React.FC<{ itemType: string }> = ({ itemType }) => {
@@ -41,7 +44,10 @@ export const TopBar: React.FC<TopBarProps> = ({
 	onToggleStock,
 	isPopulationOpen,
 	onTogglePopulation,
-	populationButtonRef
+	isLogisticsOpen,
+	onToggleLogistics,
+	populationButtonRef,
+	logisticsButtonRef
 }) => {
 	const totals = useGlobalStockTotals()
 	const [populationTotal, setPopulationTotal] = useState(
@@ -98,6 +104,17 @@ export const TopBar: React.FC<TopBarProps> = ({
 				>
 					<span className={styles.populationIcon}>👥</span>
 					<span className={styles.populationValue}>{populationTotal}</span>
+				</button>
+				<button
+					type="button"
+					className={styles.logisticsButton}
+					data-active={isLogisticsOpen}
+					onClick={onToggleLogistics}
+					aria-pressed={isLogisticsOpen}
+					ref={logisticsButtonRef}
+				>
+					<span className={styles.logisticsIcon}>📦</span>
+					<span className={styles.logisticsLabel}>Logistics</span>
 				</button>
 			</div>
 			<div className={styles.right} />

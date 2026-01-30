@@ -18,13 +18,19 @@ export class SettlerView extends BaseMovementView {
 		[ProfessionType.Carrier]: 0xffffff, // White
 		[ProfessionType.Builder]: 0xffaa00, // Orange
 		[ProfessionType.Woodcutter]: 0x8b4513, // Brown
-		[ProfessionType.Miner]: 0x808080 // Gray
+		[ProfessionType.Miner]: 0x808080, // Gray
+		[ProfessionType.Farmer]: 0x7fbf3f, // Green
+		[ProfessionType.Miller]: 0x6aa0ff, // Light blue
+		[ProfessionType.Baker]: 0xd2a679 // Wheat
 	}
 	private professionEmojis: Record<ProfessionType, string> = {
 		[ProfessionType.Carrier]: '👤',
 		[ProfessionType.Builder]: '🔨',
 		[ProfessionType.Woodcutter]: '🪓',
-		[ProfessionType.Miner]: '⛏️'
+		[ProfessionType.Miner]: '⛏️',
+		[ProfessionType.Farmer]: '🌾',
+		[ProfessionType.Miller]: '🌬️',
+		[ProfessionType.Baker]: '🥖'
 	}
 
 	constructor(scene: GameScene, x: number = 0, y: number = 0, settlerId: string, profession: ProfessionType, speed: number = 64) {

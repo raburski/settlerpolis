@@ -1,4 +1,7 @@
 export const WorkProviderEvents = {
+	SC: {
+		LogisticsUpdated: 'sc:work:logistics-updated'
+	},
 	SS: {
 		ActionCompleted: 'ss:work:action-completed',
 		ActionFailed: 'ss:work:action-failed',

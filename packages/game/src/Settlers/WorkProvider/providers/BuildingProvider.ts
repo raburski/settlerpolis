@@ -53,6 +53,10 @@ export class BuildingProvider implements WorkProvider {
 			return null
 		}
 
+		if (building.stage === ConstructionStage.Completed && this.managers.buildings.isProductionPaused(building.id)) {
+			return { type: WorkStepType.Wait, reason: WorkWaitReason.Paused }
+		}
+
 		const requiredProfession = definition.requiredProfession as ProfessionType | undefined
 		if (requiredProfession && settler.profession !== requiredProfession) {
 			if (settler.profession === ProfessionType.Carrier) {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { EventBus } from '../EventBus'
-import { Event, BuildingInstance, BuildingDefinition, ConstructionStage, SettlerState, ProductionStatus } from '@rugged/game'
+import { Event, BuildingInstance, BuildingDefinition, ConstructionStage, Settler, SettlerState, ProfessionType, ProductionStatus } from '@rugged/game'
 import { buildingService } from '../services/BuildingService'
 import { populationService } from '../services/PopulationService'
 import { itemService } from '../services/ItemService'
@@ -271,6 +271,7 @@ export const BuildingInfoPanel: React.FC = () => {
 	const isConstructing = buildingInstance.stage === ConstructionStage.Constructing
 	const isCollectingResources = buildingInstance.stage === ConstructionStage.CollectingResources
 	const hasWorkerSlots = buildingDefinition.workerSlots !== undefined
+	const canPauseWork = Boolean(buildingDefinition.productionRecipe || buildingDefinition.harvest || buildingDefinition.farm)
 	const settlers = populationService.getSettlers()
 	const assignedWorkers = settlers.filter(
 		settler => settler.buildingId === buildingInstance.id && Boolean(settler.stateContext.assignmentId)
@@ -300,6 +301,81 @@ export const BuildingInfoPanel: React.FC = () => {
 			setWorkerStatus(null) // Clear previous status
 			populationService.requestWorker(buildingInstance.id)
 		}
+	}
+
+	const professionLabels: Record<ProfessionType, string> = {
+		[ProfessionType.Carrier]: 'Carrier',
+		[ProfessionType.Builder]: 'Builder',
+		[ProfessionType.Woodcutter]: 'Woodcutter',
+		[ProfessionType.Miner]: 'Miner',
+		[ProfessionType.Farmer]: 'Farmer',
+		[ProfessionType.Miller]: 'Miller',
+		[ProfessionType.Baker]: 'Baker'
+	}
+
+	const professionIcons: Record<ProfessionType, string> = {
+		[ProfessionType.Carrier]: '👤',
+		[ProfessionType.Builder]: '🔨',
+		[ProfessionType.Woodcutter]: '🪓',
+		[ProfessionType.Miner]: '⛏️',
+		[ProfessionType.Farmer]: '🌾',
+		[ProfessionType.Miller]: '🌬️',
+		[ProfessionType.Baker]: '🥖'
+	}
+
+	const formatWaitReason = (reason?: string): string | null => {
+		if (!reason) {
+			return null
+		}
+		const withSpaces = reason.replace(/_/g, ' ')
+		return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1)
+	}
+
+	const getWorkerStatusLabel = (settler: Settler): string => {
+		switch (settler.state) {
+			case SettlerState.Idle:
+				return '🟢 Idle'
+			case SettlerState.Spawned:
+				return '✨ Spawned'
+			case SettlerState.Assigned:
+				return '📌 Assigned'
+			case SettlerState.Moving:
+				return '🚶 Moving'
+			case SettlerState.MovingToTool:
+				return '🚶 Moving to Tool'
+			case SettlerState.MovingToBuilding:
+				return '🚶 Moving to Building'
+			case SettlerState.Working:
+				return '🔨 Working'
+			case SettlerState.WaitingForWork:
+				return `⏳ Waiting${settler.stateContext.waitReason ? ` (${formatWaitReason(settler.stateContext.waitReason)})` : ''}`
+			case SettlerState.MovingToItem:
+				return '🚶 Moving to Item'
+			case SettlerState.MovingToResource:
+				return '🚶 Moving to Resource'
+			case SettlerState.Harvesting:
+				return '⛏️ Harvesting'
+			case SettlerState.CarryingItem:
+				return '📦 Carrying Item'
+			case SettlerState.AssignmentFailed:
+				return '❌ Assignment Failed'
+			default:
+				return '❓ Unknown'
+		}
+	}
+
+	const getWorkerProblemReason = (settler: Settler): string | null => {
+		if (settler.state === SettlerState.AssignmentFailed) {
+			return settler.stateContext.errorReason || 'Assignment failed'
+		}
+		if (settler.stateContext.errorReason) {
+			return settler.stateContext.errorReason
+		}
+		return null
+	}
+
+	const handleWorkerClick = (settlerId: string) => {
+		EventBus.emit('ui:settler:click', { settlerId })
 	}
 
 	return (
@@ -351,16 +427,51 @@ export const BuildingInfoPanel: React.FC = () => {
 				)}
 			</div>
 
-			{hasWorkerSlots && isCompleted && (
-				<div className={sharedStyles.infoRow}>
-					<span className={sharedStyles.label}>Workers:</span>
-					<span className={sharedStyles.value}>
-						{workerCount}
-						{(workingWorkers.length > 0 || movingWorkers.length > 0) && (
-							` (${workingWorkers.length} active${movingWorkers.length > 0 ? `, ${movingWorkers.length} en route` : ''})`
-						)}
-						{' '} / {maxWorkers}
-					</span>
+			{(hasWorkerSlots || assignedWorkers.length > 0) && (
+				<div className={sharedStyles.info}>
+					<div className={sharedStyles.infoRow}>
+						<span className={sharedStyles.label}>Workers:</span>
+						<span className={sharedStyles.value}>
+							{workerCount}
+							{(workingWorkers.length > 0 || movingWorkers.length > 0) && (
+								` (${workingWorkers.length} active${movingWorkers.length > 0 ? `, ${movingWorkers.length} en route` : ''})`
+							)}
+							{hasWorkerSlots && ` / ${maxWorkers}`}
+						</span>
+					</div>
+					{workerCount > 0 ? (
+						<div className={sharedStyles.workerList}>
+							{assignedWorkers.map((settler, index) => {
+								const problemReason = getWorkerProblemReason(settler)
+								return (
+									<button
+										key={settler.id}
+										type="button"
+										className={sharedStyles.workerRow}
+										onClick={() => handleWorkerClick(settler.id)}
+										title="Open settler details"
+									>
+										<span className={sharedStyles.workerInfo}>
+											<span className={sharedStyles.workerIcon}>{professionIcons[settler.profession]}</span>
+											<span className={sharedStyles.workerName} title={settler.id}>
+												{professionLabels[settler.profession]} #{index + 1}
+											</span>
+										</span>
+										<span className={sharedStyles.workerMeta}>
+											{getWorkerStatusLabel(settler)}
+											{problemReason && (
+												<span className={sharedStyles.workerDanger} title={problemReason}>⚠️</span>
+											)}
+										</span>
+									</button>
+								)
+							})}
+						</div>
+					) : (
+						<div className={sharedStyles.workerHint}>
+							No workers assigned yet
+						</div>
+					)}
 				</div>
 			)}
 
@@ -453,9 +564,11 @@ export const BuildingInfoPanel: React.FC = () => {
 								const production = productionService.getBuildingProduction(buildingInstance.id)
 								const status = production?.status || ProductionStatus.Idle
 								const progress = production?.progress || 0
+								const isPaused = status === ProductionStatus.Paused
 								
+								let statusContent: React.ReactNode
 								if (status === ProductionStatus.InProduction) {
-									return (
+									statusContent = (
 										<div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
 											<span>🔄 Producing... {Math.round(progress)}%</span>
 											<div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
@@ -477,7 +590,7 @@ export const BuildingInfoPanel: React.FC = () => {
 										</div>
 									)
 								} else if (status === ProductionStatus.NoInput) {
-									return (
+									statusContent = (
 										<div>
 											<span>⏸️ Waiting for inputs</span>
 											<div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
@@ -491,17 +604,62 @@ export const BuildingInfoPanel: React.FC = () => {
 										</div>
 									)
 								} else if (status === ProductionStatus.NoWorker) {
-									return <span>👷 Needs worker</span>
+									statusContent = <span>👷 Needs worker</span>
+								} else if (status === ProductionStatus.Paused) {
+									statusContent = <span>⏸️ Paused</span>
 								} else {
-									return <span>✅ Idle</span>
+									statusContent = <span>✅ Idle</span>
 								}
+
+								return (
+									<div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+										{statusContent}
+										<button
+											className={sharedStyles.actionButton}
+											onClick={() => buildingService.setProductionPaused(buildingInstance.id, !isPaused)}
+										>
+											{isPaused ? 'Resume Production' : 'Pause Production'}
+										</button>
+									</div>
+								)
 							})()}
 						</span>
 					</div>
 				</div>
 			)}
 
-			{isCompleted && !buildingDefinition.storage && !buildingDefinition.productionRecipe && (
+			{isCompleted && !buildingDefinition.productionRecipe && canPauseWork && (
+				<div className={sharedStyles.info}>
+					<div className={sharedStyles.infoRow}>
+						<span className={sharedStyles.label}>Work:</span>
+						<span className={sharedStyles.value}>
+							{(() => {
+								const status = productionService.getProductionStatus(buildingInstance.id)
+								const isPaused = status === ProductionStatus.Paused
+								let statusLabel = '✅ Active'
+								if (status === ProductionStatus.Paused) {
+									statusLabel = '⏸️ Paused'
+								} else if (status === ProductionStatus.NoWorker) {
+									statusLabel = '👷 Needs worker'
+								}
+								return (
+									<div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+										<span>{statusLabel}</span>
+										<button
+											className={sharedStyles.actionButton}
+											onClick={() => buildingService.setProductionPaused(buildingInstance.id, !isPaused)}
+										>
+											{isPaused ? 'Resume Work' : 'Pause Work'}
+										</button>
+									</div>
+								)
+							})()}
+						</span>
+					</div>
+				</div>
+			)}
+
+			{isCompleted && !buildingDefinition.storage && !buildingDefinition.productionRecipe && !buildingDefinition.harvest && !buildingDefinition.farm && (
 				<div className={sharedStyles.actions}>
 					<div className={sharedStyles.completedMessage}>
 						Building is ready for use

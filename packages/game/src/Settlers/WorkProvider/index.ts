@@ -20,8 +20,9 @@ import { v4 as uuidv4 } from 'uuid'
 import { calculateDistance } from '../../utils'
 import { SettlerState, ProfessionType } from '../../Population/types'
 import type { RequestWorkerData, UnassignWorkerData } from '../../Population/types'
-import type { ProductionRecipe } from '../../Buildings/types'
+import type { ProductionRecipe, SetProductionPausedData } from '../../Buildings/types'
 import { ConstructionStage, ProductionStatus } from '../../Buildings/types'
+import { getBuildingWorkKinds } from '../../Buildings/work'
 import { ProviderRegistry } from './ProviderRegistry'
 import { ActionSystem } from './ActionSystem'
 import { WorkProviderEvents } from './events'
@@ -90,6 +91,10 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			this.unassignWorker(data)
 		})
 
+		this.event.on<SetProductionPausedData>(BuildingsEvents.CS.SetProductionPaused, (data, client) => {
+			this.setProductionPaused(data)
+		})
+
 		this.event.on(BuildingsEvents.SS.ConstructionCompleted, (data: { buildingInstanceId: string }) => {
 			this.unassignAllForBuilding(data.buildingInstanceId)
 		})
@@ -104,10 +109,61 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		this.actionSystem.setTime(this.simulationTimeMs)
 
 		this.logisticsProvider.refreshConstructionRequests()
+		this.refreshConsumptionRequests()
+		this.emitLogisticsRequests()
 		this.assignConstructionWorkers()
 
 		// Assign idle carriers to logistics if there is pending demand
 		this.assignIdleCarriersToLogistics()
+	}
+
+	private refreshConsumptionRequests(): void {
+		const buildings = this.managers.buildings.getAllBuildings()
+		for (const building of buildings) {
+			if (building.stage !== ConstructionStage.Completed) {
+				continue
+			}
+
+			const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
+			if (!definition?.consumes || definition.consumes.length === 0) {
+				continue
+			}
+
+			for (const request of definition.consumes) {
+				const capacity = this.managers.storage.getStorageCapacity(building.id, request.itemType)
+				if (capacity <= 0) {
+					continue
+				}
+				const desired = Math.min(request.desiredQuantity, capacity)
+				const current = this.managers.storage.getCurrentQuantity(building.id, request.itemType)
+				const needed = desired - current
+				this.logisticsProvider.requestInput(building.id, request.itemType, needed, 40)
+			}
+		}
+	}
+
+	private emitLogisticsRequests(): void {
+		const requests = this.logisticsProvider.getRequests()
+		const byMap = new Map<string, LogisticsRequest[]>()
+
+		for (const request of requests) {
+			const building = this.managers.buildings.getBuildingInstance(request.buildingInstanceId)
+			if (!building) {
+				continue
+			}
+			if (!byMap.has(building.mapName)) {
+				byMap.set(building.mapName, [])
+			}
+			byMap.get(building.mapName)!.push(request)
+		}
+
+		for (const [mapName, mapRequests] of byMap.entries()) {
+			this.event.emit(Receiver.Group, WorkProviderEvents.SC.LogisticsUpdated, { requests: mapRequests }, mapName)
+		}
+		// If there are no requests, still clear UI for current maps (best effort)
+		if (requests.length === 0) {
+			this.event.emit(Receiver.All, WorkProviderEvents.SC.LogisticsUpdated, { requests: [] })
+		}
 	}
 
 	private getBuildingProvider(buildingInstanceId: string): BuildingProvider | null {
@@ -231,6 +287,36 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		}, building.mapName)
 
 		this.dispatchNextStep(candidate.id)
+	}
+
+	private setProductionPaused(data: SetProductionPausedData): void {
+		const building = this.managers.buildings.getBuildingInstance(data.buildingInstanceId)
+		if (!building) {
+			return
+		}
+
+		const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
+		if (!definition || getBuildingWorkKinds(definition).length === 0) {
+			return
+		}
+
+		this.managers.buildings.setProductionPaused(building.id, data.paused)
+
+		if (data.paused) {
+			this.emitProductionStatus(building.id, ProductionStatus.Paused)
+			return
+		}
+
+		const assigned = this.assignmentsByBuilding.get(building.id)
+		if (!assigned || assigned.size === 0) {
+			this.emitProductionStatus(building.id, ProductionStatus.NoWorker)
+			return
+		}
+
+		this.emitProductionStatus(building.id, ProductionStatus.Idle)
+		for (const settlerId of assigned) {
+			this.dispatchNextStep(settlerId)
+		}
 	}
 
 	private unassignWorker(data: UnassignWorkerData): void {
@@ -506,6 +592,11 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 
 		if (step.type === WorkStepType.AcquireTool) {
 			this.emitProductionStatus(building.id, ProductionStatus.NoWorker)
+			return
+		}
+
+		if (step.type === WorkStepType.Wait && step.reason === WorkWaitReason.Paused) {
+			this.emitProductionStatus(building.id, ProductionStatus.Paused)
 			return
 		}
 

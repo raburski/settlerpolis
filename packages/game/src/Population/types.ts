@@ -6,7 +6,10 @@ export enum ProfessionType {
 	Carrier = 'carrier', // Default profession for all settlers
 	Builder = 'builder',
 	Woodcutter = 'woodcutter',
-	Miner = 'miner'
+	Miner = 'miner',
+	Farmer = 'farmer',
+	Miller = 'miller',
+	Baker = 'baker'
 	// Note: Settlers can change profession when assigned to specific buildings
 }
 

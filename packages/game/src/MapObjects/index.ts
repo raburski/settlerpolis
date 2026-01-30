@@ -142,6 +142,11 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 		return false
 	}
 
+	// Public helper to test if an item can be placed at a position without collisions
+	public canPlaceAt(mapName: string, position: Position, item?: Item, metadata?: Record<string, any>): boolean {
+		return !this.checkCollision(mapName, position, item, metadata)
+	}
+
 	private doRectanglesOverlap(
 		pos1: Position, width1: number, height1: number,
 		pos2: Position, width2: number, height2: number

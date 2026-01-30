@@ -11,7 +11,7 @@
 	padding: var(--spacing-sm);
 	color: #fffbe7;
 	z-index: var(--z-index-modal);
-	height: 96px;
+	height: 104px;
 	overflow: hidden;
 	box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
 	font-family: 'Press Start 2P', monospace;
@@ -63,9 +63,9 @@
 .buildingsList {
 	flex: 1;
 	display: grid;
-	grid-template-columns: repeat(auto-fill, 46px);
-	grid-auto-rows: 40px;
-	gap: 6px;
+	grid-template-columns: repeat(auto-fill, 48px);
+	grid-auto-rows: 48px;
+	gap: 4px;
 	overflow-y: auto;
 	overflow-x: hidden;
 	padding-bottom: var(--spacing-xs);
@@ -79,7 +79,8 @@
 	justify-content: center;
 	gap: 0;
 	padding: 2px;
-	margin-right: 6px;
+	margin-right: 8px;
+	margin-bottom: 8px;
 	background: rgba(44, 24, 16, 0.9);
 	border: 2px solid #2c1810;
 	border-radius: 0;

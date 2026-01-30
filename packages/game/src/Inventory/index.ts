@@ -203,9 +203,9 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 			firstSlot.item = defaultItem
 			
 			// Add starting resources for building construction (Phase A)
-			// Add logs (wood) - 20 logs for testing
+			// Add logs (wood) - 40 logs for testing
 			let slotIndex = 1
-			for (let i = 0; i < 20; i++) {
+			for (let i = 0; i < 40; i++) {
 				const logItem = createItemWithRandomId('logs')
 				const slot = getSlotAtPosition(initialInventory, { 
 					row: Math.floor(slotIndex / INVENTORY_GRID_COLUMNS), 
@@ -217,8 +217,8 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 				}
 			}
 			
-			// Add stone - 15 stone for testing
-			for (let i = 0; i < 15; i++) {
+			// Add stone - 30 stone for testing
+			for (let i = 0; i < 30; i++) {
 				const stoneItem = createItemWithRandomId('stone')
 				const slot = getSlotAtPosition(initialInventory, { 
 					row: Math.floor(slotIndex / INVENTORY_GRID_COLUMNS), 
