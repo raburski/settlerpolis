@@ -152,7 +152,6 @@ export class NetworkManager implements EventManager {
 
 	emit(to: Receiver, event: string, data: any, groupName?: string): void {
 		if (!this.socket) return
-		console.log('[EMIT]', event)
 		this.socket.emit(event, data)
 		this.lastMessageTime = Date.now()
 	}

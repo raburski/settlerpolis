@@ -23,7 +23,7 @@ const DEFAULT_APPEARANCE: PlayerAppearance = {
 }
 
 export class MultiplayerService {
-	private debug: boolean = true // Enable debug for building catalog
+	private debug: boolean
     private events: string[]
 	private networkHandlers = new Map<string, (data: any, client: any) => void>()
 	private handleCSEvent = (eventName: string, data: any) => {
@@ -36,9 +36,13 @@ export class MultiplayerService {
 	}
 
 	constructor(private event: EventManager) {
+		const rawDebug = import.meta.env.VITE_GAME_MULTIPLAYER_DEBUG
+		this.debug = String(rawDebug).toLowerCase() === 'true'
 		this.events = this.getAllNetworkEvents()
-		console.log('[MultiplayerService] Initializing with events:', this.events.length, 'events')
-		console.log('[MultiplayerService] Building catalog event:', Event.Buildings?.SC?.Catalog)
+		if (this.debug) {
+			console.log('[MultiplayerService] Initializing with events:', this.events.length, 'events')
+			console.log('[MultiplayerService] Building catalog event:', Event.Buildings?.SC?.Catalog)
+		}
 		EventBus.onAny(this.handleCSEvent)
         this.setupNetworkEventForwarding()
 	}
@@ -75,7 +79,9 @@ export class MultiplayerService {
 			this.networkHandlers.set(eventName, handler)
 			this.event.on(eventName, handler)
 		})
-		console.log('[MultiplayerService] Set up forwarding for', this.events.length, 'events')
+		if (this.debug) {
+			console.log('[MultiplayerService] Set up forwarding for', this.events.length, 'events')
+		}
 	}
 
 	public destroy(): void {

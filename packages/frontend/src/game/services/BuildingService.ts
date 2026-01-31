@@ -139,6 +139,10 @@ class BuildingServiceClass {
 		return this.buildingDefinitions.get(buildingId)
 	}
 
+	public getAllBuildingInstances(): BuildingInstance[] {
+		return Array.from(this.buildingInstances.values())
+	}
+
 	public getAllBuildingDefinitions(): BuildingDefinition[] {
 		return Array.from(this.buildingDefinitions.values())
 	}

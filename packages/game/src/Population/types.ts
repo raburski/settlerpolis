@@ -120,6 +120,7 @@ export interface PopulationListData {
 	byProfessionActive: Record<ProfessionType, number>
 	idleCount: number
 	workingCount: number
+	housingCapacity: number
 }
 
 export interface PopulationStatsData {
@@ -128,6 +129,7 @@ export interface PopulationStatsData {
 	byProfessionActive: Record<ProfessionType, number>
 	idleCount: number
 	workingCount: number
+	housingCapacity: number
 }
 
 export interface ProfessionTool {

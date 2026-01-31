@@ -55,10 +55,14 @@ export const TopBar: React.FC<TopBarProps> = ({
 	const [populationTotal, setPopulationTotal] = useState(
 		populationService.getStats().totalCount
 	)
+	const [housingCapacity, setHousingCapacity] = useState(
+		populationService.getStats().housingCapacity || 0
+	)
 
 	useEffect(() => {
 		const handleStatsUpdated = (data: PopulationStatsData) => {
 			setPopulationTotal(data.totalCount)
+			setHousingCapacity(data.housingCapacity || 0)
 		}
 
 		EventBus.on('ui:population:stats-updated', handleStatsUpdated)
@@ -73,6 +77,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 		{ id: 'logs', label: 'Logs' },
 		{ id: 'planks', label: 'Planks' }
 	]
+	const populationLabel = `${populationTotal}/${housingCapacity}`
 
 	return (
 		<div className={styles.topBar}>
@@ -106,7 +111,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 					ref={populationButtonRef}
 				>
 					<span className={styles.populationIcon}>👥</span>
-					<span className={styles.populationValue}>{populationTotal}</span>
+					<span className={styles.populationValue}>{populationLabel}</span>
 				</button>
 				<button
 					type="button"

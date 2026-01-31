@@ -20,6 +20,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { calculateDistance } from '../../utils'
 import { SettlerState, ProfessionType } from '../../Population/types'
 import { NeedsEvents } from '../../Needs/events'
+import { NEED_CRITICAL_THRESHOLD } from '../../Needs/NeedsState'
 import type { ContextPauseRequestedEventData, ContextResumeRequestedEventData, PausedContext } from '../../Needs/types'
 import type { RequestWorkerData, UnassignWorkerData } from '../../Population/types'
 import type { ProductionRecipe, SetProductionPausedData } from '../../Buildings/types'
@@ -524,6 +525,15 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		if (!assignment) {
 			this.managers.population.setSettlerWaitReason(settlerId, WorkWaitReason.NoWork)
 			this.managers.population.setSettlerLastStep(settlerId, undefined, WorkWaitReason.NoWork)
+			return
+		}
+
+		const settler = this.managers.population.getSettler(settlerId)
+		if (settler?.needs &&
+			(settler.needs.hunger <= NEED_CRITICAL_THRESHOLD || settler.needs.fatigue <= NEED_CRITICAL_THRESHOLD)) {
+			this.managers.population.setSettlerWaitReason(settlerId, WorkWaitReason.NeedsCritical)
+			this.managers.population.setSettlerLastStep(settlerId, undefined, WorkWaitReason.NeedsCritical)
+			this.managers.population.setSettlerState(settlerId, SettlerState.WaitingForWork)
 			return
 		}
 

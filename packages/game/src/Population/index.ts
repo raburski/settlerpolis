@@ -11,9 +11,11 @@ import {
 	SpawnSettlerData,
 	RequestListData
 } from './types'
+import { NEED_CRITICAL_THRESHOLD } from '../Needs/NeedsState'
 import { Receiver } from '../Receiver'
 import { v4 as uuidv4 } from 'uuid'
 import type { BuildingManager } from '../Buildings'
+import { ConstructionStage } from '../Buildings/types'
 import type { Scheduler } from '../Scheduler'
 import type { MapManager } from '../Map'
 import type { LootManager } from '../Loot'
@@ -41,6 +43,7 @@ export interface PopulationDeps {
 export class PopulationManager extends BaseManager<PopulationDeps> {
 	private settlers = new Map<string, Settler>() // settlerId -> Settler
 	private spawnTimers = new Map<string, NodeJS.Timeout>() // houseId -> timer
+	private houseOccupants = new Map<string, Set<string>>() // houseId -> settlerIds
 	private professionTools = new Map<string, ProfessionType>() // itemType -> ProfessionType
 	private professions = new Map<ProfessionType, ProfessionDefinition>() // professionType -> ProfessionDefinition
 	private stats: PopulationStats
@@ -61,6 +64,9 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 				return Array.from(this.settlers.values()).filter(
 					s => s.mapName === mapName && s.playerId === playerId
 				)
+			},
+			(mapName: string, playerId: string) => {
+				return this.getHousingCapacity(mapName, playerId)
 			}
 		)
 
@@ -135,11 +141,129 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		return Array.from(this.settlers.values())
 			.filter(settler => settler.mapName === mapName && settler.playerId === playerId)
 			.filter(settler => settler.state === SettlerState.Idle)
+			.filter(settler => !this.isSettlerCritical(settler))
 	}
 
 	public getAvailableCarriers(mapName: string, playerId: string): Settler[] {
 		return this.getAvailableSettlers(mapName, playerId)
 			.filter(settler => settler.profession === ProfessionType.Carrier)
+	}
+
+	private getHousingCapacity(mapName: string, playerId: string): number {
+		let capacity = 0
+		for (const building of this.managers.buildings.getAllBuildings()) {
+			if (building.mapName !== mapName || building.playerId !== playerId) {
+				continue
+			}
+			if (building.stage !== ConstructionStage.Completed) {
+				continue
+			}
+			const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
+			if (!definition?.spawnsSettlers) {
+				continue
+			}
+			capacity += definition.maxOccupants ?? 0
+		}
+		return capacity
+	}
+
+	private getHouseCapacity(houseId: string): number {
+		const building = this.managers.buildings.getBuildingInstance(houseId)
+		if (!building) {
+			return 0
+		}
+		const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
+		if (!definition?.spawnsSettlers) {
+			return 0
+		}
+		return definition.maxOccupants ?? 0
+	}
+
+	private getHouseOccupants(houseId: string): Set<string> {
+		let occupants = this.houseOccupants.get(houseId)
+		if (!occupants) {
+			occupants = new Set<string>()
+			this.houseOccupants.set(houseId, occupants)
+		}
+		return occupants
+	}
+
+	private removeSettlerFromHouse(settlerId: string): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler?.houseId) {
+			return
+		}
+		const occupants = this.houseOccupants.get(settler.houseId)
+		occupants?.delete(settlerId)
+		settler.houseId = undefined
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+	}
+
+	private assignSettlerToHouse(settlerId: string, houseId: string): boolean {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return false
+		}
+		const capacity = this.getHouseCapacity(houseId)
+		if (capacity <= 0) {
+			return false
+		}
+		const occupants = this.getHouseOccupants(houseId)
+		if (occupants.size >= capacity) {
+			return false
+		}
+		if (settler.houseId && settler.houseId !== houseId) {
+			this.removeSettlerFromHouse(settlerId)
+		}
+		occupants.add(settlerId)
+		settler.houseId = houseId
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+		return true
+	}
+
+	private assignHomelessToHouse(houseId: string): void {
+		const building = this.managers.buildings.getBuildingInstance(houseId)
+		if (!building) {
+			return
+		}
+		const capacity = this.getHouseCapacity(houseId)
+		if (capacity <= 0) {
+			return
+		}
+		const occupants = this.getHouseOccupants(houseId)
+		let available = capacity - occupants.size
+		if (available <= 0) {
+			return
+		}
+		const homeless = Array.from(this.settlers.values())
+			.filter(settler => settler.mapName === building.mapName && settler.playerId === building.playerId)
+			.filter(settler => !settler.houseId)
+			.sort((a, b) => a.createdAt - b.createdAt)
+
+		for (const settler of homeless) {
+			if (available <= 0) {
+				break
+			}
+			if (this.assignSettlerToHouse(settler.id, houseId)) {
+				available -= 1
+			}
+		}
+	}
+
+	private canSpawnFromHouse(houseId: string): boolean {
+		const capacity = this.getHouseCapacity(houseId)
+		if (capacity <= 0) {
+			return false
+		}
+		const occupants = this.getHouseOccupants(houseId)
+		return occupants.size < capacity
+	}
+
+	private isSettlerCritical(settler: Settler): boolean {
+		if (!settler.needs) {
+			return false
+		}
+		return settler.needs.hunger <= NEED_CRITICAL_THRESHOLD || settler.needs.fatigue <= NEED_CRITICAL_THRESHOLD
 	}
 
 	public setSettlerState(settlerId: string, state: SettlerState): void {
@@ -308,6 +432,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			return
 		}
 
+		this.assignHomelessToHouse(buildingInstanceId)
 		this.spawnSettler({ houseBuildingInstanceId: buildingInstanceId })
 
 		const timer = setInterval(() => {
@@ -319,6 +444,10 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	private spawnSettler(data: SpawnSettlerData): Settler | null {
 		const house = this.managers.buildings.getBuildingInstance(data.houseBuildingInstanceId)
 		if (!house) {
+			return null
+		}
+
+		if (!this.canSpawnFromHouse(house.id)) {
 			return null
 		}
 
@@ -337,6 +466,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		}
 
 		this.settlers.set(id, settler)
+		this.getHouseOccupants(house.id).add(id)
 		this.managers.movement.registerEntity({
 			id: settler.id,
 			position: settler.position,

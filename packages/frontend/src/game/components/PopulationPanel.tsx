@@ -33,7 +33,8 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 			[ProfessionType.Baker]: 0
 		},
 		idleCount: 0,
-		workingCount: 0
+		workingCount: 0,
+		housingCapacity: 0
 	})
 	const [toolAvailability, setToolAvailability] = useState<Record<ProfessionType, boolean>>(
 		toolAvailabilityService.getAvailability()

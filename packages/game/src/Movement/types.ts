@@ -13,7 +13,8 @@ export interface MovementTask {
 	currentStep: number
 	targetType?: string // 'tool', 'building', 'spot', etc.
 	targetId?: string
-	timeoutId?: NodeJS.Timeout // Timeout ID for cleanup
+	segmentRemainingMs?: number
+	pendingCompletion?: boolean
 	onStepComplete?: (task: MovementTask, position: Position) => void
 	onPathComplete?: (task: MovementTask) => void
 	onCancelled?: (task: MovementTask) => void
@@ -32,4 +33,3 @@ export interface MoveToPositionOptions {
 	targetType?: string
 	targetId?: string
 }
-

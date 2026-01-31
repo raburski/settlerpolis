@@ -386,6 +386,10 @@ export const BuildingInfoPanel: React.FC = () => {
 		EventBus.emit('ui:settler:click', { settlerId })
 	}
 
+	const handleUnassignWorker = (settlerId: string) => {
+		populationService.unassignWorker(settlerId)
+	}
+
 	return (
 		<DraggablePanel
 			icon={buildingDefinition.icon || '🏗️'}
@@ -452,26 +456,35 @@ export const BuildingInfoPanel: React.FC = () => {
 							{assignedWorkers.map((settler, index) => {
 								const problemReason = getWorkerProblemReason(settler)
 								return (
-									<button
-										key={settler.id}
-										type="button"
-										className={sharedStyles.workerRow}
-										onClick={() => handleWorkerClick(settler.id)}
-										title="Open settler details"
-									>
-										<span className={sharedStyles.workerInfo}>
-											<span className={sharedStyles.workerIcon}>{professionIcons[settler.profession]}</span>
-											<span className={sharedStyles.workerName} title={settler.id}>
-												{professionLabels[settler.profession]} #{index + 1}
+									<div key={settler.id} className={sharedStyles.workerRow}>
+										<button
+											type="button"
+											className={sharedStyles.workerRowButton}
+											onClick={() => handleWorkerClick(settler.id)}
+											title="Open settler details"
+										>
+											<span className={sharedStyles.workerInfo}>
+												<span className={sharedStyles.workerIcon}>{professionIcons[settler.profession]}</span>
+												<span className={sharedStyles.workerName} title={settler.id}>
+													{professionLabels[settler.profession]} #{index + 1}
+												</span>
 											</span>
-										</span>
-										<span className={sharedStyles.workerMeta}>
-											{getWorkerStatusLabel(settler)}
-											{problemReason && (
-												<span className={sharedStyles.workerDanger} title={problemReason}>⚠️</span>
-											)}
-										</span>
-									</button>
+											<span className={sharedStyles.workerMeta}>
+												{getWorkerStatusLabel(settler)}
+												{problemReason && (
+													<span className={sharedStyles.workerDanger} title={problemReason}>⚠️</span>
+												)}
+											</span>
+										</button>
+										<button
+											type="button"
+											className={sharedStyles.workerUnassignButton}
+											onClick={() => handleUnassignWorker(settler.id)}
+											title="Unassign worker"
+										>
+											✕
+										</button>
+									</div>
 								)
 							})}
 						</div>

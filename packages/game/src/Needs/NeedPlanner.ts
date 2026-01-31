@@ -50,6 +50,9 @@ export class NeedPlanner {
 			}
 			case NeedType.Fatigue: {
 				const bed = this.bedPolicy.findBed(settlerId)
+				if (!bed) {
+					return { reason: 'no_home' }
+				}
 				return buildSleepPlan(bed)
 			}
 			default: {

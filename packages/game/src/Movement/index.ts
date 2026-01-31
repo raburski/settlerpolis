@@ -1,4 +1,4 @@
-import { EventManager, Event } from '../events'
+import { EventManager } from '../events'
 import { MovementEntity, MovementTask, MovementCallbacks, MoveToPositionOptions } from './types'
 import { MovementEvents } from './events'
 import { Receiver } from '../Receiver'
@@ -7,6 +7,8 @@ import { Position } from '../types'
 import { calculateDistance } from '../utils'
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
+import { SimulationEvents } from '../Simulation/events'
+import type { SimulationTickData } from '../Simulation/types'
 
 const MOVEMENT_STEP_LAG = 100 // milliseconds between steps
 
@@ -24,7 +26,13 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		private logger: Logger
 	) {
 		super(managers)
-		// No event handlers needed - entity managers call methods directly
+		this.setupEventHandlers()
+	}
+
+	private setupEventHandlers(): void {
+		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+			this.handleSimulationTick(data)
+		})
 	}
 
 	/**
@@ -101,21 +109,18 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		this.tasks.set(entityId, task)
 		this.logger.log(`[MOVEMENT TASK CREATED] entityId=${entityId} | pathLength=${path.length} | createdAt=${task.createdAt}`)
 
-		// If already at target (path length 1), defer completion to avoid synchronous completion
-		// racing state-machine transition tracking.
+		// Snap to the first path node so server state matches the path start.
+		entity.position = { ...path[0] }
+
+		// If already at target (path length 1), defer completion to the next tick
+		// to avoid synchronous completion racing state-machine transitions.
 		if (path.length === 1) {
-			entity.position = { ...path[0] }
-			task.timeoutId = setTimeout(() => {
-				if (!this.tasks.has(entityId)) {
-					return
-				}
-				this.completePath(entityId)
-			}, 0)
+			task.pendingCompletion = true
 			return true
 		}
 
-		// Process first step immediately (no delay, step 0)
-		this.processMovementStep(entityId)
+		// Initialize movement segment immediately so clients start interpolating
+		task.segmentRemainingMs = this.beginSegment(task, entity)
 
 		return true
 	}
@@ -126,12 +131,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 	public cancelMovement(entityId: string): void {
 		const task = this.tasks.get(entityId)
 		if (task) {
-			this.logger.debug(`cancelMovement: entityId=${entityId}, clearing timeout=${!!task.timeoutId}`)
-			// Clear timeout
-			if (task.timeoutId) {
-				clearTimeout(task.timeoutId)
-			}
-
+			this.logger.debug(`cancelMovement: entityId=${entityId}`)
 			// Call cancelled callback
 			if (task.onCancelled) {
 				task.onCancelled(task)
@@ -145,70 +145,75 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		}
 	}
 
-	/**
-	 * Process movement step
-	 */
-	private processMovementStep(entityId: string): void {
-		const task = this.tasks.get(entityId)
-		const entity = this.entities.get(entityId)
-		if (!task || !entity) {
-			this.logger.warn(`processMovementStep: No task or entity for ${entityId}`)
+	private handleSimulationTick(data: SimulationTickData): void {
+		if (this.tasks.size === 0) {
 			return
 		}
 
-		this.logger.debug(`processMovementStep: entityId=${entityId}, step=${task.currentStep}/${task.path.length - 1}`)
+		for (const task of Array.from(this.tasks.values())) {
+			const entity = this.entities.get(task.entityId)
+			if (!entity) {
+				this.logger.warn(`handleSimulationTick: No entity for ${task.entityId}`)
+				this.tasks.delete(task.entityId)
+				continue
+			}
+			this.processTaskTick(task, entity, data.deltaMs, data.nowMs)
+		}
+	}
 
-		// Move to current step position
-		const currentStepPosition = task.path[task.currentStep]
-		entity.position = { ...currentStepPosition }
+	private processTaskTick(task: MovementTask, entity: MovementEntity, deltaMs: number, nowMs: number): void {
+		if (task.pendingCompletion) {
+			this.completePath(task.entityId)
+			return
+		}
 
-		// 1. Check if path is completed and call completePath
+		if (task.segmentRemainingMs === undefined) {
+			if (task.path.length <= 1) {
+				entity.position = { ...task.path[0] }
+				this.completePath(task.entityId)
+				return
+			}
+			task.segmentRemainingMs = this.beginSegment(task, entity)
+		}
+
+		let remaining = (task.segmentRemainingMs ?? 0) - deltaMs
+
+		while (remaining <= 0) {
+			const nextStep = task.currentStep + 1
+			if (nextStep >= task.path.length) {
+				this.completePath(task.entityId)
+				return
+			}
+
+			entity.position = { ...task.path[nextStep] }
+			task.currentStep = nextStep
+
+			if (task.currentStep >= task.path.length - 1) {
+				this.completePath(task.entityId)
+				return
+			}
+
+			remaining += this.beginSegment(task, entity)
+		}
+
+		task.segmentRemainingMs = remaining
+		task.lastProcessed = nowMs
+	}
+
+	private beginSegment(task: MovementTask, entity: MovementEntity): number {
 		const nextStep = task.currentStep + 1
-		if (nextStep >= task.path.length) {
-			this.logger.debug(`Path completed for ${entityId} at step ${task.currentStep}`)
-			this.completePath(entityId)
-			return
-		}
-
-		// 3. Calculate delay until next step (before incrementing)
-		// Check if there's a next step
-		
 		const nextPosition = task.path[nextStep]
-		const currentPosition = entity.position
+		const currentPosition = task.path[task.currentStep] ?? entity.position
 
-		// Emit position update to clients (targetPosition is the next step position for frontend to interpolate to)
 		this.event.emit(Receiver.Group, MovementEvents.SC.MoveToPosition, {
 			entityId: entity.id,
 			targetPosition: nextPosition,
 			mapName: entity.mapName
 		}, entity.mapName)
 
-		// Calculate distance to next step
 		const distance = calculateDistance(currentPosition, nextPosition)
-
-		// Calculate time until next movement based on distance and speed
-		const timeToNextMove = (distance / entity.speed) * 1000 // Convert to milliseconds
-		const delay = timeToNextMove + MOVEMENT_STEP_LAG
-
-		this.logger.debug(`Scheduled next step for ${entityId}: delay=${delay.toFixed(2)}ms, nextStep=${nextStep}, taskExists=${this.tasks.has(entityId)}`)
-
-		// Increment step number
-		task.currentStep = nextStep
-		task.lastProcessed = Date.now()
-
-		// Schedule processMovementStep with delay
-		const timeoutId = setTimeout(() => {
-			const taskStillExists = this.tasks.has(entityId)
-			this.logger.debug(`Timeout fired for ${entityId}, taskExists=${taskStillExists}`)
-			if (!taskStillExists) {
-				this.logger.warn(`Task was removed before timeout fired for ${entityId} - this should not happen!`)
-				return
-			}
-			this.processMovementStep(entityId)
-		}, delay)
-
-		task.timeoutId = timeoutId
-		this.logger.debug(`Timeout scheduled for ${entityId}, timeoutId=${timeoutId}`)
+		const timeToNextMove = (distance / entity.speed) * 1000
+		return timeToNextMove + MOVEMENT_STEP_LAG
 	}
 
 	/**
@@ -226,12 +231,6 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		const completionTime = Date.now()
 		const movementDuration = completionTime - task.createdAt
 		this.logger.log(`[MOVEMENT COMPLETE] entityId=${entityId} | finalPosition=(${Math.round(entity.position.x)},${Math.round(entity.position.y)}) | targetType=${task.targetType || 'none'} | targetId=${task.targetId || 'none'} | duration=${movementDuration}ms | time=${completionTime}`)
-
-		// Clear timeout to prevent any scheduled steps from running
-		if (task.timeoutId) {
-			clearTimeout(task.timeoutId)
-			task.timeoutId = undefined
-		}
 
 		// Store task info before removal (needed for events)
 		const targetType = task.targetType

@@ -31,7 +31,8 @@ export enum WorkWaitReason {
 	NoWork = 'no_work',
 	NoRequests = 'no_requests',
 	NoViableRequest = 'no_viable_request',
-	Paused = 'paused'
+	Paused = 'paused',
+	NeedsCritical = 'needs_critical'
 }
 
 export enum WorkActionType {
