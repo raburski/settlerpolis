@@ -126,7 +126,13 @@ class BuildingServiceClass {
 	public getAllBuildingDefinitions(): BuildingDefinition[] {
 		return Array.from(this.buildingDefinitions.values())
 	}
+
+	public setProductionPaused(buildingInstanceId: string, paused: boolean): void {
+		EventBus.emit(Event.Buildings.CS.SetProductionPaused, {
+			buildingInstanceId,
+			paused
+		})
+	}
 }
 
 export const buildingService = new BuildingServiceClass()
-

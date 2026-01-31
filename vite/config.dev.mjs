@@ -11,6 +11,9 @@ export default defineConfig({
     plugins: [
         react(),
     ],
+    optimizeDeps: {
+        exclude: ['@rugged/game']
+    },
     server: {
         port: 8080
     },

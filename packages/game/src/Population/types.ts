@@ -6,13 +6,18 @@ export enum ProfessionType {
 	Carrier = 'carrier', // Default profession for all settlers
 	Builder = 'builder',
 	Woodcutter = 'woodcutter',
-	Miner = 'miner'
+	Miner = 'miner',
+	Farmer = 'farmer',
+	Miller = 'miller',
+	Baker = 'baker'
 	// Note: Settlers can change profession when assigned to specific buildings
 }
 
 export enum SettlerState {
 	Idle = 'idle',                    // No active task, available for work
 	Spawned = 'spawned',              // Just spawned from house (optional, could merge with Idle)
+	Moving = 'moving',                // Generic moving state (client-side smoothing)
+	Assigned = 'assigned',            // Assigned to a provider/building but not actively working
 	MovingToTool = 'moving_to_tool',           // Moving to pick up a profession tool
 	MovingToBuilding = 'moving_to_building',   // Moving to assigned building
 	Working = 'working',              // Actively working at a building
@@ -24,39 +29,6 @@ export enum SettlerState {
 	AssignmentFailed = 'assignment_failed',    // Assignment failed, needs cleanup
 }
 
-export enum JobType {
-	Construction = 'construction',  // Building under construction
-	Production = 'production',      // Completed building with worker slots
-	Transport = 'transport',        // Carrier transport job
-	Harvest = 'harvest'             // Worker harvest job
-}
-
-export enum JobPhase {
-	Pending = 'pending',
-	MovingToTool = 'moving_to_tool',
-	MovingToSource = 'moving_to_source',
-	MovingToResource = 'moving_to_resource',
-	MovingToTarget = 'moving_to_target',
-	Harvesting = 'harvesting',
-	Working = 'working',
-	Completed = 'completed',
-	Cancelled = 'cancelled'
-}
-
-export enum JobReservationType {
-	Loot = 'loot',
-	Storage = 'storage',
-	Node = 'node',
-	Tool = 'tool'
-}
-
-export interface JobReservation {
-	type: JobReservationType
-	id: string
-	targetId?: string
-	ownerId: string
-	metadata?: Record<string, unknown>
-}
 
 export interface ProfessionDefinition {
 	type: ProfessionType
@@ -79,16 +51,21 @@ export interface ProfessionToolDefinition {
 }
 
 export interface SettlerStateContext {
+	assignmentId?: string          // Current work assignment ID
+	providerId?: string            // Current provider ID (building or logistics)
 	targetId?: string              // ID of tool, building, or item being moved to
 	targetPosition?: Position      // Target position for movement
 	targetType?: string            // Optional target type for debugging/recovery
-	jobId?: string                 // Current job assignment ID - look up JobAssignment to get all job details
+	equippedItemType?: string      // Item type equipped (e.g., profession tool)
+	equippedQuantity?: number      // Quantity equipped (usually 1)
+	carryingItemType?: string      // Item type being carried (used for visual indicators)
+	carryingQuantity?: number      // Quantity being carried
+	waitReason?: string            // WorkWaitReason (set by WorkProvider when waiting)
+	lastStepType?: string          // WorkStepType (debug)
+	lastStepReason?: string        // WorkWaitReason or failure reason (debug)
 	errorReason?: string           // Reason for failure state
 	lastIdleWanderTime?: number    // Timestamp of last idle wander movement (for cooldown)
-	// Note: buildingInstanceId, pendingAssignment, and carriedItemId removed from context
-	// - All job-related information is in JobAssignment (look up using jobId)
-	// - JobAssignment contains: buildingInstanceId, requiredProfession, carriedItemId (transport), sourceItemId (transport), etc.
-	// - JobAssignment is the single source of truth for assignment information
+	// Note: job-related data is now expressed via assignments and provider steps
 }
 
 export interface Settler {
@@ -105,34 +82,6 @@ export interface Settler {
 	createdAt: number
 }
 
-export interface JobAssignment {
-	jobId: string
-	settlerId: SettlerId
-	buildingInstanceId: string
-	jobType: JobType // Construction for buildings under construction, production for completed buildings with worker slots, transport for carrier jobs
-	priority: number
-	assignedAt: number
-	status: 'pending' | 'active' | 'completed' | 'cancelled'
-	phase?: JobPhase
-	phaseStartedAtMs?: number
-	lastProgressAtMs?: number
-	reservations?: JobReservation[]
-	// Transport-specific fields (only populated when jobType === JobType.Transport)
-	sourceItemId?: string        // Item ID on the ground (from LootManager) - before pickup (ground-to-building transport)
-	sourceBuildingInstanceId?: string // Source building instance ID (building-to-building transport)
-	carriedItemId?: string       // Item ID being carried - after pickup (item removed from LootManager or building storage)
-	sourcePosition?: Position    // Position of item on the ground (for ground items)
-	itemType?: string            // Item type to transport (logs, stone, etc.)
-	quantity?: number            // Quantity to transport (always 1 for ground items, variable for building storage)
-	reservationId?: string       // Storage reservation ID (for building-to-building transport)
-	// Harvest-specific fields
-	resourceNodeId?: string      // Resource node instance ID
-	harvestStartedAtMs?: number
-	harvestDurationMs?: number
-	// Worker assignment fields (for construction/production jobs that need tool pickup first)
-	requiredProfession?: ProfessionType // Required profession for this job (if settler needs tool)
-	toolItemId?: string
-}
 
 export interface SpawnSettlerData {
 	houseBuildingInstanceId: string
@@ -158,14 +107,6 @@ export interface UnassignWorkerData {
 
 export interface RequestListData {
 	// No data needed - server sends full population state for current player and map
-}
-
-export interface RequestProfessionToolPickupData {
-	profession: ProfessionType
-}
-
-export interface RequestRevertToCarrierData {
-	profession: ProfessionType
 }
 
 export interface PopulationListData {

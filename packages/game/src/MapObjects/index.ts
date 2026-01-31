@@ -3,23 +3,29 @@ import { MapObject, PlaceObjectData, RemoveObjectData, SpawnObjectData, DespawnO
 import { Receiver } from '../Receiver'
 import { v4 as uuidv4 } from 'uuid'
 import { Item } from '../Items/types'
-import { ItemsManager } from '../Items'
-import { InventoryManager } from '../Inventory'
+import type { ItemsManager } from '../Items'
+import type { InventoryManager } from '../Inventory'
 import { PLACE_RANGE } from '../consts'
-import { EquipmentSlotType, PlayerJoinData, PlayerTransitionData } from '../Players/types'
+import { PlayerJoinData, PlayerTransitionData } from '../Players/types'
 import { Position } from '../types'
 import { Logger } from '../Logs'
+import { BaseManager } from '../Managers'
 
-export class MapObjectsManager {
+export interface MapObjectsDeps {
+	items: ItemsManager
+	inventory: InventoryManager
+}
+
+export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 	// Map of mapName to MapObject[]
 	private mapObjectsByMap = new Map<string, Map<string, MapObject>>()
 
 	constructor(
+		managers: MapObjectsDeps,
 		private event: EventManager,
-		private itemsManager: ItemsManager,
-		private inventoryManager: InventoryManager,
 		private logger: Logger
 	) {
+		super(managers)
 		this.setupEventHandlers()
 	}
 
@@ -58,7 +64,7 @@ export class MapObjectsManager {
 		}
 
 		// Add the item to the player's inventory
-		this.inventoryManager.addItem(client, mapObject.item)
+		this.managers.inventory.addItem(client, mapObject.item)
 
 		// Remove the object from the map
 		this.removeObjectFromMap(mapObject.id, mapName)
@@ -89,7 +95,7 @@ export class MapObjectsManager {
 			height = metadata.footprint.height * TILE_SIZE
 		} else {
 			// Regular item: use placement size from metadata (convert tiles to pixels)
-			const itemMetadata = item ? this.itemsManager.getItemMetadata(item.itemType) : null
+			const itemMetadata = item ? this.managers.items.getItemMetadata(item.itemType) : null
 			const placementWidth = itemMetadata?.placement?.size?.width || 1
 			const placementHeight = itemMetadata?.placement?.size?.height || 1
 			width = placementWidth * TILE_SIZE
@@ -108,7 +114,7 @@ export class MapObjectsManager {
 				objectHeight = object.metadata.footprint.height * TILE_SIZE
 			} else {
 				// Regular item: use placement size from metadata (convert tiles to pixels)
-				const objectMetadata = this.itemsManager.getItemMetadata(object.item.itemType)
+				const objectMetadata = this.managers.items.getItemMetadata(object.item.itemType)
 				const placementWidth = objectMetadata?.placement?.size?.width || 1
 				const placementHeight = objectMetadata?.placement?.size?.height || 1
 				objectWidth = placementWidth * TILE_SIZE
@@ -121,8 +127,8 @@ export class MapObjectsManager {
 				object.position, objectWidth, objectHeight
 			)) {
 				// If either object blocks placement, return true (collision)
-				const itemMetadata = item ? this.itemsManager.getItemMetadata(item.itemType) : null
-				const objectMetadata = this.itemsManager.getItemMetadata(object.item.itemType)
+				const itemMetadata = item ? this.managers.items.getItemMetadata(item.itemType) : null
+				const objectMetadata = this.managers.items.getItemMetadata(object.item.itemType)
 				const blocksPlacement = itemMetadata?.placement?.blocksPlacement || 
 				                       objectMetadata?.placement?.blocksPlacement ||
 				                       object.metadata?.buildingId // Buildings always block placement
@@ -134,6 +140,11 @@ export class MapObjectsManager {
 		}
 
 		return false
+	}
+
+	// Public helper to test if an item can be placed at a position without collisions
+	public canPlaceAt(mapName: string, position: Position, item?: Item, metadata?: Record<string, any>): boolean {
+		return !this.checkCollision(mapName, position, item, metadata)
 	}
 
 	private doRectanglesOverlap(

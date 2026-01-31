@@ -1,39 +1,46 @@
 import { EventClient, EventManager } from '../events'
 import { Condition, Effect, FlagCondition, QuestCondition, FlagEffect, QuestEffect, AffinityEffect, FXEffect, CutsceneEffect, EventEffect, ChatEffect, NPCCondition, NPCAffinityCondition, NPCAffinityOverallCondition, TimeRange, DateRange, NPCAttributeCondition, NPCAttributeEffect, ScheduleEffect, InventoryEffect, DialogueCondition, InventoryCondition } from './types'
-import { QuestManager } from "../Quest"
-import { FlagsManager } from "../Flags"
-import { AffinityManager } from "../Affinity"
+import type { QuestManager } from "../Quest"
+import type { FlagsManager } from "../Flags"
+import type { AffinityManager } from "../Affinity"
 import { FXEvents } from "../FX/events"
 import { CutsceneEvents } from "../Cutscene/events"
 import { ChatEvents } from "../Chat/events"
 import { NPCEvents } from '../NPC/events'
-import { NPCManager } from '../NPC'
+import type { NPCManager } from '../NPC'
 import { NPCState } from '../NPC/types'
 import { Receiver, Position } from '../types'
-import { PlayersManager } from '../Players'
-import { TimeManager } from '../Time'
+import type { PlayersManager } from '../Players'
+import type { TimeManager } from '../Time'
 import { Time } from '../Time/types'
 import { SchedulerEvents } from '../Scheduler/events'
-import { InventoryManager } from '../Inventory'
+import type { InventoryManager } from '../Inventory'
 import { InventoryEvents } from '../Inventory/events'
-import { DialogueManager } from '../Dialogue'
+import type { DialogueManager } from '../Dialogue'
 import { v4 as uuidv4 } from 'uuid'
 import { calculateDistance } from '../utils'
 import { Logger } from '../Logs'
+import { BaseManager } from '../Managers'
 
-export class ConditionEffectManager {
+export interface ConditionEffectDeps {
+	quest: QuestManager
+	flags: FlagsManager
+	affinity: AffinityManager
+	npc: NPCManager
+	players: PlayersManager
+	time: TimeManager
+	inventory: InventoryManager
+	dialogue: DialogueManager
+}
+
+export class ConditionEffectManager extends BaseManager<ConditionEffectDeps> {
 	constructor(
+		managers: ConditionEffectDeps,
 		private event: EventManager,
-		private questManager: QuestManager,
-		private flagsManager: FlagsManager,
-		private affinityManager: AffinityManager,
-		private npcManager: NPCManager,
-		private playersManager: PlayersManager,
-		private timeManager: TimeManager,
-		private inventoryManager: InventoryManager,
-		private dialogueManager: DialogueManager,
 		private logger: Logger
-	) {}
+	) {
+		super(managers)
+	}
 
 	/**
 	 * Apply a flag effect
@@ -50,7 +57,7 @@ export class ConditionEffectManager {
 		}
 		
 		if (set) {
-			this.flagsManager.setFlag(client, {
+			this.managers.flags.setFlag(client, {
 				name: set,
 				value: true,
 				scope,
@@ -60,7 +67,7 @@ export class ConditionEffectManager {
 		}
 		
 		if (unset) {
-			this.flagsManager.unsetFlag(client, {
+			this.managers.flags.unsetFlag(client, {
 				name: unset,
 				scope,
 				playerId: targetPlayerId,
@@ -77,12 +84,12 @@ export class ConditionEffectManager {
 		
 		if (start) {
 			// Use the QuestManager's startQuest method
-			this.questManager.startQuest(start, client.id, client)
+			this.managers.quest.startQuest(start, client.id, client)
 		}
 		
 		if (progress) {
 			// Use the QuestManager to check and progress the quest
-			this.questManager.checkAndProgressQuest(progress, client.id, client)
+			this.managers.quest.checkAndProgressQuest(progress, client.id, client)
 		}
 	}
 
@@ -93,9 +100,9 @@ export class ConditionEffectManager {
 		const { sentimentType, set, add } = effect
 		
 		if (set !== undefined) {
-			this.affinityManager.setAffinityValue(client.id, npcId, sentimentType, set, client)
+			this.managers.affinity.setAffinityValue(client.id, npcId, sentimentType, set, client)
 		} else if (add !== undefined) {
-			this.affinityManager.changeAffinityValue(client.id, npcId, sentimentType, add, client)
+			this.managers.affinity.changeAffinityValue(client.id, npcId, sentimentType, add, client)
 		}
 	}
 
@@ -201,7 +208,7 @@ export class ConditionEffectManager {
 				}
 				
 				// Use the inventory manager directly to add the item
-				this.inventoryManager.addItem(client, item)
+				this.managers.inventory.addItem(client, item)
 			}
 		}
 		
@@ -211,7 +218,7 @@ export class ConditionEffectManager {
 			const targetPlayerId = playerId || client.id
 			
 			// Use the inventory manager directly to remove items
-			this.inventoryManager.removeItemByType(client, itemType, quantity)
+			this.managers.inventory.removeItemByType(client, itemType, quantity)
 		}
 	}
 
@@ -279,11 +286,11 @@ export class ConditionEffectManager {
 		const targetPlayerId = playerId || client.id
 		
 		if (exists) {
-			return this.flagsManager.hasFlag(exists, scope, targetPlayerId, mapId)
+			return this.managers.flags.hasFlag(exists, scope, targetPlayerId, mapId)
 		}
 		
 		if (notExists) {
-			return !this.flagsManager.hasFlag(notExists, scope, targetPlayerId, mapId)
+			return !this.managers.flags.hasFlag(notExists, scope, targetPlayerId, mapId)
 		}
 		
 		return true
@@ -295,22 +302,22 @@ export class ConditionEffectManager {
 	public checkQuestCondition(condition: QuestCondition, client: EventClient): boolean {
 		// Check if quest can be started
 		if (condition.canStart) {
-			return this.questManager.canStartQuest(condition.canStart, client)
+			return this.managers.quest.canStartQuest(condition.canStart, client)
 		}
 		
 		// Check if quest is in progress
 		if (condition.inProgress) {
-			return this.questManager.hasActiveQuest(condition.inProgress, client.id)
+			return this.managers.quest.hasActiveQuest(condition.inProgress, client.id)
 		}
 		
 		// Check if quest is not in progress
 		if (condition.notInProgress) {
-			return !this.questManager.hasActiveQuest(condition.notInProgress, client.id)
+			return !this.managers.quest.hasActiveQuest(condition.notInProgress, client.id)
 		}
 		
 		// Check if quest has been completed
 		if (condition.completed) {
-			return this.questManager.hasCompletedQuest(condition.completed, client.id)
+			return this.managers.quest.hasCompletedQuest(condition.completed, client.id)
 		}
 		
 		return false
@@ -323,7 +330,7 @@ export class ConditionEffectManager {
 		const { sentimentType, min, max } = condition
 		
 		// Get the current affinity value
-		const currentValue = this.affinityManager.getAffinityValue(client.id, npcId, sentimentType)
+		const currentValue = this.managers.affinity.getAffinityValue(client.id, npcId, sentimentType)
 		
 		// Check if the value is within the specified range
 		if (min !== undefined && currentValue < min) {
@@ -344,7 +351,7 @@ export class ConditionEffectManager {
 		const { minScore, maxScore } = condition
 		
 		// Get the current overall affinity score
-		const currentScore = this.affinityManager.calculateOverallScore(client.id, npcId)
+		const currentScore = this.managers.affinity.calculateOverallScore(client.id, npcId)
 		
 		// Check if the score is within the specified range
 		if (minScore !== undefined && currentScore < minScore) {
@@ -365,7 +372,7 @@ export class ConditionEffectManager {
 		const { sentimentType, min, max } = condition
 		
 		// Get the current affinity value
-		const currentValue = this.affinityManager.getAffinityValue(client.id, npcId, sentimentType)
+		const currentValue = this.managers.affinity.getAffinityValue(client.id, npcId, sentimentType)
 		
 		// Check if the value is within the specified range
 		if (min !== undefined && currentValue < min) {
@@ -386,7 +393,7 @@ export class ConditionEffectManager {
 		const { minScore, maxScore } = condition
 		
 		// Get the current overall affinity score
-		const currentScore = this.affinityManager.calculateOverallScore(client.id, npcId)
+		const currentScore = this.managers.affinity.calculateOverallScore(client.id, npcId)
 		
 		// Check if the score is within the specified range
 		if (minScore !== undefined && currentScore < minScore) {
@@ -411,14 +418,14 @@ export class ConditionEffectManager {
 		}
 		
 		// Get the NPC
-		if (!this.npcManager) {
+		if (!this.managers.npc) {
 			this.logger.warn('NPCManager not initialized')
 			return false
 		}
 
 		// Check each attribute condition
 		for (const [attrName, condition] of Object.entries(attributes)) {
-			const value = this.npcManager.getNPCAttribute(npcId, attrName)
+			const value = this.managers.npc.getNPCAttribute(npcId, attrName)
 			
 			// Check if attribute exists when required
 			if (condition.exists !== undefined) {
@@ -464,12 +471,12 @@ export class ConditionEffectManager {
 		}
 		
 		// Get the NPC first for state and attribute checks
-		if (!this.npcManager) {
+		if (!this.managers.npc) {
 			this.logger.warn('NPCManager not initialized')
 			return false
 		}
 
-		const npc = this.npcManager.getNPC(id)
+		const npc = this.managers.npc.getNPC(id)
 		if (!npc) return false
 		
 		// Check active state if specified
@@ -504,7 +511,7 @@ export class ConditionEffectManager {
 		
 		// Check proximity if specified
 		if (proximity !== undefined) {
-			const player = this.playersManager.getPlayer(client.id)
+			const player = this.managers.players.getPlayer(client.id)
 			if (!player) return false
 
 			const distance = calculateDistance(player.position, npc.position)
@@ -534,7 +541,7 @@ export class ConditionEffectManager {
 	 */
 	public checkTimeCondition(condition: TimeRange): boolean {
 		const { before, after } = condition
-		const currentTime = this.timeManager.getCurrentTime()
+		const currentTime = this.managers.time.getCurrentTime()
 		const currentTimeString = `${currentTime.hours.toString().padStart(2, '0')}:${currentTime.minutes.toString().padStart(2, '0')}`
 
 		if (before && currentTimeString >= before) {
@@ -553,7 +560,7 @@ export class ConditionEffectManager {
 	 */
 	public checkDateCondition(condition: DateRange): boolean {
 		const { day, month, year, before, after } = condition
-		const currentTime = this.timeManager.getCurrentTime()
+		const currentTime = this.managers.time.getCurrentTime()
 
 		// Check exact date match
 		if (day !== undefined && currentTime.day !== day) {
@@ -604,7 +611,7 @@ export class ConditionEffectManager {
 		const { itemType, quantity = 1, playerId } = condition.has
 		const targetPlayerId = playerId || client.id
 		
-		return this.inventoryManager.doesHave(itemType, quantity, targetPlayerId)
+		return this.managers.inventory.doesHave(itemType, quantity, targetPlayerId)
 	}
 
 	/**
@@ -614,7 +621,7 @@ export class ConditionEffectManager {
 		const { id, nodeId, playerId } = condition
 		const targetPlayerId = playerId || client.id
 		
-		return this.dialogueManager.hasActiveDialogue(targetPlayerId, id, nodeId)
+		return this.managers.dialogue.hasActiveDialogue(targetPlayerId, id, nodeId)
 	}
 
 	/**
@@ -700,24 +707,24 @@ export class ConditionEffectManager {
 	 * Apply NPC attribute effect
 	 */
 	public applyNPCAttributeEffect(npcId: string, attributeEffect: NPCAttributeEffect) {
-		if (!attributeEffect || !this.npcManager) return
+		if (!attributeEffect || !this.managers.npc) return
 		
 		// Apply each attribute effect
 		for (const [attrName, effect] of Object.entries(attributeEffect)) {
 			// Remove attribute if specified
 			if (effect.remove) {
-				this.npcManager.removeNPCAttribute(npcId, attrName)
+				this.managers.npc.removeNPCAttribute(npcId, attrName)
 				continue
 			}
 			
 			// Set value if specified
 			if (effect.set !== undefined) {
-				this.npcManager.setNPCAttribute(npcId, attrName, effect.set)
+				this.managers.npc.setNPCAttribute(npcId, attrName, effect.set)
 				continue
 			}
 			
 			// Get current value for numeric operations
-			const currentValue = this.npcManager.getNPCAttribute(npcId, attrName)
+			const currentValue = this.managers.npc.getNPCAttribute(npcId, attrName)
 			
 			// Handle numeric operations
 			if (typeof currentValue === 'number' || currentValue === undefined) {
@@ -725,12 +732,12 @@ export class ConditionEffectManager {
 				
 				// Add to value if specified
 				if (effect.add !== undefined) {
-					this.npcManager.setNPCAttribute(npcId, attrName, numValue + effect.add)
+					this.managers.npc.setNPCAttribute(npcId, attrName, numValue + effect.add)
 				}
 				
 				// Subtract from value if specified
 				if (effect.subtract !== undefined) {
-					this.npcManager.setNPCAttribute(npcId, attrName, numValue - effect.subtract)
+					this.managers.npc.setNPCAttribute(npcId, attrName, numValue - effect.subtract)
 				}
 			}
 		}
@@ -741,11 +748,11 @@ export class ConditionEffectManager {
 
 		// Handle active state if provided
 		if (effect.active !== undefined) {
-			this.npcManager.setNPCActive(effect.id, effect.active)
+			this.managers.npc.setNPCActive(effect.id, effect.active)
 		}
 
 		// Skip movement and other effects if NPC is not active
-		const npc = this.npcManager.getNPC(effect.id)
+		const npc = this.managers.npc.getNPC(effect.id)
 		if (!npc || !npc.active) return
 
 		// Handle NPC movement if goTo is provided
@@ -759,7 +766,7 @@ export class ConditionEffectManager {
 				// Array of spot names - randomly select one
 				if (effect.goTo.length > 0) {
 					// Get current NPC to check its current spot
-					const npc = this.npcManager.getNPC(effect.id)
+					const npc = this.managers.npc.getNPC(effect.id)
 					const currentSpot = npc?.currentSpot
 					
 					// Filter out the current spot to avoid picking the same one

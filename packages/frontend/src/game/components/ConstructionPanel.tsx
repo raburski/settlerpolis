@@ -102,15 +102,19 @@ export const ConstructionPanel: React.FC = () => {
 	}, []) // Run once on mount
 
 	const handleBuildingSelect = (buildingId: string) => {
-		setSelectedBuilding(buildingId)
-		// Emit event for Phaser scene to show placement ghost
-		EventBus.emit('ui:construction:select', { buildingId })
+		setSelectedBuilding((prev) => {
+			if (prev === buildingId) {
+				EventBus.emit('ui:construction:cancel', {})
+				return null
+			}
+			EventBus.emit('ui:construction:select', { buildingId })
+			return buildingId
+		})
 	}
 
-	const handleCancelSelection = () => {
-		setSelectedBuilding(null)
-		EventBus.emit('ui:construction:cancel', {})
-	}
+	const selectedDefinition = selectedBuilding
+		? buildings.find((building) => building.id === selectedBuilding) || null
+		: null
 
 	if (!isVisible) {
 		return null
@@ -118,42 +122,44 @@ export const ConstructionPanel: React.FC = () => {
 
 	return (
 		<div className={styles.panel}>
-			<div className={styles.header}>
-				<h3>Construction</h3>
-				{selectedBuilding && (
-					<button onClick={handleCancelSelection} className={styles.cancelButton}>
-						Cancel
-					</button>
-				)}
-			</div>
-			<div className={styles.buildingsList}>
-				{buildings.length === 0 ? (
-					<div className={styles.emptyState}>
-						<p>No buildings available</p>
-						<p className={styles.emptyHint}>Waiting for building catalog...</p>
-					</div>
-				) : (
-					buildings.map(building => (
-						<div
-							key={building.id}
-							className={`${styles.buildingItem} ${selectedBuilding === building.id ? styles.selected : ''}`}
-							onClick={() => handleBuildingSelect(building.id)}
-						>
-							<div className={styles.buildingIcon}>{building.icon || '🏗️'}</div>
-							<div className={styles.buildingInfo}>
-								<div className={styles.buildingName}>{building.name}</div>
-								<div className={styles.buildingDescription}>{building.description}</div>
-								<div className={styles.buildingCosts}>
-									{building.costs.map((cost, index) => (
-										<span key={index} className={styles.cost}>
-											{cost.quantity}x <ItemEmoji itemType={cost.itemType} />
-										</span>
-									))}
-								</div>
-							</div>
+			<div className={styles.content}>
+				<div className={styles.buildingsList}>
+					{buildings.length === 0 ? (
+						<div className={styles.emptyState}>
+							<p>No buildings available</p>
+							<p className={styles.emptyHint}>Waiting for building catalog...</p>
 						</div>
-					))
-				)}
+					) : (
+						buildings.map(building => (
+							<div
+								key={building.id}
+								className={`${styles.buildingItem} ${selectedBuilding === building.id ? styles.selected : ''}`}
+								onClick={() => handleBuildingSelect(building.id)}
+								title={building.description || building.name}
+							>
+								<div className={styles.buildingIcon}>{building.icon || '🏗️'}</div>
+							</div>
+						))
+					)}
+				</div>
+				<div className={styles.separator} aria-hidden="true" />
+				<div className={styles.detailPanel}>
+					{selectedDefinition ? (
+						<>
+							<div className={styles.detailIcon}>{selectedDefinition.icon || '🏗️'}</div>
+							<div className={styles.detailName}>{selectedDefinition.name}</div>
+							<div className={styles.detailCosts}>
+								{selectedDefinition.costs.map((cost, index) => (
+									<span key={index} className={styles.cost}>
+										{cost.quantity}x <ItemEmoji itemType={cost.itemType} />
+									</span>
+								))}
+							</div>
+						</>
+					) : (
+						<div className={styles.detailEmpty}>Select a building</div>
+					)}
+				</div>
 			</div>
 		</div>
 	)

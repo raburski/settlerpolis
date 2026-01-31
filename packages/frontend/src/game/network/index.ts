@@ -6,6 +6,8 @@ import { FrontendMapUrlService } from '../services/MapUrlService'
 import '../services/BuildingService'
 // Initialize PopulationService to start listening to events
 import '../services/PopulationService'
+// Initialize LogisticsService to start listening to events
+import '../services/LogisticsService'
 
 const IS_REMOTE_GAME = false
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'
@@ -26,14 +28,25 @@ console.log('[Network] Loading content:', {
 })
 
 function getNetworkManager(): NetworkEventManager {
-    if (IS_REMOTE_GAME) {
-        return new NetworkManager('https://hearty-rejoicing-production.up.railway.app')
-    } else {
-        const localManager = new LocalManager()
-        const mapUrlService = new FrontendMapUrlService()
-        const gameManager = new GameManager(localManager.server, content, mapUrlService)
-        return localManager.client
-    }
+	if (IS_REMOTE_GAME) {
+		return new NetworkManager('https://hearty-rejoicing-production.up.railway.app')
+	} else {
+		const silentRoutingLogs = (() => {
+			const raw = import.meta.env.VITE_GAME_SILENT_ROUTING_LOGS
+			if (raw === undefined) {
+				return true
+			}
+			return String(raw).toLowerCase() === 'true'
+		})()
+		const localManager = new LocalManager({ silentLogs: silentRoutingLogs })
+		const mapUrlService = new FrontendMapUrlService()
+		const logAllowlist = (import.meta.env.VITE_GAME_LOG_ALLOWLIST || 'WorkProviderManager')
+			.split(',')
+			.map((entry: string) => entry.trim())
+			.filter(Boolean)
+		const gameManager = new GameManager(localManager.server, content, mapUrlService, { logAllowlist })
+		return localManager.client
+	}
 }
 
 const networkManager = getNetworkManager()

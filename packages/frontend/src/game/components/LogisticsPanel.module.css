@@ -1,0 +1,90 @@
+@import './variables.module.css';
+
+.panel {
+	position: fixed;
+	top: calc(var(--top-bar-height, 64px) + var(--spacing-md));
+	background: rgba(18, 22, 28, 0.95);
+	border: 4px solid #1f2a38;
+	padding: 0;
+	min-width: 260px;
+	max-width: 320px;
+	box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
+	z-index: var(--z-index-modal);
+	font-family: 'Press Start 2P', monospace;
+}
+
+.header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 12px 14px;
+	border-bottom: 2px solid #1f2a38;
+	background: rgba(26, 30, 36, 0.9);
+}
+
+.header h3 {
+	margin: 0;
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: #7dd3fc;
+	text-transform: uppercase;
+	text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.7);
+}
+
+.content {
+	padding: 12px 14px;
+}
+
+.empty {
+	color: #cbd5f5;
+	font-size: 0.6rem;
+}
+
+.requestCard {
+	border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+	padding: 10px 0;
+}
+
+.requestCard:last-of-type {
+	border-bottom: none;
+}
+
+.requestMain {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: #e2e8f0;
+	font-size: 0.6rem;
+	flex-wrap: wrap;
+}
+
+.buildingIcon {
+	font-size: 0.9rem;
+}
+
+.buildingName {
+	color: #f8fafc;
+	font-size: 0.6rem;
+	font-weight: 600;
+}
+
+.arrow {
+	color: #7dd3fc;
+	font-size: 0.7rem;
+	margin: 0 2px;
+}
+
+.itemIcon {
+	font-size: 0.85rem;
+}
+
+.itemName {
+	color: #dbeafe;
+	font-size: 0.6rem;
+}
+
+.quantity {
+	color: #f8fafc;
+	font-size: 0.6rem;
+	font-weight: 600;
+}

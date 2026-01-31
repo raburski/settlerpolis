@@ -19,6 +19,9 @@ export class SettlerController {
 		EventBus.on(Event.Population.SC.SettlerUpdated, this.handleSettlerUpdated, this)
 		EventBus.on(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
 		EventBus.on(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
+
+		this.view.updateState(this.settler.state)
+		this.view.updateCarriedItem(this.settler.state === SettlerState.CarryingItem ? this.settler.stateContext.carryingItemType : undefined)
 	}
 
 	private handleMoveToPosition = (data: { entityId: string, targetPosition: { x: number, y: number }, mapName: string }) => {
@@ -51,24 +54,22 @@ export class SettlerController {
 		}
 	}
 
-	private handleWorkerAssigned = (data: { jobAssignment: any, settlerId: string, buildingInstanceId: string }) => {
+private handleWorkerAssigned = (data: { assignment: any, settlerId: string, buildingInstanceId: string }) => {
 		if (data.settlerId === this.settler.id) {
 			this.settler.stateContext = {
 				...this.settler.stateContext,
-				jobId: data.jobAssignment.jobId
+				assignmentId: data.assignment.assignmentId
 			}
 			this.settler.buildingId = data.buildingInstanceId
-			this.settler.state = SettlerState.Working
-			this.view.updateState(SettlerState.Working)
 		}
 	}
 
-	private handleWorkerUnassigned = (data: { settlerId: string, jobId: string }) => {
-		if (data.settlerId === this.settler.id) {
-			this.settler.stateContext = {
-				...this.settler.stateContext,
-				jobId: undefined
-			}
+private handleWorkerUnassigned = (data: { settlerId: string, assignmentId: string }) => {
+	if (data.settlerId === this.settler.id) {
+		this.settler.stateContext = {
+			...this.settler.stateContext,
+			assignmentId: undefined
+		}
 			this.settler.buildingId = undefined
 			this.settler.state = SettlerState.Idle
 			this.view.updateState(SettlerState.Idle)
@@ -123,6 +124,7 @@ export class SettlerController {
 		// Always update state and profession
 		this.view.updateState(settlerData.state)
 		this.view.updateProfession(settlerData.profession)
+		this.view.updateCarriedItem(settlerData.state === SettlerState.CarryingItem ? settlerData.stateContext.carryingItemType : undefined)
 	}
 
 	public destroy(): void {

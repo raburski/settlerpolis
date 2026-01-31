@@ -24,6 +24,7 @@ export class LogsManager {
 	private configs = new Map<string, LoggerConfig>()
 	private globalLevel: LogLevel = LogLevel.Info
 	private globalEnabled: boolean = true
+	private allowedManagers: Set<string> | null = null
 
 	/**
 	 * Get a logger instance for a manager
@@ -63,6 +64,10 @@ export class LogsManager {
 	 * Internal method to handle logging
 	 */
 	private log(managerName: string, level: LogLevel, ...args: any[]): void {
+		if (this.allowedManagers && !this.allowedManagers.has(managerName)) {
+			return
+		}
+
 		// Check if logging is globally disabled
 		if (!this.globalEnabled) {
 			return
@@ -194,5 +199,16 @@ export class LogsManager {
 			this.setManagerLevel(managerName, level)
 		}
 	}
-}
 
+	/**
+	 * Restrict logging to an allowlist of manager names.
+	 * Pass null/empty to disable filtering.
+	 */
+	public setAllowedManagers(managerNames?: string[] | null): void {
+		if (!managerNames || managerNames.length === 0) {
+			this.allowedManagers = null
+			return
+		}
+		this.allowedManagers = new Set(managerNames)
+	}
+}

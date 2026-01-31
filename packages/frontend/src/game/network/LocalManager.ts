@@ -31,7 +31,8 @@ class LocalEventManager implements NetworkEventManager {
 
 	constructor(
 		private clientId: string,
-		private onEmit: (to: Receiver, event: string, data: any, groupName?: string) => void
+		private onEmit: (to: Receiver, event: string, data: any, groupName?: string) => void,
+		private silentLogs: boolean = false
 	) {
 		this.client = new LocalEventClient(clientId, onEmit)
 	}
@@ -81,18 +82,24 @@ class LocalEventManager implements NetworkEventManager {
 		if (to === Receiver.NoSenderGroup) return
 
 		if (!event) {
-			console.log('[LocalManager] Event with no name?', to, event, data)
+			if (!this.silentLogs) {
+				console.log('[LocalManager] Event with no name?', to, event, data)
+			}
 			return
 		}
 
 		// If this is a server-side event and we're the client, route it back to server
 		if (event.startsWith('ss:') && this.clientId === 'client') {
-			console.log(`[EVENT] Routing SS event back to server:`, event, data)
+			if (!this.silentLogs) {
+				console.log(`[EVENT] Routing SS event back to server:`, event, data)
+			}
 			;(this.onEmit as any)(to, event, data)
 			return
 		}
 
-		console.log(`[LocalManager] Event to ${this.client.id}:`, event, 'Receiver:', to, 'Data:', data)
+		if (!this.silentLogs) {
+			console.log(`[LocalManager] Event to ${this.client.id}:`, event, 'Receiver:', to, 'Data:', data)
+		}
 		// If this is the first message received, trigger joined callbacks
 		if (!this.hasReceivedMessage) {
 			this.hasReceivedMessage = true
@@ -100,12 +107,16 @@ class LocalEventManager implements NetworkEventManager {
 		}
 
 		if (!this.handlers.has(event)) {
-			console.warn(`[LocalManager] No handlers for event: ${event} (available handlers: ${Array.from(this.handlers.keys()).join(', ')})`)
+			if (!this.silentLogs) {
+				console.warn(`[LocalManager] No handlers for event: ${event} (available handlers: ${Array.from(this.handlers.keys()).join(', ')})`)
+			}
 			return
 		}
 
 		const handlers = this.handlers.get(event)
-		console.log(`[LocalManager] Calling ${handlers.length} handler(s) for event: ${event}`)
+		if (!this.silentLogs) {
+			console.log(`[LocalManager] Calling ${handlers.length} handler(s) for event: ${event}`)
+		}
 		handlers.forEach(handler => handler(data, this.client))
 	}
 }
@@ -114,16 +125,17 @@ export class LocalManager {
 	public readonly client: EventManager
 	public readonly server: EventManager
 
-	constructor() {
+	constructor(options: { silentLogs?: boolean } = {}) {
+		const silentLogs = options.silentLogs ?? false
 		// Create two event managers with different client IDs
 		this.client = new LocalEventManager('client', (to, event, data, groupName) => {
 			// When client emits, forward to server
 			(this.server as LocalEventManager).handleIncomingMessage(to, event, data ? JSON.parse(JSON.stringify(data)) : undefined)
-		})
+		}, silentLogs)
 
 		this.server = new LocalEventManager('server', (to, event, data, groupName) => {
 			// When server emits, forward to client
 			(this.client as LocalEventManager).handleIncomingMessage(to, event, data ? JSON.parse(JSON.stringify(data)) : undefined)
-		})
+		}, silentLogs)
 	}
 } 

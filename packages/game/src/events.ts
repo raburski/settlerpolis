@@ -22,7 +22,7 @@ import { BuildingsEvents } from './Buildings/events'
 import { PopulationEvents } from './Population/events'
 import { MovementEvents } from './Movement/events'
 import { StorageEvents } from './Storage/events'
-import { ProductionEvents } from './Production/events'
+import { WorkProviderEvents } from './Settlers/WorkProvider/events'
 import type { PlayerJoinData, PlayerTransitionData, PlayerMoveData, EquipItemData, UnequipItemData, PlayerPlaceData } from './Players/types'
 import type { ChatMessageData, ChatSystemMessageData } from './Chat/types'
 import type { InventoryData, DropItemData, PickUpItemData, ConsumeItemData, MoveItemData, AddItemData, RemoveByTypePayload } from './Inventory/types'
@@ -38,9 +38,10 @@ import type { FXPlayEventData } from './FX/types'
 import type { CutsceneTriggerEventData } from './Cutscene/types'
 import type { MapLoadData, MapLoadResponseData, MapTransitionData, MapTransitionResponseData } from './Map/types'
 import type { TimeUpdateEventData, TimeSpeedUpdateEventData, TimePauseEventData, TimeSyncEventData } from './Time/types'
-import type { PlaceBuildingData, CancelBuildingData, BuildingPlacedData, BuildingProgressData, BuildingCompletedData, BuildingCancelledData, BuildingCatalogData } from './Buildings/types'
-import type { RequestWorkerData, UnassignWorkerData, RequestListData, RequestProfessionToolPickupData, RequestRevertToCarrierData, PopulationListData, PopulationStatsData, JobAssignment, Settler, ProfessionType } from './Population/types'
-import type { ProductionRecipe, ProductionStatus } from './Production/types'
+import type { PlaceBuildingData, CancelBuildingData, SetProductionPausedData, BuildingPlacedData, BuildingProgressData, BuildingCompletedData, BuildingCancelledData, BuildingCatalogData } from './Buildings/types'
+import type { RequestWorkerData, UnassignWorkerData, RequestListData, PopulationListData, PopulationStatsData, Settler, ProfessionType } from './Population/types'
+import type { WorkAssignment, WorkStep, WorkAction, LogisticsRequest } from './Settlers/WorkProvider/types'
+import type { ProductionRecipe, ProductionStatus } from './Buildings/types'
 import type { ScheduleOptions } from './Scheduler/types'
 import type { SimulationTickData } from './Simulation/types'
 import type { Position } from './types'
@@ -161,6 +162,7 @@ export type EventPayloads = Record<string, unknown> & {
 	[BuildingsEvents.CS.Place]: PlaceBuildingData
 	[BuildingsEvents.CS.Cancel]: CancelBuildingData
 	[BuildingsEvents.CS.RequestPreview]: { buildingId: string }
+	[BuildingsEvents.CS.SetProductionPaused]: SetProductionPausedData
 	[BuildingsEvents.SC.Placed]: BuildingPlacedData
 	[BuildingsEvents.SC.Progress]: BuildingProgressData
 	[BuildingsEvents.SC.Completed]: BuildingCompletedData
@@ -175,18 +177,15 @@ export type EventPayloads = Record<string, unknown> & {
 	[PopulationEvents.CS.RequestWorker]: RequestWorkerData
 	[PopulationEvents.CS.UnassignWorker]: UnassignWorkerData
 	[PopulationEvents.CS.RequestList]: RequestListData
-	[PopulationEvents.CS.RequestProfessionToolPickup]: RequestProfessionToolPickupData
-	[PopulationEvents.CS.RequestRevertToCarrier]: RequestRevertToCarrierData
 	[PopulationEvents.SC.SettlerSpawned]: { settler: Settler }
 	[PopulationEvents.SC.SettlerUpdated]: { settler: Settler }
-	[PopulationEvents.SC.WorkerAssigned]: { jobAssignment: JobAssignment, settlerId: string, buildingInstanceId: string }
-	[PopulationEvents.SC.WorkerUnassigned]: { settlerId: string, buildingInstanceId: string, jobId: string }
+	[PopulationEvents.SC.WorkerAssigned]: { assignment: WorkAssignment, settlerId: string, buildingInstanceId: string }
+	[PopulationEvents.SC.WorkerUnassigned]: { settlerId: string, buildingInstanceId: string, assignmentId: string }
 	[PopulationEvents.SC.WorkerRequestFailed]: { reason: string, buildingInstanceId: string }
 	[PopulationEvents.SC.List]: PopulationListData
 	[PopulationEvents.SC.StatsUpdated]: PopulationStatsData
 	[PopulationEvents.SC.ProfessionChanged]: { settlerId: string, oldProfession: ProfessionType, newProfession: ProfessionType }
 	[PopulationEvents.SS.SpawnTick]: { houseId: string }
-	[PopulationEvents.SS.JobTick]: {}
 
 	[MovementEvents.SS.MoveToPosition]: { entityId: string, position: Position, mapName?: string, targetType?: string, targetId?: string }
 	[MovementEvents.SS.CancelMovement]: { entityId: string }
@@ -201,14 +200,13 @@ export type EventPayloads = Record<string, unknown> & {
 	[StorageEvents.SS.StorageTick]: {}
 	[StorageEvents.SS.InputRequested]: { buildingInstanceId: string, itemType: string, quantity: number }
 
-	[ProductionEvents.CS.StartProduction]: { buildingInstanceId: string }
-	[ProductionEvents.CS.StopProduction]: { buildingInstanceId: string }
-	[ProductionEvents.SC.ProductionStarted]: { buildingInstanceId: string, recipe: ProductionRecipe }
-	[ProductionEvents.SC.ProductionStopped]: { buildingInstanceId: string }
-	[ProductionEvents.SC.ProductionProgress]: { buildingInstanceId: string, progress: number }
-	[ProductionEvents.SC.ProductionCompleted]: { buildingInstanceId: string, recipe: ProductionRecipe }
-	[ProductionEvents.SC.StatusChanged]: { buildingInstanceId: string, status: ProductionStatus }
-	[ProductionEvents.SS.ProductionTick]: {}
+	[WorkProviderEvents.SC.LogisticsUpdated]: { requests: LogisticsRequest[] }
+
+	[BuildingsEvents.SC.ProductionStarted]: { buildingInstanceId: string, recipe: ProductionRecipe }
+	[BuildingsEvents.SC.ProductionStopped]: { buildingInstanceId: string }
+	[BuildingsEvents.SC.ProductionProgress]: { buildingInstanceId: string, progress: number }
+	[BuildingsEvents.SC.ProductionCompleted]: { buildingInstanceId: string, recipe: ProductionRecipe }
+	[BuildingsEvents.SC.ProductionStatusChanged]: { buildingInstanceId: string, status: ProductionStatus }
 
 	[TriggerEvents.CS.Trigger]: { triggerId: string }
 	[TriggerEvents.SC.Triggered]: { triggerId: string }
@@ -222,6 +220,14 @@ export type EventPayloads = Record<string, unknown> & {
 	[SchedulerEvents.SS.Cancelled]: { id: string }
 
 	[SimulationEvents.SS.Tick]: SimulationTickData
+
+	[WorkProviderEvents.SS.ActionCompleted]: { settlerId: string, action: WorkAction }
+	[WorkProviderEvents.SS.ActionFailed]: { settlerId: string, action: WorkAction, reason: string }
+	[WorkProviderEvents.SS.StepIssued]: { settlerId: string, step: WorkStep }
+	[WorkProviderEvents.SS.StepCompleted]: { settlerId: string, step: WorkStep }
+	[WorkProviderEvents.SS.StepFailed]: { settlerId: string, step: WorkStep, reason: string }
+	[WorkProviderEvents.SS.AssignmentCreated]: { assignment: WorkAssignment }
+	[WorkProviderEvents.SS.AssignmentRemoved]: { assignmentId: string }
 }
 
 // Interface that NetworkManager implements
@@ -257,7 +263,7 @@ export const Event = {
 	Population: PopulationEvents,
 	Movement: MovementEvents,
 	Storage: StorageEvents,
-	Production: ProductionEvents
+	Work: WorkProviderEvents
 } as const
 
 export default Event 

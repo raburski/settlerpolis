@@ -2,38 +2,33 @@ import { EventManager, Event, EventClient } from '../events'
 import { Receiver } from '../Receiver'
 import { DialogueNode, DialogueOption, DialogueTree, DialogueState, DialogueItem, DialogueEvent, DialogueContinueData, DialogueChoiceData } from './types'
 import { DialogueEvents } from './events'
-import { QuestManager } from "../Quest"
+import type { QuestManager } from "../Quest"
 import { v4 as uuidv4 } from 'uuid'
 import { FXEvents } from "../FX/events"
 import { CutsceneEvents } from "../Cutscene/events"
-import { ConditionEffectManager } from "../ConditionEffect"
+import type { ConditionEffectManager } from "../ConditionEffect"
 import { Logger } from '../Logs'
+import { BaseManager } from '../Managers'
 
 const DEFAULT_START_NODE = 'start'
 
-export class DialogueManager {
+export interface DialogueDeps {
+	quest: QuestManager
+	conditionEffect: ConditionEffectManager
+}
+
+export class DialogueManager extends BaseManager<DialogueDeps> {
 	private dialogues = new Map<string, DialogueTree>()
 	private activeDialogues = new Map<string, string>() // clientId -> dialogueId
 	private currentNodes = new Map<string, string>() // clientId -> nodeId
-	private _conditionEffectManager: ConditionEffectManager | null = null
 
 	constructor(
+		managers: DialogueDeps,
 		private event: EventManager, 
-		private questManager: QuestManager,
 		private logger: Logger
 	) {
+		super(managers)
 		this.setupEventHandlers()
-	}
-
-	set conditionEffectManager(manager: ConditionEffectManager) {
-		this._conditionEffectManager = manager
-	}
-
-	get conditionEffectManager(): ConditionEffectManager {
-		if (!this._conditionEffectManager) {
-			throw new Error('ConditionEffectManager not initialized')
-		}
-		return this._conditionEffectManager
 	}
 
 	public loadDialogues(dialogues: DialogueTree[]) {
@@ -77,12 +72,12 @@ export class DialogueManager {
 		
 		// Apply single effect if present
 		if (option.effect) {
-			this.conditionEffectManager.applyEffect(option.effect, client)
+			this.managers.conditionEffect.applyEffect(option.effect, client)
 		}
 		
 		// Apply multiple effects if present
 		if (option.effects && option.effects.length > 0) {
-			this.conditionEffectManager.applyEffects(option.effects, client)
+			this.managers.conditionEffect.applyEffects(option.effects, client)
 		}
 	}
 
@@ -94,13 +89,13 @@ export class DialogueManager {
 		
 		const filteredOptions = node.options.filter(option => {
 			// Check single condition if present
-			if (option.condition && !this.conditionEffectManager.checkCondition(option.condition, client)) {
+			if (option.condition && !this.managers.conditionEffect.checkCondition(option.condition, client)) {
 				return false
 			}
 			
 			// Check multiple conditions if present
 			if (option.conditions) {
-				return this.conditionEffectManager.checkConditions(option.conditions, client)
+				return this.managers.conditionEffect.checkConditions(option.conditions, client)
 			}
 			
 			return true
@@ -216,7 +211,7 @@ export class DialogueManager {
 
 	public triggerDialogue(client: EventClient, npcId: string): boolean {
 		// First check if there's a quest-specific dialogue for this NPC
-		const questDialogue = this.questManager.findDialogueFor(npcId, client.id)
+		const questDialogue = this.managers.quest.findDialogueFor(npcId, client.id)
 		
 		// Find dialogue for this NPC - either quest-specific or default
 		const dialogue = questDialogue 

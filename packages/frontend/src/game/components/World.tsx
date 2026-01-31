@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { EventBus } from '../../game/EventBus'
 import { Event } from '@rugged/game'
 import { Time } from '@rugged/game'
 import styles from './World.module.css'
 
-export const World = () => {
+type WorldProps = {
+	className?: string
+}
+
+export const World: React.FC<WorldProps> = ({ className }) => {
 	const [time, setTime] = useState<Time>({
 		hours: 0,
 		minutes: 0,
@@ -50,7 +54,7 @@ export const World = () => {
 	}
 
 	return (
-		<div className={styles.worldContainer}>
+		<div className={[styles.worldContainer, className].filter(Boolean).join(' ')}>
 			<div className={styles.timeDisplay}>
 				<div className={styles.date}>{formatDate(time.day, time.month, time.year)}</div>
 				<div className={styles.time}>{formatTime(time.hours, time.minutes)}</div>

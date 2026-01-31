@@ -1,46 +1,33 @@
 import { EventManager, EventClient } from '../events'
 import { ScheduledEvent, ScheduleOptions, ScheduleType } from './types'
 import { SchedulerEvents } from './events'
-import { TimeManager } from '../Time'
+import type { TimeManager } from '../Time'
 import { TimeEvents } from '../Time/events'
 import { TimeUpdateEventData } from '../Time/types'
 import { Time } from '../Time/types'
 import { CronExpressionParser } from 'cron-parser'
 import { v4 as uuidv4 } from 'uuid'
 import { Receiver } from "../Receiver"
-import { ConditionEffectManager } from '../ConditionEffect'
+import type { ConditionEffectManager } from '../ConditionEffect'
 import { Logger } from '../Logs'
+import { BaseManager } from '../Managers'
 
-export class Scheduler {
+export interface SchedulerDeps {
+	time: TimeManager
+	conditionEffect: ConditionEffectManager
+}
+
+export class Scheduler extends BaseManager<SchedulerDeps> {
 	private scheduledEvents: Map<string, ScheduledEvent> = new Map()
 	private timeouts: Map<string, NodeJS.Timeout> = new Map()
-	private timeManager: TimeManager
-	private _conditionEffectManager: ConditionEffectManager | null = null
 
 	constructor(
+		managers: SchedulerDeps,
 		private event: EventManager,
-		timeManager: TimeManager,
 		private logger: Logger
 	) {
-		this.timeManager = timeManager
+		super(managers)
 		this.setupEventHandlers()
-	}
-	
-	/**
-	 * Set the ConditionEffectManager
-	 */
-	set conditionEffectManager(manager: ConditionEffectManager) {
-		this._conditionEffectManager = manager
-	}
-	
-	/**
-	 * Get the ConditionEffectManager
-	 */
-	get conditionEffectManager(): ConditionEffectManager {
-		if (!this._conditionEffectManager) {
-			throw new Error('ConditionEffectManager not initialized in Scheduler')
-		}
-		return this._conditionEffectManager
 	}
 
 	private setupEventHandlers() {
@@ -142,7 +129,7 @@ export class Scheduler {
 			id,
 			schedule: options.schedule,
 			isActive: true, // Events are active by default
-			createdAt: this.timeManager.getCurrentTime(),
+			createdAt: this.managers.time.getCurrentTime(),
 			condition: options.condition,
 			conditions: options.conditions,
 			effect: options.effect,
@@ -210,11 +197,25 @@ export class Scheduler {
 			}
 		};
 		
-		// Check conditions if the ConditionEffectManager is available
-		if (this._conditionEffectManager) {
-			// Check single condition if present
-			if (event.condition && !this._conditionEffectManager.checkCondition(event.condition, mockClient)) {
-				this.logger.debug(`Scheduled event ${event.id} condition not met, skipping execution`)
+		// Check single condition if present
+		if (event.condition && !this.managers.conditionEffect.checkCondition(event.condition, mockClient)) {
+			this.logger.debug(`Scheduled event ${event.id} condition not met, skipping execution`)
+			// Schedule next execution for recurring events
+			if (this.isRecurringEvent(event)) {
+				event.nextRun = this.calculateNextRun(event)
+				this.scheduleNextExecution(event)
+			}
+			return;
+		}
+		
+		// Check multiple conditions if present
+		if (event.conditions && event.conditions.length > 0) {
+			const allConditionsMet = event.conditions.every(condition => 
+				this.managers.conditionEffect.checkCondition(condition, mockClient)
+			);
+			
+			if (!allConditionsMet) {
+				this.logger.debug(`Scheduled event ${event.id} conditions not met, skipping execution`)
 				// Schedule next execution for recurring events
 				if (this.isRecurringEvent(event)) {
 					event.nextRun = this.calculateNextRun(event)
@@ -222,41 +223,21 @@ export class Scheduler {
 				}
 				return;
 			}
-			
-			// Check multiple conditions if present
-			if (event.conditions && event.conditions.length > 0) {
-				const allConditionsMet = event.conditions.every(condition => 
-					this._conditionEffectManager!.checkCondition(condition, mockClient)
-				);
-				
-				if (!allConditionsMet) {
-					this.logger.debug(`Scheduled event ${event.id} conditions not met, skipping execution`)
-					// Schedule next execution for recurring events
-					if (this.isRecurringEvent(event)) {
-						event.nextRun = this.calculateNextRun(event)
-						this.scheduleNextExecution(event)
-					}
-					return;
-				}
-			}
 		}
 
 		// Update last run time
 		event.lastRun = new Date()
 
-		// Apply effects if the ConditionEffectManager is available
-		if (this._conditionEffectManager) {
-			// Apply single effect if present
-			if (event.effect) {
-				this._conditionEffectManager.applyEffect(event.effect, mockClient)
-			}
-			
-			// Apply multiple effects if present
-			if (event.effects && event.effects.length > 0) {
-				event.effects.forEach(effect => {
-					this._conditionEffectManager!.applyEffect(effect, mockClient)
-				});
-			}
+		// Apply single effect if present
+		if (event.effect) {
+			this.managers.conditionEffect.applyEffect(event.effect, mockClient)
+		}
+		
+		// Apply multiple effects if present
+		if (event.effects && event.effects.length > 0) {
+			event.effects.forEach(effect => {
+				this.managers.conditionEffect.applyEffect(effect, mockClient)
+			});
 		}
 
 		// Handle recurring events

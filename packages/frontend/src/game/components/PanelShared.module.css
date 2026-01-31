@@ -101,6 +101,72 @@
 	text-align: center;
 }
 
+.workerList {
+	margin-top: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.workerRow {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	width: 100%;
+	padding: 6px 8px;
+	background: rgba(255, 255, 255, 0.04);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	border-radius: 6px;
+	color: #fff;
+	font-size: 13px;
+	cursor: pointer;
+	text-align: left;
+	transition: background 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+}
+
+.workerRow:hover {
+	background: rgba(255, 255, 255, 0.08);
+	border-color: rgba(255, 255, 255, 0.16);
+}
+
+.workerRow:active {
+	transform: translateY(1px);
+}
+
+.workerRow:focus-visible {
+	outline: 2px solid rgba(25, 118, 210, 0.6);
+	outline-offset: 2px;
+}
+
+.workerInfo {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.workerIcon {
+	font-size: 14px;
+}
+
+.workerName {
+	color: #e0e0e0;
+	font-weight: 600;
+}
+
+.workerMeta {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: #bdbdbd;
+	font-size: 12px;
+}
+
+.workerDanger {
+	font-size: 12px;
+	line-height: 1;
+}
+
 .completedMessage {
 	padding: 10px;
 	background: rgba(76, 175, 80, 0.2);
@@ -131,6 +197,27 @@
 
 .cancelButton:active {
 	background: #c62828;
+}
+
+.actionButton {
+	width: 100%;
+	padding: 10px;
+	background: #455a64;
+	border: none;
+	border-radius: 4px;
+	color: #fff;
+	font-size: 14px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background 0.2s;
+}
+
+.actionButton:hover {
+	background: #546e7a;
+}
+
+.actionButton:active {
+	background: #37474f;
 }
 
 .cancelHint {
@@ -171,4 +258,3 @@
 		transform: translateY(0);
 	}
 }
-

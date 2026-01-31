@@ -5,21 +5,32 @@ import { toolAvailabilityService } from '../services/ToolAvailabilityService'
 import { ProfessionType, PopulationStatsData, SettlerState } from '@rugged/game'
 import styles from './PopulationPanel.module.css'
 
-export const PopulationPanel: React.FC = () => {
-	const [isVisible, setIsVisible] = useState(false)
+type PopulationPanelProps = {
+	isVisible: boolean
+	onClose?: () => void
+	anchorRect?: DOMRect | null
+}
+
+export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onClose, anchorRect }) => {
 	const [stats, setStats] = useState<PopulationStatsData>({
 		totalCount: 0,
 		byProfession: {
 			[ProfessionType.Carrier]: 0,
 			[ProfessionType.Builder]: 0,
 			[ProfessionType.Woodcutter]: 0,
-			[ProfessionType.Miner]: 0
+			[ProfessionType.Miner]: 0,
+			[ProfessionType.Farmer]: 0,
+			[ProfessionType.Miller]: 0,
+			[ProfessionType.Baker]: 0
 		},
 		byProfessionActive: {
 			[ProfessionType.Carrier]: 0,
 			[ProfessionType.Builder]: 0,
 			[ProfessionType.Woodcutter]: 0,
-			[ProfessionType.Miner]: 0
+			[ProfessionType.Miner]: 0,
+			[ProfessionType.Farmer]: 0,
+			[ProfessionType.Miller]: 0,
+			[ProfessionType.Baker]: 0
 		},
 		idleCount: 0,
 		workingCount: 0
@@ -31,7 +42,10 @@ export const PopulationPanel: React.FC = () => {
 		[ProfessionType.Carrier]: 0,
 		[ProfessionType.Builder]: 0,
 		[ProfessionType.Woodcutter]: 0,
-		[ProfessionType.Miner]: 0
+		[ProfessionType.Miner]: 0,
+		[ProfessionType.Farmer]: 0,
+		[ProfessionType.Miller]: 0,
+		[ProfessionType.Baker]: 0
 	})
 
 	useEffect(() => {
@@ -57,7 +71,10 @@ export const PopulationPanel: React.FC = () => {
 				[ProfessionType.Carrier]: 0,
 				[ProfessionType.Builder]: 0,
 				[ProfessionType.Woodcutter]: 0,
-				[ProfessionType.Miner]: 0
+				[ProfessionType.Miner]: 0,
+				[ProfessionType.Farmer]: 0,
+				[ProfessionType.Miller]: 0,
+				[ProfessionType.Baker]: 0
 			}
 			populationService.getSettlers().forEach(settler => {
 				if (settler.state === SettlerState.Idle) {
@@ -96,14 +113,20 @@ export const PopulationPanel: React.FC = () => {
 		[ProfessionType.Carrier]: 'Carrier',
 		[ProfessionType.Builder]: 'Builder',
 		[ProfessionType.Woodcutter]: 'Woodcutter',
-		[ProfessionType.Miner]: 'Miner'
+		[ProfessionType.Miner]: 'Miner',
+		[ProfessionType.Farmer]: 'Farmer',
+		[ProfessionType.Miller]: 'Miller',
+		[ProfessionType.Baker]: 'Baker'
 	}
 
 	const professionIcons: Record<ProfessionType, string> = {
 		[ProfessionType.Carrier]: '👤',
 		[ProfessionType.Builder]: '🔨',
 		[ProfessionType.Woodcutter]: '🪓',
-		[ProfessionType.Miner]: '⛏️'
+		[ProfessionType.Miner]: '⛏️',
+		[ProfessionType.Farmer]: '🌾',
+		[ProfessionType.Miller]: '🌬️',
+		[ProfessionType.Baker]: '🥖'
 	}
 
 	const handleRequestToolPickup = (profession: ProfessionType) => {
@@ -115,22 +138,22 @@ export const PopulationPanel: React.FC = () => {
 	}
 
 	if (!isVisible) {
-		return (
-			<button 
-				className={styles.toggleButton} 
-				onClick={() => setIsVisible(true)}
-				title="Show Population"
-			>
-				👥 {stats.totalCount}
-			</button>
-		)
+		return null
 	}
 
+	const panelStyle = anchorRect
+		? {
+			left: anchorRect.left + anchorRect.width / 2,
+			top: 'calc(var(--top-bar-height, 64px) + var(--spacing-md))',
+			transform: 'translateX(-50%)'
+		}
+		: undefined
+
 	return (
-		<div className={styles.panel}>
+		<div className={styles.panel} style={panelStyle}>
 			<div className={styles.header}>
 				<h3>Population</h3>
-				<button className={styles.closeButton} onClick={() => setIsVisible(false)}>×</button>
+				<button className={styles.closeButton} onClick={onClose} type="button" aria-label="Close population panel">×</button>
 			</div>
 
 			<div className={styles.content}>
@@ -158,6 +181,7 @@ export const PopulationPanel: React.FC = () => {
 						const activeCount = stats.byProfessionActive[professionType] || 0
 						const canRequestTool = toolAvailability[professionType] || false
 						const isCarrier = professionType === ProfessionType.Carrier
+						const requiresTool = ![ProfessionType.Carrier, ProfessionType.Farmer, ProfessionType.Miller, ProfessionType.Baker].includes(professionType)
 						const canRevert = (idleByProfession[professionType] || 0) > 0
 						let addTitle = `Request ${professionLabels[professionType]} tool pickup`
 						if (!canRequestTool) {
@@ -174,7 +198,7 @@ export const PopulationPanel: React.FC = () => {
 								<span className={styles.professionLabel}>
 									{professionLabels[professionType]}:
 								</span>
-								{!isCarrier && (
+								{!isCarrier && requiresTool && (
 									<button
 										className={styles.professionAddButton}
 										type="button"
@@ -205,4 +229,3 @@ export const PopulationPanel: React.FC = () => {
 		</div>
 	)
 }
-

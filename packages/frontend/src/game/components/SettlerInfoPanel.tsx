@@ -1,35 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { EventBus } from '../EventBus'
-import { Settler, ProfessionType, SettlerState, JobType } from '@rugged/game'
+import { Settler, ProfessionType, SettlerState } from '@rugged/game'
 import { populationService } from '../services/PopulationService'
-import { itemService } from '../services/ItemService'
 import { buildingService } from '../services/BuildingService'
 import { DraggablePanel } from './DraggablePanel'
 import sharedStyles from './PanelShared.module.css'
-
-// Component to display item emoji that reactively updates when metadata loads
-const ItemEmoji: React.FC<{ itemType: string }> = ({ itemType }) => {
-	const [emoji, setEmoji] = useState<string>(itemType)
-
-	useEffect(() => {
-		// Try to get immediately
-		const itemMetadata = itemService.getItemType(itemType)
-		if (itemMetadata?.emoji) {
-			setEmoji(itemMetadata.emoji)
-		}
-
-		// Subscribe to updates
-		const unsubscribe = itemService.subscribeToItemMetadata(itemType, (metadata) => {
-			if (metadata?.emoji) {
-				setEmoji(metadata.emoji)
-			}
-		})
-
-		return unsubscribe
-	}, [itemType])
-
-	return <>{emoji}</>
-}
 
 export const SettlerInfoPanel: React.FC = () => {
 	const [isVisible, setIsVisible] = useState(false)
@@ -87,14 +62,20 @@ export const SettlerInfoPanel: React.FC = () => {
 		[ProfessionType.Carrier]: 'Carrier',
 		[ProfessionType.Builder]: 'Builder',
 		[ProfessionType.Woodcutter]: 'Woodcutter',
-		[ProfessionType.Miner]: 'Miner'
+		[ProfessionType.Miner]: 'Miner',
+		[ProfessionType.Farmer]: 'Farmer',
+		[ProfessionType.Miller]: 'Miller',
+		[ProfessionType.Baker]: 'Baker'
 	}
 
 	const professionIcons: Record<ProfessionType, string> = {
 		[ProfessionType.Carrier]: '👤',
 		[ProfessionType.Builder]: '🔨',
 		[ProfessionType.Woodcutter]: '🪓',
-		[ProfessionType.Miner]: '⛏️'
+		[ProfessionType.Miner]: '⛏️',
+		[ProfessionType.Farmer]: '🌾',
+		[ProfessionType.Miller]: '🌬️',
+		[ProfessionType.Baker]: '🥖'
 	}
 
 	const getStateLabel = (state: SettlerState): string => {
@@ -103,6 +84,8 @@ export const SettlerInfoPanel: React.FC = () => {
 				return '🟢 Idle'
 			case SettlerState.Spawned:
 				return '✨ Spawned'
+			case SettlerState.Assigned:
+				return '📌 Assigned'
 			case SettlerState.MovingToTool:
 				return '🚶 Moving to Tool'
 			case SettlerState.MovingToBuilding:
@@ -126,7 +109,17 @@ export const SettlerInfoPanel: React.FC = () => {
 		}
 	}
 
-	const job = settler ? populationService.getJob(settler.stateContext.jobId) : undefined
+	const formatWaitReason = (reason?: string): string | null => {
+		if (!reason) {
+			return null
+		}
+		const withSpaces = reason.replace(/_/g, ' ')
+		return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1)
+	}
+
+	const assignment = settler ? populationService.getAssignment(settler.stateContext.assignmentId) : undefined
+	const assignedBuilding = settler.buildingId ? buildingService.getBuildingInstance(settler.buildingId) : undefined
+	const assignedBuildingDef = assignedBuilding ? buildingService.getBuildingDefinition(assignedBuilding.buildingId) : undefined
 
 	return (
 		<DraggablePanel
@@ -145,56 +138,48 @@ export const SettlerInfoPanel: React.FC = () => {
 					<span className={sharedStyles.value}>{getStateLabel(settler.state)}</span>
 				</div>
 
-				{job && (
+				{settler.stateContext.waitReason && (
+					<div className={sharedStyles.infoRow}>
+						<span className={sharedStyles.label}>Wait reason:</span>
+						<span className={sharedStyles.value}>
+							{formatWaitReason(settler.stateContext.waitReason) || 'Unknown'}
+						</span>
+					</div>
+				)}
+
+				{(settler.stateContext.lastStepType || settler.stateContext.lastStepReason) && (
+					<div className={sharedStyles.infoRow}>
+						<span className={sharedStyles.label}>Last step:</span>
+						<span className={sharedStyles.value}>
+							{settler.stateContext.lastStepType || '—'}
+							{settler.stateContext.lastStepReason ? ` (${formatWaitReason(settler.stateContext.lastStepReason)})` : ''}
+						</span>
+					</div>
+				)}
+
+				{assignment && (
 					<>
 						<div className={sharedStyles.infoRow}>
-							<span className={sharedStyles.label}>Job Type:</span>
+							<span className={sharedStyles.label}>Assignment:</span>
 							<span className={sharedStyles.value}>
-								{job.jobType === JobType.Construction && '🏗️ Construction'}
-								{job.jobType === JobType.Production && '⚙️ Production'}
-								{job.jobType === JobType.Transport && '📦 Transport'}
-								{job.jobType === JobType.Harvest && '🪓 Harvest'}
+								{assignment.providerType === 'building'
+									? '🏢 Building'
+									: assignment.providerType === 'construction'
+										? '🏗️ Construction'
+										: '📦 Logistics'}
 							</span>
 						</div>
-						<div className={sharedStyles.infoRow}>
-							<span className={sharedStyles.label}>Job Status:</span>
-							<span className={sharedStyles.value}>
-								{job.status === 'pending' && '⏳ Pending'}
-								{job.status === 'active' && '✅ Active'}
-								{job.status === 'completed' && '✔️ Completed'}
-								{job.status === 'cancelled' && '❌ Cancelled'}
-							</span>
-						</div>
-						{job.buildingInstanceId && (
+						{assignedBuildingDef && (
 							<div className={sharedStyles.infoRow}>
 								<span className={sharedStyles.label}>Building:</span>
-								<span className={sharedStyles.value}>
-									{buildingService.getBuildingInstance(job.buildingInstanceId)?.buildingId || 'Unknown'}
-								</span>
-							</div>
-						)}
-						{job.jobType === JobType.Transport && job.itemType && (
-							<div className={sharedStyles.infoRow}>
-								<span className={sharedStyles.label}>
-									{job.carriedItemId ? 'Carrying:' : 'Picking up:'}
-								</span>
-								<span className={sharedStyles.value}>
-									<ItemEmoji itemType={job.itemType} /> {job.itemType}
-									{job.quantity && ` (${job.quantity})`}
-								</span>
-							</div>
-						)}
-						{job.requiredProfession && (
-							<div className={sharedStyles.infoRow}>
-								<span className={sharedStyles.label}>Required Profession:</span>
-								<span className={sharedStyles.value}>{professionLabels[job.requiredProfession]}</span>
+								<span className={sharedStyles.value}>{assignedBuildingDef.name}</span>
 							</div>
 						)}
 					</>
 				)}
-				{!job && settler.stateContext.jobId && (
+				{!assignment && settler.stateContext.assignmentId && (
 					<div className={sharedStyles.infoRow}>
-						<span className={sharedStyles.label}>Job:</span>
+						<span className={sharedStyles.label}>Assignment:</span>
 						<span className={sharedStyles.value}>In progress</span>
 					</div>
 				)}
@@ -203,6 +188,26 @@ export const SettlerInfoPanel: React.FC = () => {
 					<div className={sharedStyles.infoRow}>
 						<span className={sharedStyles.label}>House:</span>
 						<span className={sharedStyles.value}>🏠 Lives in house</span>
+					</div>
+				)}
+
+				{settler.stateContext.carryingItemType && (
+					<div className={sharedStyles.infoRow}>
+						<span className={sharedStyles.label}>Carrying:</span>
+						<span className={sharedStyles.value}>
+							{settler.stateContext.carryingQuantity ? `${settler.stateContext.carryingQuantity}x ` : ''}
+							{settler.stateContext.carryingItemType}
+						</span>
+					</div>
+				)}
+
+				{settler.stateContext.equippedItemType && (
+					<div className={sharedStyles.infoRow}>
+						<span className={sharedStyles.label}>Equipped:</span>
+						<span className={sharedStyles.value}>
+							{settler.stateContext.equippedQuantity ? `${settler.stateContext.equippedQuantity}x ` : ''}
+							{settler.stateContext.equippedItemType}
+						</span>
 					</div>
 				)}
 

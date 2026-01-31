@@ -11,34 +11,27 @@ import {
 	QuestCompleteResponse,
 	QuestScope
 } from './types'
-import { InventoryManager } from "../Inventory"
-import { ConditionEffectManager } from "../ConditionEffect"
+import type { ConditionEffectManager } from "../ConditionEffect"
 import { Logger } from '../Logs'
+import { BaseManager } from '../Managers'
 
-export class QuestManager {
+export interface QuestDeps {
+	conditionEffect: ConditionEffectManager
+}
+
+export class QuestManager extends BaseManager<QuestDeps> {
 	private quests: Map<string, Quest> = new Map()
 	private playerQuestStates: Map<string, PlayerQuestState> = new Map()
 	private globalQuestStates: Map<string, QuestProgress> = new Map()
 	private sharedQuestStates: Map<string, QuestProgress> = new Map()
-	private _conditionEffectManager: ConditionEffectManager | null = null
 
 	constructor(
-		private event: EventManager, 
-		private inventoryManager: InventoryManager,
+		managers: QuestDeps,
+		private event: EventManager,
 		private logger: Logger
 	) {
+		super(managers)
 		this.setupEventHandlers()
-	}
-
-	set conditionEffectManager(manager: ConditionEffectManager) {
-		this._conditionEffectManager = manager
-	}
-
-	get conditionEffectManager(): ConditionEffectManager {
-		if (!this._conditionEffectManager) {
-			throw new Error('ConditionEffectManager not initialized')
-		}
-		return this._conditionEffectManager
 	}
 
 	public loadQuests(quests: Quest[]) {
@@ -94,7 +87,7 @@ export class QuestManager {
 			return true
 		}
 		
-		const result = this.conditionEffectManager.checkCondition(step.condition, client)
+		const result = this.managers.conditionEffect.checkCondition(step.condition, client)
 		this.logger.debug(`Step ${step.id} condition check result:`, result)
 		return result
 	}
@@ -112,7 +105,7 @@ export class QuestManager {
 
 		// Apply effect if present
 		if (step.effect) {
-			this.conditionEffectManager.applyEffect(step.effect, client)
+			this.managers.conditionEffect.applyEffect(step.effect, client)
 		}
 
 		// Check if quest is complete
@@ -479,9 +472,9 @@ export class QuestManager {
 		}
 
 		// Check start condition if present
-		if (quest.startCondition && this.conditionEffectManager) {
+		if (quest.startCondition) {
 			this.logger.debug(`Checking start condition:`, quest.startCondition)
-			if (!this.conditionEffectManager.checkCondition(quest.startCondition, client)) {
+			if (!this.managers.conditionEffect.checkCondition(quest.startCondition, client)) {
 				this.logger.debug(`Start condition not met`)
 				return false
 			}
@@ -565,8 +558,8 @@ export class QuestManager {
 		}
 
 		// Apply start effect if present
-		if (quest.startEffect && this.conditionEffectManager) {
-			this.conditionEffectManager.applyEffect(quest.startEffect, client)
+		if (quest.startEffect) {
+			this.managers.conditionEffect.applyEffect(quest.startEffect, client)
 		}
 		
 		// Send sanitized quest details and progress

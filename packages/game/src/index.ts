@@ -7,7 +7,6 @@ import { SystemManager } from './System'
 import { ItemsManager } from './Items'
 import { DialogueManager } from './Dialogue'
 import { Scheduler } from './Scheduler'
-import { Receiver } from './Receiver'
 import { QuestManager } from "./Quest"
 import { MapObjectsManager } from "./MapObjects"
 import { FlagsManager } from "./Flags"
@@ -26,18 +25,19 @@ import { BuildingManager } from './Buildings'
 import { PopulationManager } from './Population'
 import { MovementManager } from './Movement'
 import { ProfessionType } from './Population/types'
-import { JobsManager } from './Jobs'
 import { StorageManager } from './Storage'
-import { ProductionManager } from './Production'
+import { ReservationSystem } from './Reservation'
 import { SimulationManager } from './Simulation'
 import { ResourceNodesManager } from './ResourceNodes'
-import { HarvestManager } from './Harvest'
+import { WorkProviderManager } from './Settlers/WorkProvider'
+import { ManagersHub } from './Managers'
 
 // Export types and events
 export * from './types'
 export * from './events'
 export * from './consts'
 export * from './utils'
+export * from './Settlers/WorkProvider'
 export { EquipmentSlot, EquipmentSlotType }
 // export { Event } from './events' 
 
@@ -45,37 +45,12 @@ import { LogsManager, LogLevel } from './Logs'
 
 export interface GameManagerOptions {
 	simulationTickMs?: number
+	logAllowlist?: string[]
 }
 
 export class GameManager {
-	private chatManager: ChatManager
-	private playersManager: PlayersManager
-	private inventoryManager: InventoryManager
-	private lootManager: LootManager
-	private npcManager: NPCManager
-	private systemManager: SystemManager
-	private itemsManager: ItemsManager
-	private dialogueManager: DialogueManager
-	private scheduler: Scheduler
-	private questManager: QuestManager
-	private mapObjectsManager: MapObjectsManager
-	private buildingManager: BuildingManager
-	private populationManager: PopulationManager
-	private movementManager: MovementManager
-	private flagsManager: FlagsManager
-	private affinityManager: AffinityManager
-	private cutsceneManager: CutsceneManager
-	private conditionEffectManager: ConditionEffectManager
-	private mapManager: MapManager
-	private triggerManager: TriggerManager
-	private timeManager: TimeManager
 	private contentLoader: ContentLoader
-	private logsManager: LogsManager
-	private storageManager: StorageManager
-	private productionManager: ProductionManager
-	private simulationManager: SimulationManager
-	private resourceNodesManager: ResourceNodesManager
-	private harvestManager: HarvestManager
+	private managers: ManagersHub
 
 	constructor(
 		private event: EventManager,
@@ -84,130 +59,109 @@ export class GameManager {
 		options: GameManagerOptions = {}
 	) {
 		// Initialize LogsManager first
-		this.logsManager = new LogsManager()
-		this.simulationManager = new SimulationManager(
+		this.managers = new ManagersHub()
+		this.managers.logs = new LogsManager()
+		if (options.logAllowlist && options.logAllowlist.length > 0) {
+			this.managers.logs.setAllowedManagers(options.logAllowlist)
+		}
+		this.managers.simulation = new SimulationManager(
 			event,
-			this.logsManager.getLogger('SimulationManager'),
+			this.managers.logs.getLogger('SimulationManager'),
 			options.simulationTickMs
 		)
 		
 		// Initialize managers in dependency order
-		this.timeManager = new TimeManager(event, this.logsManager.getLogger('TimeManager'))
-		this.chatManager = new ChatManager(event, this.logsManager.getLogger('ChatManager'))
-		this.systemManager = new SystemManager(event, this.logsManager.getLogger('SystemManager'))
-		this.mapManager = new MapManager(event, this.mapUrlService, this.logsManager.getLogger('MapManager'))
-		this.movementManager = new MovementManager(event, this.mapManager, this.logsManager.getLogger('MovementManager'))
-		this.itemsManager = new ItemsManager(event, this.logsManager.getLogger('ItemsManager'))
-		this.inventoryManager = new InventoryManager(event, this.itemsManager, this.logsManager.getLogger('InventoryManager'))
-		this.flagsManager = new FlagsManager(event, this.logsManager.getLogger('FlagsManager'))
-		this.affinityManager = new AffinityManager(event, this.logsManager.getLogger('AffinityManager'))
-		this.questManager = new QuestManager(event, this.inventoryManager, this.logsManager.getLogger('QuestManager'))
-		this.lootManager = new LootManager(event, this.itemsManager, this.logsManager.getLogger('LootManager'))
-		this.cutsceneManager = new CutsceneManager(event, this.logsManager.getLogger('CutsceneManager'))
-		this.dialogueManager = new DialogueManager(
-			event, 
-			this.questManager,
-			this.logsManager.getLogger('DialogueManager')
+		this.managers.time = new TimeManager(event, this.managers.logs.getLogger('TimeManager'))
+		this.managers.chat = new ChatManager(event, this.managers.logs.getLogger('ChatManager'))
+		this.managers.system = new SystemManager(event, this.managers.logs.getLogger('SystemManager'))
+		this.managers.map = new MapManager(event, this.mapUrlService, this.managers.logs.getLogger('MapManager'))
+		this.managers.movement = new MovementManager(this.managers, event, this.managers.logs.getLogger('MovementManager'))
+		this.managers.items = new ItemsManager(event, this.managers.logs.getLogger('ItemsManager'))
+		this.managers.inventory = new InventoryManager(this.managers, event, this.managers.logs.getLogger('InventoryManager'))
+		this.managers.flags = new FlagsManager(event, this.managers.logs.getLogger('FlagsManager'))
+		this.managers.affinity = new AffinityManager(event, this.managers.logs.getLogger('AffinityManager'))
+		this.managers.quest = new QuestManager(this.managers, event, this.managers.logs.getLogger('QuestManager'))
+		this.managers.loot = new LootManager(this.managers, event, this.managers.logs.getLogger('LootManager'))
+		this.managers.cutscene = new CutsceneManager(event, this.managers.logs.getLogger('CutsceneManager'))
+		this.managers.dialogue = new DialogueManager(
+			this.managers,
+			event,
+			this.managers.logs.getLogger('DialogueManager')
 		)
 		
-		this.npcManager = new NPCManager(event, this.dialogueManager, this.mapManager, this.timeManager, this.questManager, this.movementManager, this.logsManager.getLogger('NPCManager'))
-		this.scheduler = new Scheduler(event, this.timeManager, this.logsManager.getLogger('Scheduler'))
-		this.mapObjectsManager = new MapObjectsManager(event, this.itemsManager, this.inventoryManager, this.logsManager.getLogger('MapObjectsManager'))
-		this.resourceNodesManager = new ResourceNodesManager(event, this.mapObjectsManager, this.itemsManager, this.logsManager.getLogger('ResourceNodesManager'))
-		this.buildingManager = new BuildingManager(event, this.inventoryManager, this.mapObjectsManager, this.itemsManager, this.mapManager, this.logsManager.getLogger('BuildingManager'), this.lootManager)
+		this.managers.npc = new NPCManager(this.managers, event, this.managers.logs.getLogger('NPCManager'))
+		this.managers.scheduler = new Scheduler(this.managers, event, this.managers.logs.getLogger('Scheduler'))
+		this.managers.mapObjects = new MapObjectsManager(this.managers, event, this.managers.logs.getLogger('MapObjectsManager'))
+		this.managers.resourceNodes = new ResourceNodesManager(this.managers, event, this.managers.logs.getLogger('ResourceNodesManager'))
+		this.managers.buildings = new BuildingManager(this.managers, event, this.managers.logs.getLogger('BuildingManager'))
 		// Convert startingPopulation from content (string profession) to ProfessionType
 		const startingPopulation = this.content.startingPopulation?.map(entry => ({
 			profession: entry.profession as ProfessionType,
 			count: entry.count
 		})) || []
-		this.populationManager = new PopulationManager(event, this.buildingManager, this.scheduler, this.mapManager, this.lootManager, this.itemsManager, this.movementManager, this.resourceNodesManager, startingPopulation, this.logsManager.getLogger('PopulationManager'))
+		this.managers.population = new PopulationManager(
+			this.managers,
+			event,
+			startingPopulation,
+			this.managers.logs.getLogger('PopulationManager')
+		)
 		
 		// Create StorageManager after BuildingManager (to avoid circular dependency)
-		this.storageManager = new StorageManager(event, this.buildingManager, this.itemsManager, this.logsManager.getLogger('StorageManager'))
+		this.managers.storage = new StorageManager(this.managers, event, this.managers.logs.getLogger('StorageManager'))
 		
-		// Create JobsManager after BuildingManager, PopulationManager, and StorageManager (to avoid circular dependency)
-		const jobsManager = new JobsManager(event, this.buildingManager, this.populationManager, this.lootManager, this.mapManager, this.resourceNodesManager, this.itemsManager, this.logsManager.getLogger('JobsManager'))
-		jobsManager.setStorageManager(this.storageManager)
+		// Create ReservationSystem after Storage/Loot/ResourceNodes/Population
+		this.managers.reservations = new ReservationSystem(this.managers)
+
+		// Create WorkProviderManager after BuildingManager, PopulationManager, StorageManager, and ReservationSystem
+		this.managers.work = new WorkProviderManager(this.managers, event, this.managers.logs.getLogger('WorkProviderManager'))
 		
-		// Create ProductionManager after BuildingManager, StorageManager, JobsManager, and LootManager
-		this.productionManager = new ProductionManager(event, this.buildingManager, this.storageManager, jobsManager, this.lootManager, this.logsManager.getLogger('ProductionManager'))
-		this.harvestManager = new HarvestManager(event, this.buildingManager, this.populationManager, jobsManager, this.resourceNodesManager, this.storageManager, this.logsManager.getLogger('HarvestManager'))
-		
-		// Set JobsManager references (to avoid circular dependency in constructors)
-		this.buildingManager.setJobsManager(jobsManager)
-		this.populationManager.setJobsManager(jobsManager)
-		this.populationManager.setStorageManager(this.storageManager)
-		
-		// Set LootManager reference in BuildingManager (for refunding resources)
-		this.buildingManager.setLootManager(this.lootManager)
-		
-		// Set StorageManager and ProductionManager references in BuildingManager (for initializing storage/production on building completion)
-		this.buildingManager.setStorageManager(this.storageManager)
-		this.buildingManager.setProductionManager(this.productionManager)
-		
-		this.triggerManager = new TriggerManager(
+		this.managers.trigger = new TriggerManager(
+			this.managers,
 			event,
-			this.npcManager,
-			this.mapManager,
-			this.logsManager.getLogger('TriggerManager')
+			this.managers.logs.getLogger('TriggerManager')
 		)
 
 		// Initialize PlayersManager last since it depends on other managers
-		this.playersManager = new PlayersManager(
-			event, 
-			this.inventoryManager, 
-			this.lootManager, 
-			this.itemsManager,
-			this.mapObjectsManager,
-			this.mapManager,
+		this.managers.players = new PlayersManager(
+			this.managers,
+			event,
 			this.content.startingItems || [], // Pass starting items configuration from content (default to empty array)
-			this.logsManager.getLogger('PlayersManager')
+			this.managers.logs.getLogger('PlayersManager')
 		)
 
-		this.conditionEffectManager = new ConditionEffectManager(
+		this.managers.conditionEffect = new ConditionEffectManager(
+			this.managers,
 			event,
-			this.questManager,
-			this.flagsManager,
-			this.affinityManager,
-			this.npcManager,
-			this.playersManager,
-			this.timeManager,
-			this.inventoryManager,
-			this.dialogueManager,
-			this.logsManager.getLogger('ConditionEffectManager')
+			this.managers.logs.getLogger('ConditionEffectManager')
 		)
-		this.dialogueManager.conditionEffectManager = this.conditionEffectManager
-		this.questManager.conditionEffectManager = this.conditionEffectManager
-		this.triggerManager.conditionEffectManager = this.conditionEffectManager
-		this.scheduler.conditionEffectManager = this.conditionEffectManager
 
 		// Initialize ContentLoader with all required dependencies
 		this.contentLoader = new ContentLoader(
 			this.content,
-			this.cutsceneManager,
-			this.dialogueManager,
-			this.flagsManager,
-			this.itemsManager,
-			this.mapManager,
-			this.npcManager,
-			this.questManager,
-			this.scheduler,
-			this.triggerManager,
-			this.affinityManager,
-			this.buildingManager,
-			this.populationManager,
-			this.resourceNodesManager,
-			this.logsManager.getLogger('ContentLoader')
+			this.managers.cutscene,
+			this.managers.dialogue,
+			this.managers.flags,
+			this.managers.items,
+			this.managers.map,
+			this.managers.npc,
+			this.managers.quest,
+			this.managers.scheduler,
+			this.managers.trigger,
+			this.managers.affinity,
+			this.managers.buildings,
+			this.managers.population,
+			this.managers.resourceNodes,
+			this.managers.logs.getLogger('ContentLoader')
 		)
 		
 		// Configure log levels to reduce noise - only show movement-related logs at Info level
 		// Movement-related managers (keep at Info level to see movement/state sync logs)
-		this.logsManager.setManagerLevel('MovementManager', LogLevel.Info)
-		this.logsManager.setManagerLevel('PopulationManager', LogLevel.Info)
+		this.managers.logs.setManagerLevel('MovementManager', LogLevel.Info)
+		this.managers.logs.setManagerLevel('PopulationManager', LogLevel.Info)
 		
-		// Resource collection debugging - enable BuildingManager and JobsManager at Info level
-		this.logsManager.setManagerLevel('BuildingManager', LogLevel.Info)
-		this.logsManager.setManagerLevel('JobsManager', LogLevel.Info)
+		// Resource collection debugging - enable BuildingManager and WorkProviderManager at Info level
+		this.managers.logs.setManagerLevel('BuildingManager', LogLevel.Info)
+		this.managers.logs.setManagerLevel('WorkProviderManager', LogLevel.Info)
 		
 		// Set most other managers to Warn level (only show warnings and errors)
 		const quietManagers = [
@@ -231,17 +185,16 @@ export class GameManager {
 			'ConditionEffectManager',
 			'ContentLoader',
 			'StorageManager',
-			'ProductionManager',
 			'SimulationManager',
 			'ResourceNodesManager',
-			'HarvestManager'
+			'WorkProviderManager'
 		]
 		for (const managerName of quietManagers) {
-			this.logsManager.setManagerLevel(managerName, LogLevel.Warn)
+			this.managers.logs.setManagerLevel(managerName, LogLevel.Warn)
 		}
 		
 		this.setupEventHandlers()
-		this.simulationManager.start()
+		this.managers.simulation.start()
 	}
 
 	private setupEventHandlers() {

@@ -2,13 +2,18 @@ import { EventManager, Event, EventClient } from '../events'
 import { PlayerJoinData, PlayerTransitionData, Position } from '../types'
 import { Receiver } from '../Receiver'
 import { Item } from "../Items/types"
-import { ItemsManager } from '../Items'
+import type { ItemsManager } from '../Items'
 import { DroppedItem, Range, SpawnPosition, LootSpawnPayload, LootSpawnEventPayload, LootDespawnEventPayload, LootUpdateEventPayload } from "./types"
 import { LootEvents } from './events'
 import { v4 as uuidv4 } from 'uuid'
 import { Logger } from '../Logs'
+import { BaseManager } from '../Managers'
 
-export class LootManager {
+export interface LootDeps {
+	items: ItemsManager
+}
+
+export class LootManager extends BaseManager<LootDeps> {
 	private droppedItems = new Map<string, DroppedItem[]>()
 	private itemIdToMapId = new Map<string, string>()
 	private itemReservations = new Map<string, string>()
@@ -16,10 +21,11 @@ export class LootManager {
 	private readonly ITEM_CLEANUP_INTERVAL = 30 * 1000 // Check every 30 seconds
 
 	constructor(
+		managers: LootDeps,
 		private event: EventManager,
-		private itemsManager: ItemsManager,
 		private logger: Logger
 	) {
+		super(managers)
 		this.setupEventHandlers()
 		this.startItemCleanupInterval()
 	}
@@ -39,7 +45,7 @@ export class LootManager {
 	}
 
 	private getMaxStackSize(itemType: string): number {
-		const metadata = this.itemsManager.getItemMetadata(itemType)
+		const metadata = this.managers.items.getItemMetadata(itemType)
 		if (!metadata || !metadata.stackable) {
 			return 1
 		}
@@ -47,7 +53,7 @@ export class LootManager {
 	}
 
 	private canStack(itemType: string): boolean {
-		const metadata = this.itemsManager.getItemMetadata(itemType)
+		const metadata = this.managers.items.getItemMetadata(itemType)
 		return !!metadata?.stackable
 	}
 
