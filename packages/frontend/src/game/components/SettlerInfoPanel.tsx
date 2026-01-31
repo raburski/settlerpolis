@@ -120,6 +120,7 @@ export const SettlerInfoPanel: React.FC = () => {
 	const assignment = settler ? populationService.getAssignment(settler.stateContext.assignmentId) : undefined
 	const assignedBuilding = settler.buildingId ? buildingService.getBuildingInstance(settler.buildingId) : undefined
 	const assignedBuildingDef = assignedBuilding ? buildingService.getBuildingDefinition(assignedBuilding.buildingId) : undefined
+	const needs = settler.needs
 
 	return (
 		<DraggablePanel
@@ -137,6 +138,19 @@ export const SettlerInfoPanel: React.FC = () => {
 					<span className={sharedStyles.label}>Status:</span>
 					<span className={sharedStyles.value}>{getStateLabel(settler.state)}</span>
 				</div>
+
+				{needs && (
+					<>
+						<div className={sharedStyles.infoRow}>
+							<span className={sharedStyles.label}>Hunger:</span>
+							<span className={sharedStyles.value}>{Math.round(needs.hunger * 100)}%</span>
+						</div>
+						<div className={sharedStyles.infoRow}>
+							<span className={sharedStyles.label}>Fatigue:</span>
+							<span className={sharedStyles.value}>{Math.round(needs.fatigue * 100)}%</span>
+						</div>
+					</>
+				)}
 
 				{settler.stateContext.waitReason && (
 					<div className={sharedStyles.infoRow}>

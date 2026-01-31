@@ -1,5 +1,5 @@
 import { EventManager, Event, EventClient } from '../events'
-import { ItemMetadata, ItemTypeRequest, ItemTypeResponse } from './types'
+import { ItemCategory, ItemMetadata, ItemTypeRequest, ItemTypeResponse } from './types'
 import { Receiver } from '../Receiver'
 import { Logger } from '../Logs'
 
@@ -39,6 +39,14 @@ export class ItemsManager {
 	 */
 	public getItemMetadata(itemId: string): ItemMetadata | null {
 		return this.itemsMetadata[itemId] || null
+	}
+
+	public getItems(): ItemMetadata[] {
+		return Object.values(this.itemsMetadata)
+	}
+
+	public getItemsByCategory(category: ItemCategory): ItemMetadata[] {
+		return this.getItems().filter(item => item.category === category)
 	}
 
 	/**

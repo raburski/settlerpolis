@@ -23,6 +23,8 @@ export const UIContainer = () => {
 	const [isStockOpen, setIsStockOpen] = useState(false)
 	const [isPopulationOpen, setIsPopulationOpen] = useState(false)
 	const [isLogisticsOpen, setIsLogisticsOpen] = useState(false)
+	const stockButtonRef = useRef<HTMLButtonElement | null>(null)
+	const [stockAnchor, setStockAnchor] = useState<DOMRect | null>(null)
 	const populationButtonRef = useRef<HTMLButtonElement | null>(null)
 	const [populationAnchor, setPopulationAnchor] = useState<DOMRect | null>(null)
 	const logisticsButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -40,6 +42,25 @@ export const UIContainer = () => {
 			EventBus.off(handleEvent)
 		}
 	}, [])
+
+	useEffect(() => {
+		if (!isStockOpen) {
+			return
+		}
+
+		const updateAnchor = () => {
+			if (stockButtonRef.current) {
+				setStockAnchor(stockButtonRef.current.getBoundingClientRect())
+			}
+		}
+
+		updateAnchor()
+		window.addEventListener('resize', updateAnchor)
+
+		return () => {
+			window.removeEventListener('resize', updateAnchor)
+		}
+	}, [isStockOpen])
 
 	useEffect(() => {
 		if (!isPopulationOpen) {
@@ -95,19 +116,23 @@ export const UIContainer = () => {
 				isPopulationOpen={isPopulationOpen}
 				onTogglePopulation={() => {
 					setIsStockOpen(false)
+					setIsLogisticsOpen(false)
 					setIsPopulationOpen((prev) => !prev)
 				}}
 				isLogisticsOpen={isLogisticsOpen}
 				onToggleLogistics={() => {
 					setIsStockOpen(false)
+					setIsPopulationOpen(false)
 					setIsLogisticsOpen((prev) => !prev)
 				}}
+				resourceButtonRef={stockButtonRef}
 				populationButtonRef={populationButtonRef}
 				logisticsButtonRef={logisticsButtonRef}
 			/>
 			<StockPanel
 				isVisible={isStockOpen}
 				onClose={() => setIsStockOpen(false)}
+				anchorRect={stockAnchor}
 			/>
 			<Chat />
 			<Inventory />

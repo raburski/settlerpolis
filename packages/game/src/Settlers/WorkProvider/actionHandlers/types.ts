@@ -2,7 +2,7 @@ import type { WorkAction, WorkActionType } from '../types'
 import type { ActionSystemDeps } from '../ActionSystem'
 
 export interface InProgressAction {
-	type: WorkActionType.Wait | WorkActionType.Construct
+	type: WorkActionType.Wait | WorkActionType.Construct | WorkActionType.Consume | WorkActionType.Sleep
 	endAtMs: number
 	buildingInstanceId?: string
 }

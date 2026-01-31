@@ -16,7 +16,7 @@ interface ActiveQueue {
 	actions: WorkAction[]
 	index: number
 	inProgress?: {
-		type: WorkActionType.Wait | WorkActionType.Construct
+		type: WorkActionType.Wait | WorkActionType.Construct | WorkActionType.Consume | WorkActionType.Sleep
 		endAtMs: number
 		buildingInstanceId?: string
 	}

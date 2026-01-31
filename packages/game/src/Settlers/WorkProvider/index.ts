@@ -19,6 +19,8 @@ import { Receiver } from '../../Receiver'
 import { v4 as uuidv4 } from 'uuid'
 import { calculateDistance } from '../../utils'
 import { SettlerState, ProfessionType } from '../../Population/types'
+import { NeedsEvents } from '../../Needs/events'
+import type { ContextPauseRequestedEventData, ContextResumeRequestedEventData, PausedContext } from '../../Needs/types'
 import type { RequestWorkerData, UnassignWorkerData } from '../../Population/types'
 import type { ProductionRecipe, SetProductionPausedData } from '../../Buildings/types'
 import { ConstructionStage, ProductionStatus } from '../../Buildings/types'
@@ -58,6 +60,8 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 	private productionStateByBuilding = new Map<string, { status: ProductionStatus, progress: number }>()
 	private constructionAssignCooldownMs = 2000
 	private lastConstructionAssignAt = new Map<string, number>()
+	private pauseRequests = new Map<string, { reason: string }>()
+	private pausedContexts = new Map<string, PausedContext | null>()
 
 	constructor(
 		managers: WorkProviderDeps,
@@ -102,6 +106,14 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.handleSimulationTick(data)
 		})
+
+		this.event.on(NeedsEvents.SS.ContextPauseRequested, (data: ContextPauseRequestedEventData) => {
+			this.handleContextPauseRequested(data)
+		})
+
+		this.event.on(NeedsEvents.SS.ContextResumeRequested, (data: ContextResumeRequestedEventData) => {
+			this.handleContextResumeRequested(data)
+		})
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {
@@ -115,6 +127,59 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 
 		// Assign idle carriers to logistics if there is pending demand
 		this.assignIdleCarriersToLogistics()
+	}
+
+	private handleContextPauseRequested(data: ContextPauseRequestedEventData): void {
+		if (this.pauseRequests.has(data.settlerId) || this.pausedContexts.has(data.settlerId)) {
+			return
+		}
+
+		this.pauseRequests.set(data.settlerId, { reason: data.reason })
+
+		if (!this.actionSystem.isBusy(data.settlerId)) {
+			this.applyPause(data.settlerId)
+		}
+	}
+
+	private handleContextResumeRequested(data: ContextResumeRequestedEventData): void {
+		this.pauseRequests.delete(data.settlerId)
+		this.pausedContexts.delete(data.settlerId)
+
+		const assignment = this.assignments.get(data.settlerId)
+		if (assignment) {
+			assignment.status = 'assigned'
+			const provider = this.registry.get(assignment.providerId)
+			provider?.resume(data.settlerId)
+		}
+
+		this.event.emit(Receiver.All, NeedsEvents.SS.ContextResumed, { settlerId: data.settlerId })
+
+		if (assignment) {
+			this.dispatchNextStep(data.settlerId)
+		}
+	}
+
+	private applyPause(settlerId: string): void {
+		if (this.pausedContexts.has(settlerId)) {
+			return
+		}
+
+		const assignment = this.assignments.get(settlerId)
+		let context: PausedContext | null = null
+
+		if (assignment) {
+			assignment.status = 'paused'
+			const provider = this.registry.get(assignment.providerId)
+			provider?.pause(settlerId, this.pauseRequests.get(settlerId)?.reason)
+			context = {
+				assignmentId: assignment.assignmentId,
+				providerId: assignment.providerId,
+				providerType: assignment.providerType
+			}
+		}
+
+		this.pausedContexts.set(settlerId, context)
+		this.event.emit(Receiver.All, NeedsEvents.SS.ContextPaused, { settlerId, context })
 	}
 
 	private refreshConsumptionRequests(): void {
@@ -430,8 +495,28 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		}
 	}
 
+	public enqueueActions(settlerId: string, actions: WorkAction[], onComplete?: () => void, onFail?: (reason: string) => void): void {
+		if (this.actionSystem.isBusy(settlerId)) {
+			this.logger.warn(`[WorkProvider] Cannot enqueue actions for ${settlerId}: action system busy`)
+			onFail?.('action_system_busy')
+			return
+		}
+		this.actionSystem.enqueue(settlerId, actions, onComplete, onFail)
+	}
+
+	public isSettlerBusy(settlerId: string): boolean {
+		return this.actionSystem.isBusy(settlerId)
+	}
+
 	private dispatchNextStep(settlerId: string): void {
 		if (this.actionSystem.isBusy(settlerId)) {
+			return
+		}
+
+		if (this.pauseRequests.has(settlerId) || this.pausedContexts.has(settlerId)) {
+			if (!this.pausedContexts.has(settlerId)) {
+				this.applyPause(settlerId)
+			}
 			return
 		}
 

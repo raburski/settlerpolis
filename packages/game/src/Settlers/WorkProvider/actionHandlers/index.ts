@@ -2,6 +2,8 @@ import type { ActionHandler } from './types'
 import { WorkActionType } from '../types'
 import { MoveActionHandler } from './move'
 import { WaitActionHandler } from './wait'
+import { ConsumeActionHandler } from './consume'
+import { SleepActionHandler } from './sleep'
 import { ConstructActionHandler } from './construct'
 import { PickupToolActionHandler } from './pickupTool'
 import { PickupLootActionHandler } from './pickupLoot'
@@ -25,7 +27,9 @@ export const ActionHandlers: Record<WorkActionType, ActionHandler> = {
 	[WorkActionType.HarvestNode]: HarvestNodeActionHandler,
 	[WorkActionType.Produce]: ProduceActionHandler,
 	[WorkActionType.Plant]: PlantActionHandler,
-	[WorkActionType.ChangeProfession]: ChangeProfessionActionHandler
+	[WorkActionType.ChangeProfession]: ChangeProfessionActionHandler,
+	[WorkActionType.Consume]: ConsumeActionHandler,
+	[WorkActionType.Sleep]: SleepActionHandler
 }
 
 export * from './types'

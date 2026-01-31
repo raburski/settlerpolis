@@ -14,6 +14,7 @@ type TopBarProps = {
 	onTogglePopulation: () => void
 	isLogisticsOpen: boolean
 	onToggleLogistics: () => void
+	resourceButtonRef?: React.Ref<HTMLButtonElement>
 	populationButtonRef?: React.Ref<HTMLButtonElement>
 	logisticsButtonRef?: React.Ref<HTMLButtonElement>
 }
@@ -46,6 +47,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 	onTogglePopulation,
 	isLogisticsOpen,
 	onToggleLogistics,
+	resourceButtonRef,
 	populationButtonRef,
 	logisticsButtonRef
 }) => {
@@ -84,6 +86,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 					data-active={isStockOpen}
 					onClick={onToggleStock}
 					aria-pressed={isStockOpen}
+					ref={resourceButtonRef}
 				>
 					{resourceItems.map((item) => (
 						<span key={item.id} className={styles.resourceItem} title={item.label}>

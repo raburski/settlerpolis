@@ -46,7 +46,9 @@ export enum WorkActionType {
 	HarvestNode = 'harvest_node',
 	Produce = 'produce',
 	Plant = 'plant',
-	ChangeProfession = 'change_profession'
+	ChangeProfession = 'change_profession',
+	Consume = 'consume',
+	Sleep = 'sleep'
 }
 
 export enum TransportSourceType {
@@ -100,6 +102,8 @@ export type WorkAction =
 	| { type: WorkActionType.Produce, buildingInstanceId: string, recipe: ProductionRecipe, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Plant, buildingInstanceId: string, nodeType: string, position: Position, growTimeMs: number, spoilTimeMs?: number, despawnTimeMs?: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.ChangeProfession, profession: ProfessionType, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.Consume, itemType?: ItemType, quantity?: number, durationMs: number, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.Sleep, durationMs: number, setState?: import('../../Population/types').SettlerState }
 
 export interface WorkProvider {
 	id: WorkProviderId

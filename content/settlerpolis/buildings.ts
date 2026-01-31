@@ -93,7 +93,8 @@ export const buildings: BuildingDefinition[] = [
 			}
 		],
 		harvest: {
-			nodeType: 'tree'
+			nodeType: 'tree',
+			radiusTiles: 8
 		},
 		requiredProfession: 'woodcutter',
 		workerSlots: 1, // Woodcutter hut can have 1 worker
@@ -101,6 +102,44 @@ export const buildings: BuildingDefinition[] = [
 			capacities: {
 				[ItemType.Logs]: 10 // Can store up to 10 logs (output)
 			}
+		}
+	},
+	{
+		id: 'forester_hut',
+		name: 'Forester Hut',
+		description: 'Plants new trees to sustain nearby forests',
+		category: 'production',
+		icon: '🌲',
+		sprite: {
+			foundation: 'building_foundation',
+			completed: 'woodcutter_hut'
+		},
+		footprint: {
+			width: 2,
+			height: 2
+		},
+		constructionTime: 12,
+		costs: [
+			{
+				itemType: ItemType.Logs,
+				quantity: 1
+			},
+			{
+				itemType: ItemType.Stone,
+				quantity: 1
+			}
+		],
+		requiredProfession: ProfessionType.Woodcutter,
+		workerSlots: 1,
+		farm: {
+			cropNodeType: 'tree',
+			plotRadiusTiles: 8,
+			plantTimeMs: 2000,
+			growTimeMs: 45000,
+			maxPlots: 18,
+			allowHarvest: false,
+			minSpacingTiles: 1,
+			postPlantReturnWaitMs: 2000
 		}
 	},
 	{
@@ -129,7 +168,8 @@ export const buildings: BuildingDefinition[] = [
 			}
 		],
 		harvest: {
-			nodeType: 'stone_deposit'
+			nodeType: 'stone_deposit',
+			radiusTiles: 8
 		},
 		requiredProfession: ProfessionType.Miner,
 		workerSlots: 1,

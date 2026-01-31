@@ -1,4 +1,5 @@
 import { BuildingWorkKind, getHarvestDefinition } from '../../../Buildings/work'
+import { calculateDistance } from '../../../utils'
 import { WorkStepType, WorkWaitReason } from '../types'
 import type { BuildingWorkHandler } from './types'
 
@@ -24,7 +25,33 @@ export const HarvestWorkHandler: BuildingWorkHandler = {
 			return { type: WorkStepType.Wait, reason: WorkWaitReason.NoStorage }
 		}
 
-		const node = managers.resourceNodes.findClosestAvailableNode(building.mapName, harvestDefinition.nodeType, building.position)
+		const map = managers.map.getMap(building.mapName)
+		const tileSize = map?.tiledMap.tilewidth || 32
+		const workCenter = building.workAreaCenter ?? building.position
+		const radiusTiles = harvestDefinition.radiusTiles
+		const maxDistance = radiusTiles ? radiusTiles * tileSize : null
+
+		let node = managers.resourceNodes.findClosestAvailableNode(building.mapName, harvestDefinition.nodeType, workCenter)
+		if (node && maxDistance !== null) {
+			const distance = calculateDistance(workCenter, node.position)
+			if (distance > maxDistance) {
+				node = undefined
+			}
+		}
+		if (!node && maxDistance !== null) {
+			const availableNodes = managers.resourceNodes.getAvailableNodes(building.mapName, harvestDefinition.nodeType)
+			node = availableNodes.reduce((best, candidate) => {
+				const candidateDistance = calculateDistance(workCenter, candidate.position)
+				if (candidateDistance > maxDistance) {
+					return best
+				}
+				if (!best) {
+					return candidate
+				}
+				const bestDistance = calculateDistance(workCenter, best.position)
+				return candidateDistance < bestDistance ? candidate : best
+			}, undefined as typeof node)
+		}
 		if (!node) {
 			return { type: WorkStepType.Wait, reason: WorkWaitReason.NoNodes }
 		}

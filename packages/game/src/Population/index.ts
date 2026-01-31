@@ -230,6 +230,18 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
 	}
 
+	public setSettlerNeeds(settlerId: string, needs: { hunger: number, fatigue: number }): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return
+		}
+		settler.needs = {
+			hunger: Math.max(0, Math.min(1, needs.hunger)),
+			fatigue: Math.max(0, Math.min(1, needs.fatigue))
+		}
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+	}
+
 	public setSettlerProfession(settlerId: string, profession: ProfessionType): void {
 		const settler = this.settlers.get(settlerId)
 		if (!settler) {

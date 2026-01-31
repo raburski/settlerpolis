@@ -28,9 +28,10 @@ const ItemEmoji: React.FC<{ itemType: string }> = ({ itemType }) => {
 type StockPanelProps = {
 	isVisible: boolean
 	onClose?: () => void
+	anchorRect?: DOMRect | null
 }
 
-export const StockPanel: React.FC<StockPanelProps> = ({ isVisible, onClose }) => {
+export const StockPanel: React.FC<StockPanelProps> = ({ isVisible, onClose, anchorRect }) => {
 	const resourceTypes = useResourceList()
 	const totals = useGlobalStockTotals()
 
@@ -38,8 +39,16 @@ export const StockPanel: React.FC<StockPanelProps> = ({ isVisible, onClose }) =>
 		return null
 	}
 
+	const panelStyle = anchorRect
+		? {
+			left: anchorRect.left + anchorRect.width / 2,
+			top: 'calc(var(--top-bar-height, 64px) + var(--spacing-md))',
+			transform: 'translateX(-50%)'
+		}
+		: undefined
+
 	return (
-		<div className={styles.panel}>
+		<div className={styles.panel} style={panelStyle}>
 			<div className={styles.header}>
 				<div className={styles.title}>Global Stock</div>
 				<button className={styles.closeButton} onClick={onClose} type="button" aria-label="Close stock panel">

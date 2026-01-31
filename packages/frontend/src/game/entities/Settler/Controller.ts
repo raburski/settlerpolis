@@ -22,6 +22,7 @@ export class SettlerController {
 
 		this.view.updateState(this.settler.state)
 		this.view.updateCarriedItem(this.settler.state === SettlerState.CarryingItem ? this.settler.stateContext.carryingItemType : undefined)
+		this.view.updateNeeds(this.settler.needs)
 	}
 
 	private handleMoveToPosition = (data: { entityId: string, targetPosition: { x: number, y: number }, mapName: string }) => {
@@ -125,6 +126,7 @@ private handleWorkerUnassigned = (data: { settlerId: string, assignmentId: strin
 		this.view.updateState(settlerData.state)
 		this.view.updateProfession(settlerData.profession)
 		this.view.updateCarriedItem(settlerData.state === SettlerState.CarryingItem ? settlerData.stateContext.carryingItemType : undefined)
+		this.view.updateNeeds(settlerData.needs)
 	}
 
 	public destroy(): void {

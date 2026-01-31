@@ -76,6 +76,10 @@ export interface Settler {
 	profession: ProfessionType
 	state: SettlerState
 	stateContext: SettlerStateContext  // Context for current state
+	needs?: {
+		hunger: number
+		fatigue: number
+	}
 	houseId?: string // House that spawned this settler
 	buildingId?: string  // Can be derived from stateContext
 	speed: number

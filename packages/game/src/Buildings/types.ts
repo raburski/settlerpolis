@@ -69,6 +69,7 @@ export interface BuildingDefinition {
 	isWarehouse?: boolean // Marks building as storage hub for overflow
 	harvest?: {
 		nodeType: string
+		radiusTiles?: number
 	} // Optional resource node harvesting config
 	farm?: {
 		cropNodeType: string
@@ -76,6 +77,9 @@ export interface BuildingDefinition {
 		plantTimeMs: number
 		growTimeMs: number
 		maxPlots?: number
+		allowHarvest?: boolean
+		minSpacingTiles?: number
+		postPlantReturnWaitMs?: number
 		spoilTimeMs?: number
 		despawnTimeMs?: number
 	}
@@ -95,6 +99,7 @@ export interface BuildingInstance {
 	playerId: string
 	mapName: string
 	position: Position
+	workAreaCenter?: Position
 	stage: ConstructionStage
 	progress: number // 0-100 (construction progress, only advances during Constructing stage)
 	startedAt: number // timestamp when construction started (when resources were collected)
@@ -118,6 +123,11 @@ export interface SetProductionPausedData {
 	paused: boolean
 }
 
+export interface SetWorkAreaData {
+	buildingInstanceId: string
+	center: Position
+}
+
 export interface BuildingPlacedData {
 	building: BuildingInstance
 }
@@ -138,6 +148,11 @@ export interface BuildingCancelledData {
 		itemType: ItemType
 		quantity: number
 	}>
+}
+
+export interface BuildingWorkAreaUpdatedData {
+	buildingInstanceId: string
+	center: Position
 }
 
 export interface BuildingCatalogData {

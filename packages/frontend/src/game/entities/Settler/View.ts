@@ -9,11 +9,19 @@ export class SettlerView extends BaseMovementView {
 	protected graphics: GameObjects.Graphics | null = null
 	protected emojiText: GameObjects.Text | null = null
 	protected carryText: GameObjects.Text | null = null
+	protected dangerCircle: GameObjects.Graphics | null = null
+	protected dangerText: GameObjects.Text | null = null
 	protected profession: ProfessionType
 	protected state: SettlerState
 	protected settlerId: string
 	private carryItemType: string | null = null
 	private carryItemUnsubscribe: (() => void) | null = null
+	private dangerKind: 'hunger' | 'fatigue' | null = null
+	private readonly CRITICAL_NEED_THRESHOLD = 0.15
+	private readonly dangerEmojis: Record<'hunger' | 'fatigue', string> = {
+		hunger: '🍞',
+		fatigue: '💤'
+	}
 	private professionColors: Record<ProfessionType, number> = {
 		[ProfessionType.Carrier]: 0xffffff, // White
 		[ProfessionType.Builder]: 0xffaa00, // Orange
@@ -82,6 +90,25 @@ export class SettlerView extends BaseMovementView {
 		this.carryText.setOrigin(0.5, 1)
 		this.carryText.setVisible(false)
 		this.add(this.carryText)
+
+		// Add danger indicator (hidden by default)
+		this.dangerCircle = this.scene.add.graphics()
+		this.dangerCircle.clear()
+		this.dangerCircle.fillStyle(0xff2d2d, 0.95)
+		this.dangerCircle.fillCircle(0, -26, 9)
+		this.dangerCircle.lineStyle(2, 0x7a0000, 1)
+		this.dangerCircle.strokeCircle(0, -26, 9)
+		this.dangerCircle.setVisible(false)
+		this.add(this.dangerCircle)
+
+		this.dangerText = this.scene.add.text(0, -26, '', {
+			fontSize: '12px',
+			align: 'center',
+			color: '#ffffff'
+		})
+		this.dangerText.setOrigin(0.5, 0.5)
+		this.dangerText.setVisible(false)
+		this.add(this.dangerText)
 
 		// Make settler clickable with a circular hit area
 		const hitArea = new Geom.Circle(0, 0, size / 2)
@@ -224,6 +251,37 @@ export class SettlerView extends BaseMovementView {
 		})
 	}
 
+	public updateNeeds(needs?: { hunger: number, fatigue: number }): void {
+		const hungerCritical = needs ? needs.hunger <= this.CRITICAL_NEED_THRESHOLD : false
+		const fatigueCritical = needs ? needs.fatigue <= this.CRITICAL_NEED_THRESHOLD : false
+
+		let nextKind: 'hunger' | 'fatigue' | null = null
+		if (hungerCritical && fatigueCritical && needs) {
+			nextKind = needs.hunger <= needs.fatigue ? 'hunger' : 'fatigue'
+		} else if (hungerCritical) {
+			nextKind = 'hunger'
+		} else if (fatigueCritical) {
+			nextKind = 'fatigue'
+		}
+
+		if (!nextKind) {
+			this.dangerKind = null
+			this.dangerCircle?.setVisible(false)
+			this.dangerText?.setVisible(false)
+			return
+		}
+
+		if (this.dangerKind !== nextKind) {
+			this.dangerKind = nextKind
+			if (this.dangerText) {
+				this.dangerText.setText(this.dangerEmojis[nextKind])
+			}
+		}
+
+		this.dangerCircle?.setVisible(true)
+		this.dangerText?.setVisible(true)
+	}
+
 	/**
 	 * Override onStateChange to sync SettlerState with movement state
 	 */
@@ -253,6 +311,14 @@ export class SettlerView extends BaseMovementView {
 		if (this.carryText) {
 			this.carryText.destroy()
 			this.carryText = null
+		}
+		if (this.dangerCircle) {
+			this.dangerCircle.destroy()
+			this.dangerCircle = null
+		}
+		if (this.dangerText) {
+			this.dangerText.destroy()
+			this.dangerText = null
 		}
 		super.destroy()
 	}

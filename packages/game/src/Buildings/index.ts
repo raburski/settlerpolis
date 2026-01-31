@@ -13,7 +13,9 @@ import {
 	BuildingCompletedData,
 	BuildingCancelledData,
 	ProductionStatus,
-	ProductionRecipe
+	ProductionRecipe,
+	SetWorkAreaData,
+	BuildingWorkAreaUpdatedData
 } from './types'
 import { Receiver } from '../Receiver'
 import { v4 as uuidv4 } from 'uuid'
@@ -83,6 +85,11 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		// Handle building cancellation
 		this.event.on<CancelBuildingData>(BuildingsEvents.CS.Cancel, (data, client) => {
 			this.cancelBuilding(data, client)
+		})
+		
+		// Handle work area updates
+		this.event.on<SetWorkAreaData>(BuildingsEvents.CS.SetWorkArea, (data, client) => {
+			this.setWorkArea(data, client)
 		})
 
 		// Handle player join to send existing buildings and building catalog
@@ -342,6 +349,30 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			refundedItems
 		}
 		client.emit(Receiver.Group, BuildingsEvents.SC.Cancelled, cancelledData, building.mapName)
+	}
+
+	private setWorkArea(data: SetWorkAreaData, client: EventClient) {
+		const { buildingInstanceId, center } = data
+		const building = this.buildings.get(buildingInstanceId)
+		if (!building) {
+			this.logger.error(`Building instance not found: ${buildingInstanceId}`)
+			return
+		}
+
+		// Verify ownership
+		if (building.playerId !== client.id) {
+			this.logger.error(`Player ${client.id} does not own building ${buildingInstanceId}`)
+			return
+		}
+
+		building.workAreaCenter = { x: center.x, y: center.y }
+
+		const updatedData: BuildingWorkAreaUpdatedData = {
+			buildingInstanceId: building.id,
+			center: building.workAreaCenter
+		}
+
+		this.event.emit(Receiver.Group, BuildingsEvents.SC.WorkAreaUpdated, updatedData, building.mapName)
 	}
 
 	// Initialize building with resource collection

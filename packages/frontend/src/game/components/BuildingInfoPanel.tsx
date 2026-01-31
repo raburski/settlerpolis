@@ -290,6 +290,8 @@ export const BuildingInfoPanel: React.FC = () => {
 		(isCompleted && hasWorkerSlots && workerCount < maxWorkers)
 	const requiredProfessionLabel = isConstructing ? 'builder' : buildingDefinition.requiredProfession
 	const hasRequiredProfession = requiredProfessionLabel !== undefined
+	const workAreaRadiusTiles = buildingDefinition.farm?.plotRadiusTiles ?? buildingDefinition.harvest?.radiusTiles
+	const canSelectWorkArea = isCompleted && typeof workAreaRadiusTiles === 'number' && workAreaRadiusTiles > 0
 
 	// Get resource collection progress from building definition costs and collected resources
 	const requiredResources = buildingDefinition.costs || []
@@ -300,6 +302,12 @@ export const BuildingInfoPanel: React.FC = () => {
 			setErrorMessage(null) // Clear previous errors
 			setWorkerStatus(null) // Clear previous status
 			populationService.requestWorker(buildingInstance.id)
+		}
+	}
+
+	const handleSelectWorkArea = () => {
+		if (buildingInstance) {
+			EventBus.emit('ui:building:work-area:select', { buildingInstanceId: buildingInstance.id })
 		}
 	}
 
@@ -654,6 +662,25 @@ export const BuildingInfoPanel: React.FC = () => {
 									</div>
 								)
 							})()}
+						</span>
+					</div>
+				</div>
+			)}
+
+			{canSelectWorkArea && (
+				<div className={sharedStyles.info}>
+					<div className={sharedStyles.infoRow}>
+						<span className={sharedStyles.label}>Work Area:</span>
+						<span className={sharedStyles.value}>
+							<div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+								<span>Radius: {workAreaRadiusTiles} tiles</span>
+								<button
+									className={sharedStyles.actionButton}
+									onClick={handleSelectWorkArea}
+								>
+									Select Work Area
+								</button>
+							</div>
 						</span>
 					</div>
 				</div>

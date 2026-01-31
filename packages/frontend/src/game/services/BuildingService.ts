@@ -99,6 +99,22 @@ class BuildingServiceClass {
 			this.buildingInstances.delete(data.buildingInstanceId)
 		})
 
+		// Listen for work area updates
+		EventBus.on(Event.Buildings.SC.WorkAreaUpdated, (data: { buildingInstanceId: string, center: { x: number, y: number } }) => {
+			const building = this.buildingInstances.get(data.buildingInstanceId)
+			if (building) {
+				const updatedBuilding = {
+					...building,
+					workAreaCenter: { x: data.center.x, y: data.center.y }
+				}
+				this.buildingInstances.set(data.buildingInstanceId, updatedBuilding)
+				EventBus.emit('ui:building:updated', {
+					buildingInstanceId: data.buildingInstanceId,
+					building: updatedBuilding
+				})
+			}
+		})
+
 		// Listen for building clicks
 		EventBus.on('ui:building:click', (data: { buildingInstanceId?: string, buildingId?: string }) => {
 			if (data.buildingInstanceId) {

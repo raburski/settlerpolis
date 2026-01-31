@@ -15,6 +15,7 @@ import networkManager from "../../network";
 import { playerService } from "../../services/PlayerService";
 import { createMapObject, MapObjectEntity } from '../../entities/MapObject'
 import { BuildingPlacementManager } from '../../modules/BuildingPlacement'
+import { WorkAreaSelectionManager } from '../../modules/WorkAreaSelection'
 import { FX } from '../../modules/FX'
 import { TextDisplayService } from '../../services/TextDisplayService'
 import { NPCProximityService } from '../../services/NPCProximityService'
@@ -31,6 +32,7 @@ export abstract class GameScene extends MapScene {
 	protected keyboard: Keyboard | null = null
 	protected portalManager: PortalManager | null = null
 	protected buildingPlacementManager: BuildingPlacementManager | null = null
+	protected workAreaSelectionManager: WorkAreaSelectionManager | null = null
 	protected fx: FX | null = null
 	protected textDisplayService: TextDisplayService | null = null
 	protected npcProximityService: NPCProximityService
@@ -83,6 +85,7 @@ export abstract class GameScene extends MapScene {
 
 		// Initialize the building placement manager
 		this.buildingPlacementManager = new BuildingPlacementManager(this)
+		this.workAreaSelectionManager = new WorkAreaSelectionManager(this)
 
 		// Initialize FX
 		this.fx = new FX(this)
@@ -136,6 +139,9 @@ export abstract class GameScene extends MapScene {
 		// Update building placement manager
 		if (this.buildingPlacementManager) {
 			this.buildingPlacementManager.update()
+		}
+		if (this.workAreaSelectionManager) {
+			this.workAreaSelectionManager.update()
 		}
 
 		this.textDisplayService?.update()

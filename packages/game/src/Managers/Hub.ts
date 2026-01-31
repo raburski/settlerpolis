@@ -25,6 +25,7 @@ import type { SimulationManager } from '../Simulation'
 import type { ResourceNodesManager } from '../ResourceNodes'
 import type { ReservationSystem } from '../Reservation'
 import type { WorkProviderManager } from '../Settlers/WorkProvider'
+import type { NeedsManager } from '../Needs'
 import type { EventManager } from '../events'
 import type { Logger } from '../Logs'
 
@@ -56,6 +57,7 @@ export interface Managers {
 	resourceNodes: ResourceNodesManager
 	reservations: ReservationSystem
 	work: WorkProviderManager
+	needs: NeedsManager
 }
 
 export class ManagersHub implements Managers {
@@ -88,4 +90,5 @@ export class ManagersHub implements Managers {
 	resourceNodes!: ResourceNodesManager
 	reservations!: ReservationSystem
 	work!: WorkProviderManager
+	needs!: NeedsManager
 }

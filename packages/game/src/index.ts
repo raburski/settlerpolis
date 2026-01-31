@@ -30,6 +30,7 @@ import { ReservationSystem } from './Reservation'
 import { SimulationManager } from './Simulation'
 import { ResourceNodesManager } from './ResourceNodes'
 import { WorkProviderManager } from './Settlers/WorkProvider'
+import { NeedsManager } from './Needs'
 import { ManagersHub } from './Managers'
 
 // Export types and events
@@ -38,6 +39,7 @@ export * from './events'
 export * from './consts'
 export * from './utils'
 export * from './Settlers/WorkProvider'
+export * from './Needs'
 export { EquipmentSlot, EquipmentSlotType }
 // export { Event } from './events' 
 
@@ -114,6 +116,9 @@ export class GameManager {
 
 		// Create WorkProviderManager after BuildingManager, PopulationManager, StorageManager, and ReservationSystem
 		this.managers.work = new WorkProviderManager(this.managers, event, this.managers.logs.getLogger('WorkProviderManager'))
+
+		// Create NeedsManager after WorkProviderManager so it can preempt action queues
+		this.managers.needs = new NeedsManager(this.managers, event, this.managers.logs.getLogger('NeedsManager'))
 		
 		this.managers.trigger = new TriggerManager(
 			this.managers,
@@ -187,7 +192,8 @@ export class GameManager {
 			'StorageManager',
 			'SimulationManager',
 			'ResourceNodesManager',
-			'WorkProviderManager'
+			'WorkProviderManager',
+			'NeedsManager'
 		]
 		for (const managerName of quietManagers) {
 			this.managers.logs.setManagerLevel(managerName, LogLevel.Warn)
