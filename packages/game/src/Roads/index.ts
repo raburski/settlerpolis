@@ -321,7 +321,7 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 			for (let x = 0; x < roadData.width; x++) {
 				const index = y * roadData.width + x
 				const roadType = roadData.data[index]
-				if (roadType && roadType !== RoadType.None) {
+				if (roadType !== RoadType.None) {
 					tiles.push({ x, y, roadType })
 				}
 			}

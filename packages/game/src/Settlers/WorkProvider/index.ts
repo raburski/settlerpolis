@@ -680,7 +680,8 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			releaseReservations?.()
 			this.event.emit(Receiver.All, WorkProviderEvents.SS.StepFailed, { settlerId, step, reason })
 			let retryDelayMs = 1000
-			let waitReason = reason
+			const isWaitReason = (Object.values(WorkWaitReason) as string[]).includes(reason)
+			let waitReason: WorkWaitReason = isWaitReason ? (reason as WorkWaitReason) : WorkWaitReason.NoWork
 			let shouldDispatch = true
 			if (reason === 'movement_failed' || reason === 'movement_cancelled') {
 				const currentFailures = (this.movementFailureCounts.get(settlerId) || 0) + 1

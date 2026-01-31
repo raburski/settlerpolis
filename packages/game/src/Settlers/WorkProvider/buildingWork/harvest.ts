@@ -1,5 +1,6 @@
 import { BuildingWorkKind, getHarvestDefinition } from '../../../Buildings/work'
 import { calculateDistance } from '../../../utils'
+import type { ResourceNodeInstance } from '../../../ResourceNodes/types'
 import { WorkStepType, WorkWaitReason } from '../types'
 import type { BuildingWorkHandler } from './types'
 
@@ -40,17 +41,22 @@ export const HarvestWorkHandler: BuildingWorkHandler = {
 		}
 		if (!node && maxDistance !== null) {
 			const availableNodes = managers.resourceNodes.getAvailableNodes(building.mapName, harvestDefinition.nodeType)
-			node = availableNodes.reduce((best, candidate) => {
+			let best: ResourceNodeInstance | undefined
+			for (const candidate of availableNodes) {
 				const candidateDistance = calculateDistance(workCenter, candidate.position)
 				if (candidateDistance > maxDistance) {
-					return best
+					continue
 				}
 				if (!best) {
-					return candidate
+					best = candidate
+					continue
 				}
 				const bestDistance = calculateDistance(workCenter, best.position)
-				return candidateDistance < bestDistance ? candidate : best
-			}, undefined as typeof node)
+				if (candidateDistance < bestDistance) {
+					best = candidate
+				}
+			}
+			node = best
 		}
 		if (!node) {
 			return { type: WorkStepType.Wait, reason: WorkWaitReason.NoNodes }

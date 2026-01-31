@@ -165,13 +165,15 @@ export const MarketRunHandler: StepHandler = {
 			return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
 		}
 
+		const resolvedItemType = itemType
+
 		const houses = managers.buildings.getAllBuildings()
 			.filter(building => building.mapName === market.mapName && building.playerId === market.playerId)
 			.filter(building => building.stage === ConstructionStage.Completed)
 			.filter(building => managers.buildings.getBuildingDefinition(building.buildingId)?.spawnsSettlers)
 			.map(building => ({ building, tile: toTile(building.position, tileSize) }))
-			.filter(entry => managers.storage.acceptsItemType(entry.building.id, itemType))
-			.filter(entry => managers.storage.hasAvailableStorage(entry.building.id, itemType, deliveryQuantity))
+			.filter(entry => managers.storage.acceptsItemType(entry.building.id, resolvedItemType))
+			.filter(entry => managers.storage.hasAvailableStorage(entry.building.id, resolvedItemType, deliveryQuantity))
 
 		if (houses.length === 0) {
 			return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
@@ -187,14 +189,14 @@ export const MarketRunHandler: StepHandler = {
 
 		let remaining = carriedQuantity
 		if (!carriedType || carriedQuantity <= 0) {
-			const maxCarry = Math.max(1, config.carryQuantity ?? managers.items.getItemMetadata(itemType)?.maxStackSize ?? DEFAULT_CARRY_QUANTITY)
-			const available = managers.storage.getAvailableQuantity(market.id, itemType)
+			const maxCarry = Math.max(1, config.carryQuantity ?? managers.items.getItemMetadata(resolvedItemType)?.maxStackSize ?? DEFAULT_CARRY_QUANTITY)
+			const available = managers.storage.getAvailableQuantity(market.id, resolvedItemType)
 			remaining = Math.min(maxCarry, available)
 			if (remaining <= 0) {
 				return { actions: [{ type: WorkActionType.Wait, durationMs: 1200, setState: SettlerState.WaitingForWork }] }
 			}
 
-			const reservation = reservationSystem.reserveStorageOutgoing(market.id, itemType, remaining, assignment.assignmentId)
+			const reservation = reservationSystem.reserveStorageOutgoing(market.id, resolvedItemType, remaining, assignment.assignmentId)
 			if (!reservation) {
 				return { actions: [{ type: WorkActionType.Wait, durationMs: 1200, setState: SettlerState.WaitingForWork }] }
 			}
@@ -202,7 +204,7 @@ export const MarketRunHandler: StepHandler = {
 
 			actions.push(
 				{ type: WorkActionType.Move, position: reservation.position, targetType: 'storage_slot', targetId: reservation.reservationId, setState: SettlerState.MovingToBuilding },
-				{ type: WorkActionType.WithdrawStorage, buildingInstanceId: market.id, itemType, quantity: remaining, reservationId: reservation.reservationId, setState: SettlerState.CarryingItem }
+				{ type: WorkActionType.WithdrawStorage, buildingInstanceId: market.id, itemType: resolvedItemType, quantity: remaining, reservationId: reservation.reservationId, setState: SettlerState.CarryingItem }
 			)
 		}
 
@@ -254,7 +256,7 @@ export const MarketRunHandler: StepHandler = {
 			}
 
 			const deliverQty = Math.min(deliveryQuantity, remaining)
-			const reservation = reservationSystem.reserveStorageIncoming(houseCandidate.building.id, itemType, deliverQty, assignment.assignmentId)
+			const reservation = reservationSystem.reserveStorageIncoming(houseCandidate.building.id, resolvedItemType, deliverQty, assignment.assignmentId)
 			if (!reservation) {
 				continue
 			}
@@ -272,7 +274,7 @@ export const MarketRunHandler: StepHandler = {
 
 			actions.push(
 				{ type: WorkActionType.Move, position: reservation.position, targetType: 'storage_slot', targetId: reservation.reservationId, setState: SettlerState.CarryingItem },
-				{ type: WorkActionType.DeliverStorage, buildingInstanceId: houseCandidate.building.id, itemType, quantity: deliverQty, reservationId: reservation.reservationId, setState: SettlerState.Working }
+				{ type: WorkActionType.DeliverStorage, buildingInstanceId: houseCandidate.building.id, itemType: resolvedItemType, quantity: deliverQty, reservationId: reservation.reservationId, setState: SettlerState.Working }
 			)
 
 			if (roadTile) {
@@ -302,12 +304,12 @@ export const MarketRunHandler: StepHandler = {
 		}
 
 		if (remaining > 0) {
-			const returnReservation = reservationSystem.reserveStorageIncoming(market.id, itemType, remaining, assignment.assignmentId)
+			const returnReservation = reservationSystem.reserveStorageIncoming(market.id, resolvedItemType, remaining, assignment.assignmentId)
 			if (returnReservation) {
 				releaseFns.push(() => reservationSystem.releaseStorageReservation(returnReservation.reservationId))
 				actions.push(
 					{ type: WorkActionType.Move, position: returnReservation.position, targetType: 'storage_slot', targetId: returnReservation.reservationId, setState: SettlerState.CarryingItem },
-					{ type: WorkActionType.DeliverStorage, buildingInstanceId: market.id, itemType, quantity: remaining, reservationId: returnReservation.reservationId, setState: SettlerState.Working }
+					{ type: WorkActionType.DeliverStorage, buildingInstanceId: market.id, itemType: resolvedItemType, quantity: remaining, reservationId: returnReservation.reservationId, setState: SettlerState.Working }
 				)
 			} else {
 				actions.push({

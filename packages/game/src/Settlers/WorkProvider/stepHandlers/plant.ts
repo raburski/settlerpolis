@@ -1,5 +1,5 @@
 import { SettlerState } from '../../../Population/types'
-import { WorkActionType, WorkStepType } from '../types'
+import { WorkActionType, WorkStepType, type WorkAction } from '../types'
 import type { StepHandler, StepHandlerResult } from './types'
 
 export const PlantHandler: StepHandler = {
@@ -13,7 +13,7 @@ export const PlantHandler: StepHandler = {
 		const definition = building ? managers.buildings.getBuildingDefinition(building.buildingId) : undefined
 		const postPlantReturnWaitMs = definition?.farm?.postPlantReturnWaitMs ?? 0
 
-		const actions = [
+		const actions: WorkAction[] = [
 			{ type: WorkActionType.Move, position: step.position, targetType: 'plot', targetId: `${step.position.x},${step.position.y}`, setState: SettlerState.MovingToResource },
 			{ type: WorkActionType.Wait, durationMs: step.plantTimeMs, setState: SettlerState.Working },
 			{ type: WorkActionType.Plant, buildingInstanceId: step.buildingInstanceId, nodeType: step.nodeType, position: step.position, growTimeMs: step.growTimeMs, spoilTimeMs: step.spoilTimeMs, despawnTimeMs: step.despawnTimeMs, setState: SettlerState.Working }
