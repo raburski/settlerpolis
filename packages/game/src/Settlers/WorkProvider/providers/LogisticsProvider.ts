@@ -162,6 +162,7 @@ export class LogisticsProvider implements WorkProvider {
 		if (!building) {
 			return null
 		}
+		const maxStackSize = this.managers.items.getItemMetadata(request.itemType)?.maxStackSize || request.quantity
 
 		if (request.type === 'input' || request.type === 'construction') {
 			const sourceResult = this.findSourceForItem(
@@ -176,13 +177,14 @@ export class LogisticsProvider implements WorkProvider {
 				return null
 			}
 			const { source, quantity } = sourceResult
+			const transferQuantity = Math.min(request.quantity, quantity, maxStackSize)
 
 			const target: TransportTarget = request.type === 'construction'
 				? { type: TransportTargetType.Construction, buildingInstanceId: building.id }
 				: { type: TransportTargetType.Storage, buildingInstanceId: building.id }
 
 			if (request.type === 'construction') {
-				this.addInFlightConstruction(building.id, request.itemType, quantity)
+				this.addInFlightConstruction(building.id, request.itemType, transferQuantity)
 			}
 
 			return {
@@ -190,7 +192,7 @@ export class LogisticsProvider implements WorkProvider {
 				source,
 				target,
 				itemType: request.itemType,
-				quantity
+				quantity: transferQuantity
 			}
 		}
 
@@ -207,7 +209,7 @@ export class LogisticsProvider implements WorkProvider {
 				source,
 				target,
 				itemType: request.itemType,
-				quantity: request.quantity
+				quantity: Math.min(request.quantity, maxStackSize)
 			}
 		}
 

@@ -23,6 +23,12 @@ export interface ItemMetadata {
 	category: ItemCategory
 	stackable: boolean
 	maxStackSize?: number
+	spoilage?: {
+		shelfLifeDays: number
+		baseRatePerDay: number
+		lossMinPct: number
+		lossMaxPct: number
+	}
 	placement?: {
 		size: {
 			width: number

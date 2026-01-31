@@ -10,6 +10,7 @@ import { Settings } from './Settings'
 import { TopBar } from './TopBar'
 import { StockPanel } from './StockPanel'
 import { SystemMessages } from './SystemMessages'
+import { Notifications } from './Notifications'
 import { ConstructionPanel } from './ConstructionPanel'
 import { BuildingInfoPanel } from './BuildingInfoPanel'
 import { PopulationPanel } from './PopulationPanel'
@@ -129,6 +130,7 @@ export const UIContainer = () => {
 				populationButtonRef={populationButtonRef}
 				logisticsButtonRef={logisticsButtonRef}
 			/>
+			<Notifications />
 			<StockPanel
 				isVisible={isStockOpen}
 				onClose={() => setIsStockOpen(false)}

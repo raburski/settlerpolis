@@ -66,6 +66,8 @@
 .resourceValue {
 	font-size: 0.65rem;
 	color: #ffffff;
+	font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+	font-variant-numeric: tabular-nums;
 }
 
 .populationButton {
@@ -93,6 +95,8 @@
 .populationValue {
 	font-size: 0.65rem;
 	color: #ffffff;
+	font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+	font-variant-numeric: tabular-nums;
 }
 
 .logisticsButton {

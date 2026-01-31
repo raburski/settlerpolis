@@ -154,7 +154,11 @@ export class NeedInterruptController {
 
 		this.work.enqueueActions(data.settlerId, plan.actions, () => {
 			plan.releaseReservations?.()
-			this.needs.satisfyNeed(data.settlerId, needType)
+			if (typeof plan.satisfyValue === 'number') {
+				this.needs.resolveNeed(data.settlerId, needType, plan.satisfyValue)
+			} else {
+				this.needs.satisfyNeed(data.settlerId, needType)
+			}
 		}, (reason) => {
 			plan.releaseReservations?.()
 			this.emitPlanFailed(data.settlerId, needType, reason)

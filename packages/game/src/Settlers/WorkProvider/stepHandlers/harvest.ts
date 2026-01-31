@@ -28,13 +28,21 @@ export const HarvestHandler: StepHandler = {
 			return { actions: [] }
 		}
 
+		const reservation = reservationSystem.reserveStorageIncoming(building.id, step.outputItemType, step.quantity, assignment.assignmentId)
+		if (!reservation) {
+			releaseFns.forEach(fn => fn())
+			return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
+		}
+		releaseFns.push(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
+
 		return {
 			actions: [
 				{ type: WorkActionType.Move, position: node.position, targetType: 'resource', targetId: node.id, setState: SettlerState.MovingToResource },
 				{ type: WorkActionType.Wait, durationMs: step.durationMs, setState: SettlerState.Harvesting },
 				{ type: WorkActionType.HarvestNode, nodeId: node.id, quantity: step.quantity, setState: SettlerState.CarryingItem },
-				{ type: WorkActionType.Move, position: building.position, targetType: 'building', targetId: building.id, setState: SettlerState.CarryingItem },
-				{ type: WorkActionType.DeliverStorage, buildingInstanceId: building.id, itemType: step.outputItemType, quantity: step.quantity, setState: SettlerState.Working }
+				{ type: WorkActionType.Move, position: reservation.position, targetType: 'storage_slot', targetId: reservation.reservationId, setState: SettlerState.CarryingItem },
+				{ type: WorkActionType.DeliverStorage, buildingInstanceId: building.id, itemType: step.outputItemType, quantity: step.quantity, reservationId: reservation.reservationId, setState: SettlerState.Working },
+				{ type: WorkActionType.Move, position: building.position, targetType: 'building', targetId: building.id, setState: SettlerState.MovingToBuilding }
 			],
 			releaseReservations: () => releaseFns.forEach(fn => fn())
 		}

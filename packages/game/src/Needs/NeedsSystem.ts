@@ -3,6 +3,8 @@ import { Receiver } from '../Receiver'
 import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
 import type { PopulationManager } from '../Population'
+import { SettlerState } from '../Population/types'
+import { MovementEvents } from '../Movement/events'
 import { NeedType, type NeedLevel } from './NeedTypes'
 import { createDefaultNeedsState, getNeedMeter, type NeedsState } from './NeedsState'
 import { NeedsEvents } from './events'
@@ -14,6 +16,10 @@ export interface NeedsSystemDeps {
 const clamp = (value: number, min: number, max: number): number => {
 	return Math.min(max, Math.max(min, value))
 }
+
+const TILE_SIZE_PX = 32
+const FATIGUE_CARRY_BASE_PER_TILE = 0.0006
+const FATIGUE_CARRY_DISTANCE_EXPONENT = 1.3
 
 const createDefaultLevels = (): Record<NeedType, NeedLevel> => ({
 	[NeedType.Hunger]: 'NONE',
@@ -40,6 +46,9 @@ export class NeedsSystem {
 		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.handleSimulationTick(data)
 		})
+		this.event.on(MovementEvents.SS.SegmentComplete, (data: { entityId: string, segmentDistance: number, totalDistance: number }) => {
+			this.handleMovementSegment(data)
+		})
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {
@@ -64,11 +73,37 @@ export class NeedsSystem {
 		this.broadcastNeeds(settlerId, state)
 	}
 
+	public addNeedDelta(settlerId: string, needType: NeedType, delta: number): void {
+		const state = this.ensureNeedsState(settlerId)
+		const meter = getNeedMeter(state, needType)
+		meter.value = clamp(meter.value + delta, 0, 1)
+		this.evaluateNeedTransition(settlerId, needType, meter.value, meter)
+		this.broadcastNeeds(settlerId, state)
+	}
+
 	public satisfyNeed(settlerId: string, needType: NeedType): void {
 		const state = this.ensureNeedsState(settlerId)
 		const meter = getNeedMeter(state, needType)
 		meter.value = clamp(Math.max(meter.value, meter.satisfiedThreshold), 0, 1)
 		this.evaluateNeedTransition(settlerId, needType, meter.value, meter)
+		this.broadcastNeeds(settlerId, state)
+	}
+
+	public resolveNeed(settlerId: string, needType: NeedType, value: number): void {
+		const state = this.ensureNeedsState(settlerId)
+		const meter = getNeedMeter(state, needType)
+		meter.value = clamp(value, 0, 1)
+
+		const levels = this.lastLevels.get(settlerId) ?? createDefaultLevels()
+		levels[needType] = 'NONE'
+		this.lastLevels.set(settlerId, levels)
+
+		this.event.emit(Receiver.All, NeedsEvents.SS.NeedSatisfied, {
+			settlerId,
+			needType,
+			value: meter.value
+		})
+
 		this.broadcastNeeds(settlerId, state)
 	}
 
@@ -89,6 +124,29 @@ export class NeedsSystem {
 		const nextValue = clamp(meter.value - decay + modifier, 0, 1)
 		meter.value = nextValue
 		this.evaluateNeedTransition(settlerId, needType, nextValue, meter)
+	}
+
+	private handleMovementSegment(data: { entityId: string, segmentDistance: number, totalDistance: number }): void {
+		if (data.segmentDistance <= 0 || data.totalDistance <= 0) {
+			return
+		}
+
+		const settler = this.managers.population.getSettler(data.entityId)
+		if (!settler) {
+			return
+		}
+
+		const isCarrying = Boolean(settler.stateContext.carryingItemType) || settler.state === SettlerState.CarryingItem
+		if (!isCarrying) {
+			return
+		}
+
+		const totalTiles = Math.max(0.001, data.totalDistance / TILE_SIZE_PX)
+		const fatigueBudget = FATIGUE_CARRY_BASE_PER_TILE * Math.pow(totalTiles, FATIGUE_CARRY_DISTANCE_EXPONENT)
+		const segmentShare = data.segmentDistance / data.totalDistance
+		const fatigueDelta = -fatigueBudget * segmentShare
+
+		this.addNeedDelta(settler.id, NeedType.Fatigue, fatigueDelta)
 	}
 
 	private maybeBroadcastNeeds(settlerId: string, state: NeedsState, nowMs: number): void {

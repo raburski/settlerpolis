@@ -7,7 +7,7 @@ export const WithdrawStorageActionHandler: ActionHandler = {
 		if (action.type !== WorkActionType.WithdrawStorage) {
 			return
 		}
-		const ok = managers.storage.removeFromStorage(action.buildingInstanceId, action.itemType, action.quantity)
+		const ok = managers.storage.removeFromStorage(action.buildingInstanceId, action.itemType, action.quantity, action.reservationId)
 		if (!ok) {
 			fail('storage_withdraw_failed')
 			return

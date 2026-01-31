@@ -43,11 +43,18 @@ export interface BuildingProduction {
 	lastInputRequestAtMs?: number
 }
 
+export enum BuildingCategory {
+	Civil = 'civil',
+	Storage = 'storage',
+	Food = 'food',
+	Industry = 'industry'
+}
+
 export interface BuildingDefinition {
 	id: BuildingId
 	name: string
 	description: string
-	category: string
+	category: BuildingCategory
 	icon?: string
 	sprite?: {
 		foundation: string
@@ -87,6 +94,14 @@ export interface BuildingDefinition {
 		itemType: string
 		desiredQuantity: number
 	}>
+	amenitySlots?: {
+		count: number
+		offsets?: Array<{ x: number, y: number }>
+	}
+	amenityNeeds?: {
+		hunger?: number
+		fatigue?: number
+	}
 	// Phase C: Production and storage
 	productionRecipe?: ProductionRecipe
 	autoProduction?: ProductionRecipe

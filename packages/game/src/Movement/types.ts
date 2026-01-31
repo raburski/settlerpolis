@@ -13,6 +13,8 @@ export interface MovementTask {
 	currentStep: number
 	targetType?: string // 'tool', 'building', 'spot', etc.
 	targetId?: string
+	totalDistance?: number
+	traveledDistance?: number
 	segmentRemainingMs?: number
 	pendingCompletion?: boolean
 	onStepComplete?: (task: MovementTask, position: Position) => void

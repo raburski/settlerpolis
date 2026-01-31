@@ -1,6 +1,8 @@
 export const StorageEvents = {
 	SC: {
 		StorageUpdated: 'sc:storage:storage-updated',      // Building storage updated (includes itemType, quantity)
+		StorageSlotUpdated: 'sc:storage:slot-updated',
+		Spoilage: 'sc:storage:spoilage',
 		ReservationCreated: 'sc:storage:reservation-created',
 		ReservationCancelled: 'sc:storage:reservation-cancelled'
 	},
@@ -9,4 +11,3 @@ export const StorageEvents = {
 		InputRequested: 'ss:storage:input-requested'       // Building requested input (itemType, quantity)
 	}
 } as const
-

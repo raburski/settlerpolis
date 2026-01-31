@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { EventBus } from '../EventBus'
-import { Event, BuildingDefinition } from '@rugged/game'
+import { Event, BuildingCategory, BuildingDefinition } from '@rugged/game'
 import { itemService } from '../services/ItemService'
 import styles from './ConstructionPanel.module.css'
 
@@ -49,6 +49,7 @@ export const ConstructionPanel: React.FC = () => {
 	const [isVisible, setIsVisible] = useState(true) // Visible by default for Phase A testing
 	const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null)
 	const [buildings, setBuildings] = useState<BuildingDefinition[]>([])
+	const [selectedCategory, setSelectedCategory] = useState<BuildingCategory>(BuildingCategory.Civil)
 
 	useEffect(() => {
 		// Try to load buildings from content first (fallback)
@@ -116,21 +117,60 @@ export const ConstructionPanel: React.FC = () => {
 		? buildings.find((building) => building.id === selectedBuilding) || null
 		: null
 
+	const filteredBuildings = buildings.filter((building) => building.category === selectedCategory)
+
+	useEffect(() => {
+		if (selectedBuilding && !filteredBuildings.some(building => building.id === selectedBuilding)) {
+			setSelectedBuilding(null)
+			EventBus.emit('ui:construction:cancel', {})
+		}
+	}, [selectedBuilding, filteredBuildings])
+
 	if (!isVisible) {
 		return null
 	}
 
 	return (
 		<div className={styles.panel}>
+			<div className={styles.categoryTabs}>
+				<button
+					className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Civil ? styles.categoryTabSelected : ''}`}
+					onClick={() => setSelectedCategory(BuildingCategory.Civil)}
+					title="Civil"
+				>
+					🏠
+				</button>
+				<button
+					className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Storage ? styles.categoryTabSelected : ''}`}
+					onClick={() => setSelectedCategory(BuildingCategory.Storage)}
+					title="Storage"
+				>
+					📦
+				</button>
+				<button
+					className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Food ? styles.categoryTabSelected : ''}`}
+					onClick={() => setSelectedCategory(BuildingCategory.Food)}
+					title="Food"
+				>
+					🌾
+				</button>
+				<button
+					className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Industry ? styles.categoryTabSelected : ''}`}
+					onClick={() => setSelectedCategory(BuildingCategory.Industry)}
+					title="Industry"
+				>
+					🏭
+				</button>
+			</div>
 			<div className={styles.content}>
 				<div className={styles.buildingsList}>
-					{buildings.length === 0 ? (
+					{filteredBuildings.length === 0 ? (
 						<div className={styles.emptyState}>
-							<p>No buildings available</p>
+							<p>No buildings in this category</p>
 							<p className={styles.emptyHint}>Waiting for building catalog...</p>
 						</div>
 					) : (
-						buildings.map(building => (
+						filteredBuildings.map(building => (
 							<div
 								key={building.id}
 								className={`${styles.buildingItem} ${selectedBuilding === building.id ? styles.selected : ''}`}

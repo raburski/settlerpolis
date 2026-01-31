@@ -21,6 +21,7 @@ import { TextDisplayService } from '../../services/TextDisplayService'
 import { NPCProximityService } from '../../services/NPCProximityService'
 import { NPCController } from '../../entities/NPC/NPCController'
 import { Settler } from '@rugged/game'
+import { itemService } from '../../services/ItemService'
 
 export abstract class GameScene extends MapScene {
     protected player: LocalPlayer | null = null
@@ -178,6 +179,7 @@ export abstract class GameScene extends MapScene {
 		EventBus.on(Event.Buildings.SC.Progress, this.handleBuildingProgress, this)
 		EventBus.on(Event.Buildings.SC.Completed, this.handleBuildingCompleted, this)
 		EventBus.on(Event.Buildings.SC.Cancelled, this.handleBuildingCancelled, this)
+		EventBus.on(Event.Storage.SC.Spoilage, this.handleStorageSpoilage, this)
 
 		// Set up population event listeners
 		EventBus.on(Event.Population.SC.List, this.handlePopulationList, this)
@@ -495,6 +497,7 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(Event.NPC.SC.Despawn, this.handleNPCDespawn)
 		EventBus.off(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn)
 		EventBus.off(Event.MapObjects.SC.Despawn, this.handleMapObjectDespawn)
+		EventBus.off(Event.Storage.SC.Spoilage, this.handleStorageSpoilage)
 	}
 
     public destroy(): void {
@@ -509,6 +512,7 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(Event.NPC.SC.Despawn, this.handleNPCDespawn)
 		EventBus.off(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn)
 		EventBus.off(Event.MapObjects.SC.Despawn, this.handleMapObjectDespawn)
+		EventBus.off(Event.Storage.SC.Spoilage, this.handleStorageSpoilage)
 		
 		this.npcProximityService.destroy()
 		super.destroy()
@@ -522,6 +526,23 @@ export abstract class GameScene extends MapScene {
 			const controller = createNPC(data.npc, this)
 			this.npcs.set(data.npc.id, controller)
 		}
+	}
+
+	private handleStorageSpoilage = (data: { buildingInstanceId: string, slotId: string, itemType: string, spoiledQuantity: number, position: { x: number, y: number } }) => {
+		if (!this.textDisplayService) {
+			return
+		}
+		const itemMeta = itemService.getItemType(data.itemType)
+		const emoji = itemMeta?.emoji || '🗑️'
+		this.textDisplayService.displayMessage({
+			message: `-${data.spoiledQuantity} ${emoji} spoiled`,
+			scene: this,
+			worldPosition: data.position,
+			fontSize: '16px',
+			color: '#d35400',
+			backgroundColor: 'transparent',
+			duration: 2000
+		})
 	}
 
 }

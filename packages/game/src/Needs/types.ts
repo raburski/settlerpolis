@@ -60,6 +60,7 @@ export interface NeedPlan {
 	id: string
 	needType: NeedType
 	actions: WorkAction[]
+	satisfyValue?: number
 	releaseReservations?: () => void
 }
 

@@ -3,14 +3,34 @@ export interface StorageCapacity {
 	// If itemType is not in the record, that item type cannot be stored
 	// Empty record = no storage capacity
 	capacities: Record<string, number> // itemType -> max capacity
+	// Optional storage preservation modifiers (lower = slows spoilage)
+	preservation?: {
+		spoilageMultiplier: number
+	}
+	// Fixed storage slots (tile offsets relative to building origin)
+	slots?: Array<{
+		itemType: string
+		offset: { x: number, y: number }
+	}>
+}
+
+export interface StorageSlot {
+	slotId: string
+	buildingInstanceId: string
+	itemType: string
+	position: import('../types').Position
+	pileSize: number
+	quantity: number
+	batches: Array<{ quantity: number, storedAtMs: number }>
+	reservedIncoming: number
+	reservedOutgoing: number
+	mapObjectId?: string
 }
 
 export interface BuildingStorage {
 	buildingInstanceId: string
-	buffer: Map<string, number>  // itemType -> quantity (runtime only)
-	reserved: Map<string, number>  // itemType -> reserved quantity (for incoming/outgoing deliveries) (runtime only)
-	// Note: Storage capacities are defined in BuildingDefinition, not stored here
-	// StorageManager reads capacities from BuildingDefinition when needed
+	slots: Map<string, StorageSlot>
+	slotsByItem: Map<string, string[]>
 }
 
 export interface StorageReservation {
@@ -22,5 +42,12 @@ export interface StorageReservation {
 	status: 'pending' | 'in_transit' | 'delivered' | 'cancelled'
 	createdAt: number
 	isOutgoing?: boolean // true for outgoing reservations (items being transported away), false for incoming (space reserved for delivery)
+	slotId?: string
 }
 
+export interface StorageReservationResult {
+	reservationId: string
+	slotId: string
+	position: import('../types').Position
+	quantity: number
+}

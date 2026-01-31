@@ -53,7 +53,10 @@ export class NeedPlanner {
 				if (!bed) {
 					return { reason: 'no_home' }
 				}
-				return buildSleepPlan(bed)
+				return buildSleepPlan(settlerId, bed, {
+					buildings: this.managers.buildings,
+					reservations: this.managers.reservations
+				})
 			}
 			default: {
 				this.logger.warn(`[NeedPlanner] Unknown need type ${needType}`)

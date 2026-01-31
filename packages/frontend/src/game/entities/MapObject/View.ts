@@ -4,6 +4,7 @@ import { ItemMetadata } from '@rugged/game'
 import { itemService } from "../../services/ItemService"
 import { itemTextureService } from "../../services/ItemTextureService"
 import { buildingService } from "../../services/BuildingService"
+import { storageService } from '../../services/StorageService'
 import { EventBus } from '../../EventBus'
 import { Event } from '@rugged/game'
 
@@ -16,6 +17,10 @@ export class MapObjectView {
 	private progressBarBg: GameObjects.Graphics | null = null
 	private progressText: GameObjects.Text | null = null
 	private isBuilding: boolean = false
+	private isStoragePile: boolean = false
+	private storageSlotId: string | null = null
+	private storageQuantityText: GameObjects.Text | null = null
+	private storageSlotHandler: ((data: { slotId: string, quantity: number }) => void) | null = null
 	private buildingProgress: number = 0
 	private buildingStage: ConstructionStage | null = null
 	private progressHandler: ((data: { buildingInstanceId: string, progress: number, stage: string }) => void) | null = null
@@ -26,6 +31,8 @@ export class MapObjectView {
 		
 		// Check if this is a building
 		this.isBuilding = Boolean(mapObject.metadata?.buildingId || mapObject.metadata?.buildingInstanceId)
+		this.isStoragePile = Boolean(mapObject.metadata?.storagePile)
+		this.storageSlotId = mapObject.metadata?.storageSlotId || null
 		if (this.isBuilding) {
 			this.buildingProgress = mapObject.metadata?.progress || 0
 			this.buildingStage = mapObject.metadata?.stage || ConstructionStage.Foundation
@@ -80,6 +87,10 @@ export class MapObjectView {
 	}
 	
 	private initializeSprite(scene: Scene, itemMetadata: ItemMetadata): void {
+		if (this.isStoragePile) {
+			this.createStoragePile(scene, itemMetadata)
+			return
+		}
 		// For completed buildings, use emoji text instead of sprite
 		if (this.isBuilding && this.buildingStage === ConstructionStage.Completed) {
 			this.replaceSpriteWithEmoji(scene)
@@ -175,6 +186,60 @@ export class MapObjectView {
 		console.log(`[MapObjectView] Replaced sprite with emoji text: ${emoji} at size ${fontSize}px for footprint ${this.mapObject.metadata.footprint.width}x${this.mapObject.metadata.footprint.height}`)
 	}
 
+	private createStoragePile(scene: Scene, itemMetadata: ItemMetadata): void {
+		if (this.emojiText) return
+
+		const tileSize = 32
+		const centerX = this.mapObject.position.x + tileSize / 2
+		const centerY = this.mapObject.position.y + tileSize / 2
+
+		const emoji = itemMetadata.emoji || '📦'
+		this.emojiText = scene.add.text(centerX, centerY, emoji, {
+			fontSize: '20px',
+			align: 'center'
+		})
+		this.emojiText.setOrigin(0.5, 0.5)
+		this.emojiText.setDepth(this.mapObject.position.y)
+
+		this.storageQuantityText = scene.add.text(
+			this.mapObject.position.x + tileSize - 6,
+			this.mapObject.position.y + tileSize - 6,
+			'',
+			{
+				fontSize: '12px',
+				color: '#ffffff',
+				backgroundColor: '#000000',
+				padding: { x: 4, y: 2 },
+				align: 'center'
+			}
+		)
+		this.storageQuantityText.setOrigin(0.5, 0.5)
+		this.storageQuantityText.setDepth(this.mapObject.position.y + 1)
+		this.storageQuantityText.setVisible(false)
+
+		if (this.storageSlotId) {
+			const initialQuantity = storageService.getSlotQuantity(this.storageSlotId)
+			this.updateStoragePileQuantity(initialQuantity)
+			this.storageSlotHandler = (data: { slotId: string, quantity: number }) => {
+				if (data.slotId === this.storageSlotId) {
+					this.updateStoragePileQuantity(data.quantity)
+				}
+			}
+			EventBus.on('ui:storage:slot-updated', this.storageSlotHandler)
+		}
+	}
+
+	private updateStoragePileQuantity(quantity: number): void {
+		if (!this.storageQuantityText) return
+		if (quantity > 1) {
+			this.storageQuantityText.setText(`${quantity}`)
+			this.storageQuantityText.setVisible(true)
+		} else {
+			this.storageQuantityText.setText('')
+			this.storageQuantityText.setVisible(false)
+		}
+	}
+
 	private handleBuildingClick = (pointer: Phaser.Input.Pointer) => {
 		// Only handle left clicks
 		if (!pointer.leftButtonDown()) return
@@ -220,6 +285,7 @@ export class MapObjectView {
 	
 	private setDisplaySize(itemMetadata: ItemMetadata): void {
 		if (!this.sprite) return
+		if (this.isStoragePile) return
 		
 		const tileSize = 32 // Default tile size
 		
@@ -243,6 +309,9 @@ export class MapObjectView {
 	public getSprite(): GameObjects.Sprite | null {
 		// Return emoji text as sprite for collision detection if building is completed
 		if (this.emojiText && this.isBuilding && this.buildingStage === ConstructionStage.Completed) {
+			return this.emojiText as any
+		}
+		if (this.emojiText && this.isStoragePile) {
 			return this.emojiText as any
 		}
 		return this.sprite
@@ -388,9 +457,18 @@ export class MapObjectView {
 			this.sprite.destroy()
 			this.sprite = null
 		}
+		if (this.storageQuantityText) {
+			this.storageQuantityText.destroy()
+			this.storageQuantityText = null
+		}
 		if (this.emojiText) {
 			this.emojiText.destroy()
 			this.emojiText = null
+		}
+
+		if (this.storageSlotHandler) {
+			EventBus.off('ui:storage:slot-updated', this.storageSlotHandler)
+			this.storageSlotHandler = null
 		}
 	}
 } 

@@ -9,6 +9,12 @@ export default {
 	category: ItemCategory.Placeable,
 	stackable: true,
 	maxStackSize: 50,
+	spoilage: {
+		shelfLifeDays: 20,
+		baseRatePerDay: 0.05,
+		lossMinPct: 0.05,
+		lossMaxPct: 0.25
+	},
 	placement: {
 		size: {
 			width: 1,

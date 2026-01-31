@@ -8,5 +8,11 @@ export default {
 	description: 'Milled flour for baking',
 	category: ItemCategory.Material,
 	stackable: true,
-	maxStackSize: 50
+	maxStackSize: 50,
+	spoilage: {
+		shelfLifeDays: 14,
+		baseRatePerDay: 0.08,
+		lossMinPct: 0.1,
+		lossMaxPct: 0.3
+	}
 } as ItemMetadata

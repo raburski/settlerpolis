@@ -195,11 +195,14 @@ export type EventPayloads = Record<string, unknown> & {
 	[MovementEvents.SS.MoveToPosition]: { entityId: string, position: Position, mapName?: string, targetType?: string, targetId?: string }
 	[MovementEvents.SS.CancelMovement]: { entityId: string }
 	[MovementEvents.SS.StepComplete]: { entityId: string, position: Position }
+	[MovementEvents.SS.SegmentComplete]: { entityId: string, position: Position, segmentDistance: number, totalDistance: number }
 	[MovementEvents.SS.PathComplete]: { entityId: string, targetType?: string, targetId?: string }
 	[MovementEvents.SC.MoveToPosition]: { entityId: string, targetPosition: Position, mapName: string }
 	[MovementEvents.SC.PositionUpdated]: { entityId: string, position: Position, mapName: string }
 
 	[StorageEvents.SC.StorageUpdated]: { buildingInstanceId: string, itemType: string, quantity: number, capacity: number }
+	[StorageEvents.SC.StorageSlotUpdated]: { slotId: string, buildingInstanceId: string, itemType: string, quantity: number, position: Position }
+	[StorageEvents.SC.Spoilage]: { buildingInstanceId: string, slotId: string, itemType: string, spoiledQuantity: number, position: Position }
 	[StorageEvents.SC.ReservationCreated]: { reservationId: string, buildingInstanceId: string, itemType: string, quantity: number, reservedBy: string }
 	[StorageEvents.SC.ReservationCancelled]: { reservationId: string, buildingInstanceId: string, itemType: string, quantity: number }
 	[StorageEvents.SS.StorageTick]: {}

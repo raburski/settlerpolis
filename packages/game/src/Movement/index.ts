@@ -92,6 +92,8 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		const targetType = options?.targetType
 		const targetId = options?.targetId
 
+		const totalDistance = this.calculatePathDistance(path)
+
 		// Create movement task
 		const task: MovementTask = {
 			entityId,
@@ -99,6 +101,8 @@ export class MovementManager extends BaseManager<MovementDeps> {
 			currentStep: 0,
 			targetType,
 			targetId,
+			totalDistance,
+			traveledDistance: 0,
 			onStepComplete: callbacks?.onStepComplete ? (task, position) => callbacks.onStepComplete!(position) : undefined,
 			onPathComplete: callbacks?.onPathComplete ? (task) => callbacks.onPathComplete!(task) : undefined,
 			onCancelled: callbacks?.onCancelled ? (task) => callbacks.onCancelled!() : undefined,
@@ -185,8 +189,20 @@ export class MovementManager extends BaseManager<MovementDeps> {
 				return
 			}
 
+			const previousPosition = task.path[task.currentStep]
 			entity.position = { ...task.path[nextStep] }
 			task.currentStep = nextStep
+
+			if (previousPosition) {
+				const segmentDistance = calculateDistance(previousPosition, entity.position)
+				task.traveledDistance = (task.traveledDistance || 0) + segmentDistance
+				this.event.emit(Receiver.All, MovementEvents.SS.SegmentComplete, {
+					entityId: entity.id,
+					position: { ...entity.position },
+					segmentDistance,
+					totalDistance: task.totalDistance ?? segmentDistance
+				})
+			}
 
 			if (task.currentStep >= task.path.length - 1) {
 				this.completePath(task.entityId)
@@ -266,6 +282,17 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		if (task.onPathComplete) {
 			task.onPathComplete(task)
 		}
+	}
+
+	private calculatePathDistance(path: Position[]): number {
+		if (path.length <= 1) {
+			return 0
+		}
+		let total = 0
+		for (let i = 1; i < path.length; i++) {
+			total += calculateDistance(path[i - 1], path[i])
+		}
+		return total
 	}
 
 	/**
