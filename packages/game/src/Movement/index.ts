@@ -9,11 +9,13 @@ import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
 import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
+import type { RoadManager } from '../Roads'
 
 const MOVEMENT_STEP_LAG = 100 // milliseconds between steps
 
 export interface MovementDeps {
 	map: MapManager
+	roads: RoadManager
 }
 
 export class MovementManager extends BaseManager<MovementDeps> {
@@ -80,9 +82,40 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		this.cancelMovement(entityId)
 
 		// Calculate path
-		const path = this.managers.map.findPath(entity.mapName, entity.position, targetPosition)
+		const roadData = this.managers.roads.getRoadData(entity.mapName) || undefined
+		const path = this.managers.map.findPath(entity.mapName, entity.position, targetPosition, {
+			roadData,
+			allowDiagonal: true
+		})
 		if (!path || path.length === 0) {
+			const fallback = this.managers.map.findNearestWalkablePosition(entity.mapName, targetPosition, 2)
+			if (fallback) {
+				const fallbackPath = this.managers.map.findPath(entity.mapName, entity.position, fallback, {
+					roadData,
+					allowDiagonal: true
+				})
+				if (!fallbackPath || fallbackPath.length === 0) {
+					this.logger.warn(`No path found from ${entity.position.x},${entity.position.y} to ${targetPosition.x},${targetPosition.y}`)
+					return false
+				}
+				this.logger.warn(`[MOVEMENT FALLBACK] Using nearest walkable tile for ${entityId}`)
+				return this.startMovementWithPath(entityId, fallbackPath, options, fallback)
+			}
 			this.logger.warn(`No path found from ${entity.position.x},${entity.position.y} to ${targetPosition.x},${targetPosition.y}`)
+			return false
+		}
+
+		return this.startMovementWithPath(entityId, path, options, targetPosition)
+	}
+
+	private startMovementWithPath(
+		entityId: string,
+		path: Position[],
+		options: MoveToPositionOptions | undefined,
+		targetPosition: Position
+	): boolean {
+		const entity = this.entities.get(entityId)
+		if (!entity) {
 			return false
 		}
 
@@ -91,10 +124,8 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		const callbacks = options?.callbacks
 		const targetType = options?.targetType
 		const targetId = options?.targetId
-
 		const totalDistance = this.calculatePathDistance(path)
 
-		// Create movement task
 		const task: MovementTask = {
 			entityId,
 			path,
@@ -106,26 +137,21 @@ export class MovementManager extends BaseManager<MovementDeps> {
 			onStepComplete: callbacks?.onStepComplete ? (task, position) => callbacks.onStepComplete!(position) : undefined,
 			onPathComplete: callbacks?.onPathComplete ? (task) => callbacks.onPathComplete!(task) : undefined,
 			onCancelled: callbacks?.onCancelled ? (task) => callbacks.onCancelled!() : undefined,
-			createdAt: timestamp,
-			lastProcessed: timestamp
+			createdAt: Date.now(),
+			lastProcessed: Date.now()
 		}
 
 		this.tasks.set(entityId, task)
 		this.logger.log(`[MOVEMENT TASK CREATED] entityId=${entityId} | pathLength=${path.length} | createdAt=${task.createdAt}`)
 
-		// Snap to the first path node so server state matches the path start.
 		entity.position = { ...path[0] }
 
-		// If already at target (path length 1), defer completion to the next tick
-		// to avoid synchronous completion racing state-machine transitions.
 		if (path.length === 1) {
 			task.pendingCompletion = true
 			return true
 		}
 
-		// Initialize movement segment immediately so clients start interpolating
 		task.segmentRemainingMs = this.beginSegment(task, entity)
-
 		return true
 	}
 
@@ -221,14 +247,21 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		const nextPosition = task.path[nextStep]
 		const currentPosition = task.path[task.currentStep] ?? entity.position
 
+		const segmentSpeed = entity.speed * this.managers.roads.getSpeedMultiplierForSegment(
+			entity.mapName,
+			currentPosition,
+			nextPosition
+		)
+
 		this.event.emit(Receiver.Group, MovementEvents.SC.MoveToPosition, {
 			entityId: entity.id,
 			targetPosition: nextPosition,
-			mapName: entity.mapName
+			mapName: entity.mapName,
+			speed: segmentSpeed
 		}, entity.mapName)
 
 		const distance = calculateDistance(currentPosition, nextPosition)
-		const timeToNextMove = (distance / entity.speed) * 1000
+		const timeToNextMove = (distance / segmentSpeed) * 1000
 		return timeToNextMove + MOVEMENT_STEP_LAG
 	}
 

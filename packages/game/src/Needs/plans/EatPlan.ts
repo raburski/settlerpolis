@@ -29,7 +29,7 @@ export const buildEatPlan = (settlerId: string, source: FoodSource, deps: EatPla
 		if (typeof buildingDef?.amenityNeeds?.hunger === 'number') {
 			satisfyValue = buildingDef.amenityNeeds.hunger
 		}
-		const reservation = deps.reservations.reserveStorageOutgoing(building.id, source.itemType, 1, settlerId)
+		const reservation = deps.reservations.reserveStorageOutgoingInternal(building.id, source.itemType, 1, settlerId)
 		if (!reservation) {
 			return { reason: 'food_unavailable' }
 		}

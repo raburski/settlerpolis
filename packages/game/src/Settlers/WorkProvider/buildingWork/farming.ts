@@ -119,6 +119,9 @@ export const FarmingWorkHandler: BuildingWorkHandler = {
 				if (managers.map.isCollision(building.mapName, tileX, tileY)) {
 					continue
 				}
+				if (managers.roads.isRoadPlannedOrBuilt(building.mapName, tileX, tileY)) {
+					continue
+				}
 				const worldPosition = { x: tileX * tileSize, y: tileY * tileSize }
 				const previewItem = { id: 'plot-preview', itemType: cropDefinition.nodeItemType }
 				if (!managers.mapObjects.canPlaceAt(building.mapName, worldPosition, previewItem)) {

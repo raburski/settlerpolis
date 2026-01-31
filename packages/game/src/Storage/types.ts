@@ -11,6 +11,7 @@ export interface StorageCapacity {
 	slots?: Array<{
 		itemType: string
 		offset: { x: number, y: number }
+		hidden?: boolean
 	}>
 }
 
@@ -25,6 +26,7 @@ export interface StorageSlot {
 	reservedIncoming: number
 	reservedOutgoing: number
 	mapObjectId?: string
+	hidden?: boolean
 }
 
 export interface BuildingStorage {

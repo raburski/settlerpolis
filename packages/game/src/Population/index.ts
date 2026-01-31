@@ -28,7 +28,7 @@ import { BaseManager } from '../Managers'
 import { PopulationStats } from './Stats'
 import type { PlayerJoinData } from '../Players/types'
 
-const SETTLER_SPEED = 164 // pixels per second (2 tiles per second at 32px per tile)
+const SETTLER_SPEED = 80 // pixels per second (slower baseline)
 
 export interface PopulationDeps {
 	buildings: BuildingManager
@@ -186,6 +186,15 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			this.houseOccupants.set(houseId, occupants)
 		}
 		return occupants
+	}
+
+	public getHouseOccupantCount(houseId: string): number {
+		const occupants = this.houseOccupants.get(houseId)
+		return occupants ? occupants.size : 0
+	}
+
+	public moveSettlerToHouse(settlerId: string, houseId: string): boolean {
+		return this.assignSettlerToHouse(settlerId, houseId)
 	}
 
 	private removeSettlerFromHouse(settlerId: string): void {

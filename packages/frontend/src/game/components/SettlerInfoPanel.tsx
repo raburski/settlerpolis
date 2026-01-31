@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { EventBus } from '../EventBus'
-import { Settler, ProfessionType, SettlerState } from '@rugged/game'
+import { Settler, ProfessionType, SettlerState, WorkProviderType } from '@rugged/game'
 import { populationService } from '../services/PopulationService'
 import { buildingService } from '../services/BuildingService'
 import { DraggablePanel } from './DraggablePanel'
@@ -13,10 +13,14 @@ export const SettlerInfoPanel: React.FC = () => {
 	useEffect(() => {
 		// Listen for settler selection
 		const handleSettlerClick = (data: { settlerId: string }) => {
+			if (settler && settler.id !== data.settlerId) {
+				EventBus.emit('ui:settler:highlight', { settlerId: settler.id, highlighted: false })
+			}
 			const settlerData = populationService.getSettler(data.settlerId)
 			if (settlerData) {
 				setSettler(settlerData)
 				setIsVisible(true)
+				EventBus.emit('ui:settler:highlight', { settlerId: settlerData.id, highlighted: true })
 				// Close building panel if open
 				EventBus.emit('ui:building:close')
 			}
@@ -35,6 +39,10 @@ export const SettlerInfoPanel: React.FC = () => {
 		// Listen for close panel event
 		const handleClosePanel = () => {
 			setIsVisible(false)
+			if (settler) {
+				EventBus.emit('ui:settler:highlight', { settlerId: settler.id, highlighted: false })
+			}
+			setSettler(null)
 		}
 
 		EventBus.on('ui:settler:click', handleSettlerClick)
@@ -49,6 +57,9 @@ export const SettlerInfoPanel: React.FC = () => {
 	}, [settler])
 
 	const handleClose = () => {
+		if (settler) {
+			EventBus.emit('ui:settler:highlight', { settlerId: settler.id, highlighted: false })
+		}
 		setIsVisible(false)
 		setSettler(null)
 		EventBus.emit('ui:settler:close')
@@ -94,10 +105,16 @@ export const SettlerInfoPanel: React.FC = () => {
 				return '🔨 Working'
 			case SettlerState.WaitingForWork:
 				return '⏳ Waiting for Work'
+			case SettlerState.Packing:
+				return '📦 Packing'
+			case SettlerState.Unpacking:
+				return '📦 Unpacking'
 			case SettlerState.MovingToItem:
 				return '🚶 Moving to Item'
 			case SettlerState.MovingToResource:
 				return '🚶 Moving to Resource'
+			case SettlerState.MovingHome:
+				return '🏠 Going Home'
 			case SettlerState.Harvesting:
 				return '⛏️ Harvesting'
 			case SettlerState.CarryingItem:
@@ -176,11 +193,13 @@ export const SettlerInfoPanel: React.FC = () => {
 						<div className={sharedStyles.infoRow}>
 							<span className={sharedStyles.label}>Assignment:</span>
 							<span className={sharedStyles.value}>
-								{assignment.providerType === 'building'
+								{assignment.providerType === WorkProviderType.Building
 									? '🏢 Building'
-									: assignment.providerType === 'construction'
+									: assignment.providerType === WorkProviderType.Construction
 										? '🏗️ Construction'
-										: '📦 Logistics'}
+										: assignment.providerType === WorkProviderType.Road
+											? '🛣️ Road'
+											: '📦 Logistics'}
 							</span>
 						</div>
 						{assignedBuildingDef && (
@@ -241,7 +260,7 @@ export const SettlerInfoPanel: React.FC = () => {
 				</div>
 			)}
 
-			{(settler.state === SettlerState.MovingToBuilding || settler.state === SettlerState.MovingToTool || settler.state === SettlerState.MovingToItem || settler.state === SettlerState.MovingToResource) && (
+			{(settler.state === SettlerState.MovingToBuilding || settler.state === SettlerState.MovingToTool || settler.state === SettlerState.MovingToItem || settler.state === SettlerState.MovingToResource || settler.state === SettlerState.MovingHome) && (
 				<div className={sharedStyles.actions}>
 					<div className={sharedStyles.movingMessage}>
 						This settler is moving to their destination

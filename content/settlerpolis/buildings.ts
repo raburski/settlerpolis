@@ -169,7 +169,17 @@ export const buildings: BuildingDefinition[] = [
 		],
 		spawnsSettlers: true,
 		maxOccupants: 5,
-		spawnRate: 30 // Spawn a settler every 30 seconds
+		spawnRate: 30, // Spawn a settler every 30 seconds
+		storage: {
+			capacities: {
+				[ItemType.Bread]: 50,
+				[ItemType.Carrot]: 16
+			},
+			slots: [
+				{ itemType: ItemType.Bread, offset: { x: 1, y: 1 }, hidden: true },
+				{ itemType: ItemType.Carrot, offset: { x: 1, y: 0 }, hidden: true }
+			]
+		}
 	},
 	{
 		id: 'woodcutter_hut',
@@ -557,17 +567,33 @@ export const buildings: BuildingDefinition[] = [
 			{
 				itemType: ItemType.Bread,
 				desiredQuantity: 20
+			},
+			{
+				itemType: ItemType.Carrot,
+				desiredQuantity: 12
 			}
 		],
+		requiredProfession: ProfessionType.Carrier,
+		workerSlots: 1,
+		marketDistribution: {
+			maxDistanceTiles: 24,
+			maxStops: 8,
+			roadSearchRadiusTiles: 8,
+			houseSearchRadiusTiles: 3,
+			carryQuantity: 8,
+			deliveryQuantity: 2
+		},
 		amenitySlots: {
 			count: 3
 		},
 		storage: {
 			capacities: {
-				[ItemType.Bread]: 50
+				[ItemType.Bread]: 50,
+				[ItemType.Carrot]: 16
 			},
 			slots: [
-				{ itemType: ItemType.Bread, offset: { x: 3, y: 0 } }
+				{ itemType: ItemType.Bread, offset: { x: 3, y: 0 } },
+				{ itemType: ItemType.Carrot, offset: { x: 3, y: 1 } }
 			]
 		}
 	},

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { EventBus } from '../EventBus'
-import { Event, BuildingInstance, BuildingDefinition, ConstructionStage, Settler, SettlerState, ProfessionType, ProductionStatus } from '@rugged/game'
+import { Event, BuildingInstance, BuildingDefinition, ConstructionStage, Settler, SettlerState, ProfessionType, ProductionStatus, WorkerRequestFailureReason } from '@rugged/game'
 import { buildingService } from '../services/BuildingService'
 import { populationService } from '../services/PopulationService'
 import { itemService } from '../services/ItemService'
@@ -50,11 +50,15 @@ export const BuildingInfoPanel: React.FC = () => {
 	useEffect(() => {
 		// Listen for building selection
 		const handleBuildingSelect = (data: BuildingInfoData) => {
+			if (buildingInstance && buildingInstance.id !== data.buildingInstance.id) {
+				EventBus.emit('ui:building:highlight', { buildingInstanceId: buildingInstance.id, highlighted: false })
+			}
 			setBuildingInstance(data.buildingInstance)
 			setBuildingDefinition(data.buildingDefinition)
 			setErrorMessage(null) // Clear any previous errors
 			setWorkerStatus(null) // Clear any previous status
 			setIsVisible(true)
+			EventBus.emit('ui:building:highlight', { buildingInstanceId: data.buildingInstance.id, highlighted: true })
 			// Close settler panel if open
 			EventBus.emit('ui:settler:close')
 		}
@@ -79,6 +83,7 @@ export const BuildingInfoPanel: React.FC = () => {
 		const handleBuildingCancelled = (data: { buildingInstanceId: string }) => {
 			if (buildingInstance && buildingInstance.id === data.buildingInstanceId) {
 				setIsVisible(false)
+				EventBus.emit('ui:building:highlight', { buildingInstanceId: buildingInstance.id, highlighted: false })
 				setBuildingInstance(null)
 				setBuildingDefinition(null)
 			}
@@ -87,39 +92,44 @@ export const BuildingInfoPanel: React.FC = () => {
 		// Listen for close panel event
 		const handleClosePanel = () => {
 			setIsVisible(false)
+			if (buildingInstance) {
+				EventBus.emit('ui:building:highlight', { buildingInstanceId: buildingInstance.id, highlighted: false })
+			}
+			setBuildingInstance(null)
+			setBuildingDefinition(null)
 		}
 
 		// Listen for worker request failures
-		const handleWorkerRequestFailed = (data: { reason: string, buildingInstanceId: string }) => {
+		const handleWorkerRequestFailed = (data: { reason: WorkerRequestFailureReason, buildingInstanceId: string }) => {
 			if (buildingInstance && buildingInstance.id === data.buildingInstanceId) {
 				// Map reason to user-friendly message
 				let message = 'Failed to assign worker'
 				switch (data.reason) {
-					case 'no_available_worker':
+					case WorkerRequestFailureReason.NoAvailableWorker:
 						message = 'No available settler. Build a house to spawn settlers!'
 						break
-					case 'no_builder_available':
+					case WorkerRequestFailureReason.NoBuilderAvailable:
 						message = 'No idle builder available. Promote a settler with a hammer.'
 						break
-					case 'no_suitable_profession':
+					case WorkerRequestFailureReason.NoSuitableProfession:
 						message = 'No idle settler with required profession. Promote one in the Population panel.'
 						break
-					case 'no_available_tool':
+					case WorkerRequestFailureReason.NoAvailableTool:
 						message = 'No tool available to change profession. Drop a tool (hammer/axe) on the map!'
 						break
-					case 'building_not_found':
+					case WorkerRequestFailureReason.BuildingNotFound:
 						message = 'Building not found'
 						break
-					case 'building_definition_not_found':
+					case WorkerRequestFailureReason.BuildingDefinitionNotFound:
 						message = 'Building definition not found'
 						break
-					case 'building_does_not_need_workers':
+					case WorkerRequestFailureReason.BuildingDoesNotNeedWorkers:
 						message = 'Building does not need workers'
 						break
-					case 'building_not_under_construction':
+					case WorkerRequestFailureReason.BuildingNotUnderConstruction:
 						message = 'Building is not under construction'
 						break
-					case 'building_completed':
+					case WorkerRequestFailureReason.BuildingCompleted:
 						message = 'Building is already completed'
 						break
 					default:
@@ -258,7 +268,12 @@ export const BuildingInfoPanel: React.FC = () => {
 	}
 
 	const handleClose = () => {
+		if (buildingInstance) {
+			EventBus.emit('ui:building:highlight', { buildingInstanceId: buildingInstance.id, highlighted: false })
+		}
 		setIsVisible(false)
+		setBuildingInstance(null)
+		setBuildingDefinition(null)
 		EventBus.emit('ui:building:close')
 	}
 
@@ -353,10 +368,16 @@ export const BuildingInfoPanel: React.FC = () => {
 				return '🚶 Moving to Tool'
 			case SettlerState.MovingToBuilding:
 				return '🚶 Moving to Building'
+			case SettlerState.MovingHome:
+				return '🏠 Going Home'
 			case SettlerState.Working:
 				return '🔨 Working'
 			case SettlerState.WaitingForWork:
 				return `⏳ Waiting${settler.stateContext.waitReason ? ` (${formatWaitReason(settler.stateContext.waitReason)})` : ''}`
+			case SettlerState.Packing:
+				return '📦 Packing'
+			case SettlerState.Unpacking:
+				return '📦 Unpacking'
 			case SettlerState.MovingToItem:
 				return '🚶 Moving to Item'
 			case SettlerState.MovingToResource:

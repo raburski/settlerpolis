@@ -18,7 +18,7 @@ export const ProduceHandler: StepHandler = {
 		const releaseFns: Array<() => void> = []
 
 		const inputReservations = step.recipe.inputs.map(input => {
-			const reservation = reservationSystem.reserveStorageOutgoing(building.id, input.itemType, input.quantity, assignment.assignmentId)
+			const reservation = reservationSystem.reserveStorageOutgoingInternal(building.id, input.itemType, input.quantity, assignment.assignmentId)
 			if (!reservation) {
 				return null
 			}

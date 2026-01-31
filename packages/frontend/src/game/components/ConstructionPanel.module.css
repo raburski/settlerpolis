@@ -11,7 +11,7 @@
 	padding: var(--spacing-sm);
 	color: #fffbe7;
 	z-index: var(--z-index-modal);
-	height: 134px;
+	height: 176px;
 	overflow: hidden;
 	box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
 	font-family: 'Press Start 2P', monospace;
@@ -56,6 +56,13 @@
 	gap: var(--spacing-sm);
 	align-items: stretch;
 	height: 100%;
+}
+
+.leftColumn {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
 }
 
 .separator {
@@ -105,6 +112,7 @@
 	padding-bottom: var(--spacing-xs);
 	justify-content: start;
 	align-content: start;
+	min-height: 0;
 }
 
 .buildingItem {

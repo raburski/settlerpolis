@@ -47,6 +47,10 @@ export abstract class BaseMovementView extends GameObjects.Container {
 	public setTargetPosition(x: number, y: number): void {
 		this.movementController.setTargetPosition(x, y, this.x, this.y)
 	}
+
+	public setSpeed(speed: number): void {
+		this.movementController.setSpeed(speed)
+	}
 	
 	/**
 	 * Update position immediately (teleport/sync, no interpolation)
@@ -101,4 +105,3 @@ export abstract class BaseMovementView extends GameObjects.Container {
 		// Override if needed
 	}
 }
-

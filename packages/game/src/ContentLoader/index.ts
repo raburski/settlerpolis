@@ -11,6 +11,7 @@ import { TriggerManager } from "../Triggers"
 import { BuildingManager } from "../Buildings"
 import { PopulationManager } from "../Population"
 import { ResourceNodesManager } from "../ResourceNodes"
+import { WildlifeManager } from "../Wildlife"
 import { dialogueCompose } from "../Dialogue/utils"
 import { DialogueTree } from "../Dialogue/types"
 import { GameContent, ScheduleOptions, Trigger } from "../types"
@@ -32,6 +33,7 @@ export class ContentLoader {
 	private building: BuildingManager,
 	private population: PopulationManager,
 	private resourceNodes: ResourceNodesManager,
+	private wildlife: WildlifeManager,
 	private logger: Logger
 	) {
 		this.loadAllContent()
@@ -55,6 +57,7 @@ export class ContentLoader {
 			this.loadProfessionTools(),
 			this.loadResourceNodes()
 		])
+		this.wildlife.initializeForestSpawns()
 		this.logger.log('Finished loading all content')
 	}
 

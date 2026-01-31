@@ -22,11 +22,26 @@ export enum SettlerState {
 	MovingToBuilding = 'moving_to_building',   // Moving to assigned building
 	Working = 'working',              // Actively working at a building
 	WaitingForWork = 'waiting_for_work', // At building but no work available (optional)
+	Packing = 'packing',              // Packing up belongings before changing home
+	Unpacking = 'unpacking',          // Unpacking belongings after moving home
 	MovingToItem = 'moving_to_item',        // Moving to pick up item from ground
 	CarryingItem = 'carrying_item',         // Carrying item and moving to construction site for delivery
 	MovingToResource = 'moving_to_resource', // Moving to resource node for harvesting
+	MovingHome = 'moving_home',          // Moving to current/new home
 	Harvesting = 'harvesting',             // Harvesting at a resource node
 	AssignmentFailed = 'assignment_failed',    // Assignment failed, needs cleanup
+}
+
+export enum WorkerRequestFailureReason {
+	NoAvailableWorker = 'no_available_worker',
+	NoBuilderAvailable = 'no_builder_available',
+	NoSuitableProfession = 'no_suitable_profession',
+	NoAvailableTool = 'no_available_tool',
+	BuildingNotFound = 'building_not_found',
+	BuildingDefinitionNotFound = 'building_definition_not_found',
+	BuildingDoesNotNeedWorkers = 'building_does_not_need_workers',
+	BuildingNotUnderConstruction = 'building_not_under_construction',
+	BuildingCompleted = 'building_completed'
 }
 
 

@@ -9,6 +9,7 @@ import { EventBus } from '../../EventBus'
 import { Event } from '@rugged/game'
 
 export class MapObjectView {
+	private scene: Scene
 	private sprite: GameObjects.Sprite | null = null
 	private emojiText: GameObjects.Text | null = null
 	private mapObject: MapObject
@@ -16,6 +17,9 @@ export class MapObjectView {
 	private progressBar: GameObjects.Graphics | null = null
 	private progressBarBg: GameObjects.Graphics | null = null
 	private progressText: GameObjects.Text | null = null
+	private highlightGraphics: GameObjects.Graphics | null = null
+	private isHighlighted: boolean = false
+	private highlightHandler: ((data: { buildingInstanceId: string, highlighted: boolean }) => void) | null = null
 	private isBuilding: boolean = false
 	private isStoragePile: boolean = false
 	private storageSlotId: string | null = null
@@ -27,6 +31,7 @@ export class MapObjectView {
 	private completedHandler: ((data: { building: any }) => void) | null = null
 
 	constructor(scene: Scene, mapObject: MapObject) {
+		this.scene = scene
 		this.mapObject = mapObject
 		
 		// Check if this is a building
@@ -37,6 +42,7 @@ export class MapObjectView {
 			this.buildingProgress = mapObject.metadata?.progress || 0
 			this.buildingStage = mapObject.metadata?.stage || ConstructionStage.Foundation
 			this.setupBuildingEvents(scene)
+			this.setupHighlightEvents()
 		}
 		
 		// Subscribe to item metadata updates
@@ -48,6 +54,19 @@ export class MapObjectView {
 				}
 			}
 		})
+	}
+
+	private setupHighlightEvents(): void {
+		this.highlightHandler = (data: { buildingInstanceId: string, highlighted: boolean }) => {
+			if (!this.isBuilding) {
+				return
+			}
+			if (this.mapObject.metadata?.buildingInstanceId !== data.buildingInstanceId) {
+				return
+			}
+			this.setHighlighted(data.highlighted)
+		}
+		EventBus.on('ui:building:highlight', this.highlightHandler)
 	}
 
 	private setupBuildingEvents(scene: Scene) {
@@ -184,6 +203,44 @@ export class MapObjectView {
 		}
 
 		console.log(`[MapObjectView] Replaced sprite with emoji text: ${emoji} at size ${fontSize}px for footprint ${this.mapObject.metadata.footprint.width}x${this.mapObject.metadata.footprint.height}`)
+	}
+
+	private setHighlighted(highlighted: boolean): void {
+		if (this.isHighlighted === highlighted) {
+			return
+		}
+		this.isHighlighted = highlighted
+		if (!highlighted) {
+			this.highlightGraphics?.setVisible(false)
+			return
+		}
+		if (!this.highlightGraphics) {
+			this.highlightGraphics = this.scene.add.graphics()
+		}
+		this.updateHighlight()
+		this.highlightGraphics.setVisible(true)
+	}
+
+	private updateHighlight(): void {
+		if (!this.highlightGraphics) {
+			return
+		}
+		const tileSize = 32
+		const footprint = this.mapObject.metadata?.footprint
+		const width = footprint ? footprint.width * tileSize : (this.sprite?.displayWidth || this.emojiText?.displayWidth || tileSize)
+		const height = footprint ? footprint.height * tileSize : (this.sprite?.displayHeight || this.emojiText?.displayHeight || tileSize)
+		const x = this.mapObject.position.x
+		const y = this.mapObject.position.y
+		const padding = 3
+
+		this.highlightGraphics.clear()
+		this.highlightGraphics.fillStyle(0xffd54f, 0.08)
+		this.highlightGraphics.fillRect(x - padding, y - padding, width + padding * 2, height + padding * 2)
+		this.highlightGraphics.lineStyle(3, 0xffd54f, 0.9)
+		this.highlightGraphics.strokeRect(x - padding, y - padding, width + padding * 2, height + padding * 2)
+
+		const displayDepth = this.sprite?.depth ?? this.emojiText?.depth ?? this.mapObject.position.y
+		this.highlightGraphics.setDepth(displayDepth + 0.5)
 	}
 
 	private createStoragePile(scene: Scene, itemMetadata: ItemMetadata): void {
@@ -414,9 +471,20 @@ export class MapObjectView {
 				this.updateProgressBar(scene)
 			}
 		}
+		if (this.isHighlighted) {
+			this.updateHighlight()
+		}
 	}
 
 	public destroy(): void {
+		if (this.highlightHandler) {
+			EventBus.off('ui:building:highlight', this.highlightHandler)
+			this.highlightHandler = null
+		}
+		if (this.highlightGraphics) {
+			this.highlightGraphics.destroy()
+			this.highlightGraphics = null
+		}
 		// Remove building event listeners
 		if (this.progressHandler) {
 			EventBus.off(Event.Buildings.SC.Progress, this.progressHandler)

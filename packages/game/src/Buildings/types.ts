@@ -47,7 +47,8 @@ export enum BuildingCategory {
 	Civil = 'civil',
 	Storage = 'storage',
 	Food = 'food',
-	Industry = 'industry'
+	Industry = 'industry',
+	Infrastructure = 'infrastructure'
 }
 
 export interface BuildingDefinition {
@@ -94,6 +95,15 @@ export interface BuildingDefinition {
 		itemType: string
 		desiredQuantity: number
 	}>
+	marketDistribution?: {
+		itemTypes?: string[]
+		maxDistanceTiles?: number
+		maxStops?: number
+		roadSearchRadiusTiles?: number
+		houseSearchRadiusTiles?: number
+		carryQuantity?: number
+		deliveryQuantity?: number
+	}
 	amenitySlots?: {
 		count: number
 		offsets?: Array<{ x: number, y: number }>

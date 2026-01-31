@@ -3,7 +3,8 @@ import type { BuildingDefinition } from './types'
 export enum BuildingWorkKind {
 	Harvest = 'harvest',
 	Production = 'production',
-	Farm = 'farm'
+	Farm = 'farm',
+	Market = 'market'
 }
 
 export const getBuildingWorkKinds = (definition: BuildingDefinition): BuildingWorkKind[] => {
@@ -16,6 +17,9 @@ export const getBuildingWorkKinds = (definition: BuildingDefinition): BuildingWo
 	}
 	if (definition.farm) {
 		kinds.push(BuildingWorkKind.Farm)
+	}
+	if (definition.marketDistribution) {
+		kinds.push(BuildingWorkKind.Market)
 	}
 	return kinds
 }

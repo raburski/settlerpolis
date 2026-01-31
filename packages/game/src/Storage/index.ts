@@ -90,6 +90,9 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	private placePileObject(slot: StorageSlot): void {
+		if (slot.hidden) {
+			return
+		}
 		if (slot.mapObjectId) {
 			return
 		}
@@ -131,6 +134,12 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	private removePileObject(slot: StorageSlot): void {
+		if (slot.hidden) {
+			if (slot.mapObjectId) {
+				slot.mapObjectId = undefined
+			}
+			return
+		}
 		if (!slot.mapObjectId) {
 			return
 		}
@@ -143,6 +152,10 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	private updatePileForSlot(slot: StorageSlot): void {
+		if (slot.hidden) {
+			this.emitSlotUpdated(slot)
+			return
+		}
 		if (slot.quantity > 0) {
 			this.placePileObject(slot)
 		} else {
@@ -212,7 +225,8 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				quantity: 0,
 				batches: [],
 				reservedIncoming: 0,
-				reservedOutgoing: 0
+				reservedOutgoing: 0,
+				hidden: slotDef.hidden
 			}
 
 			storage.slots.set(slotId, slot)
@@ -232,10 +246,15 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	// Reserve storage space for delivery (incoming or outgoing) at a specific slot
-	public reserveStorage(buildingInstanceId: string, itemType: string, quantity: number, reservedBy: string, isOutgoing: boolean = false): StorageReservationResult | null {
+	public reserveStorage(buildingInstanceId: string, itemType: string, quantity: number, reservedBy: string, isOutgoing: boolean = false, allowInternal: boolean = false): StorageReservationResult | null {
 		const storage = this.buildingStorages.get(buildingInstanceId)
 		if (!storage) {
 			this.logger.warn(`[StorageManager] Cannot reserve storage: Building ${buildingInstanceId} has no storage`)
+			return null
+		}
+
+		if (isOutgoing && !allowInternal && !this.canReserveOutgoing(buildingInstanceId, itemType)) {
+			this.logger.warn(`[StorageManager] Outgoing blocked for ${itemType} in building ${buildingInstanceId}`)
 			return null
 		}
 
@@ -245,10 +264,17 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			return null
 		}
 
-		const slots = this.getSlotsForItem(storage, itemType)
+		let slots = this.getSlotsForItem(storage, itemType)
 		if (slots.length === 0) {
 			this.logger.warn(`[StorageManager] Cannot reserve storage: No slots for ${itemType} in building ${buildingInstanceId}`)
 			return null
+		}
+		if (isOutgoing && !allowInternal) {
+			slots = slots.filter(slot => !slot.hidden)
+			if (slots.length === 0) {
+				this.logger.warn(`[StorageManager] Cannot reserve outgoing storage: All slots for ${itemType} are hidden in ${buildingInstanceId}`)
+				return null
+			}
 		}
 
 		let slot: StorageSlot | undefined
@@ -302,6 +328,42 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			position: slot.position,
 			quantity
 		}
+	}
+
+	public allowsOutgoing(buildingInstanceId: string, itemType: string): boolean {
+		return this.canReserveOutgoing(buildingInstanceId, itemType)
+	}
+
+	private canReserveOutgoing(buildingInstanceId: string, itemType: string): boolean {
+		const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
+		if (!building) {
+			return false
+		}
+		const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
+		if (!definition) {
+			return false
+		}
+
+		if (definition.spawnsSettlers) {
+			return false
+		}
+
+		const consumes = definition.consumes?.some(entry => entry.itemType === itemType)
+		if (consumes) {
+			return false
+		}
+
+		const recipeInputs = definition.productionRecipe?.inputs?.some(entry => entry.itemType === itemType)
+		if (recipeInputs) {
+			return false
+		}
+
+		const autoInputs = definition.autoProduction?.inputs?.some(entry => entry.itemType === itemType)
+		if (autoInputs) {
+			return false
+		}
+
+		return true
 	}
 
 	private addToSlotBatches(slot: StorageSlot, quantity: number): void {
@@ -587,6 +649,46 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		return slots.reduce((sum, slot) => sum + slot.quantity, 0)
 	}
 
+	// Get total quantity across all storages for a map
+	public getTotalQuantity(mapName: string, itemType: string): number {
+		let total = 0
+		for (const building of this.managers.buildings.getAllBuildings()) {
+			if (building.mapName !== mapName) {
+				continue
+			}
+			total += this.getCurrentQuantity(building.id, itemType)
+		}
+		return total
+	}
+
+	// Remove items from any storage in a map
+	public consumeFromAnyStorage(mapName: string, itemType: string, quantity: number): boolean {
+		if (quantity <= 0) {
+			return true
+		}
+
+		let remaining = quantity
+		for (const building of this.managers.buildings.getAllBuildings()) {
+			if (building.mapName !== mapName) {
+				continue
+			}
+			const current = this.getCurrentQuantity(building.id, itemType)
+			if (current <= 0) {
+				continue
+			}
+			const toRemove = Math.min(current, remaining)
+			if (!this.removeFromStorage(building.id, itemType, toRemove)) {
+				continue
+			}
+			remaining -= toRemove
+			if (remaining <= 0) {
+				return true
+			}
+		}
+
+		return false
+	}
+
 	// Release storage reservation
 	public releaseReservation(reservationId: string): void {
 		const reservation = this.reservations.get(reservationId)
@@ -661,6 +763,10 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		for (const [buildingInstanceId, storage] of this.buildingStorages.entries()) {
 			const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
 			if (!building || building.mapName !== mapName || building.playerId !== playerId) {
+				continue
+			}
+
+			if (!this.allowsOutgoing(buildingInstanceId, itemType)) {
 				continue
 			}
 

@@ -1,5 +1,7 @@
 import { Position } from '../types'
 import { CollisionData, PathData } from './types'
+import type { RoadData } from '../Roads/types'
+import { ROAD_PATH_PREFERENCE_MULTIPLIER, ROAD_SPEED_MULTIPLIERS, RoadType } from '../Roads/types'
 
 interface Node {
 	position: Position
@@ -9,20 +11,27 @@ interface Node {
 	parent: Node | null
 }
 
+interface Neighbor {
+	position: Position
+	cost: number
+}
+
 export class Pathfinder {
 	static findPath(
 		collision: CollisionData,
 		paths: PathData,
 		start: Position,
-		end: Position
+		end: Position,
+		options?: { roads?: RoadData, allowDiagonal?: boolean }
 	): Position[] {
+		const allowDiagonal = options?.allowDiagonal ?? false
 		const openSet: Node[] = []
 		const closedSet: Set<string> = new Set()
 		const startNode: Node = {
 			position: start,
 			g: 0,
-			h: this.heuristic(start, end),
-			f: this.heuristic(start, end),
+			h: this.heuristic(start, end, allowDiagonal),
+			f: this.heuristic(start, end, allowDiagonal),
 			parent: null
 		}
 
@@ -49,9 +58,9 @@ export class Pathfinder {
 			closedSet.add(`${current.position.x},${current.position.y}`)
 
 			// Check all neighbors
-			const neighbors = this.getNeighbors(current.position, collision, paths)
+			const neighbors = this.getNeighbors(current.position, collision, allowDiagonal)
 			for (const neighbor of neighbors) {
-				const neighborKey = `${neighbor.x},${neighbor.y}`
+				const neighborKey = `${neighbor.position.x},${neighbor.position.y}`
 
 				// Skip if already evaluated
 				if (closedSet.has(neighborKey)) {
@@ -59,20 +68,21 @@ export class Pathfinder {
 				}
 
 				// Calculate tentative g score with path preference
-				const pathCost = this.getPathCost(neighbor, paths)
-				const tentativeG = current.g + 1 + pathCost
+				const pathCost = this.getPathCost(neighbor.position, paths)
+				const roadCostMultiplier = this.getRoadCostMultiplierForSegment(current.position, neighbor.position, options?.roads)
+				const tentativeG = current.g + neighbor.cost * roadCostMultiplier + pathCost
 
 				// Check if this path to neighbor is better
 				const existingNeighbor = openSet.find(
-					n => n.position.x === neighbor.x && n.position.y === neighbor.y
+					n => n.position.x === neighbor.position.x && n.position.y === neighbor.position.y
 				)
 
 				if (!existingNeighbor || tentativeG < existingNeighbor.g) {
 					const neighborNode: Node = {
-						position: neighbor,
+						position: neighbor.position,
 						g: tentativeG,
-						h: this.heuristic(neighbor, end),
-						f: tentativeG + this.heuristic(neighbor, end),
+						h: this.heuristic(neighbor.position, end, allowDiagonal),
+						f: tentativeG + this.heuristic(neighbor.position, end, allowDiagonal),
 						parent: current
 					}
 
@@ -91,9 +101,15 @@ export class Pathfinder {
 		return []
 	}
 
-	private static heuristic(a: Position, b: Position): number {
-		// Manhattan distance
-		return Math.abs(a.x - b.x) + Math.abs(a.y - b.y)
+	private static heuristic(a: Position, b: Position, allowDiagonal: boolean): number {
+		const dx = Math.abs(a.x - b.x)
+		const dy = Math.abs(a.y - b.y)
+		if (!allowDiagonal) {
+			return dx + dy
+		}
+		const min = Math.min(dx, dy)
+		const max = Math.max(dx, dy)
+		return (Math.SQRT2 * min) + (max - min)
 	}
 
 	private static getPathCost(position: Position, paths: PathData): number {
@@ -105,33 +121,84 @@ export class Pathfinder {
 		return 0
 	}
 
-	private static getNeighbors(position: Position, collision: CollisionData, paths: PathData): Position[] {
-		const neighbors: Position[] = []
+	private static getNeighbors(position: Position, collision: CollisionData, allowDiagonal: boolean): Neighbor[] {
+		const neighbors: Neighbor[] = []
 		const directions = [
-			{ x: 0, y: -1 }, // up
-			{ x: 1, y: 0 },  // right
-			{ x: 0, y: 1 },  // down
-			{ x: -1, y: 0 }  // left
+			{ x: 0, y: -1, cost: 1 }, // up
+			{ x: 1, y: 0, cost: 1 },  // right
+			{ x: 0, y: 1, cost: 1 },  // down
+			{ x: -1, y: 0, cost: 1 }  // left
 		]
+
+		if (allowDiagonal) {
+			directions.push(
+				{ x: 1, y: -1, cost: Math.SQRT2 },
+				{ x: 1, y: 1, cost: Math.SQRT2 },
+				{ x: -1, y: 1, cost: Math.SQRT2 },
+				{ x: -1, y: -1, cost: Math.SQRT2 }
+			)
+		}
 
 		for (const dir of directions) {
 			const newX = position.x + dir.x
 			const newY = position.y + dir.y
 
-			// Check bounds
 			if (
-				newX >= 0 && newX < collision.width &&
-				newY >= 0 && newY < collision.height
+				newX < 0 || newX >= collision.width ||
+				newY < 0 || newY >= collision.height
 			) {
-				// Check collision
-				const index = newY * collision.width + newX
-				if (index >= 0 && index < collision.data.length && collision.data[index] === 0) {
-					neighbors.push({ x: newX, y: newY })
+				continue
+			}
+
+			// Check collision
+			const index = newY * collision.width + newX
+			if (index < 0 || index >= collision.data.length || collision.data[index] !== 0) {
+				continue
+			}
+
+			if (allowDiagonal && dir.x !== 0 && dir.y !== 0) {
+				const adjacentX = position.x + dir.x
+				const adjacentY = position.y
+				const adjacentIndex = adjacentY * collision.width + adjacentX
+				if (collision.data[adjacentIndex] !== 0) {
+					continue
+				}
+				const adjacentX2 = position.x
+				const adjacentY2 = position.y + dir.y
+				const adjacentIndex2 = adjacentY2 * collision.width + adjacentX2
+				if (collision.data[adjacentIndex2] !== 0) {
+					continue
 				}
 			}
+
+			neighbors.push({ position: { x: newX, y: newY }, cost: dir.cost })
 		}
 
 		return neighbors
+	}
+
+	private static getRoadCostMultiplierForSegment(from: Position, to: Position, roads?: RoadData): number {
+		if (!roads) {
+			return 1
+		}
+		const fromIndex = from.y * roads.width + from.x
+		const toIndex = to.y * roads.width + to.x
+		if (fromIndex < 0 || toIndex < 0 || fromIndex >= roads.data.length || toIndex >= roads.data.length) {
+			return 1
+		}
+		const fromType = roads.data[fromIndex] ?? RoadType.None
+		const toType = roads.data[toIndex] ?? RoadType.None
+		if (fromType === RoadType.None || toType === RoadType.None) {
+			return 1
+		}
+		const speedMultiplier = Math.min(
+			ROAD_SPEED_MULTIPLIERS[fromType] ?? 1,
+			ROAD_SPEED_MULTIPLIERS[toType] ?? 1
+		)
+		if (speedMultiplier <= 0) {
+			return 1
+		}
+		return 1 / (speedMultiplier * ROAD_PATH_PREFERENCE_MULTIPLIER)
 	}
 
 	private static reconstructPath(node: Node): Position[] {

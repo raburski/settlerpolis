@@ -4,50 +4,36 @@ import { PopulationEvents } from '../../Population/events'
 import { BuildingsEvents } from '../../Buildings/events'
 import { SimulationEvents } from '../../Simulation/events'
 import type { SimulationTickData } from '../../Simulation/types'
-import type { BuildingManager } from '../../Buildings'
-import type { PopulationManager } from '../../Population'
-import type { MovementManager } from '../../Movement'
-import type { LootManager } from '../../Loot'
-import type { StorageManager } from '../../Storage'
-import type { ResourceNodesManager } from '../../ResourceNodes'
-import type { ItemsManager } from '../../Items'
-import type { MapManager } from '../../Map'
-import type { MapObjectsManager } from '../../MapObjects'
-import type { ReservationSystem } from '../../Reservation'
+import type { WorkProviderDeps } from './deps'
 import { Logger } from '../../Logs'
 import { Receiver } from '../../Receiver'
 import { v4 as uuidv4 } from 'uuid'
 import { calculateDistance } from '../../utils'
 import { SettlerState, ProfessionType } from '../../Population/types'
 import { NeedsEvents } from '../../Needs/events'
-import { NEED_CRITICAL_THRESHOLD } from '../../Needs/NeedsState'
 import type { ContextPauseRequestedEventData, ContextResumeRequestedEventData, PausedContext } from '../../Needs/types'
 import type { RequestWorkerData, UnassignWorkerData } from '../../Population/types'
+import { WorkerRequestFailureReason } from '../../Population/types'
 import type { ProductionRecipe, SetProductionPausedData } from '../../Buildings/types'
 import { ConstructionStage, ProductionStatus } from '../../Buildings/types'
 import { getBuildingWorkKinds } from '../../Buildings/work'
 import { ProviderRegistry } from './ProviderRegistry'
 import { ActionSystem } from './ActionSystem'
 import { WorkProviderEvents } from './events'
-import type { WorkAssignment, WorkProvider, WorkStep, WorkAction, LogisticsRequest } from './types'
-import { TransportTargetType, WorkStepType, WorkWaitReason } from './types'
+import type { WorkAssignment, WorkStep, WorkAction, LogisticsRequest } from './types'
+import { TransportTargetType, WorkProviderType, WorkStepType, WorkWaitReason } from './types'
 import { StepHandlers } from './stepHandlers'
 import { BuildingProvider } from './providers/BuildingProvider'
 import { LogisticsProvider } from './providers/LogisticsProvider'
 import { ConstructionProvider } from './providers/ConstructionProvider'
+import { RoadProvider } from './providers/RoadProvider'
+import { WorkPolicyPhase, WorkPolicyResultType } from './policies/constants'
+import type { WorkPolicy, WorkPolicyContext, WorkPolicyResult } from './policies/types'
+import { CriticalNeedsPolicy } from './policies/CriticalNeedsPolicy'
+import { HomeRelocationPolicy } from './policies/HomeRelocationPolicy'
 
-export interface WorkProviderDeps {
-	buildings: BuildingManager
-	population: PopulationManager
-	movement: MovementManager
-	loot: LootManager
-	storage: StorageManager
-	resourceNodes: ResourceNodesManager
-	items: ItemsManager
-	map: MapManager
-	mapObjects: MapObjectsManager
-	reservations: ReservationSystem
-}
+const MOVEMENT_RECOVERY_COOLDOWN_MS = 8000
+const MOVEMENT_FAILURE_MAX_RETRIES = 3
 
 export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 	private registry = new ProviderRegistry()
@@ -55,14 +41,19 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 	private assignmentsByBuilding = new Map<string, Set<string>>()
 	private buildingProviders = new Map<string, BuildingProvider>()
 	private constructionProviders = new Map<string, ConstructionProvider>()
+	private roadProviders = new Map<string, RoadProvider>()
 	private logisticsProvider: LogisticsProvider
 	private actionSystem: ActionSystem
+	private policies: WorkPolicy[] = []
 	private simulationTimeMs = 0
 	private productionStateByBuilding = new Map<string, { status: ProductionStatus, progress: number }>()
 	private constructionAssignCooldownMs = 2000
 	private lastConstructionAssignAt = new Map<string, number>()
 	private pauseRequests = new Map<string, { reason: string }>()
 	private pausedContexts = new Map<string, PausedContext | null>()
+	private movementRecoveryUntil = new Map<string, number>()
+	private movementRecoveryReason = new Map<string, WorkWaitReason>()
+	private movementFailureCounts = new Map<string, number>()
 
 	constructor(
 		managers: WorkProviderDeps,
@@ -83,6 +74,11 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			this.logger
 		)
 		this.registry.register(this.logisticsProvider)
+
+		this.policies = [
+			new CriticalNeedsPolicy(),
+			new HomeRelocationPolicy()
+		]
 
 		this.setupEventHandlers()
 	}
@@ -125,6 +121,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		this.refreshConsumptionRequests()
 		this.emitLogisticsRequests()
 		this.assignConstructionWorkers()
+		this.assignRoadWorkers()
 
 		// Assign idle carriers to logistics if there is pending demand
 		this.assignIdleCarriersToLogistics()
@@ -273,6 +270,17 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		return provider
 	}
 
+	private getRoadProvider(mapName: string, playerId: string): RoadProvider {
+		const key = `${mapName}:${playerId}`
+		let provider = this.roadProviders.get(key)
+		if (!provider) {
+			provider = new RoadProvider(mapName, playerId, this.managers, this.logger)
+			this.roadProviders.set(key, provider)
+			this.registry.register(provider)
+		}
+		return provider
+	}
+
 	private requestWorker(data: RequestWorkerData, client: any): void {
 		const building = this.managers.buildings.getBuildingInstance(data.buildingInstanceId)
 		if (!building) {
@@ -290,7 +298,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			if (assigned >= workerSlots) {
 				client.emit(Receiver.Sender, PopulationEvents.SC.WorkerRequestFailed, {
 					buildingInstanceId: building.id,
-					reason: 'building_does_not_need_workers'
+					reason: WorkerRequestFailureReason.BuildingDoesNotNeedWorkers
 				})
 				return
 			}
@@ -308,10 +316,10 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		})
 		if (!candidate) {
 			const reason = isConstruction
-				? 'no_builder_available'
+				? WorkerRequestFailureReason.NoBuilderAvailable
 				: requiredProfession
-					? 'no_suitable_profession'
-					: 'no_available_worker'
+					? WorkerRequestFailureReason.NoSuitableProfession
+					: WorkerRequestFailureReason.NoAvailableWorker
 			client.emit(Receiver.Sender, PopulationEvents.SC.WorkerRequestFailed, {
 				buildingInstanceId: building.id,
 				reason
@@ -319,16 +327,16 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			return
 		}
 
-		const assignment: WorkAssignment = {
-			assignmentId: uuidv4(),
-			settlerId: candidate.id,
-			providerId: isConstruction ? `construction:${building.id}` : building.id,
-			providerType: isConstruction ? 'construction' : 'building',
-			buildingInstanceId: building.id,
-			requiredProfession: requiredProfession,
-			assignedAt: Date.now(),
-			status: 'assigned'
-		}
+			const assignment: WorkAssignment = {
+				assignmentId: uuidv4(),
+				settlerId: candidate.id,
+				providerId: isConstruction ? `construction:${building.id}` : building.id,
+				providerType: isConstruction ? WorkProviderType.Construction : WorkProviderType.Building,
+				buildingInstanceId: building.id,
+				requiredProfession: requiredProfession,
+				assignedAt: Date.now(),
+				status: 'assigned'
+			}
 
 		this.assignments.set(candidate.id, assignment)
 		if (!this.assignmentsByBuilding.has(building.id)) {
@@ -395,15 +403,21 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		if (assignment.buildingInstanceId) {
 			this.assignmentsByBuilding.get(assignment.buildingInstanceId)?.delete(data.settlerId)
 			this.managers.buildings.setAssignedWorker(assignment.buildingInstanceId, data.settlerId, false)
-			const provider = assignment.providerType === 'construction'
+			const provider = assignment.providerType === WorkProviderType.Construction
 				? this.getConstructionProvider(assignment.buildingInstanceId)
 				: this.getBuildingProvider(assignment.buildingInstanceId)
+			provider?.unassign(data.settlerId)
+		} else {
+			const provider = this.registry.get(assignment.providerId)
 			provider?.unassign(data.settlerId)
 		}
 
 		this.managers.population.setSettlerAssignment(data.settlerId, undefined, undefined, undefined)
 		this.managers.population.setSettlerState(data.settlerId, SettlerState.Idle)
 		this.managers.population.setSettlerWaitReason(data.settlerId, undefined)
+		this.movementFailureCounts.delete(data.settlerId)
+		this.movementRecoveryUntil.delete(data.settlerId)
+		this.movementRecoveryReason.delete(data.settlerId)
 
 		this.event.emit(Receiver.All, WorkProviderEvents.SS.AssignmentRemoved, { assignmentId: assignment.assignmentId })
 		if (assignment.buildingInstanceId) {
@@ -444,7 +458,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 				assignmentId: uuidv4(),
 				settlerId: carrier.id,
 				providerId: this.logisticsProvider.id,
-				providerType: 'logistics',
+				providerType: WorkProviderType.Logistics,
 				assignedAt: Date.now(),
 				status: 'assigned'
 			}
@@ -453,6 +467,37 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			this.managers.population.setSettlerAssignment(carrier.id, assignment.assignmentId, assignment.providerId, undefined)
 			this.managers.population.setSettlerState(carrier.id, SettlerState.Assigned)
 			this.dispatchNextStep(carrier.id)
+		}
+	}
+
+	private assignRoadWorkers(): void {
+		const groups = this.managers.roads.getPendingJobGroups()
+		for (const group of groups) {
+			const provider = this.getRoadProvider(group.mapName, group.playerId)
+			const available = this.managers.population.getAvailableSettlers(group.mapName, group.playerId)
+				.filter(settler => settler.profession === ProfessionType.Builder)
+				.filter(settler => !this.assignments.has(settler.id))
+
+			let assigned = 0
+			for (const settler of available) {
+				if (assigned >= group.count) {
+					break
+				}
+				const assignment: WorkAssignment = {
+					assignmentId: uuidv4(),
+					settlerId: settler.id,
+					providerId: provider.id,
+					providerType: WorkProviderType.Road,
+					assignedAt: Date.now(),
+					status: 'assigned'
+				}
+				this.assignments.set(settler.id, assignment)
+				provider.assign(settler.id)
+				this.managers.population.setSettlerAssignment(settler.id, assignment.assignmentId, assignment.providerId, undefined)
+				this.managers.population.setSettlerState(settler.id, SettlerState.Assigned)
+				this.dispatchNextStep(settler.id)
+				assigned += 1
+			}
 		}
 	}
 
@@ -468,7 +513,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 				continue
 			}
 			const constructionAssignments = Array.from(this.assignments.values()).filter(
-				assignment => assignment.buildingInstanceId === building.id && assignment.providerType === 'construction'
+				assignment => assignment.buildingInstanceId === building.id && assignment.providerType === WorkProviderType.Construction
 			)
 			const hasBuilderAssigned = constructionAssignments.some(assignment => {
 				const settler = this.managers.population.getSettler(assignment.settlerId)
@@ -528,12 +573,28 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			return
 		}
 
-		const settler = this.managers.population.getSettler(settlerId)
-		if (settler?.needs &&
-			(settler.needs.hunger <= NEED_CRITICAL_THRESHOLD || settler.needs.fatigue <= NEED_CRITICAL_THRESHOLD)) {
-			this.managers.population.setSettlerWaitReason(settlerId, WorkWaitReason.NeedsCritical)
-			this.managers.population.setSettlerLastStep(settlerId, undefined, WorkWaitReason.NeedsCritical)
-			this.managers.population.setSettlerState(settlerId, SettlerState.WaitingForWork)
+		const recoveryUntil = this.movementRecoveryUntil.get(settlerId)
+		if (recoveryUntil) {
+			if (Date.now() < recoveryUntil) {
+				const reason = this.movementRecoveryReason.get(settlerId) ?? WorkWaitReason.MovementFailed
+				this.managers.population.setSettlerWaitReason(settlerId, reason)
+				this.managers.population.setSettlerLastStep(settlerId, undefined, reason)
+				this.managers.population.setSettlerState(settlerId, SettlerState.WaitingForWork)
+				return
+			}
+			this.movementRecoveryUntil.delete(settlerId)
+			this.movementRecoveryReason.delete(settlerId)
+		}
+
+		const policyContext: WorkPolicyContext = {
+			settlerId,
+			assignment,
+			managers: this.managers,
+			simulationTimeMs: this.simulationTimeMs
+		}
+
+		const prePolicyResult = this.runPolicies(WorkPolicyPhase.BeforeStep, policyContext)
+		if (this.applyPolicyResult(settlerId, prePolicyResult)) {
 			return
 		}
 
@@ -546,6 +607,10 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 
 		const step = provider.requestNextStep(settlerId)
 		if (!step) {
+			const noStepPolicyResult = this.runPolicies(WorkPolicyPhase.NoStep, policyContext)
+			if (this.applyPolicyResult(settlerId, noStepPolicyResult)) {
+				return
+			}
 			this.managers.population.setSettlerWaitReason(settlerId, WorkWaitReason.NoWork)
 			this.managers.population.setSettlerLastStep(settlerId, undefined, WorkWaitReason.NoWork)
 			this.managers.population.setSettlerState(settlerId, SettlerState.WaitingForWork)
@@ -553,10 +618,23 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		}
 
 		if (step.type === WorkStepType.Wait) {
+			const waitPolicyResult = this.runPolicies(WorkPolicyPhase.WaitStep, policyContext, step)
+			if (this.applyPolicyResult(settlerId, waitPolicyResult)) {
+				return
+			}
 			this.managers.population.setSettlerWaitReason(settlerId, step.reason)
 			this.managers.population.setSettlerLastStep(settlerId, step.type, step.reason)
-			if (assignment.providerType === 'logistics' &&
+			if (assignment.providerType === WorkProviderType.Logistics &&
 				(step.reason === WorkWaitReason.NoRequests || step.reason === WorkWaitReason.NoViableRequest)) {
+				this.unassignWorker({ settlerId })
+				return
+			}
+			if (assignment.providerType === WorkProviderType.Road &&
+				(step.reason === WorkWaitReason.NoWork || step.reason === WorkWaitReason.WrongProfession)) {
+				this.unassignWorker({ settlerId })
+				return
+			}
+			if (assignment.providerType === WorkProviderType.Construction && step.reason === WorkWaitReason.WrongProfession) {
 				this.unassignWorker({ settlerId })
 				return
 			}
@@ -586,13 +664,14 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			this.event.emit(Receiver.All, WorkProviderEvents.SS.StepCompleted, { settlerId, step })
 			this.managers.population.setSettlerLastStep(settlerId, step.type, undefined)
 			this.managers.population.setSettlerState(settlerId, SettlerState.Idle)
+			this.movementFailureCounts.delete(settlerId)
 			if (step.type === WorkStepType.Transport && step.target.type === TransportTargetType.Construction) {
 				this.logisticsProvider.releaseConstructionInFlight(step.target.buildingInstanceId, step.itemType, step.quantity)
 			}
 			if (step.type === WorkStepType.Produce && assignment.buildingInstanceId) {
 				this.emitProductionCompleted(assignment.buildingInstanceId, step.recipe)
 			}
-			if (assignment.providerType === 'logistics' && !this.logisticsProvider.hasPendingRequests()) {
+			if (assignment.providerType === WorkProviderType.Logistics && !this.logisticsProvider.hasPendingRequests()) {
 				this.unassignWorker({ settlerId })
 				return
 			}
@@ -600,14 +679,88 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		}, (reason) => {
 			releaseReservations?.()
 			this.event.emit(Receiver.All, WorkProviderEvents.SS.StepFailed, { settlerId, step, reason })
-			this.managers.population.setSettlerWaitReason(settlerId, reason)
-			this.managers.population.setSettlerLastStep(settlerId, step.type, reason)
-			this.managers.population.setSettlerState(settlerId, SettlerState.WaitingForWork)
+			let retryDelayMs = 1000
+			let waitReason = reason
+			let shouldDispatch = true
+			if (reason === 'movement_failed' || reason === 'movement_cancelled') {
+				const currentFailures = (this.movementFailureCounts.get(settlerId) || 0) + 1
+				this.movementFailureCounts.set(settlerId, currentFailures)
+				retryDelayMs = MOVEMENT_RECOVERY_COOLDOWN_MS
+				waitReason = reason === 'movement_failed'
+					? WorkWaitReason.MovementFailed
+					: WorkWaitReason.MovementCancelled
+				this.movementRecoveryUntil.set(settlerId, Date.now() + retryDelayMs)
+				this.movementRecoveryReason.set(settlerId, waitReason)
+				if (currentFailures >= MOVEMENT_FAILURE_MAX_RETRIES) {
+					if (step.type === WorkStepType.BuildRoad) {
+						this.managers.roads.releaseJob(step.jobId)
+					}
+					this.unassignWorker({ settlerId })
+					this.movementFailureCounts.delete(settlerId)
+					this.movementRecoveryUntil.delete(settlerId)
+					this.movementRecoveryReason.delete(settlerId)
+					shouldDispatch = false
+				}
+			}
+			if (shouldDispatch) {
+				this.managers.population.setSettlerWaitReason(settlerId, waitReason)
+				this.managers.population.setSettlerLastStep(settlerId, step.type, waitReason)
+				this.managers.population.setSettlerState(settlerId, SettlerState.WaitingForWork)
+			}
 			if (step.type === WorkStepType.Transport && step.target.type === TransportTargetType.Construction) {
 				this.logisticsProvider.releaseConstructionInFlight(step.target.buildingInstanceId, step.itemType, step.quantity)
 			}
-			setTimeout(() => this.dispatchNextStep(settlerId), 1000)
+			if (shouldDispatch) {
+				setTimeout(() => this.dispatchNextStep(settlerId), retryDelayMs)
+			}
 		})
+	}
+
+	private runPolicies(phase: WorkPolicyPhase, ctx: WorkPolicyContext, step?: WorkStep): WorkPolicyResult | null {
+		for (const policy of this.policies) {
+			let result: WorkPolicyResult | null = null
+			if (phase === WorkPolicyPhase.BeforeStep && policy.onBeforeStep) {
+				result = policy.onBeforeStep(ctx)
+			} else if (phase === WorkPolicyPhase.NoStep && policy.onNoStep) {
+				result = policy.onNoStep(ctx)
+			} else if (phase === WorkPolicyPhase.WaitStep && policy.onWaitStep && step) {
+				result = policy.onWaitStep(ctx, step)
+			}
+			if (result) {
+				return result
+			}
+		}
+		return null
+	}
+
+	private applyPolicyResult(settlerId: string, result: WorkPolicyResult | null): boolean {
+		if (!result) {
+			return false
+		}
+
+		if (result.type === WorkPolicyResultType.Block) {
+			this.managers.population.setSettlerWaitReason(settlerId, result.reason)
+			this.managers.population.setSettlerLastStep(settlerId, undefined, result.reason)
+			this.managers.population.setSettlerState(settlerId, SettlerState.WaitingForWork)
+			return true
+		}
+
+		if (result.type === WorkPolicyResultType.Enqueue) {
+			if (this.actionSystem.isBusy(settlerId)) {
+				return true
+			}
+			this.managers.population.setSettlerWaitReason(settlerId, undefined)
+			this.actionSystem.enqueue(settlerId, result.actions, () => {
+				result.onComplete?.()
+				this.dispatchNextStep(settlerId)
+			}, (reason) => {
+				result.onFail?.(reason)
+				this.dispatchNextStep(settlerId)
+			})
+			return true
+		}
+
+		return false
 	}
 
 	private buildActionsForStep(settlerId: string, assignment: WorkAssignment, step: WorkStep): { actions: WorkAction[], releaseReservations?: () => void } {
@@ -768,3 +921,5 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 
 export { WorkProviderEvents }
 export * from './types'
+export * from './deps'
+export * from './policies'

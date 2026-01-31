@@ -1,6 +1,6 @@
 import { EventBus } from '../EventBus'
 import { Event } from '@rugged/game'
-import { Settler, PopulationListData, PopulationStatsData, ProfessionType, SettlerState, ConstructionStage } from '@rugged/game'
+import { Settler, PopulationListData, PopulationStatsData, ProfessionType, SettlerState, ConstructionStage, WorkerRequestFailureReason } from '@rugged/game'
 import { buildingService } from './BuildingService'
 import type { WorkAssignment } from '@rugged/game/Settlers/WorkProvider/types'
 
@@ -118,7 +118,7 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 		})
 
 		// Handle worker request failed
-		EventBus.on(Event.Population.SC.WorkerRequestFailed, (data: { reason: string, buildingInstanceId: string }) => {
+		EventBus.on(Event.Population.SC.WorkerRequestFailed, (data: { reason: WorkerRequestFailureReason, buildingInstanceId: string }) => {
 			console.warn('[PopulationService] Worker request failed:', data)
 			EventBus.emit('ui:population:worker-request-failed', data)
 		})

@@ -11,12 +11,14 @@ export class SettlerView extends BaseMovementView {
 	protected carryText: GameObjects.Text | null = null
 	protected dangerCircle: GameObjects.Graphics | null = null
 	protected dangerText: GameObjects.Text | null = null
+	protected highlightCircle: GameObjects.Graphics | null = null
 	protected profession: ProfessionType
 	protected state: SettlerState
 	protected settlerId: string
 	private carryItemType: string | null = null
 	private carryItemUnsubscribe: (() => void) | null = null
 	private dangerKind: 'hunger' | 'fatigue' | null = null
+	private isHighlighted: boolean = false
 	private readonly CRITICAL_NEED_THRESHOLD = 0.15
 	private readonly dangerEmojis: Record<'hunger' | 'fatigue', string> = {
 		hunger: '🍞',
@@ -60,6 +62,14 @@ export class SettlerView extends BaseMovementView {
 		// Create a simple colored circle for the settler using graphics
 		const size = 20
 		const color = this.professionColors[this.profession]
+
+		// Add highlight ring (hidden by default)
+		this.highlightCircle = this.scene.add.graphics()
+		this.highlightCircle.clear()
+		this.highlightCircle.lineStyle(3, 0xffd54f, 0.9)
+		this.highlightCircle.strokeCircle(0, 0, size / 2 + 6)
+		this.highlightCircle.setVisible(false)
+		this.add(this.highlightCircle)
 		
 		// Create graphics circle - Phaser will add it to scene, then we add it to container
 		this.graphics = this.scene.add.graphics()
@@ -133,6 +143,14 @@ export class SettlerView extends BaseMovementView {
 		this.updateDepth()
 		
 		console.log(`[SettlerView] Created settler ${this.settlerId} at (${this.x}, ${this.y}) with profession ${this.profession}, color=${color.toString(16)}, visible=${this.visible}, active=${this.active}`)
+	}
+
+	public setHighlighted(highlighted: boolean): void {
+		if (this.isHighlighted === highlighted) {
+			return
+		}
+		this.isHighlighted = highlighted
+		this.highlightCircle?.setVisible(highlighted)
 	}
 
 	protected updateVisuals(direction: Direction, state: 'idle' | 'moving'): void {
@@ -299,6 +317,10 @@ export class SettlerView extends BaseMovementView {
 		if (this.carryItemUnsubscribe) {
 			this.carryItemUnsubscribe()
 			this.carryItemUnsubscribe = null
+		}
+		if (this.highlightCircle) {
+			this.highlightCircle.destroy()
+			this.highlightCircle = null
 		}
 		if (this.graphics) {
 			this.graphics.destroy()

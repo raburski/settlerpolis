@@ -10,12 +10,23 @@ export const TransportHandler: StepHandler = {
 			return { actions: [] }
 		}
 
+		const settler = managers.population.getSettler(assignment.settlerId)
+		if (!settler) {
+			return { actions: [] }
+		}
+
 		const targetBuilding = managers.buildings.getBuildingInstance(step.target.buildingInstanceId)
 		if (!targetBuilding) {
 			return { actions: [] }
 		}
 
 		const releaseFns: Array<() => void> = []
+		const roadData = managers.roads.getRoadData(settler.mapName) || undefined
+
+		const canReach = (from: { x: number, y: number }, to: { x: number, y: number }) => {
+			const path = managers.map.findPath(settler.mapName, from, to, { roadData, allowDiagonal: true })
+			return path && path.length > 0
+		}
 
 		if (step.source.type === TransportSourceType.Ground) {
 			const source = step.source as Extract<TransportSource, { type: TransportSourceType.Ground }>
@@ -36,6 +47,21 @@ export const TransportHandler: StepHandler = {
 				targetReservationId = reservation.reservationId
 				targetPosition = reservation.position
 				releaseFns.push(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
+			}
+
+			if (!canReach(settler.position, source.position)) {
+				releaseFns.forEach(fn => fn())
+				return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+			}
+
+			if (!canReach(source.position, targetPosition)) {
+				const fallback = managers.map.findNearestWalkablePosition(settler.mapName, targetPosition, 2)
+				if (fallback && canReach(source.position, fallback)) {
+					targetPosition = fallback
+				} else {
+					releaseFns.forEach(fn => fn())
+					return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+				}
 			}
 
 			return {
@@ -76,6 +102,21 @@ export const TransportHandler: StepHandler = {
 				targetReservationId = targetReservation.reservationId
 				targetPosition = targetReservation.position
 				releaseFns.push(() => reservationSystem.releaseStorageReservation(targetReservation.reservationId))
+			}
+
+			if (!canReach(settler.position, reservation.position)) {
+				releaseFns.forEach(fn => fn())
+				return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+			}
+
+			if (!canReach(reservation.position, targetPosition)) {
+				const fallback = managers.map.findNearestWalkablePosition(settler.mapName, targetPosition, 2)
+				if (fallback && canReach(reservation.position, fallback)) {
+					targetPosition = fallback
+				} else {
+					releaseFns.forEach(fn => fn())
+					return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+				}
 			}
 
 			return {

@@ -1,5 +1,6 @@
 import { EventManager, Event, EventClient } from '../events'
 import { MapData, MapLayer, MapObjectLayer, MapLoadData, MapTransitionData, CollisionData, NPCSpots, NPCSpot, PathData, MapTrigger, TiledMap, MapUrlService } from './types'
+import type { RoadData } from '../Roads/types'
 import { MapEvents } from './events'
 import { Receiver } from '../Receiver'
 import { PlayerJoinData, PlayerTransitionData } from '../Players/types'
@@ -239,6 +240,10 @@ export class MapManager {
 		return this.maps.get(mapId)
 	}
 
+	public getMapIds(): string[] {
+		return Array.from(this.maps.keys())
+	}
+
 	public getRandomSpawnPoint(mapId: string): Position | undefined {
 		const map = this.maps.get(mapId)
 		if (!map || map.spawnPoints.length === 0) return undefined
@@ -255,7 +260,7 @@ export class MapManager {
 		return index >= 0 && index < map.collision.data.length && map.collision.data[index] !== 0
 	}
 
-	public findPath(mapId: string, start: Position, end: Position): Position[] {
+	public findPath(mapId: string, start: Position, end: Position, options?: { roadData?: RoadData, allowDiagonal?: boolean }): Position[] {
 		const map = this.maps.get(mapId)
 		if (!map) return []
 
@@ -270,7 +275,10 @@ export class MapManager {
 		}
 
 		// Find path in tile coordinates
-		const path = Pathfinder.findPath(map.collision, map.paths, startTile, endTile)
+		const path = Pathfinder.findPath(map.collision, map.paths, startTile, endTile, {
+			roads: options?.roadData,
+			allowDiagonal: options?.allowDiagonal
+		})
 
 		this.logger.debug('findPath', startTile, path)
 		// Convert path back to world coordinates
@@ -278,6 +286,52 @@ export class MapManager {
 			x: tile.x * map.tiledMap.tilewidth + map.tiledMap.tilewidth / 2,
 			y: tile.y * map.tiledMap.tileheight + map.tiledMap.tileheight / 2
 		}))
+	}
+
+	public findNearestWalkablePosition(mapId: string, position: Position, maxRadiusTiles: number = 2): Position | null {
+		const map = this.maps.get(mapId)
+		if (!map) return null
+
+		const tileWidth = map.tiledMap.tilewidth
+		const tileHeight = map.tiledMap.tileheight
+		const startX = Math.floor(position.x / tileWidth)
+		const startY = Math.floor(position.y / tileHeight)
+
+		const isWalkable = (x: number, y: number) => {
+			if (x < 0 || y < 0 || x >= map.collision.width || y >= map.collision.height) {
+				return false
+			}
+			const index = y * map.collision.width + x
+			return map.collision.data[index] === 0
+		}
+
+		if (isWalkable(startX, startY)) {
+			return {
+				x: startX * tileWidth + tileWidth / 2,
+				y: startY * tileHeight + tileHeight / 2
+			}
+		}
+
+		for (let radius = 1; radius <= maxRadiusTiles; radius++) {
+			for (let dx = -radius; dx <= radius; dx++) {
+				for (let dy = -radius; dy <= radius; dy++) {
+					if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) {
+						continue
+					}
+					const x = startX + dx
+					const y = startY + dy
+					if (!isWalkable(x, y)) {
+						continue
+					}
+					return {
+						x: x * tileWidth + tileWidth / 2,
+						y: y * tileHeight + tileHeight / 2
+					}
+				}
+			}
+		}
+
+		return null
 	}
 
 	public getNPCSpot(mapId: string, npcId: string, spotName: string): NPCSpot | undefined {

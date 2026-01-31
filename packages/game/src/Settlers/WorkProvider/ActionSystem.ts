@@ -5,6 +5,8 @@ import type { StorageManager } from '../../Storage'
 import type { ResourceNodesManager } from '../../ResourceNodes'
 import type { BuildingManager } from '../../Buildings'
 import type { PopulationManager } from '../../Population'
+import type { RoadManager } from '../../Roads'
+import type { ReservationSystem } from '../../Reservation'
 import type { WorkAction } from './types'
 import { WorkActionType } from './types'
 import type { Logger } from '../../Logs'
@@ -16,9 +18,10 @@ interface ActiveQueue {
 	actions: WorkAction[]
 	index: number
 	inProgress?: {
-		type: WorkActionType.Wait | WorkActionType.Construct | WorkActionType.Consume | WorkActionType.Sleep
+		type: WorkActionType.Wait | WorkActionType.Construct | WorkActionType.BuildRoad | WorkActionType.Consume | WorkActionType.Sleep
 		endAtMs: number
 		buildingInstanceId?: string
+		jobId?: string
 	}
 	carriedItem?: { itemType: string, quantity: number }
 	onComplete?: () => void
@@ -32,6 +35,8 @@ export interface ActionSystemDeps {
 	resourceNodes: ResourceNodesManager
 	buildings: BuildingManager
 	population: PopulationManager
+	reservations: ReservationSystem
+	roads: RoadManager
 }
 
 export class ActionSystem {

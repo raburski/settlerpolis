@@ -1,12 +1,12 @@
 import type { WorkProvider, WorkStep, LogisticsRequest, TransportSource, TransportTarget } from '../types'
-import { TransportSourceType, TransportTargetType, WorkStepType, WorkWaitReason } from '../types'
+import { TransportSourceType, TransportTargetType, WorkProviderType, WorkStepType, WorkWaitReason } from '../types'
 import type { WorkProviderDeps } from '..'
 import type { Logger } from '../../../Logs'
 import { calculateDistance } from '../../../utils'
 
 export class LogisticsProvider implements WorkProvider {
 	public readonly id = 'logistics'
-	public readonly type = 'logistics' as const
+	public readonly type = WorkProviderType.Logistics
 	private assigned = new Set<string>()
 	private requests: LogisticsRequest[] = []
 	private inFlightConstruction = new Map<string, Map<string, number>>() // buildingInstanceId -> itemType -> quantity

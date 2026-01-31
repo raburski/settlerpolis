@@ -4,12 +4,12 @@ import type { LogisticsProvider } from './LogisticsProvider'
 import type { Logger } from '../../../Logs'
 import { ConstructionStage } from '../../../Buildings/types'
 import { ProfessionType } from '../../../Population/types'
-import { WorkStepType, WorkWaitReason } from '../types'
+import { WorkProviderType, WorkStepType, WorkWaitReason } from '../types'
 import { BuildingWorkHandlers } from '../buildingWork'
 
 export class BuildingProvider implements WorkProvider {
 	public readonly id: string
-	public readonly type = 'building' as const
+	public readonly type = WorkProviderType.Building
 	private assigned = new Set<string>()
 
 	constructor(

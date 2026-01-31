@@ -24,6 +24,7 @@ import { MovementEvents } from './Movement/events'
 import { StorageEvents } from './Storage/events'
 import { WorkProviderEvents } from './Settlers/WorkProvider/events'
 import { NeedsEvents } from './Needs/events'
+import { RoadEvents } from './Roads/events'
 import type { PlayerJoinData, PlayerTransitionData, PlayerMoveData, EquipItemData, UnequipItemData, PlayerPlaceData } from './Players/types'
 import type { ChatMessageData, ChatSystemMessageData } from './Chat/types'
 import type { InventoryData, DropItemData, PickUpItemData, ConsumeItemData, MoveItemData, AddItemData, RemoveByTypePayload } from './Inventory/types'
@@ -40,7 +41,7 @@ import type { CutsceneTriggerEventData } from './Cutscene/types'
 import type { MapLoadData, MapLoadResponseData, MapTransitionData, MapTransitionResponseData } from './Map/types'
 import type { TimeUpdateEventData, TimeSpeedUpdateEventData, TimePauseEventData, TimeSyncEventData } from './Time/types'
 import type { PlaceBuildingData, CancelBuildingData, SetProductionPausedData, SetWorkAreaData, BuildingPlacedData, BuildingProgressData, BuildingCompletedData, BuildingCancelledData, BuildingCatalogData, BuildingWorkAreaUpdatedData } from './Buildings/types'
-import type { RequestWorkerData, UnassignWorkerData, RequestListData, PopulationListData, PopulationStatsData, Settler, ProfessionType } from './Population/types'
+import type { RequestWorkerData, UnassignWorkerData, RequestListData, PopulationListData, PopulationStatsData, Settler, ProfessionType, WorkerRequestFailureReason } from './Population/types'
 import type { WorkAssignment, WorkStep, WorkAction, LogisticsRequest } from './Settlers/WorkProvider/types'
 import type { ProductionRecipe, ProductionStatus } from './Buildings/types'
 import type { ScheduleOptions } from './Scheduler/types'
@@ -48,6 +49,7 @@ import type { SimulationTickData } from './Simulation/types'
 import type { Position } from './types'
 import type { ContextPauseRequestedEventData, ContextPausedEventData, ContextResumeRequestedEventData, ContextResumedEventData, NeedInterruptEventData, NeedPlanCreatedEventData, NeedPlanFailedEventData, NeedSatisfiedEventData, NeedThresholdEventData } from './Needs/types'
 import type { NeedType } from './Needs/NeedTypes'
+import type { RoadBuildRequestData, RoadTilesSyncData, RoadTilesUpdatedData, RoadPendingSyncData, RoadPendingUpdatedData } from './Roads/types'
 
 // Interface for client operations
 export interface EventClient {
@@ -186,7 +188,7 @@ export type EventPayloads = Record<string, unknown> & {
 	[PopulationEvents.SC.SettlerUpdated]: { settler: Settler }
 	[PopulationEvents.SC.WorkerAssigned]: { assignment: WorkAssignment, settlerId: string, buildingInstanceId: string }
 	[PopulationEvents.SC.WorkerUnassigned]: { settlerId: string, buildingInstanceId: string, assignmentId: string }
-	[PopulationEvents.SC.WorkerRequestFailed]: { reason: string, buildingInstanceId: string }
+	[PopulationEvents.SC.WorkerRequestFailed]: { reason: WorkerRequestFailureReason, buildingInstanceId: string }
 	[PopulationEvents.SC.List]: PopulationListData
 	[PopulationEvents.SC.StatsUpdated]: PopulationStatsData
 	[PopulationEvents.SC.ProfessionChanged]: { settlerId: string, oldProfession: ProfessionType, newProfession: ProfessionType }
@@ -197,7 +199,7 @@ export type EventPayloads = Record<string, unknown> & {
 	[MovementEvents.SS.StepComplete]: { entityId: string, position: Position }
 	[MovementEvents.SS.SegmentComplete]: { entityId: string, position: Position, segmentDistance: number, totalDistance: number }
 	[MovementEvents.SS.PathComplete]: { entityId: string, targetType?: string, targetId?: string }
-	[MovementEvents.SC.MoveToPosition]: { entityId: string, targetPosition: Position, mapName: string }
+	[MovementEvents.SC.MoveToPosition]: { entityId: string, targetPosition: Position, mapName: string, speed?: number }
 	[MovementEvents.SC.PositionUpdated]: { entityId: string, position: Position, mapName: string }
 
 	[StorageEvents.SC.StorageUpdated]: { buildingInstanceId: string, itemType: string, quantity: number, capacity: number }
@@ -207,6 +209,12 @@ export type EventPayloads = Record<string, unknown> & {
 	[StorageEvents.SC.ReservationCancelled]: { reservationId: string, buildingInstanceId: string, itemType: string, quantity: number }
 	[StorageEvents.SS.StorageTick]: {}
 	[StorageEvents.SS.InputRequested]: { buildingInstanceId: string, itemType: string, quantity: number }
+
+	[RoadEvents.CS.Place]: RoadBuildRequestData
+	[RoadEvents.SC.Sync]: RoadTilesSyncData
+	[RoadEvents.SC.Updated]: RoadTilesUpdatedData
+	[RoadEvents.SC.PendingSync]: RoadPendingSyncData
+	[RoadEvents.SC.PendingUpdated]: RoadPendingUpdatedData
 
 	[WorkProviderEvents.SC.LogisticsUpdated]: { requests: LogisticsRequest[] }
 
@@ -284,6 +292,7 @@ export const Event = {
 	Population: PopulationEvents,
 	Movement: MovementEvents,
 	Storage: StorageEvents,
+	Roads: RoadEvents,
 	Work: WorkProviderEvents,
 	Needs: NeedsEvents
 } as const
