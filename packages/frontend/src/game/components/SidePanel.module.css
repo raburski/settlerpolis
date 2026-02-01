@@ -2,12 +2,12 @@
 
 .panel {
 	position: fixed;
-	top: var(--spacing-lg);
+	top: calc(var(--spacing-lg) + var(--top-bar-height, 64px));
 	right: var(--spacing-lg);
 	display: flex;
 	flex-direction: column;
 	justify-content: space-between;
-	height: calc(100vh - 2 * var(--spacing-lg));
+	height: calc(100vh - 2 * var(--spacing-lg) - var(--top-bar-height, 64px));
 	z-index: var(--z-index-modal);
 }
 

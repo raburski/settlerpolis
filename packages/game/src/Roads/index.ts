@@ -8,6 +8,9 @@ import type { StorageManager } from '../Storage'
 import { RoadEvents } from './events'
 import { ROAD_SPEED_MULTIPLIERS, RoadType, type RoadBuildRequestData, type RoadData, type RoadTile, type RoadTilesSyncData, type RoadTilesUpdatedData, type RoadPendingSyncData, type RoadPendingUpdatedData, type RoadJobData } from './types'
 import { v4 as uuidv4 } from 'uuid'
+import { SimulationEvents } from '../Simulation/events'
+import type { SimulationTickData } from '../Simulation/types'
+import type { RoadsSnapshot, RoadJobSnapshot } from '../state/types'
 
 export interface RoadManagerDeps {
 	map: MapManager
@@ -32,6 +35,7 @@ const ROAD_UPGRADE_STONE_COST = 1
 export class RoadManager extends BaseManager<RoadManagerDeps> {
 	private roadsByMap = new Map<string, RoadData>()
 	private jobsByMap = new Map<string, RoadJob[]>()
+	private simulationTimeMs = 0
 
 	constructor(
 		managers: RoadManagerDeps,
@@ -43,20 +47,24 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 	}
 
 	private setupEventHandlers(): void {
+		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+			this.simulationTimeMs = data.nowMs
+		})
+
 		this.event.on<RoadBuildRequestData>(RoadEvents.CS.Place, (data, client) => {
 			this.handleRoadRequest(data, client)
 		})
 
 	this.event.on(Event.Players.CS.Join, (data: { mapId?: string }, client: EventClient) => {
 		const mapId = data.mapId || client.currentGroup
-		this.sendRoadSync(mapId)
-		this.sendPendingRoadSync(mapId)
+		this.sendRoadSync(mapId, client)
+		this.sendPendingRoadSync(mapId, client)
 	})
 
 	this.event.on(Event.Players.CS.TransitionTo, (data: { mapId?: string }, client: EventClient) => {
 		const mapId = data.mapId || client.currentGroup
-		this.sendRoadSync(mapId)
-		this.sendPendingRoadSync(mapId)
+		this.sendRoadSync(mapId, client)
+		this.sendPendingRoadSync(mapId, client)
 	})
 }
 
@@ -257,7 +265,7 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 			tileX: tile.x,
 			tileY: tile.y,
 			roadType: data.roadType,
-			createdAt: Date.now()
+			createdAt: this.simulationTimeMs
 		})
 
 		addedTiles.push({ x: tile.x, y: tile.y, roadType: data.roadType })
@@ -310,7 +318,7 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 		} as RoadTilesUpdatedData, mapName)
 	}
 
-	private sendRoadSync(mapName: string): void {
+	private sendRoadSync(mapName: string, client?: EventClient): void {
 		const roadData = this.ensureRoadData(mapName)
 		if (!roadData) {
 			return
@@ -327,19 +335,30 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 			}
 		}
 
-	this.event.emit(Receiver.Group, RoadEvents.SC.Sync, {
-		mapName,
-		tiles
-	} as RoadTilesSyncData, mapName)
+		const payload = {
+			mapName,
+			tiles
+		} as RoadTilesSyncData
+
+		if (client) {
+			client.emit(Receiver.Sender, RoadEvents.SC.Sync, payload)
+		} else {
+			this.event.emit(Receiver.Group, RoadEvents.SC.Sync, payload, mapName)
+		}
 }
 
-private sendPendingRoadSync(mapName: string): void {
+private sendPendingRoadSync(mapName: string, client?: EventClient): void {
 	const jobs = this.jobsByMap.get(mapName)
 	if (!jobs || jobs.length === 0) {
-		this.event.emit(Receiver.Group, RoadEvents.SC.PendingSync, {
+		const payload = {
 			mapName,
 			tiles: []
-		} as RoadPendingSyncData, mapName)
+		} as RoadPendingSyncData
+		if (client) {
+			client.emit(Receiver.Sender, RoadEvents.SC.PendingSync, payload)
+		} else {
+			this.event.emit(Receiver.Group, RoadEvents.SC.PendingSync, payload, mapName)
+		}
 		return
 	}
 
@@ -349,10 +368,15 @@ private sendPendingRoadSync(mapName: string): void {
 		roadType: job.roadType
 	}))
 
-	this.event.emit(Receiver.Group, RoadEvents.SC.PendingSync, {
+	const payload = {
 		mapName,
 		tiles
-	} as RoadPendingSyncData, mapName)
+	} as RoadPendingSyncData
+	if (client) {
+		client.emit(Receiver.Sender, RoadEvents.SC.PendingSync, payload)
+	} else {
+		this.event.emit(Receiver.Group, RoadEvents.SC.PendingSync, payload, mapName)
+	}
 }
 
 private emitPendingRemoval(mapName: string, tileX: number, tileY: number): void {
@@ -407,6 +431,50 @@ private ensureRoadData(mapName: string): RoadData | null {
 
 	private isTileWithinBounds(roadData: RoadData, tileX: number, tileY: number): boolean {
 		return tileX >= 0 && tileX < roadData.width && tileY >= 0 && tileY < roadData.height
+	}
+
+	serialize(): RoadsSnapshot {
+		return {
+			roadsByMap: Array.from(this.roadsByMap.entries()),
+			jobsByMap: Array.from(this.jobsByMap.entries()).map(([mapName, jobs]) => ([
+				mapName,
+				jobs.map(job => ({
+					jobId: job.jobId,
+					mapName: job.mapName,
+					playerId: job.playerId,
+					tileX: job.tileX,
+					tileY: job.tileY,
+					roadType: job.roadType,
+					createdAt: job.createdAt,
+					assignedSettlerId: job.assignedSettlerId
+				} as RoadJobSnapshot))
+			])),
+			simulationTimeMs: this.simulationTimeMs
+		}
+	}
+
+	deserialize(state: RoadsSnapshot): void {
+		this.roadsByMap = new Map(state.roadsByMap)
+		this.jobsByMap.clear()
+		for (const [mapName, jobs] of state.jobsByMap) {
+			this.jobsByMap.set(mapName, jobs.map(job => ({
+				jobId: job.jobId,
+				mapName: job.mapName,
+				playerId: job.playerId,
+				tileX: job.tileX,
+				tileY: job.tileY,
+				roadType: job.roadType,
+				createdAt: job.createdAt,
+				assignedSettlerId: job.assignedSettlerId
+			})))
+		}
+		this.simulationTimeMs = state.simulationTimeMs
+	}
+
+	reset(): void {
+		this.roadsByMap.clear()
+		this.jobsByMap.clear()
+		this.simulationTimeMs = 0
 	}
 }
 

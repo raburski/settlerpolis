@@ -1,4 +1,4 @@
-import { BuildingDefinition } from '../../src/Buildings/types'
+import { BuildingCategory, BuildingDefinition } from '../../src/Buildings/types'
 
 /**
  * Common building definitions for testing
@@ -7,7 +7,7 @@ export const house: BuildingDefinition = {
 	id: 'house',
 	name: 'House',
 	description: 'A simple house that spawns settlers',
-	category: 'residential',
+	category: BuildingCategory.Civil,
 	footprint: {
 		width: 2,
 		height: 2
@@ -23,7 +23,7 @@ export const storehouse: BuildingDefinition = {
 	id: 'storehouse',
 	name: 'Storehouse',
 	description: 'A storage building for resources',
-	category: 'storage',
+	category: BuildingCategory.Storage,
 	footprint: {
 		width: 3,
 		height: 3
@@ -47,7 +47,7 @@ export const woodcutterHut: BuildingDefinition = {
 	id: 'woodcutter_hut',
 	name: 'Woodcutter Hut',
 	description: 'A simple hut where woodcutters can process logs into planks',
-	category: 'production',
+	category: BuildingCategory.Industry,
 	footprint: {
 		width: 2,
 		height: 2
@@ -67,4 +67,3 @@ export const woodcutterHut: BuildingDefinition = {
 		productionTime: 5
 	}
 }
-

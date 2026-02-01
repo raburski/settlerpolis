@@ -1,6 +1,6 @@
 import { Scene } from 'phaser'
 import { SettlerView } from './View'
-import { Event, Settler, ProfessionType, SettlerState } from '@rugged/game'
+import { Event, Settler, ProfessionType, SettlerState, NeedType } from '@rugged/game'
 import { EventBus } from '../../EventBus'
 import { GameScene } from '../../scenes/base/GameScene'
 
@@ -20,6 +20,8 @@ export class SettlerController {
 		EventBus.on(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
 		EventBus.on(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
 		EventBus.on('ui:settler:highlight', this.handleHighlight, this)
+		EventBus.on(Event.Needs.SS.NeedInterruptStarted, this.handleNeedInterruptStarted, this)
+		EventBus.on(Event.Needs.SS.NeedInterruptEnded, this.handleNeedInterruptEnded, this)
 
 		this.view.updateState(this.settler.state)
 		this.view.updateCarriedItem(this.settler.state === SettlerState.CarryingItem ? this.settler.stateContext.carryingItemType : undefined)
@@ -95,6 +97,20 @@ private handleWorkerUnassigned = (data: { settlerId: string, assignmentId: strin
 		}
 	}
 
+	private handleNeedInterruptStarted = (data: { settlerId: string, needType: NeedType }) => {
+		if (data.settlerId !== this.settler.id) {
+			return
+		}
+		const kind = data.needType === NeedType.Hunger ? 'hunger' : data.needType === NeedType.Fatigue ? 'fatigue' : null
+		this.view.updateNeedActivity(kind)
+	}
+
+	private handleNeedInterruptEnded = (data: { settlerId: string }) => {
+		if (data.settlerId === this.settler.id) {
+			this.view.updateNeedActivity(null)
+		}
+	}
+
 	public update(): void {
 		this.view.preUpdate()
 	}
@@ -148,6 +164,8 @@ private handleWorkerUnassigned = (data: { settlerId: string, assignmentId: strin
 		EventBus.off(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
 		EventBus.off(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
 		EventBus.off('ui:settler:highlight', this.handleHighlight, this)
+		EventBus.off(Event.Needs.SS.NeedInterruptStarted, this.handleNeedInterruptStarted, this)
+		EventBus.off(Event.Needs.SS.NeedInterruptEnded, this.handleNeedInterruptEnded, this)
 		// Destroy the view
 		this.view.destroy()
 	}

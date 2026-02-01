@@ -9,6 +9,7 @@ import { NeedType, type NeedPriority } from './NeedTypes'
 import type { NeedsSystem } from './NeedsSystem'
 import type { NeedPlanner } from './NeedPlanner'
 import type { ContextPausedEventData, NeedPlanFailedEventData, NeedPlanCreatedEventData, NeedInterruptEventData, NeedSatisfiedEventData } from './types'
+import type { NeedInterruptSnapshot } from '../state/types'
 
 interface PendingNeed {
 	needType: NeedType
@@ -42,6 +43,24 @@ export class NeedInterruptController {
 		private logger: Logger
 	) {
 		this.setupEventHandlers()
+		this.work.registerActionContextResolver('need', (settlerId, context) => {
+			if (context.kind !== 'need') {
+				return {}
+			}
+			return {
+				onComplete: () => {
+					if (typeof context.satisfyValue === 'number') {
+						this.needs.resolveNeed(settlerId, context.needType, context.satisfyValue)
+					} else {
+						this.needs.satisfyNeed(settlerId, context.needType)
+					}
+				},
+				onFail: (reason: string) => {
+					this.emitPlanFailed(settlerId, context.needType, reason)
+					this.finishInterrupt(settlerId, context.needType, false)
+				}
+			}
+		})
 	}
 
 	private setupEventHandlers(): void {
@@ -152,6 +171,13 @@ export class NeedInterruptController {
 			level: priority
 		} as NeedInterruptEventData)
 
+		const context = {
+			kind: 'need' as const,
+			needType,
+			satisfyValue: plan.satisfyValue,
+			reservationOwnerId: data.settlerId
+		}
+
 		this.work.enqueueActions(data.settlerId, plan.actions, () => {
 			plan.releaseReservations?.()
 			if (typeof plan.satisfyValue === 'number') {
@@ -163,7 +189,7 @@ export class NeedInterruptController {
 			plan.releaseReservations?.()
 			this.emitPlanFailed(data.settlerId, needType, reason)
 			this.finishInterrupt(data.settlerId, needType, false)
-		})
+		}, context)
 	}
 
 	private handleNeedSatisfied(data: NeedSatisfiedEventData): void {
@@ -204,5 +230,33 @@ export class NeedInterruptController {
 			needType,
 			level: priority
 		} as NeedInterruptEventData)
+	}
+
+	serialize(): NeedInterruptSnapshot[] {
+		return Array.from(this.stateBySettler.entries()).map(([settlerId, state]) => ({
+			settlerId,
+			activeNeed: state.activeNeed,
+			priority: state.priority,
+			pendingNeed: state.pendingNeed ? { ...state.pendingNeed } : null,
+			pausedContext: state.pausedContext ?? null,
+			cooldowns: { ...state.cooldowns }
+		}))
+	}
+
+	deserialize(state: NeedInterruptSnapshot[]): void {
+		this.stateBySettler.clear()
+		for (const entry of state) {
+			this.stateBySettler.set(entry.settlerId, {
+				activeNeed: entry.activeNeed,
+				priority: entry.priority,
+				pendingNeed: entry.pendingNeed ? { ...entry.pendingNeed } : undefined,
+				pausedContext: entry.pausedContext ?? null,
+				cooldowns: { ...entry.cooldowns }
+			})
+		}
+	}
+
+	reset(): void {
+		this.stateBySettler.clear()
 	}
 }

@@ -1,0 +1,285 @@
+import type { TimeData, Time } from '../Time/types'
+import type { Player } from '../Players/types'
+import type { Inventory } from '../Inventory/types'
+import type { MapObject } from '../MapObjects/types'
+import type { DroppedItem } from '../Loot/types'
+import type { BuildingInstance } from '../Buildings/types'
+import type { StorageReservation, StorageSlot } from '../Storage/types'
+import type { Settler } from '../Population/types'
+import type { MovementEntity } from '../Movement/types'
+import type { NeedsState } from '../Needs/NeedsState'
+import type { NeedType, NeedPriority } from '../Needs/NeedTypes'
+import type { NeedLevel } from '../Needs/NeedTypes'
+import type { WorkAssignment, LogisticsRequest, WorkWaitReason, WorkAction, WorkStep } from '../Settlers/WorkProvider/types'
+import type { ProductionStatus } from '../Buildings/types'
+import type { NPC, NPCRoutineStep } from '../NPC/types'
+import type { PlayerQuestState, QuestProgress } from '../Quest/types'
+import type { Flag } from '../Flags/types'
+import type { AffinityData } from '../Affinity/types'
+import type { ResourceNodeInstance } from '../ResourceNodes/types'
+import type { RoadData, RoadType } from '../Roads/types'
+import type { PausedContext } from '../Needs/types'
+import type { Trigger } from '../Triggers/types'
+import type { ScheduledEvent } from '../Scheduler/types'
+import type { Position } from '../types'
+
+export type MapEntries<V> = Array<[string, V]>
+
+export interface GameSnapshotV1 {
+	version: 1
+	contentId?: string
+	savedAtSimMs: number
+	state: {
+		simulation: SimulationSnapshot
+		time: TimeSnapshot
+		players: PlayersSnapshot
+		inventory: InventorySnapshot
+		mapObjects: MapObjectsSnapshot
+		loot: LootSnapshot
+		buildings: BuildingsSnapshot
+		storage: StorageSnapshot
+		population: PopulationSnapshot
+		movement: MovementSnapshot
+		needs: NeedsSnapshot
+		work: WorkProviderSnapshot
+		npc: NPCSnapshot
+		quests: QuestSnapshot
+		dialogue: DialogueSnapshot
+		flags: FlagsSnapshot
+		affinity: AffinitySnapshot
+		resourceNodes: ResourceNodesSnapshot
+		roads: RoadsSnapshot
+		triggers: TriggersSnapshot
+		scheduler: SchedulerSnapshot
+		reservations: ReservationSnapshot
+	}
+}
+
+export interface SimulationSnapshot {
+	simulationTimeMs: number
+	tickIntervalMs: number
+}
+
+export interface TimeSnapshot {
+	timeData: TimeData
+	lastBroadcastHour: number
+	tickAccumulatorMs: number
+}
+
+export interface PlayersSnapshot {
+	players: Player[]
+}
+
+export interface InventorySnapshot {
+	inventories: MapEntries<Inventory>
+}
+
+export interface MapObjectsSnapshot {
+	objectsByMap: MapEntries<MapObject[]>
+}
+
+export interface LootSnapshot {
+	droppedItems: MapEntries<DroppedItem[]>
+	itemReservations: MapEntries<string>
+	cleanupAccumulatorMs: number
+}
+
+export type CollectedResourcesSnapshot = Array<[string, number]>
+
+export type BuildingInstanceSnapshot = Omit<BuildingInstance, 'collectedResources'> & {
+	collectedResources: CollectedResourcesSnapshot
+}
+
+export interface BuildingsSnapshot {
+	buildings: BuildingInstanceSnapshot[]
+	resourceRequests: MapEntries<string[]>
+	assignedWorkers: MapEntries<string[]>
+	activeConstructionWorkers: MapEntries<string[]>
+	autoProductionState: MapEntries<{ status: ProductionStatus, progressMs: number, progress: number }>
+	buildingToMapObject: MapEntries<string>
+	simulationTimeMs: number
+	tickAccumulatorMs: number
+}
+
+export interface BuildingStorageSnapshot {
+	buildingInstanceId: string
+	slots: StorageSlot[]
+	slotsByItem: MapEntries<string[]>
+}
+
+export interface StorageSnapshot {
+	storages: BuildingStorageSnapshot[]
+	reservations: StorageReservation[]
+	simulationTimeMs: number
+	tickAccumulatorMs: number
+}
+
+export interface PopulationSnapshot {
+	settlers: Settler[]
+	houseOccupants: MapEntries<string[]>
+	houseSpawnSchedule: MapEntries<{ nextSpawnAtMs: number, rateMs: number }>
+	simulationTimeMs: number
+}
+
+export interface MovementSnapshot {
+	entities: MovementEntity[]
+	activeMoves: MovementTaskSnapshot[]
+	simulationTimeMs: number
+}
+
+export interface MovementTaskSnapshot {
+	entityId: string
+	targetPosition: Position
+	targetType?: string
+	targetId?: string
+}
+
+export interface NeedsSnapshot {
+	needsBySettler: MapEntries<NeedsState>
+	lastLevels: MapEntries<Record<NeedType, NeedLevel>>
+	interrupts: NeedInterruptSnapshot[]
+}
+
+export interface NeedsSystemSnapshot {
+	needsBySettler: MapEntries<NeedsState>
+	lastLevels: MapEntries<Record<NeedType, NeedLevel>>
+}
+
+export interface NeedInterruptSnapshot {
+	settlerId: string
+	activeNeed: NeedType | null
+	priority: NeedPriority | null
+	pendingNeed?: { needType: NeedType, priority: NeedPriority } | null
+	pausedContext: PausedContext | null
+	cooldowns: Record<NeedType, number>
+}
+
+export interface WorkProviderSnapshot {
+	assignments: WorkAssignment[]
+	assignmentsByBuilding: MapEntries<string[]>
+	productionStateByBuilding: MapEntries<{ status: ProductionStatus, progress: number }>
+	lastConstructionAssignAt: MapEntries<number>
+	pauseRequests: MapEntries<{ reason: string }>
+	pausedContexts: MapEntries<PausedContext | null>
+	movementRecoveryUntil: MapEntries<number>
+	movementRecoveryReason: MapEntries<WorkWaitReason>
+	movementFailureCounts: MapEntries<number>
+	pendingDispatchAtMs: MapEntries<number>
+	actionSystem: ActionSystemSnapshot
+	logistics: LogisticsSnapshot
+}
+
+export interface LogisticsSnapshot {
+	requests: LogisticsRequest[]
+	inFlightConstruction: MapEntries<MapEntries<number>>
+}
+
+export interface ActionSystemSnapshot {
+	queues: ActionSystemQueueSnapshot[]
+}
+
+export interface ActionSystemQueueSnapshot {
+	settlerId: string
+	actions: WorkAction[]
+	index: number
+	context?: ActionQueueContext
+}
+
+export type ActionQueueContext =
+	| { kind: 'work', step?: WorkStep, reservationOwnerId?: string }
+	| { kind: 'need', needType: NeedType, satisfyValue?: number, reservationOwnerId?: string }
+
+export interface NPCSnapshot {
+	npcs: NPC[]
+	pausedRoutines: MapEntries<NPCRoutineStep>
+	lastRoutineCheckKey: string | null
+}
+
+export interface QuestSnapshot {
+	playerQuestStates: MapEntries<PlayerQuestState>
+	globalQuestStates: MapEntries<QuestProgress>
+	sharedQuestStates: MapEntries<QuestProgress>
+}
+
+export interface DialogueSnapshot {
+	activeDialogues: MapEntries<string>
+	currentNodes: MapEntries<string>
+}
+
+export interface FlagsSnapshot {
+	flags: Flag[]
+}
+
+export interface AffinitySnapshot {
+	affinities: AffinityData[]
+	simulationTimeMs: number
+}
+
+export interface ResourceNodesSnapshot {
+	nodes: ResourceNodeInstance[]
+	simulationTimeMs: number
+}
+
+export interface RoadsSnapshot {
+	roadsByMap: MapEntries<RoadData>
+	jobsByMap: MapEntries<RoadJobSnapshot[]>
+	simulationTimeMs: number
+}
+
+export interface RoadJobSnapshot {
+	jobId: string
+	mapName: string
+	playerId: string
+	tileX: number
+	tileY: number
+	roadType: RoadType
+	createdAt: number
+	assignedSettlerId?: string
+}
+
+export interface TriggersSnapshot {
+	triggers: Trigger[]
+	activeTriggers: string[]
+	activeProximityTriggers: string[]
+	usedTriggers: string[]
+	playerActiveTriggers: MapEntries<string[]>
+	playerConditionTriggers: MapEntries<MapEntries<boolean>>
+}
+
+export interface SchedulerSnapshot {
+	events: ScheduledEvent[]
+	simulationTimeMs: number
+}
+
+export interface ReservationSnapshot {
+	amenityReservations: MapEntries<AmenityReservationSnapshot>
+	amenitySlotsByBuilding: MapEntries<Array<[number, string]>>
+	houseReservations: MapEntries<HouseReservationSnapshot>
+	houseReservationsByHouse: MapEntries<MapEntries<string>>
+}
+
+export interface AmenityReservationSnapshot {
+	reservationId: string
+	buildingInstanceId: string
+	settlerId: string
+	slotIndex: number
+	position: Position
+	createdAt: number
+}
+
+export interface HouseReservationSnapshot {
+	reservationId: string
+	houseId: string
+	settlerId: string
+	createdAt: number
+}
+
+export interface DialogueSnapshotContext {
+	currentNodes: MapEntries<string>
+	activeDialogues: MapEntries<string>
+}
+
+export interface GameTimeKeySnapshot {
+	key: string
+	time: Time
+}

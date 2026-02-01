@@ -5,7 +5,7 @@ export const resourceNodeDefinitions: ResourceNodeDefinition[] = [
 	{
 		id: 'tree',
 		name: 'Tree',
-		nodeItemType: ItemType.Logs,
+		nodeItemType: ItemType.Tree,
 		outputItemType: ItemType.Logs,
 		harvestQuantity: 1,
 		harvestTimeMs: 2500,

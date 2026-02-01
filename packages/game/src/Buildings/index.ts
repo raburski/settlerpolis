@@ -33,6 +33,7 @@ import { SimulationEvents } from '../Simulation/events'
 import { SimulationTickData } from '../Simulation/types'
 import type { StorageManager } from '../Storage'
 import { BaseManager } from '../Managers'
+import type { BuildingsSnapshot, BuildingInstanceSnapshot } from '../state/types'
 
 export interface BuildingDeps {
 	inventory: InventoryManager
@@ -46,7 +47,6 @@ export interface BuildingDeps {
 export class BuildingManager extends BaseManager<BuildingDeps> {
 	private buildings = new Map<string, BuildingInstance>() // buildingInstanceId -> BuildingInstance
 	private definitions = new Map<BuildingId, BuildingDefinition>() // buildingId -> BuildingDefinition
-	private constructionTimers = new Map<string, NodeJS.Timeout>() // buildingInstanceId -> timer
 	private buildingToMapObject = new Map<string, string>() // buildingInstanceId -> mapObjectId
 	private readonly TICK_INTERVAL_MS = 1000 // Update construction progress every second
 	private resourceRequests: Map<string, Set<string>> = new Map() // buildingInstanceId -> Set<itemType> (resources still needed)
@@ -283,13 +283,6 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		if (building.playerId !== client.id) {
 			this.logger.error(`Player ${client.id} does not own building ${buildingInstanceId}`)
 			return
-		}
-
-		// Stop construction timer if exists
-		const timer = this.constructionTimers.get(buildingInstanceId)
-		if (timer) {
-			clearTimeout(timer)
-			this.constructionTimers.delete(buildingInstanceId)
 		}
 
 		// Refund collected resources (drop them on the ground)
@@ -1131,10 +1124,80 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	public destroy() {
-		// Clear all timers
-		for (const timer of this.constructionTimers.values()) {
-			clearTimeout(timer)
+		// no-op for now (tick-driven construction)
+	}
+
+	serialize(): BuildingsSnapshot {
+		const buildings: BuildingInstanceSnapshot[] = Array.from(this.buildings.values()).map(building => ({
+			...building,
+			position: { ...building.position },
+			workAreaCenter: building.workAreaCenter ? { ...building.workAreaCenter } : undefined,
+			collectedResources: Array.from(building.collectedResources.entries())
+		}))
+
+		return {
+			buildings,
+			resourceRequests: Array.from(this.resourceRequests.entries()).map(([buildingId, needed]) => ([
+				buildingId,
+				Array.from(needed.values())
+			])),
+			assignedWorkers: Array.from(this.assignedWorkers.entries()).map(([buildingId, workers]) => ([
+				buildingId,
+				Array.from(workers.values())
+			])),
+			activeConstructionWorkers: Array.from(this.activeConstructionWorkers.entries()).map(([buildingId, workers]) => ([
+				buildingId,
+				Array.from(workers.values())
+			])),
+			autoProductionState: Array.from(this.autoProductionState.entries()),
+			buildingToMapObject: Array.from(this.buildingToMapObject.entries()),
+			simulationTimeMs: this.simulationTimeMs,
+			tickAccumulatorMs: this.tickAccumulatorMs
 		}
-		this.constructionTimers.clear()
+	}
+
+	deserialize(state: BuildingsSnapshot): void {
+		this.buildings.clear()
+		for (const building of state.buildings) {
+			const collectedResources = new Map(building.collectedResources)
+			const restored: BuildingInstance = {
+				...building,
+				position: { ...building.position },
+				workAreaCenter: building.workAreaCenter ? { ...building.workAreaCenter } : undefined,
+				collectedResources
+			}
+			this.buildings.set(restored.id, restored)
+		}
+
+		this.resourceRequests.clear()
+		for (const [buildingId, needed] of state.resourceRequests) {
+			this.resourceRequests.set(buildingId, new Set(needed))
+		}
+
+		this.assignedWorkers.clear()
+		for (const [buildingId, workers] of state.assignedWorkers) {
+			this.assignedWorkers.set(buildingId, new Set(workers))
+		}
+
+		this.activeConstructionWorkers.clear()
+		for (const [buildingId, workers] of state.activeConstructionWorkers) {
+			this.activeConstructionWorkers.set(buildingId, new Set(workers))
+		}
+
+		this.autoProductionState = new Map(state.autoProductionState)
+		this.buildingToMapObject = new Map(state.buildingToMapObject)
+		this.simulationTimeMs = state.simulationTimeMs
+		this.tickAccumulatorMs = state.tickAccumulatorMs
+	}
+
+	reset(): void {
+		this.buildings.clear()
+		this.resourceRequests.clear()
+		this.assignedWorkers.clear()
+		this.activeConstructionWorkers.clear()
+		this.autoProductionState.clear()
+		this.buildingToMapObject.clear()
+		this.simulationTimeMs = 0
+		this.tickAccumulatorMs = 0
 	}
 }

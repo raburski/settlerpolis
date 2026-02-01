@@ -1,6 +1,7 @@
 import rabbitItem from "./rabbit";
 import carrotItem from "./carrot";
 import logsItem from "./logs";
+import treeItem from "./tree";
 import stoneItem from "./stone";
 import planksItem from "./planks";
 import waterItem from "./water";
@@ -19,6 +20,7 @@ export const items = [
 	rabbitItem,
 	carrotItem,
 	logsItem,
+	treeItem,
 	stoneItem,
 	planksItem,
 	waterItem,

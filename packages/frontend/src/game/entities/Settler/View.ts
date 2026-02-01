@@ -11,6 +11,8 @@ export class SettlerView extends BaseMovementView {
 	protected carryText: GameObjects.Text | null = null
 	protected dangerCircle: GameObjects.Graphics | null = null
 	protected dangerText: GameObjects.Text | null = null
+	protected needActivityCircle: GameObjects.Graphics | null = null
+	protected needActivityText: GameObjects.Text | null = null
 	protected highlightCircle: GameObjects.Graphics | null = null
 	protected profession: ProfessionType
 	protected state: SettlerState
@@ -18,6 +20,7 @@ export class SettlerView extends BaseMovementView {
 	private carryItemType: string | null = null
 	private carryItemUnsubscribe: (() => void) | null = null
 	private dangerKind: 'hunger' | 'fatigue' | null = null
+	private activeNeedKind: 'hunger' | 'fatigue' | null = null
 	private isHighlighted: boolean = false
 	private readonly CRITICAL_NEED_THRESHOLD = 0.15
 	private readonly dangerEmojis: Record<'hunger' | 'fatigue', string> = {
@@ -119,6 +122,25 @@ export class SettlerView extends BaseMovementView {
 		this.dangerText.setOrigin(0.5, 0.5)
 		this.dangerText.setVisible(false)
 		this.add(this.dangerText)
+
+		// Add need-activity indicator (hidden by default)
+		this.needActivityCircle = this.scene.add.graphics()
+		this.needActivityCircle.clear()
+		this.needActivityCircle.fillStyle(0x2d6cff, 0.9)
+		this.needActivityCircle.fillCircle(0, -26, 9)
+		this.needActivityCircle.lineStyle(2, 0x0b2a6f, 1)
+		this.needActivityCircle.strokeCircle(0, -26, 9)
+		this.needActivityCircle.setVisible(false)
+		this.add(this.needActivityCircle)
+
+		this.needActivityText = this.scene.add.text(0, -26, '', {
+			fontSize: '12px',
+			align: 'center',
+			color: '#ffffff'
+		})
+		this.needActivityText.setOrigin(0.5, 0.5)
+		this.needActivityText.setVisible(false)
+		this.add(this.needActivityText)
 
 		// Make settler clickable with a circular hit area
 		const hitArea = new Geom.Circle(0, 0, size / 2)
@@ -282,22 +304,37 @@ export class SettlerView extends BaseMovementView {
 			nextKind = 'fatigue'
 		}
 
-		if (!nextKind) {
-			this.dangerKind = null
+		this.dangerKind = nextKind
+		this.refreshNeedIndicators()
+	}
+
+	public updateNeedActivity(kind: 'hunger' | 'fatigue' | null): void {
+		this.activeNeedKind = kind
+		this.refreshNeedIndicators()
+	}
+
+	private refreshNeedIndicators(): void {
+		if (this.dangerKind) {
+			if (this.dangerText) {
+				this.dangerText.setText(this.dangerEmojis[this.dangerKind])
+			}
+			this.dangerCircle?.setVisible(true)
+			this.dangerText?.setVisible(true)
+		} else {
 			this.dangerCircle?.setVisible(false)
 			this.dangerText?.setVisible(false)
-			return
 		}
 
-		if (this.dangerKind !== nextKind) {
-			this.dangerKind = nextKind
-			if (this.dangerText) {
-				this.dangerText.setText(this.dangerEmojis[nextKind])
+		if (!this.dangerKind && this.activeNeedKind) {
+			if (this.needActivityText) {
+				this.needActivityText.setText(this.dangerEmojis[this.activeNeedKind])
 			}
+			this.needActivityCircle?.setVisible(true)
+			this.needActivityText?.setVisible(true)
+		} else {
+			this.needActivityCircle?.setVisible(false)
+			this.needActivityText?.setVisible(false)
 		}
-
-		this.dangerCircle?.setVisible(true)
-		this.dangerText?.setVisible(true)
 	}
 
 	/**
@@ -341,6 +378,14 @@ export class SettlerView extends BaseMovementView {
 		if (this.dangerText) {
 			this.dangerText.destroy()
 			this.dangerText = null
+		}
+		if (this.needActivityCircle) {
+			this.needActivityCircle.destroy()
+			this.needActivityCircle = null
+		}
+		if (this.needActivityText) {
+			this.needActivityText.destroy()
+			this.needActivityText = null
 		}
 		super.destroy()
 	}

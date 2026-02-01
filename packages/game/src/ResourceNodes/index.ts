@@ -1,15 +1,19 @@
 import { v4 as uuidv4 } from 'uuid'
-import { EventManager, EventClient } from '../events'
+import { EventManager, EventClient, Event } from '../events'
 import type { MapObjectsManager } from '../MapObjects'
 import type { ItemsManager } from '../Items'
 import { Item } from '../Items/types'
 import { Position } from '../types'
 import { ResourceNodeDefinition, ResourceNodeInstance, ResourceNodeSpawn } from './types'
+import type { MapObject } from '../MapObjects/types'
+import type { PlayerJoinData, PlayerTransitionData } from '../Players/types'
 import { Logger } from '../Logs'
 import { calculateDistance } from '../utils'
 import { BaseManager } from '../Managers'
 import { SimulationEvents } from '../Simulation/events'
 import { SimulationTickData } from '../Simulation/types'
+import type { ResourceNodesSnapshot } from '../state/types'
+import { Receiver } from '../Receiver'
 
 const TILE_SIZE = 32
 const WORLD_PLAYER_ID = 'world'
@@ -37,6 +41,14 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.simulationTimeMs = data.nowMs
 			this.processNodeDecay()
+		})
+
+		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
+			this.sendNodesToClient(client, data.mapId)
+		})
+
+		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
+			this.sendNodesToClient(client, data.mapId)
 		})
 	}
 
@@ -349,5 +361,130 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			x: spawn.position.x * TILE_SIZE,
 			y: spawn.position.y * TILE_SIZE
 		}
+	}
+
+	serialize(): ResourceNodesSnapshot {
+		return {
+			nodes: Array.from(this.nodes.values()).map(node => ({
+				...node,
+				position: { ...node.position }
+			})),
+			simulationTimeMs: this.simulationTimeMs
+		}
+	}
+
+	deserialize(state: ResourceNodesSnapshot): void {
+		this.nodes.clear()
+		for (const node of state.nodes) {
+			this.nodes.set(node.id, {
+				...node,
+				position: { ...node.position }
+			})
+		}
+		this.simulationTimeMs = state.simulationTimeMs
+		this.restoreMissingMapObjects()
+	}
+
+	private restoreMissingMapObjects(): void {
+		for (const node of this.nodes.values()) {
+			const def = this.definitions.get(node.nodeType)
+			if (!def) {
+				this.logger.warn(`[ResourceNodesManager] Missing definition for node type ${node.nodeType} during restore`)
+				continue
+			}
+			this.ensureNodeMapObject(node, def)
+		}
+	}
+
+	private ensureNodeMapObject(node: ResourceNodeInstance, def: ResourceNodeDefinition): MapObject | null {
+		if (node.mapObjectId) {
+			const existing = this.managers.mapObjects.getObjectById(node.mapObjectId)
+			if (existing) {
+				const needsUpdate = existing.item.itemType !== def.nodeItemType ||
+					existing.metadata?.resourceNode !== true ||
+					existing.metadata?.resourceNodeId !== node.id ||
+					existing.metadata?.resourceNodeType !== node.nodeType ||
+					existing.metadata?.remainingHarvests !== node.remainingHarvests
+				if (!needsUpdate) {
+					return existing
+				}
+
+				const updated: MapObject = {
+					...existing,
+					item: {
+						...existing.item,
+						itemType: def.nodeItemType
+					},
+					metadata: {
+						...(existing.metadata || {}),
+						resourceNode: true,
+						resourceNodeId: node.id,
+						resourceNodeType: node.nodeType,
+						remainingHarvests: node.remainingHarvests
+					}
+				}
+				this.managers.mapObjects.restoreObject(updated)
+				return updated
+			}
+		}
+
+		const mapObjectId = node.mapObjectId ?? uuidv4()
+		const mapObject: MapObject = {
+			id: mapObjectId,
+			item: {
+				id: uuidv4(),
+				itemType: def.nodeItemType
+			},
+			position: { ...node.position },
+			rotation: 0,
+			playerId: WORLD_PLAYER_ID,
+			mapName: node.mapName,
+			metadata: {
+				resourceNode: true,
+				resourceNodeId: node.id,
+				resourceNodeType: node.nodeType,
+				remainingHarvests: node.remainingHarvests
+			}
+		}
+
+		this.managers.mapObjects.restoreObject(mapObject)
+		node.mapObjectId = mapObjectId
+		return mapObject
+	}
+
+	private sendNodesToClient(client: EventClient, mapName?: string): void {
+		const targetMap = mapName || client.currentGroup
+		for (const node of this.nodes.values()) {
+			if (node.mapName !== targetMap) {
+				continue
+			}
+			if (node.remainingHarvests <= 0) {
+				continue
+			}
+			if (node.isSpoiled) {
+				continue
+			}
+			if (!this.isNodeMature(node)) {
+				continue
+			}
+
+			const def = this.definitions.get(node.nodeType)
+			if (!def) {
+				this.logger.warn(`[ResourceNodesManager] Missing definition for node type ${node.nodeType} when syncing to client`)
+				continue
+			}
+
+			const mapObject = this.ensureNodeMapObject(node, def)
+			if (!mapObject) {
+				continue
+			}
+
+			client.emit(Receiver.Sender, Event.MapObjects.SC.Spawn, { object: mapObject })
+		}
+	}
+
+	reset(): void {
+		this.nodes.clear()
+		this.simulationTimeMs = 0
 	}
 }

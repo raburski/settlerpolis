@@ -9,6 +9,7 @@ import type { MapManager } from '../../Map'
 import type { MapObjectsManager } from '../../MapObjects'
 import type { ReservationSystem } from '../../Reservation'
 import type { RoadManager } from '../../Roads'
+import type { SimulationManager } from '../../Simulation'
 
 export interface WorkProviderDeps {
 	buildings: BuildingManager
@@ -22,4 +23,5 @@ export interface WorkProviderDeps {
 	mapObjects: MapObjectsManager
 	reservations: ReservationSystem
 	roads: RoadManager
+	simulation: SimulationManager
 }

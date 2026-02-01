@@ -11,6 +11,8 @@ import { ConstructionStage } from '../Buildings/types'
 import type { MapManager } from '../Map'
 import { BaseManager } from '../Managers'
 import { v4 as uuidv4 } from 'uuid'
+import type { SimulationManager } from '../Simulation'
+import type { ReservationSnapshot, AmenityReservationSnapshot, HouseReservationSnapshot } from '../state/types'
 
 export interface ReservationSystemDeps {
 	storage: StorageManager
@@ -19,6 +21,7 @@ export interface ReservationSystemDeps {
 	population: PopulationManager
 	buildings: BuildingManager
 	map: MapManager
+	simulation: SimulationManager
 }
 
 export interface AmenitySlotReservationResult {
@@ -142,7 +145,7 @@ export class ReservationSystem extends BaseManager<ReservationSystemDeps> {
 			settlerId,
 			slotIndex,
 			position: positions[slotIndex],
-			createdAt: Date.now()
+			createdAt: this.managers.simulation.getSimulationTimeMs()
 		}
 
 		this.amenityReservations.set(reservationId, reservation)
@@ -192,7 +195,7 @@ export class ReservationSystem extends BaseManager<ReservationSystemDeps> {
 			reservationId,
 			houseId,
 			settlerId,
-			createdAt: Date.now()
+			createdAt: this.managers.simulation.getSimulationTimeMs()
 		}
 
 		this.houseReservations.set(reservationId, reservation)
@@ -297,5 +300,80 @@ export class ReservationSystem extends BaseManager<ReservationSystemDeps> {
 			return 0
 		}
 		return definition.maxOccupants ?? 0
+	}
+
+	serialize(): ReservationSnapshot {
+		return {
+			amenityReservations: Array.from(this.amenityReservations.entries()).map(([reservationId, reservation]) => ([
+				reservationId,
+				{
+					reservationId,
+					buildingInstanceId: reservation.buildingInstanceId,
+					settlerId: reservation.settlerId,
+					slotIndex: reservation.slotIndex,
+					position: { ...reservation.position },
+					createdAt: reservation.createdAt
+				} as AmenityReservationSnapshot
+			])),
+			amenitySlotsByBuilding: Array.from(this.amenitySlotsByBuilding.entries()).map(([buildingInstanceId, slots]) => ([
+				buildingInstanceId,
+				Array.from(slots.entries())
+			])),
+			houseReservations: Array.from(this.houseReservations.entries()).map(([reservationId, reservation]) => ([
+				reservationId,
+				{
+					reservationId,
+					houseId: reservation.houseId,
+					settlerId: reservation.settlerId,
+					createdAt: reservation.createdAt
+				} as HouseReservationSnapshot
+			])),
+			houseReservationsByHouse: Array.from(this.houseReservationsByHouse.entries()).map(([houseId, reservations]) => ([
+				houseId,
+				Array.from(reservations.entries())
+			]))
+		}
+	}
+
+	deserialize(state: ReservationSnapshot): void {
+		this.amenityReservations.clear()
+		this.amenitySlotsByBuilding.clear()
+		this.houseReservations.clear()
+		this.houseReservationsByHouse.clear()
+
+		for (const [reservationId, reservation] of state.amenityReservations) {
+			this.amenityReservations.set(reservationId, {
+				reservationId: reservation.reservationId,
+				buildingInstanceId: reservation.buildingInstanceId,
+				settlerId: reservation.settlerId,
+				slotIndex: reservation.slotIndex,
+				position: { ...reservation.position },
+				createdAt: reservation.createdAt
+			})
+		}
+
+		for (const [buildingInstanceId, slots] of state.amenitySlotsByBuilding) {
+			this.amenitySlotsByBuilding.set(buildingInstanceId, new Map(slots))
+		}
+
+		for (const [reservationId, reservation] of state.houseReservations) {
+			this.houseReservations.set(reservationId, {
+				reservationId: reservation.reservationId,
+				houseId: reservation.houseId,
+				settlerId: reservation.settlerId,
+				createdAt: reservation.createdAt
+			})
+		}
+
+		for (const [houseId, reservations] of state.houseReservationsByHouse) {
+			this.houseReservationsByHouse.set(houseId, new Map(reservations))
+		}
+	}
+
+	reset(): void {
+		this.amenityReservations.clear()
+		this.amenitySlotsByBuilding.clear()
+		this.houseReservations.clear()
+		this.houseReservationsByHouse.clear()
 	}
 }

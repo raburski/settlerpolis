@@ -3,6 +3,7 @@ import { Receiver } from '../Receiver'
 import { SimulationEvents } from './events'
 import { SimulationTickData } from './types'
 import { Logger } from '../Logs'
+import type { SimulationSnapshot } from '../state/types'
 
 export class SimulationManager {
 	private tickIntervalMs: number
@@ -44,6 +45,22 @@ export class SimulationManager {
 
 	getSimulationTimeMs(): number {
 		return this.simulationTimeMs
+	}
+
+	serialize(): SimulationSnapshot {
+		return {
+			simulationTimeMs: this.simulationTimeMs,
+			tickIntervalMs: this.tickIntervalMs
+		}
+	}
+
+	deserialize(state: SimulationSnapshot): void {
+		this.simulationTimeMs = state.simulationTimeMs
+		this.setTickInterval(state.tickIntervalMs)
+	}
+
+	reset(): void {
+		this.simulationTimeMs = 0
 	}
 
 	private tick(): void {

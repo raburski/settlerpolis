@@ -18,7 +18,7 @@ import type { ProductionRecipe, SetProductionPausedData } from '../../Buildings/
 import { ConstructionStage, ProductionStatus } from '../../Buildings/types'
 import { getBuildingWorkKinds } from '../../Buildings/work'
 import { ProviderRegistry } from './ProviderRegistry'
-import { ActionSystem } from './ActionSystem'
+import { ActionSystem, type ActionQueueContextResolver } from './ActionSystem'
 import { WorkProviderEvents } from './events'
 import type { WorkAssignment, WorkStep, WorkAction, LogisticsRequest } from './types'
 import { TransportTargetType, WorkProviderType, WorkStepType, WorkWaitReason } from './types'
@@ -31,6 +31,7 @@ import { WorkPolicyPhase, WorkPolicyResultType } from './policies/constants'
 import type { WorkPolicy, WorkPolicyContext, WorkPolicyResult } from './policies/types'
 import { CriticalNeedsPolicy } from './policies/CriticalNeedsPolicy'
 import { HomeRelocationPolicy } from './policies/HomeRelocationPolicy'
+import type { ActionQueueContext, WorkProviderSnapshot } from '../../state/types'
 
 const MOVEMENT_RECOVERY_COOLDOWN_MS = 8000
 const MOVEMENT_FAILURE_MAX_RETRIES = 3
@@ -54,6 +55,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 	private movementRecoveryUntil = new Map<string, number>()
 	private movementRecoveryReason = new Map<string, WorkWaitReason>()
 	private movementFailureCounts = new Map<string, number>()
+	private pendingDispatchAtMs = new Map<string, number>()
 
 	constructor(
 		managers: WorkProviderDeps,
@@ -68,10 +70,17 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			event,
 			this.logger
 		)
+		this.actionSystem.registerContextResolver('work', (settlerId, context) => {
+			if (context.kind !== 'work') {
+				return {}
+			}
+			return this.buildWorkQueueCallbacks(settlerId, context.step)
+		})
 
 		this.logisticsProvider = new LogisticsProvider(
 			this.managers,
-			this.logger
+			this.logger,
+			() => this.simulationTimeMs
 		)
 		this.registry.register(this.logisticsProvider)
 
@@ -125,6 +134,25 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 
 		// Assign idle carriers to logistics if there is pending demand
 		this.assignIdleCarriersToLogistics()
+
+		this.processPendingDispatches()
+	}
+
+	private processPendingDispatches(): void {
+		if (this.pendingDispatchAtMs.size === 0) {
+			return
+		}
+
+		for (const [settlerId, dispatchAt] of this.pendingDispatchAtMs.entries()) {
+			if (this.simulationTimeMs < dispatchAt) {
+				continue
+			}
+			if (this.actionSystem.isBusy(settlerId)) {
+				continue
+			}
+			this.pendingDispatchAtMs.delete(settlerId)
+			this.dispatchNextStep(settlerId)
+		}
 	}
 
 	private handleContextPauseRequested(data: ContextPauseRequestedEventData): void {
@@ -334,7 +362,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 				providerType: isConstruction ? WorkProviderType.Construction : WorkProviderType.Building,
 				buildingInstanceId: building.id,
 				requiredProfession: requiredProfession,
-				assignedAt: Date.now(),
+				assignedAt: this.simulationTimeMs,
 				status: 'assigned'
 			}
 
@@ -418,6 +446,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		this.movementFailureCounts.delete(data.settlerId)
 		this.movementRecoveryUntil.delete(data.settlerId)
 		this.movementRecoveryReason.delete(data.settlerId)
+		this.pendingDispatchAtMs.delete(data.settlerId)
 
 		this.event.emit(Receiver.All, WorkProviderEvents.SS.AssignmentRemoved, { assignmentId: assignment.assignmentId })
 		if (assignment.buildingInstanceId) {
@@ -459,7 +488,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 				settlerId: carrier.id,
 				providerId: this.logisticsProvider.id,
 				providerType: WorkProviderType.Logistics,
-				assignedAt: Date.now(),
+				assignedAt: this.simulationTimeMs,
 				status: 'assigned'
 			}
 			this.assignments.set(carrier.id, assignment)
@@ -488,7 +517,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 					settlerId: settler.id,
 					providerId: provider.id,
 					providerType: WorkProviderType.Road,
-					assignedAt: Date.now(),
+					assignedAt: this.simulationTimeMs,
 					status: 'assigned'
 				}
 				this.assignments.set(settler.id, assignment)
@@ -541,13 +570,17 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		}
 	}
 
-	public enqueueActions(settlerId: string, actions: WorkAction[], onComplete?: () => void, onFail?: (reason: string) => void): void {
+	public enqueueActions(settlerId: string, actions: WorkAction[], onComplete?: () => void, onFail?: (reason: string) => void, context?: ActionQueueContext): void {
 		if (this.actionSystem.isBusy(settlerId)) {
 			this.logger.warn(`[WorkProvider] Cannot enqueue actions for ${settlerId}: action system busy`)
 			onFail?.('action_system_busy')
 			return
 		}
-		this.actionSystem.enqueue(settlerId, actions, onComplete, onFail)
+		this.actionSystem.enqueue(settlerId, actions, onComplete, onFail, context)
+	}
+
+	public registerActionContextResolver(kind: ActionQueueContext['kind'], resolver: ActionQueueContextResolver): void {
+		this.actionSystem.registerContextResolver(kind, resolver)
 	}
 
 	public isSettlerBusy(settlerId: string): boolean {
@@ -575,7 +608,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 
 		const recoveryUntil = this.movementRecoveryUntil.get(settlerId)
 		if (recoveryUntil) {
-			if (Date.now() < recoveryUntil) {
+			if (this.simulationTimeMs < recoveryUntil) {
 				const reason = this.movementRecoveryReason.get(settlerId) ?? WorkWaitReason.MovementFailed
 				this.managers.population.setSettlerWaitReason(settlerId, reason)
 				this.managers.population.setSettlerLastStep(settlerId, undefined, reason)
@@ -659,62 +692,118 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			return
 		}
 
-		this.actionSystem.enqueue(settlerId, actions, () => {
-			releaseReservations?.()
-			this.event.emit(Receiver.All, WorkProviderEvents.SS.StepCompleted, { settlerId, step })
-			this.managers.population.setSettlerLastStep(settlerId, step.type, undefined)
-			this.managers.population.setSettlerState(settlerId, SettlerState.Idle)
-			this.movementFailureCounts.delete(settlerId)
-			if (step.type === WorkStepType.Transport && step.target.type === TransportTargetType.Construction) {
-				this.logisticsProvider.releaseConstructionInFlight(step.target.buildingInstanceId, step.itemType, step.quantity)
-			}
-			if (step.type === WorkStepType.Produce && assignment.buildingInstanceId) {
-				this.emitProductionCompleted(assignment.buildingInstanceId, step.recipe)
-			}
-			if (assignment.providerType === WorkProviderType.Logistics && !this.logisticsProvider.hasPendingRequests()) {
-				this.unassignWorker({ settlerId })
-				return
-			}
-			this.dispatchNextStep(settlerId)
-		}, (reason) => {
-			releaseReservations?.()
-			this.event.emit(Receiver.All, WorkProviderEvents.SS.StepFailed, { settlerId, step, reason })
-			let retryDelayMs = 1000
-			const isWaitReason = (Object.values(WorkWaitReason) as string[]).includes(reason)
-			let waitReason: WorkWaitReason = isWaitReason ? (reason as WorkWaitReason) : WorkWaitReason.NoWork
-			let shouldDispatch = true
-			if (reason === 'movement_failed' || reason === 'movement_cancelled') {
-				const currentFailures = (this.movementFailureCounts.get(settlerId) || 0) + 1
-				this.movementFailureCounts.set(settlerId, currentFailures)
-				retryDelayMs = MOVEMENT_RECOVERY_COOLDOWN_MS
-				waitReason = reason === 'movement_failed'
-					? WorkWaitReason.MovementFailed
-					: WorkWaitReason.MovementCancelled
-				this.movementRecoveryUntil.set(settlerId, Date.now() + retryDelayMs)
-				this.movementRecoveryReason.set(settlerId, waitReason)
-				if (currentFailures >= MOVEMENT_FAILURE_MAX_RETRIES) {
-					if (step.type === WorkStepType.BuildRoad) {
-						this.managers.roads.releaseJob(step.jobId)
-					}
-					this.unassignWorker({ settlerId })
-					this.movementFailureCounts.delete(settlerId)
-					this.movementRecoveryUntil.delete(settlerId)
-					this.movementRecoveryReason.delete(settlerId)
-					shouldDispatch = false
+		const callbacks = this.buildWorkQueueCallbacks(settlerId, step, releaseReservations)
+		const context: ActionQueueContext = {
+			kind: 'work',
+			step,
+			reservationOwnerId: assignment.assignmentId
+		}
+		this.actionSystem.enqueue(settlerId, actions, callbacks.onComplete, callbacks.onFail, context)
+	}
+
+	private buildWorkQueueCallbacks(
+		settlerId: string,
+		step?: WorkStep,
+		releaseReservations?: () => void
+	): { onComplete: () => void, onFail: (reason: string) => void } {
+		return {
+			onComplete: () => {
+				if (!step) {
+					releaseReservations?.()
+					this.dispatchNextStep(settlerId)
+					return
 				}
+				const assignment = this.assignments.get(settlerId)
+				if (!assignment) {
+					releaseReservations?.()
+					return
+				}
+				this.handleStepCompleted(settlerId, assignment, step, releaseReservations)
+			},
+			onFail: (reason: string) => {
+				if (!step) {
+					releaseReservations?.()
+					this.dispatchNextStep(settlerId)
+					return
+				}
+				const assignment = this.assignments.get(settlerId)
+				if (!assignment) {
+					releaseReservations?.()
+					return
+				}
+				this.handleStepFailed(settlerId, assignment, step, reason, releaseReservations)
 			}
-			if (shouldDispatch) {
-				this.managers.population.setSettlerWaitReason(settlerId, waitReason)
-				this.managers.population.setSettlerLastStep(settlerId, step.type, waitReason)
-				this.managers.population.setSettlerState(settlerId, SettlerState.WaitingForWork)
+		}
+	}
+
+	private handleStepCompleted(
+		settlerId: string,
+		assignment: WorkAssignment,
+		step: WorkStep,
+		releaseReservations?: () => void
+	): void {
+		releaseReservations?.()
+		this.event.emit(Receiver.All, WorkProviderEvents.SS.StepCompleted, { settlerId, step })
+		this.managers.population.setSettlerLastStep(settlerId, step.type, undefined)
+		this.managers.population.setSettlerState(settlerId, SettlerState.Idle)
+		this.movementFailureCounts.delete(settlerId)
+		if (step.type === WorkStepType.Transport && step.target.type === TransportTargetType.Construction) {
+			this.logisticsProvider.releaseConstructionInFlight(step.target.buildingInstanceId, step.itemType, step.quantity)
+		}
+		if (step.type === WorkStepType.Produce && assignment.buildingInstanceId) {
+			this.emitProductionCompleted(assignment.buildingInstanceId, step.recipe)
+		}
+		if (assignment.providerType === WorkProviderType.Logistics && !this.logisticsProvider.hasPendingRequests()) {
+			this.unassignWorker({ settlerId })
+			return
+		}
+		this.dispatchNextStep(settlerId)
+	}
+
+	private handleStepFailed(
+		settlerId: string,
+		assignment: WorkAssignment,
+		step: WorkStep,
+		reason: string,
+		releaseReservations?: () => void
+	): void {
+		releaseReservations?.()
+		this.event.emit(Receiver.All, WorkProviderEvents.SS.StepFailed, { settlerId, step, reason })
+		let retryDelayMs = 1000
+		const isWaitReason = (Object.values(WorkWaitReason) as string[]).includes(reason)
+		let waitReason: WorkWaitReason = isWaitReason ? (reason as WorkWaitReason) : WorkWaitReason.NoWork
+		let shouldDispatch = true
+		if (reason === 'movement_failed' || reason === 'movement_cancelled') {
+			const currentFailures = (this.movementFailureCounts.get(settlerId) || 0) + 1
+			this.movementFailureCounts.set(settlerId, currentFailures)
+			retryDelayMs = MOVEMENT_RECOVERY_COOLDOWN_MS
+			waitReason = reason === 'movement_failed'
+				? WorkWaitReason.MovementFailed
+				: WorkWaitReason.MovementCancelled
+			this.movementRecoveryUntil.set(settlerId, this.simulationTimeMs + retryDelayMs)
+			this.movementRecoveryReason.set(settlerId, waitReason)
+			if (currentFailures >= MOVEMENT_FAILURE_MAX_RETRIES) {
+				if (step.type === WorkStepType.BuildRoad) {
+					this.managers.roads.releaseJob(step.jobId)
+				}
+				this.unassignWorker({ settlerId })
+				this.movementFailureCounts.delete(settlerId)
+				this.movementRecoveryUntil.delete(settlerId)
+				this.movementRecoveryReason.delete(settlerId)
+				shouldDispatch = false
 			}
-			if (step.type === WorkStepType.Transport && step.target.type === TransportTargetType.Construction) {
-				this.logisticsProvider.releaseConstructionInFlight(step.target.buildingInstanceId, step.itemType, step.quantity)
-			}
-			if (shouldDispatch) {
-				setTimeout(() => this.dispatchNextStep(settlerId), retryDelayMs)
-			}
-		})
+		}
+		if (shouldDispatch) {
+			this.managers.population.setSettlerWaitReason(settlerId, waitReason)
+			this.managers.population.setSettlerLastStep(settlerId, step.type, waitReason)
+			this.managers.population.setSettlerState(settlerId, SettlerState.WaitingForWork)
+		}
+		if (step.type === WorkStepType.Transport && step.target.type === TransportTargetType.Construction) {
+			this.logisticsProvider.releaseConstructionInFlight(step.target.buildingInstanceId, step.itemType, step.quantity)
+		}
+		if (shouldDispatch) {
+			this.pendingDispatchAtMs.set(settlerId, this.simulationTimeMs + retryDelayMs)
+		}
 	}
 
 	private runPolicies(phase: WorkPolicyPhase, ctx: WorkPolicyContext, step?: WorkStep): WorkPolicyResult | null {
@@ -751,13 +840,14 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 				return true
 			}
 			this.managers.population.setSettlerWaitReason(settlerId, undefined)
+			const reservationOwnerId = this.assignments.get(settlerId)?.assignmentId
 			this.actionSystem.enqueue(settlerId, result.actions, () => {
 				result.onComplete?.()
 				this.dispatchNextStep(settlerId)
 			}, (reason) => {
 				result.onFail?.(reason)
 				this.dispatchNextStep(settlerId)
-			})
+			}, { kind: 'work', reservationOwnerId })
 			return true
 		}
 
@@ -917,6 +1007,104 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 	// External hooks for LogisticsProvider
 	public enqueueLogisticsRequest(request: LogisticsRequest): void {
 		this.logisticsProvider.enqueue(request)
+	}
+
+	serialize(): WorkProviderSnapshot {
+		return {
+			assignments: Array.from(this.assignments.values()).map(assignment => ({ ...assignment })),
+			assignmentsByBuilding: Array.from(this.assignmentsByBuilding.entries()).map(([buildingId, settlerIds]) => ([
+				buildingId,
+				Array.from(settlerIds.values())
+			])),
+			productionStateByBuilding: Array.from(this.productionStateByBuilding.entries()),
+			lastConstructionAssignAt: Array.from(this.lastConstructionAssignAt.entries()),
+			pauseRequests: Array.from(this.pauseRequests.entries()).map(([settlerId, payload]) => ([
+				settlerId,
+				{ ...payload }
+			])),
+			pausedContexts: Array.from(this.pausedContexts.entries()),
+			movementRecoveryUntil: Array.from(this.movementRecoveryUntil.entries()),
+			movementRecoveryReason: Array.from(this.movementRecoveryReason.entries()),
+			movementFailureCounts: Array.from(this.movementFailureCounts.entries()),
+			pendingDispatchAtMs: Array.from(this.pendingDispatchAtMs.entries()),
+			actionSystem: this.actionSystem.serialize(),
+			logistics: this.logisticsProvider.serialize()
+		}
+	}
+
+	deserialize(state: WorkProviderSnapshot): void {
+		this.assignments.clear()
+		this.assignmentsByBuilding.clear()
+		this.productionStateByBuilding = new Map(state.productionStateByBuilding)
+		this.lastConstructionAssignAt = new Map(state.lastConstructionAssignAt)
+		this.pauseRequests = new Map(state.pauseRequests)
+		this.pausedContexts = new Map(state.pausedContexts)
+		this.movementRecoveryUntil = new Map(state.movementRecoveryUntil)
+		this.movementRecoveryReason = new Map(state.movementRecoveryReason)
+		this.movementFailureCounts = new Map(state.movementFailureCounts)
+		this.pendingDispatchAtMs = new Map(state.pendingDispatchAtMs)
+		this.simulationTimeMs = this.managers.simulation.getSimulationTimeMs()
+		this.actionSystem.setTime(this.simulationTimeMs)
+		this.actionSystem.deserialize(state.actionSystem)
+
+		for (const assignment of state.assignments) {
+			this.assignments.set(assignment.settlerId, { ...assignment })
+			if (assignment.buildingInstanceId) {
+				let buildingAssignments = this.assignmentsByBuilding.get(assignment.buildingInstanceId)
+				if (!buildingAssignments) {
+					buildingAssignments = new Set()
+					this.assignmentsByBuilding.set(assignment.buildingInstanceId, buildingAssignments)
+				}
+				buildingAssignments.add(assignment.settlerId)
+			}
+
+			if (assignment.providerType === WorkProviderType.Logistics) {
+				this.logisticsProvider.assign(assignment.settlerId)
+				continue
+			}
+
+			if (assignment.providerType === WorkProviderType.Construction && assignment.buildingInstanceId) {
+				this.getConstructionProvider(assignment.buildingInstanceId)?.assign(assignment.settlerId)
+				continue
+			}
+
+			if (assignment.providerType === WorkProviderType.Road) {
+				const [_, mapName, playerId] = assignment.providerId.split(':')
+				if (mapName && playerId) {
+					this.getRoadProvider(mapName, playerId).assign(assignment.settlerId)
+				}
+				continue
+			}
+
+			if (assignment.buildingInstanceId) {
+				this.getBuildingProvider(assignment.buildingInstanceId)?.assign(assignment.settlerId)
+			}
+		}
+
+		for (const [buildingId, settlerIds] of state.assignmentsByBuilding) {
+			this.assignmentsByBuilding.set(buildingId, new Set(settlerIds))
+		}
+
+		this.logisticsProvider.deserialize(state.logistics)
+	}
+
+	reset(): void {
+		this.assignments.clear()
+		this.assignmentsByBuilding.clear()
+		this.buildingProviders.clear()
+		this.constructionProviders.clear()
+		this.roadProviders.clear()
+		this.productionStateByBuilding.clear()
+		this.lastConstructionAssignAt.clear()
+		this.pauseRequests.clear()
+		this.pausedContexts.clear()
+		this.movementRecoveryUntil.clear()
+		this.movementRecoveryReason.clear()
+		this.movementFailureCounts.clear()
+		this.pendingDispatchAtMs.clear()
+		this.simulationTimeMs = 0
+		this.logisticsProvider.reset()
+		this.actionSystem.reset()
 	}
 }
 

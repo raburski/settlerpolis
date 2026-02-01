@@ -13,6 +13,7 @@ import { SimulationTickData } from '../Simulation/types'
 import { BaseManager } from '../Managers'
 import type { Position } from '../types'
 import type { Item } from '../Items/types'
+import type { StorageSnapshot, BuildingStorageSnapshot } from '../state/types'
 
 export interface StorageDeps {
 	buildings: BuildingManager
@@ -797,5 +798,66 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				this.maybeSpoilSlot(slot)
 			}
 		}
+	}
+
+	serialize(): StorageSnapshot {
+		const storages: BuildingStorageSnapshot[] = []
+		for (const storage of this.buildingStorages.values()) {
+			storages.push({
+				buildingInstanceId: storage.buildingInstanceId,
+				slots: Array.from(storage.slots.values()).map(slot => ({
+					...slot,
+					position: { ...slot.position },
+					batches: slot.batches.map(batch => ({ ...batch }))
+				})),
+				slotsByItem: Array.from(storage.slotsByItem.entries()).map(([itemType, slotIds]) => ([
+					itemType,
+					[...slotIds]
+				]))
+			})
+		}
+
+		return {
+			storages,
+			reservations: Array.from(this.reservations.values()).map(reservation => ({ ...reservation })),
+			simulationTimeMs: this.simulationTimeMs,
+			tickAccumulatorMs: this.tickAccumulatorMs
+		}
+	}
+
+	deserialize(state: StorageSnapshot): void {
+		this.buildingStorages.clear()
+		this.reservations.clear()
+		for (const storage of state.storages) {
+			const slots = new Map<string, StorageSlot>()
+			for (const slot of storage.slots) {
+				slots.set(slot.slotId, {
+					...slot,
+					position: { ...slot.position },
+					batches: slot.batches.map(batch => ({ ...batch }))
+				})
+			}
+			const slotsByItem = new Map<string, string[]>()
+			for (const [itemType, slotIds] of storage.slotsByItem) {
+				slotsByItem.set(itemType, [...slotIds])
+			}
+			this.buildingStorages.set(storage.buildingInstanceId, {
+				buildingInstanceId: storage.buildingInstanceId,
+				slots,
+				slotsByItem
+			})
+		}
+		for (const reservation of state.reservations) {
+			this.reservations.set(reservation.reservationId, { ...reservation })
+		}
+		this.simulationTimeMs = state.simulationTimeMs
+		this.tickAccumulatorMs = state.tickAccumulatorMs
+	}
+
+	reset(): void {
+		this.buildingStorages.clear()
+		this.reservations.clear()
+		this.simulationTimeMs = 0
+		this.tickAccumulatorMs = 0
 	}
 }

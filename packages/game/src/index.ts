@@ -34,6 +34,8 @@ import { WorkProviderManager } from './Settlers/WorkProvider'
 import { NeedsManager } from './Needs'
 import { ManagersHub } from './Managers'
 import { WildlifeManager } from './Wildlife'
+import { SnapshotService } from './state/SnapshotService'
+import type { GameSnapshotV1 } from './state/types'
 
 // Export types and events
 export * from './types'
@@ -44,6 +46,9 @@ export * from './Settlers/WorkProvider'
 export * from './Needs'
 export * from './Roads'
 export * from './Wildlife'
+export * from './state/types'
+export { SnapshotService } from './state/SnapshotService'
+export type { Serializable } from './state/Serializable'
 export { EquipmentSlot, EquipmentSlotType }
 // export { Event } from './events' 
 
@@ -57,6 +62,7 @@ export interface GameManagerOptions {
 export class GameManager {
 	private contentLoader: ContentLoader
 	private managers: ManagersHub
+	private snapshotService: SnapshotService
 
 	constructor(
 		private event: EventManager,
@@ -211,9 +217,27 @@ export class GameManager {
 		
 		this.setupEventHandlers()
 		this.managers.simulation.start()
+
+		this.snapshotService = new SnapshotService(this.managers)
 	}
 
 	private setupEventHandlers() {
 		// No handlers needed here anymore - all moved to appropriate modules
 	}
-} 
+
+	public saveState(): GameSnapshotV1 {
+		return this.snapshotService.serialize()
+	}
+
+	public loadState(snapshot: GameSnapshotV1): void {
+		this.snapshotService.deserialize(snapshot)
+	}
+
+	public serialize(): GameSnapshotV1 {
+		return this.snapshotService.serialize()
+	}
+
+	public deserialize(snapshot: GameSnapshotV1): void {
+		this.snapshotService.deserialize(snapshot)
+	}
+}

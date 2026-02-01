@@ -64,6 +64,7 @@ export abstract class GameScene extends MapScene {
 		const playerX = sceneData?.x || 100
 		const playerY = sceneData?.y || 300
 		const isTransition = sceneData?.isTransition || false
+		const suppressAutoJoin = sceneData?.suppressAutoJoin || false
 		
 		// Create player
 		this.player = createLocalPlayer(this, playerX, playerY, playerService.playerId)
@@ -102,8 +103,10 @@ export abstract class GameScene extends MapScene {
 		// Set up collision for the player
 		this.initializeCollision([this.player.view])
 
+		EventBus.emit('ui:scene:ready', { mapId: this.mapKey })
+
 		// Only emit join event if this is not a scene transition
-		if (!isTransition) {
+		if (!isTransition && !suppressAutoJoin) {
 			EventBus.emit(Event.Players.CS.Join, { 
 				position: { x: playerX, y: playerY}, 
 				mapId: this.mapKey,
@@ -332,6 +335,11 @@ export abstract class GameScene extends MapScene {
 	private handleMapObjectSpawn = (data: { object: any }) => {
 		// Only add objects for the current map
 		if (data.object.mapName === this.mapKey) {
+			const existing = this.mapObjects.get(data.object.id)
+			if (existing) {
+				existing.controller.destroy()
+				this.mapObjects.delete(data.object.id)
+			}
 			const mapObject = createMapObject(this, data.object)
 			this.mapObjects.set(data.object.id, mapObject)
 			

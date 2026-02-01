@@ -229,11 +229,11 @@ export type EventPayloads = Record<string, unknown> & {
 
 	[SchedulerEvents.SS.Schedule]: ScheduleOptions
 	[SchedulerEvents.SS.Cancel]: { id: string }
-	[SchedulerEvents.SS.Enable]: { id: string }
-	[SchedulerEvents.SS.Disable]: { id: string }
-	[SchedulerEvents.SS.Scheduled]: { id: string, nextRun?: Date, isActive?: boolean }
+	[SchedulerEvents.SS.Enable]: { id: string, success?: boolean, error?: string, nextRunAtSimMs?: number }
+	[SchedulerEvents.SS.Disable]: { id: string, success?: boolean, error?: string }
+	[SchedulerEvents.SS.Scheduled]: { id: string, nextRunAtSimMs?: number, isActive?: boolean }
 	[SchedulerEvents.SS.Triggered]: { id: string }
-	[SchedulerEvents.SS.Cancelled]: { id: string }
+	[SchedulerEvents.SS.Cancelled]: { id?: string, success?: boolean, error?: string }
 
 	[SimulationEvents.SS.Tick]: SimulationTickData
 

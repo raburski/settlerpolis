@@ -29,6 +29,8 @@ export class MapObjectView {
 	private buildingStage: ConstructionStage | null = null
 	private progressHandler: ((data: { buildingInstanceId: string, progress: number, stage: string }) => void) | null = null
 	private completedHandler: ((data: { building: any }) => void) | null = null
+	private isEmojiFallback: boolean = false
+	private catalogHandler: ((data: { buildings: BuildingDefinition[] }) => void) | null = null
 
 	constructor(scene: Scene, mapObject: MapObject) {
 		this.scene = scene
@@ -43,6 +45,7 @@ export class MapObjectView {
 			this.buildingStage = mapObject.metadata?.stage || ConstructionStage.Foundation
 			this.setupBuildingEvents(scene)
 			this.setupHighlightEvents()
+			this.setupCatalogEvents()
 		}
 		
 		// Subscribe to item metadata updates
@@ -104,6 +107,19 @@ export class MapObjectView {
 		}
 		EventBus.on(Event.Buildings.SC.Completed, this.completedHandler)
 	}
+
+	private setupCatalogEvents(): void {
+		this.catalogHandler = () => {
+			if (!this.isBuilding) {
+				return
+			}
+			if (this.buildingStage !== ConstructionStage.Completed) {
+				return
+			}
+			this.replaceSpriteWithEmoji(this.scene)
+		}
+		EventBus.on(Event.Buildings.SC.Catalog, this.catalogHandler)
+	}
 	
 	private initializeSprite(scene: Scene, itemMetadata: ItemMetadata): void {
 		if (this.isStoragePile) {
@@ -113,6 +129,13 @@ export class MapObjectView {
 		// For completed buildings, use emoji text instead of sprite
 		if (this.isBuilding && this.buildingStage === ConstructionStage.Completed) {
 			this.replaceSpriteWithEmoji(scene)
+			return
+		}
+
+		const hasPlaceableTexture = Boolean(itemTextureService.getPlaceableItemTexture(this.mapObject.item.itemType))
+		const hasItemTexture = Boolean(itemTextureService.getItemTexture(this.mapObject.item.itemType))
+		if (!hasPlaceableTexture && !hasItemTexture && itemMetadata?.emoji) {
+			this.createEmojiFallback(scene, itemMetadata)
 			return
 		}
 
@@ -149,11 +172,43 @@ export class MapObjectView {
 		}
 	}
 
+	private createEmojiFallback(scene: Scene, itemMetadata: ItemMetadata): void {
+		if (this.emojiText) return
+
+		this.isEmojiFallback = true
+		const tileSize = 32
+		const footprint = this.mapObject.metadata?.footprint
+		const width = footprint ? footprint.width * tileSize : tileSize
+		const height = footprint ? footprint.height * tileSize : tileSize
+		const centerX = this.mapObject.position.x + width / 2
+		const centerY = this.mapObject.position.y + height / 2
+		const emoji = itemMetadata.emoji || '❓'
+		const fontSize = footprint ? Math.min(width, height) * 0.9 : 20
+
+		this.emojiText = scene.add.text(centerX, centerY, emoji, {
+			fontSize: `${fontSize}px`,
+			align: 'center'
+		})
+		this.emojiText.setOrigin(0.5, 0.5)
+		this.emojiText.setDepth(this.mapObject.position.y)
+
+		if (this.isBuilding) {
+			this.emojiText.setInteractive({ useHandCursor: true })
+			this.emojiText.on('pointerdown', this.handleBuildingClick, this)
+		}
+
+		if (itemMetadata?.placement?.blocksMovement || footprint) {
+			scene.physics.add.existing(this.emojiText, true)
+			const body = this.emojiText.body as Phaser.Physics.Arcade.Body
+			if (body) {
+				body.setSize(width, height)
+				body.setOffset(-width / 2, -height / 2)
+			}
+		}
+	}
+
 	private replaceSpriteWithEmoji(scene: Scene): void {
 		if (!this.isBuilding || !this.mapObject.metadata?.footprint) return
-
-		// If emoji text already exists, don't recreate it
-		if (this.emojiText) return
 
 		// Get building definition to access icon
 		const buildingId = this.mapObject.metadata.buildingId
@@ -179,22 +234,29 @@ export class MapObjectView {
 			this.sprite = null
 		}
 
-		// Create emoji text centered in the footprint
 		const centerX = this.mapObject.position.x + width / 2
 		const centerY = this.mapObject.position.y + height / 2
 
-		this.emojiText = scene.add.text(centerX, centerY, emoji, {
-			fontSize: `${fontSize}px`,
-			align: 'center'
-		})
-		this.emojiText.setOrigin(0.5, 0.5)
-		this.emojiText.setDepth(this.mapObject.position.y)
+		if (this.emojiText) {
+			this.emojiText.setText(emoji)
+			this.emojiText.setFontSize(fontSize)
+			this.emojiText.setPosition(centerX, centerY)
+			this.emojiText.setDepth(this.mapObject.position.y)
+		} else {
+			// Create emoji text centered in the footprint
+			this.emojiText = scene.add.text(centerX, centerY, emoji, {
+				fontSize: `${fontSize}px`,
+				align: 'center'
+			})
+			this.emojiText.setOrigin(0.5, 0.5)
+			this.emojiText.setDepth(this.mapObject.position.y)
 
-		// Make emoji text interactive/clickable
-		this.emojiText.setInteractive({ useHandCursor: true })
-		this.emojiText.on('pointerdown', this.handleBuildingClick, this)
+			// Make emoji text interactive/clickable
+			this.emojiText.setInteractive({ useHandCursor: true })
+			this.emojiText.on('pointerdown', this.handleBuildingClick, this)
+		}
 
-		// Add physics body using the footprint
+		// Ensure physics body matches footprint
 		scene.physics.add.existing(this.emojiText, true)
 		const body = this.emojiText.body as Phaser.Physics.Arcade.Body
 		if (body) {
@@ -371,6 +433,9 @@ export class MapObjectView {
 		if (this.emojiText && this.isStoragePile) {
 			return this.emojiText as any
 		}
+		if (this.emojiText && this.isEmojiFallback) {
+			return this.emojiText as any
+		}
 		return this.sprite
 	}
 	
@@ -493,6 +558,10 @@ export class MapObjectView {
 		if (this.completedHandler) {
 			EventBus.off(Event.Buildings.SC.Completed, this.completedHandler)
 			this.completedHandler = null
+		}
+		if (this.catalogHandler) {
+			EventBus.off(Event.Buildings.SC.Catalog, this.catalogHandler)
+			this.catalogHandler = null
 		}
 
 		// Remove click handler if sprite or emoji text is interactive

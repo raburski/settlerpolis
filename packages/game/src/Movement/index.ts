@@ -10,6 +10,7 @@ import { BaseManager } from '../Managers'
 import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
 import type { RoadManager } from '../Roads'
+import type { MovementSnapshot, MovementTaskSnapshot } from '../state/types'
 
 const MOVEMENT_STEP_LAG = 100 // milliseconds between steps
 
@@ -21,6 +22,7 @@ export interface MovementDeps {
 export class MovementManager extends BaseManager<MovementDeps> {
 	private entities: Map<string, MovementEntity> = new Map()
 	private tasks: Map<string, MovementTask> = new Map()
+	private simulationTimeMs = 0
 
 	constructor(
 		managers: MovementDeps,
@@ -33,6 +35,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 
 	private setupEventHandlers(): void {
 		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+			this.simulationTimeMs = data.nowMs
 			this.handleSimulationTick(data)
 		})
 	}
@@ -71,7 +74,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 			return false
 		}
 
-		const timestamp = Date.now()
+		const timestamp = this.simulationTimeMs
 		this.logger.log(`[MOVEMENT START] entityId=${entityId} | from=(${Math.round(entity.position.x)},${Math.round(entity.position.y)}) | to=(${Math.round(targetPosition.x)},${Math.round(targetPosition.y)}) | targetType=${options?.targetType || 'none'} | targetId=${options?.targetId || 'none'} | time=${timestamp}`)
 
 		// Cancel any existing movement
@@ -137,8 +140,8 @@ export class MovementManager extends BaseManager<MovementDeps> {
 			onStepComplete: callbacks?.onStepComplete ? (task, position) => callbacks.onStepComplete!(position) : undefined,
 			onPathComplete: callbacks?.onPathComplete ? (task) => callbacks.onPathComplete!(task) : undefined,
 			onCancelled: callbacks?.onCancelled ? (task) => callbacks.onCancelled!() : undefined,
-			createdAt: Date.now(),
-			lastProcessed: Date.now()
+			createdAt: this.simulationTimeMs,
+			lastProcessed: this.simulationTimeMs
 		}
 
 		this.tasks.set(entityId, task)
@@ -277,7 +280,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 			return
 		}
 
-		const completionTime = Date.now()
+		const completionTime = this.simulationTimeMs
 		const movementDuration = completionTime - task.createdAt
 		this.logger.log(`[MOVEMENT COMPLETE] entityId=${entityId} | finalPosition=(${Math.round(entity.position.x)},${Math.round(entity.position.y)}) | targetType=${task.targetType || 'none'} | targetId=${task.targetId || 'none'} | duration=${movementDuration}ms | time=${completionTime}`)
 
@@ -334,6 +337,59 @@ export class MovementManager extends BaseManager<MovementDeps> {
 	public getEntityPosition(entityId: string): Position | null {
 		const entity = this.entities.get(entityId)
 		return entity ? entity.position : null
+	}
+
+	serialize(): MovementSnapshot {
+		const activeMoves: MovementTaskSnapshot[] = []
+		for (const task of this.tasks.values()) {
+			const lastStep = task.path.length > 0 ? task.path[task.path.length - 1] : this.entities.get(task.entityId)?.position
+			if (!lastStep) {
+				continue
+			}
+			activeMoves.push({
+				entityId: task.entityId,
+				targetPosition: { ...lastStep },
+				targetType: task.targetType,
+				targetId: task.targetId
+			})
+		}
+
+		return {
+			entities: Array.from(this.entities.values()).map(entity => ({
+				...entity,
+				position: { ...entity.position }
+			})),
+			activeMoves,
+			simulationTimeMs: this.simulationTimeMs
+		}
+	}
+
+	deserialize(state: MovementSnapshot): void {
+		this.entities.clear()
+		this.tasks.clear()
+		for (const entity of state.entities) {
+			this.entities.set(entity.id, {
+				...entity,
+				position: { ...entity.position }
+			})
+		}
+		this.simulationTimeMs = state.simulationTimeMs
+		const activeMoves = state.activeMoves ?? []
+		for (const move of activeMoves) {
+			if (!this.entities.has(move.entityId)) {
+				continue
+			}
+			this.moveToPosition(move.entityId, move.targetPosition, {
+				targetType: move.targetType,
+				targetId: move.targetId
+			})
+		}
+	}
+
+	reset(): void {
+		this.entities.clear()
+		this.tasks.clear()
+		this.simulationTimeMs = 0
 	}
 
 	/**

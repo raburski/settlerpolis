@@ -16,6 +16,7 @@ import { BuildingInfoPanel } from './BuildingInfoPanel'
 import { PopulationPanel } from './PopulationPanel'
 import { LogisticsPanel } from './LogisticsPanel'
 import { SettlerInfoPanel } from './SettlerInfoPanel'
+import { SaveLoadPanel } from './SaveLoadPanel'
 import { EventBus } from "../EventBus"
 import { Event, FXType } from '@rugged/game'
 
@@ -24,6 +25,7 @@ export const UIContainer = () => {
 	const [isStockOpen, setIsStockOpen] = useState(false)
 	const [isPopulationOpen, setIsPopulationOpen] = useState(false)
 	const [isLogisticsOpen, setIsLogisticsOpen] = useState(false)
+	const [saveLoadMode, setSaveLoadMode] = useState<'save' | 'load' | null>(null)
 	const stockButtonRef = useRef<HTMLButtonElement | null>(null)
 	const [stockAnchor, setStockAnchor] = useState<DOMRect | null>(null)
 	const populationButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -126,9 +128,16 @@ export const UIContainer = () => {
 					setIsPopulationOpen(false)
 					setIsLogisticsOpen((prev) => !prev)
 				}}
+				onOpenSave={() => setSaveLoadMode('save')}
+				onOpenLoad={() => setSaveLoadMode('load')}
 				resourceButtonRef={stockButtonRef}
 				populationButtonRef={populationButtonRef}
 				logisticsButtonRef={logisticsButtonRef}
+			/>
+			<SaveLoadPanel
+				isOpen={saveLoadMode !== null}
+				mode={saveLoadMode ?? 'save'}
+				onClose={() => setSaveLoadMode(null)}
 			/>
 			<Notifications />
 			<StockPanel

@@ -8,6 +8,7 @@ import { MovementEvents } from '../Movement/events'
 import { NeedType, type NeedLevel } from './NeedTypes'
 import { createDefaultNeedsState, getNeedMeter, type NeedsState } from './NeedsState'
 import { NeedsEvents } from './events'
+import type { NeedsSystemSnapshot } from '../state/types'
 
 export interface NeedsSystemDeps {
 	population: PopulationManager
@@ -218,5 +219,46 @@ export class NeedsSystem {
 
 		last[needType] = nextLevel
 		this.lastLevels.set(settlerId, last)
+	}
+
+	serialize(): NeedsSystemSnapshot {
+		return {
+			needsBySettler: Array.from(this.needsBySettler.entries()).map(([settlerId, state]) => ([
+				settlerId,
+				{
+					hunger: { ...state.hunger },
+					fatigue: { ...state.fatigue }
+				}
+			])),
+			lastLevels: Array.from(this.lastLevels.entries()).map(([settlerId, levels]) => ([
+				settlerId,
+				{ ...levels }
+			]))
+		}
+	}
+
+	deserialize(state: NeedsSystemSnapshot): void {
+		this.needsBySettler.clear()
+		this.lastLevels.clear()
+		this.lastBroadcastAt.clear()
+		this.lastBroadcastValues.clear()
+
+		for (const [settlerId, needs] of state.needsBySettler) {
+			this.needsBySettler.set(settlerId, {
+				hunger: { ...needs.hunger },
+				fatigue: { ...needs.fatigue }
+			})
+		}
+
+		for (const [settlerId, levels] of state.lastLevels) {
+			this.lastLevels.set(settlerId, { ...levels })
+		}
+	}
+
+	reset(): void {
+		this.needsBySettler.clear()
+		this.lastLevels.clear()
+		this.lastBroadcastAt.clear()
+		this.lastBroadcastValues.clear()
 	}
 }

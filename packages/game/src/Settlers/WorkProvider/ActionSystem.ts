@@ -13,10 +13,17 @@ import type { Logger } from '../../Logs'
 import { Receiver } from '../../Receiver'
 import { WorkProviderEvents } from './events'
 import { ActionHandlers } from './actionHandlers'
+import type { ActionQueueContext, ActionSystemSnapshot } from '../../state/types'
+
+export type ActionQueueContextResolver = (settlerId: string, context: ActionQueueContext, actions: WorkAction[]) => {
+	onComplete?: () => void
+	onFail?: (reason: string) => void
+}
 
 interface ActiveQueue {
 	actions: WorkAction[]
 	index: number
+	context?: ActionQueueContext
 	inProgress?: {
 		type: WorkActionType.Wait | WorkActionType.Construct | WorkActionType.BuildRoad | WorkActionType.Consume | WorkActionType.Sleep
 		endAtMs: number
@@ -41,6 +48,7 @@ export interface ActionSystemDeps {
 
 export class ActionSystem {
 	private queues = new Map<string, ActiveQueue>()
+	private contextResolvers = new Map<ActionQueueContext['kind'], ActionQueueContextResolver>()
 	private nowMs = 0
 
 	constructor(
@@ -58,7 +66,11 @@ export class ActionSystem {
 		return this.queues.has(settlerId)
 	}
 
-	public enqueue(settlerId: string, actions: WorkAction[], onComplete?: () => void, onFail?: (reason: string) => void): void {
+	public registerContextResolver(kind: ActionQueueContext['kind'], resolver: ActionQueueContextResolver): void {
+		this.contextResolvers.set(kind, resolver)
+	}
+
+	public enqueue(settlerId: string, actions: WorkAction[], onComplete?: () => void, onFail?: (reason: string) => void, context?: ActionQueueContext): void {
 		if (actions.length === 0) {
 			if (onComplete) {
 				onComplete()
@@ -69,6 +81,7 @@ export class ActionSystem {
 		this.queues.set(settlerId, {
 			actions,
 			index: 0,
+			context,
 			onComplete,
 			onFail
 		})
@@ -83,8 +96,7 @@ export class ActionSystem {
 		}
 
 		if (queue.index >= queue.actions.length) {
-			this.queues.delete(settlerId)
-			queue.onComplete?.()
+			this.finishQueue(settlerId)
 			return
 		}
 
@@ -152,8 +164,7 @@ export class ActionSystem {
 		}
 		this.logger.warn(`[ActionSystem] Action failed for ${settlerId}: ${action.type} (${reason})`)
 		this.event.emit(Receiver.All, WorkProviderEvents.SS.ActionFailed, { settlerId, action, reason })
-		this.queues.delete(settlerId)
-		queue.onFail?.(reason)
+		this.finishQueue(settlerId, reason)
 	}
 
 	private processTimedActions(): void {
@@ -166,6 +177,94 @@ export class ActionSystem {
 			}
 			queue.inProgress = undefined
 			this.completeAction(settlerId)
+		}
+	}
+
+	reset(): void {
+		this.queues.clear()
+	}
+
+	serialize(): ActionSystemSnapshot {
+		return {
+			queues: Array.from(this.queues.entries()).map(([settlerId, queue]) => ({
+				settlerId,
+				actions: queue.actions.map(action => ({ ...action })),
+				index: queue.index,
+				context: queue.context
+			}))
+		}
+	}
+
+	deserialize(state: ActionSystemSnapshot): void {
+		this.queues.clear()
+		for (const queue of state.queues) {
+			const callbacks = this.resolveCallbacks(queue.settlerId, queue.context, queue.actions)
+			this.queues.set(queue.settlerId, {
+				actions: queue.actions.map(action => ({ ...action })),
+				index: queue.index,
+				context: queue.context,
+				onComplete: callbacks.onComplete,
+				onFail: callbacks.onFail
+			})
+			this.startNextAction(queue.settlerId)
+		}
+	}
+
+	private resolveCallbacks(settlerId: string, context: ActionQueueContext | undefined, actions: WorkAction[]): { onComplete?: () => void, onFail?: (reason: string) => void } {
+		if (!context) {
+			return {}
+		}
+		const resolver = this.contextResolvers.get(context.kind)
+		if (!resolver) {
+			return {}
+		}
+		return resolver(settlerId, context, actions)
+	}
+
+	private finishQueue(settlerId: string, reason?: string): void {
+		const queue = this.queues.get(settlerId)
+		if (!queue) {
+			return
+		}
+		this.releaseReservations(queue.actions, queue.context?.reservationOwnerId, settlerId)
+		this.queues.delete(settlerId)
+		if (reason) {
+			queue.onFail?.(reason)
+			return
+		}
+		queue.onComplete?.()
+	}
+
+	private releaseReservations(actions: WorkAction[], reservationOwnerId: string | undefined, settlerId: string): void {
+		for (const action of actions) {
+			if (action.type === WorkActionType.WithdrawStorage || action.type === WorkActionType.DeliverStorage) {
+				if (action.reservationId) {
+					this.managers.reservations.releaseStorageReservation(action.reservationId)
+				}
+				continue
+			}
+
+			if (action.type === WorkActionType.PickupLoot || action.type === WorkActionType.PickupTool) {
+				if (reservationOwnerId) {
+					this.managers.reservations.releaseLootReservation(action.itemId, reservationOwnerId)
+				}
+				this.managers.reservations.releaseLootReservation(action.itemId, settlerId)
+				continue
+			}
+
+			if (action.type === WorkActionType.HarvestNode) {
+				this.managers.reservations.releaseNode(action.nodeId, reservationOwnerId || settlerId)
+				continue
+			}
+
+			if (action.type === WorkActionType.ChangeHome) {
+				this.managers.reservations.releaseHouseReservation(action.reservationId)
+				continue
+			}
+
+			if (action.type === WorkActionType.Move && action.targetType === 'amenity_slot' && action.targetId) {
+				this.managers.reservations.releaseAmenitySlot(action.targetId)
+			}
 		}
 	}
 }

@@ -3,6 +3,7 @@ import { TransportSourceType, TransportTargetType, WorkProviderType, WorkStepTyp
 import type { WorkProviderDeps } from '..'
 import type { Logger } from '../../../Logs'
 import { calculateDistance } from '../../../utils'
+import type { LogisticsSnapshot } from '../../../state/types'
 
 export class LogisticsProvider implements WorkProvider {
 	public readonly id = 'logistics'
@@ -13,7 +14,8 @@ export class LogisticsProvider implements WorkProvider {
 
 	constructor(
 		private managers: WorkProviderDeps,
-		private logger: Logger
+		private logger: Logger,
+		private getNowMs: () => number
 	) {}
 
 	assign(settlerId: string): void {
@@ -76,38 +78,41 @@ export class LogisticsProvider implements WorkProvider {
 	}
 
 	public requestInput(buildingInstanceId: string, itemType: string, quantity: number, priority: number): void {
+		const now = this.getNowMs()
 		this.enqueue({
-			id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+			id: `${now}-${Math.random().toString(36).slice(2)}`,
 			type: 'input',
 			buildingInstanceId,
 			itemType,
 			quantity,
 			priority,
-			createdAtMs: Date.now()
+			createdAtMs: now
 		})
 	}
 
 	public requestOutput(buildingInstanceId: string, itemType: string, quantity: number, priority: number): void {
+		const now = this.getNowMs()
 		this.enqueue({
-			id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+			id: `${now}-${Math.random().toString(36).slice(2)}`,
 			type: 'output',
 			buildingInstanceId,
 			itemType,
 			quantity,
 			priority,
-			createdAtMs: Date.now()
+			createdAtMs: now
 		})
 	}
 
 	public requestConstructionInput(buildingInstanceId: string, itemType: string, quantity: number, priority: number): void {
+		const now = this.getNowMs()
 		this.enqueue({
-			id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+			id: `${now}-${Math.random().toString(36).slice(2)}`,
 			type: 'construction',
 			buildingInstanceId,
 			itemType,
 			quantity,
 			priority,
-			createdAtMs: Date.now()
+			createdAtMs: now
 		})
 	}
 
@@ -384,5 +389,32 @@ export class LogisticsProvider implements WorkProvider {
 		}
 
 		return buildings
+	}
+
+	serialize(): LogisticsSnapshot {
+		const inFlightConstruction: Array<[string, Array<[string, number]>]> = []
+		for (const [buildingInstanceId, items] of this.inFlightConstruction.entries()) {
+			inFlightConstruction.push([buildingInstanceId, Array.from(items.entries())])
+		}
+
+		return {
+			requests: [...this.requests],
+			inFlightConstruction
+		}
+	}
+
+	deserialize(state: LogisticsSnapshot): void {
+		this.assigned.clear()
+		this.requests = state.requests.map(request => ({ ...request }))
+		this.inFlightConstruction.clear()
+		for (const [buildingInstanceId, items] of state.inFlightConstruction) {
+			this.inFlightConstruction.set(buildingInstanceId, new Map(items))
+		}
+	}
+
+	reset(): void {
+		this.assigned.clear()
+		this.requests = []
+		this.inFlightConstruction.clear()
 	}
 }

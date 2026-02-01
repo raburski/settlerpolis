@@ -33,7 +33,7 @@ export class SceneManager {
 	/**
 	 * Handle Map.SC.Load events
 	 */
-	private handleMapLoad = (data: { mapId: string, mapUrl: string, position?: { x: number, y: number } }): void => {
+	private handleMapLoad = (data: { mapId: string, mapUrl: string, position?: { x: number, y: number }, suppressAutoJoin?: boolean }): void => {
 		console.log('[SceneManager] Map load event received:', data)
 		
 		if (!this.game) {
@@ -41,12 +41,12 @@ export class SceneManager {
 			return
 		}
 
-		const { mapId, mapUrl, position } = data
+		const { mapId, mapUrl, position, suppressAutoJoin } = data
 		
 		// Check if we already have a scene for this map
 		if (this.mapInstances.has(mapId)) {
 			console.log(`[SceneManager] Scene for map ${mapId} already exists, transitioning to it`)
-			this.transitionToMap(mapId, position)
+			this.transitionToMap(mapId, position, { suppressAutoJoin })
 			return
 		}
 		
@@ -65,7 +65,7 @@ export class SceneManager {
 			console.log(`[SceneManager] Created new scene for map ${mapId}`)
 			
 			// Start the scene
-			this.transitionToMap(mapId, position)
+			this.transitionToMap(mapId, position, { suppressAutoJoin })
 		} catch (error) {
 			console.error(`[SceneManager] Error creating scene for map ${mapId}:`, error)
 		}
@@ -74,7 +74,7 @@ export class SceneManager {
 	/**
 	 * Transition to a map with optional position
 	 */
-	private transitionToMap(mapId: string, position?: { x: number, y: number }): void {
+	private transitionToMap(mapId: string, position?: { x: number, y: number }, options?: { suppressAutoJoin?: boolean }): void {
 		if (!this.game) return
 
 		const sceneManager = this.game.scene
@@ -88,7 +88,8 @@ export class SceneManager {
 		sceneManager.start(mapId, {
 			x: position?.x || 100,
 			y: position?.y || 400,
-			isTransition: !!this.activeMap
+			isTransition: !!this.activeMap,
+			suppressAutoJoin: options?.suppressAutoJoin
 		})
 		
 		this.activeMap = mapId

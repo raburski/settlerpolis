@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from 'uuid'
 import type { MapManager } from '../Map'
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
+import type { PlayersSnapshot } from '../state/types'
 
 // Define missing types
 interface PlayerTransitionData {
@@ -146,6 +147,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 		// Handle player join
 		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
 			const playerId = client.id
+			const existingPlayer = this.players.get(playerId)
 			
 			// Use mapId from the data, or get default from MapManager
 			const mapId = data.mapId || this.managers.map.getDefaultMapId()
@@ -155,8 +157,8 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 				playerId,
 				position: data.position,
 				mapId,  // Use mapId instead of scene
-				appearance: data.appearance,
-				equipment: { ...INITIAL_EQUIPMENT }
+				appearance: data.appearance ?? existingPlayer?.appearance,
+				equipment: existingPlayer?.equipment ? { ...existingPlayer.equipment } : { ...INITIAL_EQUIPMENT }
 			})
 
 			// Send existing players to new player
@@ -169,8 +171,10 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 				appearance: data.appearance 
 			})
 
-			// Spawn starting items at player start location
-			this.spawnStartingItems(data.position, mapId, client)
+			// Spawn starting items at player start location unless explicitly skipped
+			if (!data.skipStartingItems) {
+				this.spawnStartingItems(data.position, mapId, client)
+			}
 		})
 
 		// Handle player movement
@@ -421,5 +425,30 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 					})
 				}
 			})
+	}
+
+	serialize(): PlayersSnapshot {
+		return {
+			players: Array.from(this.players.values()).map(player => ({
+				...player,
+				position: { ...player.position },
+				equipment: player.equipment ? { ...player.equipment } : player.equipment
+			}))
+		}
+	}
+
+	deserialize(state: PlayersSnapshot): void {
+		this.players.clear()
+		for (const player of state.players) {
+			this.players.set(player.playerId, {
+				...player,
+				position: { ...player.position },
+				equipment: player.equipment ? { ...player.equipment } : player.equipment
+			})
+		}
+	}
+
+	reset(): void {
+		this.players.clear()
 	}
 } 

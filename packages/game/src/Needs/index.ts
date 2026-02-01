@@ -11,6 +11,7 @@ import type { WorkProviderManager } from '../Settlers/WorkProvider'
 import { NeedsSystem } from './NeedsSystem'
 import { NeedPlanner } from './NeedPlanner'
 import { NeedInterruptController } from './NeedInterruptController'
+import type { NeedsSnapshot } from '../state/types'
 
 export interface NeedsDeps {
 	buildings: BuildingManager
@@ -36,6 +37,28 @@ export class NeedsManager extends BaseManager<NeedsDeps> {
 		this.system = new NeedsSystem({ population: managers.population }, event)
 		this.planner = new NeedPlanner(managers, logger)
 		this.interrupts = new NeedInterruptController(event, this.system, this.planner, managers.work, logger)
+	}
+
+	serialize(): NeedsSnapshot {
+		const systemSnapshot = this.system.serialize()
+		return {
+			needsBySettler: systemSnapshot.needsBySettler,
+			lastLevels: systemSnapshot.lastLevels,
+			interrupts: this.interrupts.serialize()
+		}
+	}
+
+	deserialize(state: NeedsSnapshot): void {
+		this.system.deserialize({
+			needsBySettler: state.needsBySettler,
+			lastLevels: state.lastLevels
+		})
+		this.interrupts.deserialize(state.interrupts)
+	}
+
+	reset(): void {
+		this.system.reset()
+		this.interrupts.reset()
 	}
 }
 

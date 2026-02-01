@@ -14,6 +14,8 @@ type TopBarProps = {
 	onTogglePopulation: () => void
 	isLogisticsOpen: boolean
 	onToggleLogistics: () => void
+	onOpenSave: () => void
+	onOpenLoad: () => void
 	resourceButtonRef?: React.Ref<HTMLButtonElement>
 	populationButtonRef?: React.Ref<HTMLButtonElement>
 	logisticsButtonRef?: React.Ref<HTMLButtonElement>
@@ -47,6 +49,8 @@ export const TopBar: React.FC<TopBarProps> = ({
 	onTogglePopulation,
 	isLogisticsOpen,
 	onToggleLogistics,
+	onOpenSave,
+	onOpenLoad,
 	resourceButtonRef,
 	populationButtonRef,
 	logisticsButtonRef
@@ -78,7 +82,6 @@ export const TopBar: React.FC<TopBarProps> = ({
 		{ id: 'planks', label: 'Planks' }
 	]
 	const populationLabel = `${populationTotal}/${housingCapacity}`
-
 	return (
 		<div className={styles.topBar}>
 			<div className={styles.left}>
@@ -125,7 +128,16 @@ export const TopBar: React.FC<TopBarProps> = ({
 					<span className={styles.logisticsLabel}>Logistics</span>
 				</button>
 			</div>
-			<div className={styles.right} />
+			<div className={styles.right}>
+				<div className={styles.snapshotButtons}>
+					<button type="button" className={styles.snapshotButton} onClick={onOpenSave}>
+						Save
+					</button>
+					<button type="button" className={styles.snapshotButton} onClick={onOpenLoad}>
+						Load
+					</button>
+				</div>
+			</div>
 		</div>
 	)
 }
