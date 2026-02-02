@@ -8,6 +8,7 @@ export const PopulationEvents = {
 	SC: {
 		SettlerSpawned: 'sc:population:settler-spawned', // Settler was spawned
 		SettlerUpdated: 'sc:population:settler-updated', // Settler state/data updated (e.g., state change, position, target)
+		SettlerDied: 'sc:population:settler-died', // Settler died and was removed
 		WorkerAssigned: 'sc:population:worker-assigned', // Worker assigned to provider/building
 		WorkerUnassigned: 'sc:population:worker-unassigned', // Worker unassigned from provider/building
 		WorkerRequestFailed: 'sc:population:worker-request-failed', // Worker request failed (no available settler/tool)
@@ -16,7 +17,8 @@ export const PopulationEvents = {
 		ProfessionChanged: 'sc:population:profession-changed', // Settler profession changed (e.g., from tool pickup)
 	},
 	SS: {
-		SpawnTick: 'ss:population:spawn-tick' // Internal tick for house spawning
+		SpawnTick: 'ss:population:spawn-tick', // Internal tick for house spawning
+		SettlerDied: 'ss:population:settler-died' // Internal event for settler death
 		// Note: MovementTick, PickupItem, ArrivedAtBuilding removed - MovementManager handles these via MovementEvents.SS.PathComplete (with target info)
 	}
 } as const

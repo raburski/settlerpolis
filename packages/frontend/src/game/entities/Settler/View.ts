@@ -14,6 +14,8 @@ export class SettlerView extends BaseMovementView {
 	protected dangerText: GameObjects.Text | null = null
 	protected needActivityCircle: GameObjects.Graphics | null = null
 	protected needActivityText: GameObjects.Text | null = null
+	protected healthBarBg: GameObjects.Graphics | null = null
+	protected healthBarFill: GameObjects.Graphics | null = null
 	protected highlightCircle: GameObjects.Graphics | null = null
 	protected profession: ProfessionType
 	protected state: SettlerState
@@ -23,7 +25,11 @@ export class SettlerView extends BaseMovementView {
 	private dangerKind: 'hunger' | 'fatigue' | null = null
 	private activeNeedKind: 'hunger' | 'fatigue' | null = null
 	private isHighlighted: boolean = false
+	private healthValue: number | null = null
 	private readonly CRITICAL_NEED_THRESHOLD = 0.15
+	private readonly HEALTH_BAR_WIDTH = 26
+	private readonly HEALTH_BAR_HEIGHT = 4
+	private readonly HEALTH_BAR_Y = -38
 	private readonly dangerEmojis: Record<'hunger' | 'fatigue', string> = {
 		hunger: '🍞',
 		fatigue: '💤'
@@ -144,6 +150,22 @@ export class SettlerView extends BaseMovementView {
 		this.needActivityText.setOrigin(0.5, 0.5)
 		this.needActivityText.setVisible(false)
 		this.add(this.needActivityText)
+
+		// Add health bar (hidden by default)
+		const barX = -this.HEALTH_BAR_WIDTH / 2
+		this.healthBarBg = this.scene.add.graphics()
+		this.healthBarBg.clear()
+		this.healthBarBg.fillStyle(0x000000, 0.6)
+		this.healthBarBg.fillRect(barX, this.HEALTH_BAR_Y, this.HEALTH_BAR_WIDTH, this.HEALTH_BAR_HEIGHT)
+		this.healthBarBg.lineStyle(1, 0x000000, 0.8)
+		this.healthBarBg.strokeRect(barX, this.HEALTH_BAR_Y, this.HEALTH_BAR_WIDTH, this.HEALTH_BAR_HEIGHT)
+		this.healthBarBg.setVisible(false)
+		this.add(this.healthBarBg)
+
+		this.healthBarFill = this.scene.add.graphics()
+		this.healthBarFill.clear()
+		this.healthBarFill.setVisible(false)
+		this.add(this.healthBarFill)
 
 		// Make settler clickable with a circular hit area
 		const hitArea = new Geom.Circle(0, 0, size / 2)
@@ -311,6 +333,31 @@ export class SettlerView extends BaseMovementView {
 		this.refreshNeedIndicators()
 	}
 
+	public updateHealth(health?: number): void {
+		const normalized = typeof health === 'number' ? Math.max(0, Math.min(1, health)) : 1
+		if (this.healthValue === normalized) {
+			const shouldShow = normalized < 1
+			this.healthBarBg?.setVisible(shouldShow)
+			this.healthBarFill?.setVisible(shouldShow)
+			return
+		}
+
+		this.healthValue = normalized
+		const shouldShow = normalized < 1
+		this.healthBarBg?.setVisible(shouldShow)
+		this.healthBarFill?.setVisible(shouldShow)
+
+		if (!shouldShow || !this.healthBarFill) {
+			return
+		}
+
+		const color = normalized > 0.66 ? 0x2ecc71 : normalized > 0.33 ? 0xf1c40f : 0xe74c3c
+		const width = Math.max(0.5, this.HEALTH_BAR_WIDTH * normalized)
+		this.healthBarFill.clear()
+		this.healthBarFill.fillStyle(color, 1)
+		this.healthBarFill.fillRect(-this.HEALTH_BAR_WIDTH / 2, this.HEALTH_BAR_Y, width, this.HEALTH_BAR_HEIGHT)
+	}
+
 	public updateNeedActivity(kind: 'hunger' | 'fatigue' | null): void {
 		this.activeNeedKind = kind
 		this.refreshNeedIndicators()
@@ -389,6 +436,14 @@ export class SettlerView extends BaseMovementView {
 		if (this.needActivityText) {
 			this.needActivityText.destroy()
 			this.needActivityText = null
+		}
+		if (this.healthBarBg) {
+			this.healthBarBg.destroy()
+			this.healthBarBg = null
+		}
+		if (this.healthBarFill) {
+			this.healthBarFill.destroy()
+			this.healthBarFill = null
 		}
 		super.destroy()
 	}

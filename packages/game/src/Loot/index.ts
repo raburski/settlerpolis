@@ -178,7 +178,7 @@ export class LootManager extends BaseManager<LootDeps> {
 		return mapItems.find(item => item.itemType === itemType && this.isItemAvailable(item.id))
 	}
 
-	dropItem(item: Item, position: Position, client: EventClient, quantity: number = 1) {
+	dropItem(item: Item, position: Position, client: EventClient, quantity: number = 1, metadata?: Record<string, any>) {
 		const mapId = client.currentGroup
 		
 		// Handle undefined mapId
@@ -191,7 +191,7 @@ export class LootManager extends BaseManager<LootDeps> {
 			client.emit(Receiver.Group, Event.Loot.SC.Spawn, payload)
 		}, (payload) => {
 			client.emit(Receiver.Group, Event.Loot.SC.Update, payload)
-		}, item.id)
+		}, item.id, metadata)
 	}
 
 	pickItem(itemId: string, client: EventClient): Item | undefined {
@@ -244,7 +244,8 @@ export class LootManager extends BaseManager<LootDeps> {
 		quantity: number,
 		emitSpawn: (payload: LootSpawnEventPayload) => void,
 		emitUpdate: (payload: LootUpdateEventPayload) => void,
-		preferredItemId?: string
+		preferredItemId?: string,
+		metadata?: Record<string, any>
 	): void {
 		if (quantity <= 0) return
 
@@ -254,12 +255,13 @@ export class LootManager extends BaseManager<LootDeps> {
 
 		let remaining = quantity
 
-		if (stackable) {
+		if (stackable && !metadata) {
 			const existingPile = mapDroppedItems.find(item =>
 				item.itemType === itemType &&
 				item.position.x === position.x &&
 				item.position.y === position.y &&
-				item.quantity < maxStackSize
+				item.quantity < maxStackSize &&
+				!item.metadata
 			)
 
 			if (existingPile) {
@@ -277,7 +279,8 @@ export class LootManager extends BaseManager<LootDeps> {
 					itemType,
 					position,
 					droppedAt: this.simulationTimeMs,
-					quantity: 1
+					quantity: 1,
+					metadata: metadata ? { ...metadata } : undefined
 				}
 				mapDroppedItems.push(item)
 				this.itemIdToMapId.set(item.id, mapId)
@@ -293,7 +296,8 @@ export class LootManager extends BaseManager<LootDeps> {
 				itemType,
 				position,
 				droppedAt: this.simulationTimeMs,
-				quantity: stackQuantity
+				quantity: stackQuantity,
+				metadata: metadata ? { ...metadata } : undefined
 			}
 			mapDroppedItems.push(item)
 			this.itemIdToMapId.set(item.id, mapId)

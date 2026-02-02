@@ -46,6 +46,7 @@ export const UiEvents = {
 	Population: {
 		StatsUpdated: 'ui:population:stats-updated',
 		SettlerSpawned: 'ui:population:settler-spawned',
+		SettlerDied: 'ui:population:settler-died',
 		SettlerUpdated: 'ui:population:settler-updated',
 		ProfessionChanged: 'ui:population:profession-changed',
 		WorkerAssigned: 'ui:population:worker-assigned',

@@ -13,6 +13,7 @@ import buildingFoundationItem from "./building_foundation";
 import { hammerItem } from "./hammer";
 import { axeItem } from "./axe";
 import pickaxeItem from "./pickaxe";
+import tombstoneItem from "./tombstone";
 
 export { ItemType } from "./types";
 
@@ -31,5 +32,6 @@ export const items = [
 	buildingFoundationItem,
 	hammerItem,
 	axeItem,
-	pickaxeItem
+	pickaxeItem,
+	tombstoneItem
 ]

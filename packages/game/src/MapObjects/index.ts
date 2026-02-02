@@ -127,6 +127,13 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 				position, width, height,
 				object.position, objectWidth, objectHeight
 			)) {
+				// Allow storage piles to exist inside their parent building footprint
+				if (metadata?.storagePile && metadata?.buildingInstanceId &&
+					object.metadata?.buildingInstanceId === metadata.buildingInstanceId &&
+					object.metadata?.buildingId) {
+					continue
+				}
+
 				// If either object blocks placement, return true (collision)
 				const itemMetadata = item ? this.managers.items.getItemMetadata(item.itemType) : null
 				const objectMetadata = this.managers.items.getItemMetadata(object.item.itemType)
