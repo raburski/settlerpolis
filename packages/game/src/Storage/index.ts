@@ -76,6 +76,25 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		return slotIds.map(id => storage.slots.get(id)).filter(Boolean) as StorageSlot[]
 	}
 
+	private rotateOffset(
+		offset: { x: number; y: number },
+		width: number,
+		height: number,
+		rotation: number
+	): { x: number; y: number } {
+		const turns = normalizeQuarterTurns(rotation)
+		if (turns === 0) {
+			return { x: offset.x, y: offset.y }
+		}
+		if (turns === 1) {
+			return { x: offset.y, y: width - 1 - offset.x }
+		}
+		if (turns === 2) {
+			return { x: width - 1 - offset.x, y: height - 1 - offset.y }
+		}
+		return { x: height - 1 - offset.y, y: offset.x }
+	}
+
 	private getStorageSlotByReservation(reservationId?: string): StorageSlot | null {
 		if (!reservationId) {
 			return null
@@ -195,7 +214,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			return
 		}
 
-		if (!definition.storage || !definition.storage.slots || definition.storage.slots.length === 0) {
+		if (!definition.storageSlots || definition.storageSlots.length === 0) {
 			return
 		}
 
@@ -211,15 +230,22 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		}
 
 		const tileSize = this.getTileSize(building.mapId)
-		for (const slotDef of definition.storage.slots) {
+		const rotation = typeof building.rotation === 'number' ? building.rotation : 0
+		for (const slotDef of definition.storageSlots) {
 			const basePileSize = this.getPileSize(slotDef.itemType)
 			const pileSize = typeof slotDef.maxQuantity === 'number'
 				? Math.max(1, Math.min(basePileSize, slotDef.maxQuantity))
 				: basePileSize
 			const slotId = uuidv4()
+			const rotatedOffset = this.rotateOffset(
+				slotDef.offset,
+				definition.footprint.width,
+				definition.footprint.height,
+				rotation
+			)
 			const position: Position = {
-				x: building.position.x + slotDef.offset.x * tileSize,
-				y: building.position.y + slotDef.offset.y * tileSize
+				x: building.position.x + rotatedOffset.x * tileSize,
+				y: building.position.y + rotatedOffset.y * tileSize
 			}
 
 			const slot: StorageSlot = {
@@ -439,7 +465,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			return 1
 		}
 		const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
-		const multiplier = definition?.storage?.preservation?.spoilageMultiplier
+		const multiplier = definition?.storagePreservation?.spoilageMultiplier
 		if (typeof multiplier !== 'number') {
 			return 1
 		}
@@ -634,7 +660,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	// Check if building accepts item type
-	// Returns true if itemType has a capacity defined in BuildingDefinition
+	// Returns true if itemType has storage slots defined in BuildingDefinition
 	public acceptsItemType(buildingInstanceId: string, itemType: string): boolean {
 		return this.getStorageCapacity(buildingInstanceId, itemType) > 0
 	}
@@ -655,16 +681,22 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		}
 
 		const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
-		if (!definition || !definition.storage) {
+		if (!definition || !definition.storageSlots) {
 			return 0
 		}
-		if (definition.storage.slots && definition.storage.slots.length > 0) {
-			const pileSize = this.getPileSize(itemType)
-			const slotCount = definition.storage.slots.filter(slot => slot.itemType === itemType).length
-			return slotCount * pileSize
+		if (definition.storageSlots.length > 0) {
+			return definition.storageSlots
+				.filter(slot => slot.itemType === itemType)
+				.reduce((sum, slot) => {
+					const basePileSize = this.getPileSize(slot.itemType)
+					const pileSize = typeof slot.maxQuantity === 'number'
+						? Math.max(1, Math.min(basePileSize, slot.maxQuantity))
+						: basePileSize
+					return sum + pileSize
+				}, 0)
 		}
 
-		return definition.storage.capacities[itemType] || 0
+		return 0
 	}
 
 	// Get available quantity for an item type (items available for transport)
@@ -904,7 +936,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				continue
 			}
 			const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
-			if (!definition?.storage) {
+			if (!definition?.storageSlots || definition.storageSlots.length === 0) {
 				continue
 			}
 			if (this.buildingStorages.has(building.id)) {
@@ -934,18 +966,25 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				continue
 			}
 			const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
-			if (!definition?.storage?.slots || definition.storage.slots.length === 0) {
+			if (!definition?.storageSlots || definition.storageSlots.length === 0) {
 				continue
 			}
 			const tileSize = this.getTileSize(building.mapId)
-			for (const slotDef of definition.storage.slots) {
+			const rotation = typeof building.rotation === 'number' ? building.rotation : 0
+			for (const slotDef of definition.storageSlots) {
 				if (typeof slotDef.maxQuantity !== 'number') {
 					continue
 				}
 				const basePileSize = this.getPileSize(slotDef.itemType)
 				const desiredPileSize = Math.max(1, Math.min(basePileSize, slotDef.maxQuantity))
-				const expectedX = building.position.x + slotDef.offset.x * tileSize
-				const expectedY = building.position.y + slotDef.offset.y * tileSize
+				const rotatedOffset = this.rotateOffset(
+					slotDef.offset,
+					definition.footprint.width,
+					definition.footprint.height,
+					rotation
+				)
+				const expectedX = building.position.x + rotatedOffset.x * tileSize
+				const expectedY = building.position.y + rotatedOffset.y * tileSize
 				const slots = this.getSlotsForItem(storage, slotDef.itemType)
 				const matched = slots.find(slot => Math.abs(slot.position.x - expectedX) < 0.01 && Math.abs(slot.position.y - expectedY) < 0.01)
 				if (!matched) {
@@ -962,4 +1001,13 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		this.simulationTimeMs = 0
 		this.tickAccumulatorMs = 0
 	}
+}
+
+const HALF_PI = Math.PI / 2
+
+function normalizeQuarterTurns(rotation: number): number {
+	if (!Number.isFinite(rotation)) return 0
+	const turns = Math.round(rotation / HALF_PI)
+	const normalized = ((turns % 4) + 4) % 4
+	return normalized
 }

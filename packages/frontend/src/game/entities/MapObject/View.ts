@@ -1,658 +1,542 @@
-import { Scene, GameObjects } from 'phaser'
-import { MapObject, ConstructionStage } from '@rugged/game'
-import { ItemMetadata } from '@rugged/game'
-import { itemService } from "../../services/ItemService"
-import { itemTextureService } from "../../services/ItemTextureService"
-import { buildingService } from "../../services/BuildingService"
-import { storageService } from '../../services/StorageService'
+import { BaseEntityView } from '../BaseEntityView'
+import type { GameScene } from '../../scenes/base/GameScene'
+import type { MapObject } from '@rugged/game'
+import { ConstructionStage } from '@rugged/game'
+import { itemService } from '../../services/ItemService'
+import { buildingService } from '../../services/BuildingService'
 import { EventBus } from '../../EventBus'
 import { UiEvents } from '../../uiEvents'
 import { Event } from '@rugged/game'
+import { AbstractMesh, Color3, Mesh, MeshBuilder, SceneLoader, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core'
+import '@babylonjs/loaders'
 
-export class MapObjectView {
-	private scene: Scene
-	private sprite: GameObjects.Sprite | null = null
-	private emojiText: GameObjects.Text | null = null
+export class MapObjectView extends BaseEntityView {
+	private static debugBoundsEnabled = false
+	private static debugInitialized = false
+	private static debugInstances = new Set<MapObjectView>()
+
+	private static ensureDebugSubscription(): void {
+		if (MapObjectView.debugInitialized) return
+		MapObjectView.debugInitialized = true
+		EventBus.on(UiEvents.Debug.BoundsToggle, (data: { enabled: boolean }) => {
+			MapObjectView.debugBoundsEnabled = Boolean(data?.enabled)
+			MapObjectView.debugInstances.forEach((instance) => instance.applyDebugBounds())
+		})
+	}
+
 	private mapObject: MapObject
-	private unsubscribe: (() => void) | null = null
-	private progressBar: GameObjects.Graphics | null = null
-	private progressBarBg: GameObjects.Graphics | null = null
-	private progressText: GameObjects.Text | null = null
-	private highlightGraphics: GameObjects.Graphics | null = null
-	private isHighlighted: boolean = false
-	private highlightHandler: ((data: { buildingInstanceId: string, highlighted: boolean }) => void) | null = null
 	private isBuilding: boolean = false
-	private isStoragePile: boolean = false
-	private storageSlotId: string | null = null
-	private storageQuantityText: GameObjects.Text | null = null
-	private storageSlotHandler: ((data: { slotId: string, quantity: number }) => void) | null = null
-	private buildingProgress: number = 0
-	private buildingStage: ConstructionStage | null = null
-	private progressHandler: ((data: { buildingInstanceId: string, progress: number, stage: string }) => void) | null = null
+	private isHighlighted: boolean = false
+	private highlightHandler: ((data: { buildingInstanceId: string; highlighted: boolean }) => void) | null = null
 	private completedHandler: ((data: { building: any }) => void) | null = null
-	private isEmojiFallback: boolean = false
-	private catalogHandler: ((data: { buildings: BuildingDefinition[] }) => void) | null = null
-	private readonly treeGrowthStages = [0.65, 0.82, 1]
+	private progressHandler: ((data: { buildingInstanceId: string; progress: number; stage: string }) => void) | null = null
+	private buildingStage: ConstructionStage | null = null
+	private staticRect: { x: number; y: number; width: number; height: number } | null = null
+	private unsubscribe: (() => void) | null = null
+	private modelRoot: TransformNode | null = null
+	private modelPivot: TransformNode | null = null
+	private modelMeshes: AbstractMesh[] = []
+	private modelSrc: string | null = null
+	private modelFailedSrc: string | null = null
+	private modelLoading: Promise<void> | null = null
+	private invisibleMaterial: StandardMaterial | null = null
+	private debugBoundsMesh: Mesh | null = null
+	private debugBoundsMaterial: StandardMaterial | null = null
+	private debugRootMesh: Mesh | null = null
+	private debugRootMaterial: StandardMaterial | null = null
+	private debugLoggedNoBounds: boolean = false
+	private debugLoggedBounds: boolean = false
 
-	constructor(scene: Scene, mapObject: MapObject) {
-		this.scene = scene
+	constructor(scene: GameScene, mapObject: MapObject) {
+		const tileSize = scene.map?.tileWidth || 32
+		const footprint = mapObject.metadata?.footprint
+		const width = footprint ? footprint.width * tileSize : tileSize
+		const length = footprint ? footprint.height * tileSize : tileSize
+		const height = tileSize
+		const mesh = scene.runtime.renderer.createBox(`map-object-${mapObject.id}`, { width, length, height })
+		const centerX = mapObject.position.x + width / 2
+		const centerY = mapObject.position.y + length / 2
+		super(scene, mesh, { width, length, height }, { x: centerX, y: centerY })
+
+		MapObjectView.ensureDebugSubscription()
+		MapObjectView.debugInstances.add(this)
+
 		this.mapObject = mapObject
-		
-		// Check if this is a building
 		this.isBuilding = Boolean(mapObject.metadata?.buildingId || mapObject.metadata?.buildingInstanceId)
-		this.isStoragePile = Boolean(mapObject.metadata?.storagePile)
-		this.storageSlotId = mapObject.metadata?.storageSlotId || null
-		if (this.isBuilding) {
-			this.buildingProgress = mapObject.metadata?.progress || 0
-			this.buildingStage = mapObject.metadata?.stage || ConstructionStage.Foundation
-			this.setupBuildingEvents(scene)
-			this.setupHighlightEvents()
-			this.setupCatalogEvents()
-		}
-		
-		// Subscribe to item metadata updates
-		this.unsubscribe = itemService.subscribeToItemMetadata(mapObject.item.itemType, (itemMetadata) => {
-			if (itemMetadata) {
-				this.initializeSprite(scene, itemMetadata)
-				if (this.isBuilding) {
-					this.createProgressBar(scene)
-				}
+		this.buildingStage = mapObject.metadata?.stage || null
+
+		this.unsubscribe = itemService.subscribeToItemMetadata(mapObject.item.itemType, () => {
+			this.applyEmoji()
+		})
+
+		this.applyEmoji()
+		this.setupCollision()
+		this.setupInteraction()
+		this.setupHighlightEvents()
+		this.setupBuildingEvents()
+	}
+
+	private setupCollision(): void {
+		const metadata = itemService.getItemType(this.mapObject.item.itemType)
+		const blocksMovement = metadata?.placement?.blocksMovement || Boolean(this.mapObject.metadata?.footprint)
+		if (!blocksMovement) return
+		this.staticRect = this.scene.physics.addStaticRect({
+			x: this.mapObject.position.x,
+			y: this.mapObject.position.y - this.length,
+			width: this.width,
+			height: this.length
+		})
+	}
+
+	private applyEmoji(): void {
+		if (this.isBuilding && this.buildingStage === ConstructionStage.Completed) {
+			const buildingId = this.mapObject.metadata?.buildingId
+			const definition = buildingId ? buildingService.getBuildingDefinition(buildingId) : null
+			if (definition?.render?.modelSrc && this.modelFailedSrc !== definition.render.modelSrc) {
+				this.applyInvisibleBase()
+				void this.loadRenderModel(definition.render)
+				return
 			}
+			if (definition?.icon) {
+				this.showBase()
+				this.scene.runtime.renderer.applyEmoji(this.getMesh(), definition.icon)
+				return
+			}
+		}
+
+		const metadata = itemService.getItemType(this.mapObject.item.itemType)
+		if (metadata?.emoji) {
+			this.showBase()
+			this.scene.runtime.renderer.applyEmoji(this.getMesh(), metadata.emoji)
+		} else {
+			this.showBase()
+			this.scene.runtime.renderer.applyTint(this.getMesh(), '#888888')
+		}
+	}
+
+	private async loadRenderModel(render: {
+		modelSrc: string
+		transform?: {
+			rotation?: { x: number; y: number; z: number }
+			scale?: { x: number; y: number; z: number }
+			elevation?: number
+		}
+	}): Promise<void> {
+		if (!render.modelSrc) return
+		if (this.isSceneDisposed()) return
+		if (this.modelFailedSrc && this.modelFailedSrc !== render.modelSrc) {
+			this.modelFailedSrc = null
+		}
+		if (this.modelSrc === render.modelSrc && this.modelRoot) {
+			this.applyModelTransform(render)
+			this.applyInvisibleBase()
+			return
+		}
+		if (this.modelLoading) {
+			return
+		}
+		this.disposeModel()
+		this.modelSrc = render.modelSrc
+		try {
+			this.modelLoading = (async () => {
+				const { rootUrl, fileName } = splitAssetUrl(render.modelSrc)
+				const scene = this.scene.runtime.renderer.scene
+				if (this.isSceneDisposed()) return
+				const result = await SceneLoader.ImportMeshAsync('', rootUrl, fileName, scene)
+				if (this.isSceneDisposed()) {
+					result.meshes.forEach((mesh) => mesh.dispose(false, true))
+					return
+				}
+				this.modelRoot = new TransformNode(`map-object-model-${this.mapObject.id}`, scene)
+				this.modelPivot = new TransformNode(`map-object-model-pivot-${this.mapObject.id}`, scene)
+				this.modelPivot.parent = this.modelRoot
+				this.modelMeshes = result.meshes
+				this.modelMeshes.forEach((mesh) => {
+					mesh.isPickable = false
+					mesh.isVisible = true
+					mesh.visibility = 1
+					mesh.setEnabled(true)
+					mesh.refreshBoundingInfo()
+					mesh.computeWorldMatrix(true)
+				})
+				// Ensure any top-level meshes or transform nodes follow the base mesh.
+				result.meshes.forEach((mesh) => {
+					if (mesh.parent === null) {
+						mesh.parent = this.modelPivot
+					}
+				})
+				result.transformNodes?.forEach((node) => {
+					if (node.parent === null) {
+						node.parent = this.modelPivot
+					}
+					node.setEnabled(true)
+				})
+				if (MapObjectView.debugBoundsEnabled && !this.debugLoggedBounds) {
+					const meshInfo = this.modelMeshes.map((mesh) => ({
+						name: mesh.name,
+						type: mesh.getClassName?.() ?? 'unknown',
+						vertices: mesh.getTotalVertices(),
+						isVisible: mesh.isVisible
+					}))
+					console.info('[MapObjectView] Debug model load', {
+						id: this.mapObject.id,
+						modelSrc: render.modelSrc,
+						meshCount: this.modelMeshes.length,
+						transformNodeCount: result.transformNodes?.length ?? 0,
+						meshes: meshInfo
+					})
+					this.debugLoggedBounds = true
+				}
+				this.centerModel()
+				this.modelRoot.parent = this.getMesh()
+				this.applyModelTransform(render)
+				this.applyInvisibleBase()
+				this.applyDebugBounds()
+				this.modelFailedSrc = null
+			})()
+			await this.modelLoading
+		} catch (error) {
+			if (isSceneDisposedError(error)) {
+				return
+			}
+			console.warn('[MapObjectView] Failed to load model', render.modelSrc, error)
+			this.disposeModel()
+			this.modelSrc = null
+			this.modelFailedSrc = render.modelSrc
+			this.applyEmoji()
+		} finally {
+			this.modelLoading = null
+		}
+	}
+
+	private applyModelTransform(render: {
+		transform?: {
+			rotation?: { x: number; y: number; z: number }
+			scale?: { x: number; y: number; z: number }
+			elevation?: number
+		}
+	}): void {
+		if (!this.modelRoot) return
+		const transform = render.transform || {}
+		const rotation = transform.rotation ?? { x: 0, y: 0, z: 0 }
+		const scale = transform.scale ?? { x: 1, y: 1, z: 1 }
+		const elevation = transform.elevation ?? 0
+		const tileSize = this.scene.map?.tileWidth || 32
+		this.modelRoot.position = new Vector3(0, -this.height / 2 + elevation * tileSize, 0)
+		const instanceRotation = typeof this.mapObject.rotation === 'number' ? this.mapObject.rotation : 0
+		this.modelRoot.rotation = new Vector3(rotation.x ?? 0, (rotation.y ?? 0) + instanceRotation, rotation.z ?? 0)
+		this.modelRoot.scaling = new Vector3(
+			(scale.x ?? 1) * tileSize,
+			(scale.y ?? 1) * tileSize,
+			(scale.z ?? 1) * tileSize
+		)
+		if (MapObjectView.debugBoundsEnabled) {
+			this.applyDebugBounds()
+		}
+	}
+
+	private applyInvisibleBase(): void {
+		const baseMesh = this.getMesh()
+		if (!this.invisibleMaterial) {
+			this.invisibleMaterial = new StandardMaterial(`map-object-invisible-${this.mapObject.id}`, baseMesh.getScene())
+			this.invisibleMaterial.diffuseColor = Color3.Black()
+			this.invisibleMaterial.emissiveColor = Color3.Black()
+			this.invisibleMaterial.specularColor = Color3.Black()
+			this.invisibleMaterial.alpha = 0
+			this.invisibleMaterial.disableDepthWrite = true
+		}
+		baseMesh.material = this.invisibleMaterial
+		baseMesh.visibility = 1
+	}
+
+	private showBase(): void {
+		this.getMesh().visibility = 1
+	}
+
+	private disposeModel(): void {
+		if (this.modelMeshes.length > 0) {
+			this.modelMeshes.forEach((mesh) => {
+				mesh.showBoundingBox = false
+				mesh.dispose(false, true)
+			})
+		}
+		this.modelMeshes = []
+		this.modelPivot?.dispose()
+		this.modelRoot?.dispose()
+		this.modelPivot = null
+		this.modelRoot = null
+		this.modelSrc = null
+		this.modelLoading = null
+		if (this.invisibleMaterial) {
+			this.invisibleMaterial.dispose()
+			this.invisibleMaterial = null
+		}
+		if (this.debugBoundsMesh) {
+			this.debugBoundsMesh.dispose()
+			this.debugBoundsMesh = null
+		}
+		if (this.debugBoundsMaterial) {
+			this.debugBoundsMaterial.dispose()
+			this.debugBoundsMaterial = null
+		}
+		if (this.debugRootMesh) {
+			this.debugRootMesh.dispose()
+			this.debugRootMesh = null
+		}
+		if (this.debugRootMaterial) {
+			this.debugRootMaterial.dispose()
+			this.debugRootMaterial = null
+		}
+		this.debugLoggedNoBounds = false
+		this.debugLoggedBounds = false
+	}
+
+	private isSceneDisposed(): boolean {
+		if (isMeshDisposed(this.getMesh())) return true
+		return isSceneDisposed(this.scene.runtime.renderer.scene)
+	}
+
+	private centerModel(): void {
+		if (!this.modelPivot || this.modelMeshes.length === 0) return
+		const bounds = getBounds(this.modelMeshes)
+		if (!bounds) return
+		const center = bounds.min.add(bounds.max).scale(0.5)
+		this.modelPivot.position = new Vector3(-center.x, -bounds.min.y, -center.z)
+	}
+
+	private setupInteraction(): void {
+		if (!this.isBuilding) return
+		this.setPickable(() => this.handleBuildingClick())
+	}
+
+	private handleBuildingClick = () => {
+		EventBus.emit(UiEvents.Building.Click, {
+			buildingInstanceId: this.mapObject.metadata?.buildingInstanceId,
+			buildingId: this.mapObject.metadata?.buildingId
 		})
 	}
 
 	private setupHighlightEvents(): void {
-		this.highlightHandler = (data: { buildingInstanceId: string, highlighted: boolean }) => {
-			if (!this.isBuilding) {
-				return
-			}
-			if (this.mapObject.metadata?.buildingInstanceId !== data.buildingInstanceId) {
-				return
-			}
+		this.highlightHandler = (data: { buildingInstanceId: string; highlighted: boolean }) => {
+			if (!this.isBuilding) return
+			if (this.mapObject.metadata?.buildingInstanceId !== data.buildingInstanceId) return
 			this.setHighlighted(data.highlighted)
 		}
 		EventBus.on(UiEvents.Building.Highlight, this.highlightHandler)
 	}
 
-	private setupBuildingEvents(scene: Scene) {
-		// Listen for building progress updates
-		this.progressHandler = (data: { buildingInstanceId: string, progress: number, stage: string }) => {
+	private setupBuildingEvents(): void {
+		if (!this.isBuilding) return
+		this.progressHandler = (data: { buildingInstanceId: string; progress: number; stage: string }) => {
 			if (this.mapObject.metadata?.buildingInstanceId === data.buildingInstanceId) {
-				this.buildingProgress = data.progress
 				this.buildingStage = data.stage as ConstructionStage
-				this.updateProgressBar(scene)
 			}
 		}
 		EventBus.on(Event.Buildings.SC.Progress, this.progressHandler)
 
-		// Listen for building completion
 		this.completedHandler = (data: { building: any }) => {
 			if (this.mapObject.metadata?.buildingInstanceId === data.building.id) {
-				this.buildingProgress = 100
 				this.buildingStage = ConstructionStage.Completed
-				
-				// Update metadata
-				if (this.mapObject.metadata) {
-					this.mapObject.metadata.stage = ConstructionStage.Completed
-					this.mapObject.metadata.progress = 100
-				}
-				
-				// Replace sprite with emoji text for completed buildings
-				this.replaceSpriteWithEmoji(scene)
-				
-				this.updateProgressBar(scene)
-				// Hide progress bar when completed
-				if (this.progressBar) this.progressBar.setVisible(false)
-				if (this.progressBarBg) this.progressBarBg.setVisible(false)
-				if (this.progressText) this.progressText.setVisible(false)
+				this.applyEmoji()
 			}
 		}
 		EventBus.on(Event.Buildings.SC.Completed, this.completedHandler)
 	}
 
-	private setupCatalogEvents(): void {
-		this.catalogHandler = () => {
-			if (!this.isBuilding) {
-				return
-			}
-			if (this.buildingStage !== ConstructionStage.Completed) {
-				return
-			}
-			this.replaceSpriteWithEmoji(this.scene)
-		}
-		EventBus.on(Event.Buildings.SC.Catalog, this.catalogHandler)
-	}
-	
-	private initializeSprite(scene: Scene, itemMetadata: ItemMetadata): void {
-		if (this.isStoragePile) {
-			this.createStoragePile(scene, itemMetadata)
-			return
-		}
-		// For completed buildings, use emoji text instead of sprite
-		if (this.isBuilding && this.buildingStage === ConstructionStage.Completed) {
-			this.replaceSpriteWithEmoji(scene)
-			return
-		}
-
-		const hasPlaceableTexture = Boolean(itemTextureService.getPlaceableItemTexture(this.mapObject.item.itemType))
-		const hasItemTexture = Boolean(itemTextureService.getItemTexture(this.mapObject.item.itemType))
-		if (!hasPlaceableTexture && !hasItemTexture && itemMetadata?.emoji) {
-			this.createEmojiFallback(scene, itemMetadata)
-			return
-		}
-
-		// Create the sprite using the appropriate texture
-		const texture = this.getTexture(itemMetadata)
-		this.sprite = scene.add.sprite(
-			this.mapObject.position.x,
-			this.mapObject.position.y,
-			texture.key,
-			texture.frame
-		)
-		
-		// Set the anchor point to top-left corner
-		this.sprite.setOrigin(0, 0)
-		
-		// Set the rotation
-		this.sprite.setRotation(this.mapObject.rotation)
-		
-		// Set the scale from the texture configuration
-		this.sprite.setScale(texture.scale)
-		
-		// Add physics body only if the item blocks movement
-		if (itemMetadata?.placement?.blocksMovement) {
-			scene.physics.add.existing(this.sprite, true) // true makes it static
-		}
-		
-		// Set the display size based on the item type
-		this.setDisplaySize(itemMetadata)
-
-		// Apply tree-specific visuals (growth + anchor) after sizing
-		if (this.isTreeResourceNode() && this.sprite) {
-			this.applyTreeVisuals(scene, this.sprite)
-		}
-
-		// Make building sprites interactive/clickable
-		if (this.isBuilding) {
-			this.sprite.setInteractive({ useHandCursor: true })
-			this.sprite.on('pointerdown', this.handleBuildingClick, this)
-		}
-	}
-
-	private createEmojiFallback(scene: Scene, itemMetadata: ItemMetadata): void {
-		if (this.emojiText) return
-
-		this.isEmojiFallback = true
-		const tileSize = 32
-		const footprint = this.mapObject.metadata?.footprint
-		const width = footprint ? footprint.width * tileSize : tileSize
-		const height = footprint ? footprint.height * tileSize : tileSize
-		const centerX = this.mapObject.position.x + width / 2
-		const centerY = this.mapObject.position.y + height / 2
-		const emoji = itemMetadata.emoji || '❓'
-		const fontSize = footprint ? Math.min(width, height) * 0.9 : 20
-
-		this.emojiText = scene.add.text(centerX, centerY, emoji, {
-			fontSize: `${fontSize}px`,
-			align: 'center'
-		})
-		this.emojiText.setOrigin(0.5, 0.5)
-		this.emojiText.setDepth(this.mapObject.position.y)
-
-		if (this.isTreeResourceNode()) {
-			this.applyTreeVisuals(scene, this.emojiText)
-		}
-
-		if (this.isBuilding) {
-			this.emojiText.setInteractive({ useHandCursor: true })
-			this.emojiText.on('pointerdown', this.handleBuildingClick, this)
-		}
-
-		if (itemMetadata?.placement?.blocksMovement || footprint) {
-			scene.physics.add.existing(this.emojiText, true)
-			const body = this.emojiText.body as Phaser.Physics.Arcade.Body
-			if (body) {
-				body.setSize(width, height)
-				body.setOffset(-width / 2, -height / 2)
-			}
-		}
-	}
-
-	private replaceSpriteWithEmoji(scene: Scene): void {
-		if (!this.isBuilding || !this.mapObject.metadata?.footprint) return
-
-		// Get building definition to access icon
-		const buildingId = this.mapObject.metadata.buildingId
-		const buildingDefinition = buildingId ? buildingService.getBuildingDefinition(buildingId) : null
-		const emoji = buildingDefinition?.icon || '🏗️'
-
-		// Calculate footprint size
-		const tileSize = 32
-		const width = this.mapObject.metadata.footprint.width * tileSize
-		const height = this.mapObject.metadata.footprint.height * tileSize
-
-		// Calculate font size to cover footprint (use smaller dimension to ensure it fits)
-		const fontSize = Math.min(width, height) * 0.9 // 90% of smaller dimension to ensure it fits
-
-		// Destroy existing sprite if present
-		if (this.sprite) {
-			// Remove click handler
-			if (this.sprite.input) {
-				this.sprite.off('pointerdown', this.handleBuildingClick, this)
-				this.sprite.removeInteractive()
-			}
-			this.sprite.destroy()
-			this.sprite = null
-		}
-
-		const centerX = this.mapObject.position.x + width / 2
-		const centerY = this.mapObject.position.y + height / 2
-
-		if (this.emojiText) {
-			this.emojiText.setText(emoji)
-			this.emojiText.setFontSize(fontSize)
-			this.emojiText.setPosition(centerX, centerY)
-			this.emojiText.setDepth(this.mapObject.position.y)
-		} else {
-			// Create emoji text centered in the footprint
-			this.emojiText = scene.add.text(centerX, centerY, emoji, {
-				fontSize: `${fontSize}px`,
-				align: 'center'
-			})
-			this.emojiText.setOrigin(0.5, 0.5)
-			this.emojiText.setDepth(this.mapObject.position.y)
-
-			// Make emoji text interactive/clickable
-			this.emojiText.setInteractive({ useHandCursor: true })
-			this.emojiText.on('pointerdown', this.handleBuildingClick, this)
-		}
-
-		// Ensure physics body matches footprint
-		scene.physics.add.existing(this.emojiText, true)
-		const body = this.emojiText.body as Phaser.Physics.Arcade.Body
-		if (body) {
-			body.setSize(width, height)
-			body.setOffset(-width / 2, -height / 2)
-		}
-
-		console.log(`[MapObjectView] Replaced sprite with emoji text: ${emoji} at size ${fontSize}px for footprint ${this.mapObject.metadata.footprint.width}x${this.mapObject.metadata.footprint.height}`)
-	}
-
-	private setHighlighted(highlighted: boolean): void {
-		if (this.isHighlighted === highlighted) {
-			return
-		}
+	public setHighlighted(highlighted: boolean): void {
+		if (this.isHighlighted === highlighted) return
 		this.isHighlighted = highlighted
+		if (this.modelRoot || this.modelLoading || this.modelSrc) {
+			this.applyInvisibleBase()
+			return
+		}
+		this.scene.runtime.renderer.applyTint(this.getMesh(), highlighted ? '#ffeb3b' : '#888888')
 		if (!highlighted) {
-			this.highlightGraphics?.setVisible(false)
-			return
-		}
-		if (!this.highlightGraphics) {
-			this.highlightGraphics = this.scene.add.graphics()
-		}
-		this.updateHighlight()
-		this.highlightGraphics.setVisible(true)
-	}
-
-	private updateHighlight(): void {
-		if (!this.highlightGraphics) {
-			return
-		}
-		const tileSize = 32
-		const footprint = this.mapObject.metadata?.footprint
-		const width = footprint ? footprint.width * tileSize : (this.sprite?.displayWidth || this.emojiText?.displayWidth || tileSize)
-		const height = footprint ? footprint.height * tileSize : (this.sprite?.displayHeight || this.emojiText?.displayHeight || tileSize)
-		const x = this.mapObject.position.x
-		const y = this.mapObject.position.y
-		const padding = 3
-
-		this.highlightGraphics.clear()
-		this.highlightGraphics.fillStyle(0xffd54f, 0.08)
-		this.highlightGraphics.fillRect(x - padding, y - padding, width + padding * 2, height + padding * 2)
-		this.highlightGraphics.lineStyle(3, 0xffd54f, 0.9)
-		this.highlightGraphics.strokeRect(x - padding, y - padding, width + padding * 2, height + padding * 2)
-
-		const displayDepth = this.sprite?.depth ?? this.emojiText?.depth ?? this.mapObject.position.y
-		this.highlightGraphics.setDepth(displayDepth + 0.5)
-	}
-
-	private createStoragePile(scene: Scene, itemMetadata: ItemMetadata): void {
-		if (this.emojiText) return
-
-		const tileSize = 32
-		const centerX = this.mapObject.position.x + tileSize / 2
-		const centerY = this.mapObject.position.y + tileSize / 2
-
-		const emoji = itemMetadata.emoji || '📦'
-		this.emojiText = scene.add.text(centerX, centerY, emoji, {
-			fontSize: '20px',
-			align: 'center'
-		})
-		this.emojiText.setOrigin(0.5, 0.5)
-		this.emojiText.setDepth(this.mapObject.position.y)
-
-		this.storageQuantityText = scene.add.text(
-			this.mapObject.position.x + tileSize - 6,
-			this.mapObject.position.y + tileSize - 6,
-			'',
-			{
-				fontSize: '12px',
-				color: '#ffffff',
-				backgroundColor: '#000000',
-				padding: { x: 4, y: 2 },
-				align: 'center'
-			}
-		)
-		this.storageQuantityText.setOrigin(0.5, 0.5)
-		this.storageQuantityText.setDepth(this.mapObject.position.y + 1)
-		this.storageQuantityText.setVisible(false)
-
-		if (this.storageSlotId) {
-			const initialQuantity = storageService.getSlotQuantity(this.storageSlotId)
-			this.updateStoragePileQuantity(initialQuantity)
-			this.storageSlotHandler = (data: { slotId: string, quantity: number }) => {
-				if (data.slotId === this.storageSlotId) {
-					this.updateStoragePileQuantity(data.quantity)
-				}
-			}
-			EventBus.on(UiEvents.Storage.SlotUpdated, this.storageSlotHandler)
+			this.applyEmoji()
 		}
 	}
 
-	private updateStoragePileQuantity(quantity: number): void {
-		if (!this.storageQuantityText) return
-		if (quantity > 1) {
-			this.storageQuantityText.setText(`${quantity}`)
-			this.storageQuantityText.setVisible(true)
-		} else {
-			this.storageQuantityText.setText('')
-			this.storageQuantityText.setVisible(false)
-		}
-	}
-
-	private handleBuildingClick = (pointer: Phaser.Input.Pointer) => {
-		// Only handle left clicks
-		if (!pointer.leftButtonDown()) return
-
-		// Stop propagation to prevent other click handlers (like map clicks)
-		if (pointer.event) {
-			pointer.event.stopPropagation()
-		}
-
-		// Emit event to show building info panel
-		// BuildingService will check if building exists and emit selection event
-		const buildingInstanceId = this.mapObject.metadata?.buildingInstanceId
-		if (buildingInstanceId) {
-			EventBus.emit(UiEvents.Building.Click, {
-				buildingInstanceId,
-				buildingId: this.mapObject.metadata?.buildingId
-			})
-		}
-	}
-
-	private isTreeResourceNode(): boolean {
-		return this.mapObject.metadata?.resourceNode === true && this.mapObject.metadata?.resourceNodeType === 'tree'
-	}
-
-	private applyTreeVisuals(scene: Scene, displayObject: Phaser.GameObjects.Sprite | Phaser.GameObjects.Text): void {
-		const tileSize = 32
-		const baseX = this.mapObject.position.x + tileSize / 2
-		const baseY = this.mapObject.position.y + tileSize
-
-		displayObject.setOrigin(0.5, 1)
-		displayObject.setPosition(baseX, baseY)
-
-		const baseScaleX = displayObject.scaleX || 1
-		const baseScaleY = displayObject.scaleY || 1
-		const [small, medium, large] = this.treeGrowthStages
-
-		displayObject.setScale(baseScaleX * small, baseScaleY * small)
-		scene.tweens.add({
-			targets: displayObject,
-			scaleX: baseScaleX * medium,
-			scaleY: baseScaleY * medium,
-			duration: 1200,
-			ease: 'Sine.easeOut',
-			onComplete: () => {
-				if (!displayObject.active) return
-				scene.tweens.add({
-					targets: displayObject,
-					scaleX: baseScaleX * large,
-					scaleY: baseScaleY * large,
-					duration: 1600,
-					ease: 'Sine.easeOut'
-				})
-			}
-		})
-	}
-	
-	private getTexture(itemMetadata: ItemMetadata): { key: string, frame: number, scale: number } {
-		// If we have metadata with a placement property, try to get the placeable texture
-		if (itemMetadata?.placement) {
-			const placeableTexture = itemTextureService.getPlaceableItemTexture(this.mapObject.item.itemType)
-			if (placeableTexture) {
-				return placeableTexture
-			}
-		}
-		
-		// Fallback to regular item texture
-		const regularTexture = itemTextureService.getItemTexture(this.mapObject.item.itemType)
-		if (regularTexture) {
-			return regularTexture
-		}
-		
-		// If no texture is found, use the emoji as a fallback
-		return {
-			key: itemMetadata?.emoji || 'mozgotrzep',
-			frame: 0,
-			scale: 1
-		}
-	}
-	
-	private setDisplaySize(itemMetadata: ItemMetadata): void {
-		if (!this.sprite) return
-		if (this.isStoragePile) return
-		
-		const tileSize = 32 // Default tile size
-		
-		// For buildings, use footprint from metadata (in tiles, convert to pixels)
-		if (this.isBuilding && this.mapObject.metadata?.footprint) {
-			const width = this.mapObject.metadata.footprint.width * tileSize
-			const height = this.mapObject.metadata.footprint.height * tileSize
-			this.sprite.setDisplaySize(width, height)
-			console.log(`[MapObjectView] Set building display size: ${width}x${height} (footprint: ${this.mapObject.metadata.footprint.width}x${this.mapObject.metadata.footprint.height} tiles)`)
-		} else if (itemMetadata?.placement?.size) {
-			// Regular items: use placement size (assume in tiles, convert to pixels)
-			const width = itemMetadata.placement.size.width * tileSize
-			const height = itemMetadata.placement.size.height * tileSize
-			this.sprite.setDisplaySize(width, height)
-		} else {
-			// Use default size
-			this.sprite.setDisplaySize(tileSize, tileSize)
-		}
-	}
-	
-	public getSprite(): GameObjects.Sprite | null {
-		// Return emoji text as sprite for collision detection if building is completed
-		if (this.emojiText && this.isBuilding && this.buildingStage === ConstructionStage.Completed) {
-			return this.emojiText as any
-		}
-		if (this.emojiText && this.isStoragePile) {
-			return this.emojiText as any
-		}
-		if (this.emojiText && this.isEmojiFallback) {
-			return this.emojiText as any
-		}
-		return this.sprite
-	}
-	
-	public getMapObject(): MapObject {
-		return this.mapObject
-	}
-	
-	private createProgressBar(scene: Scene) {
-		if (!this.isBuilding) return
-
-		// Use sprite or emoji text for positioning
-		const displayObject = this.sprite || this.emojiText
-		if (!displayObject) return
-
-		const barWidth = this.mapObject.metadata?.footprint 
-			? this.mapObject.metadata.footprint.width * 32 
-			: displayObject.displayWidth || 64
-		const barHeight = 6
-		const barX = displayObject.x - (this.emojiText ? barWidth / 2 : 0)
-		const barY = displayObject.y - (this.emojiText ? (this.mapObject.metadata?.footprint?.height || 1) * 32 / 2 + 15 : 15)
-
-		// Create background bar
-		this.progressBarBg = scene.add.graphics()
-		this.progressBarBg.fillStyle(0x000000, 0.5)
-		this.progressBarBg.fillRect(barX, barY, barWidth, barHeight)
-		this.progressBarBg.setDepth((displayObject.depth || 0) + 1)
-
-		// Create progress bar
-		this.progressBar = scene.add.graphics()
-		this.progressBar.setDepth((displayObject.depth || 0) + 2)
-
-		// Create progress text
-		this.progressText = scene.add.text(barX + barWidth / 2, barY - 10, `${Math.round(this.buildingProgress)}%`, {
-			fontSize: '12px',
-			color: '#ffffff',
-			stroke: '#000000',
-			strokeThickness: 2
-		})
-		this.progressText.setOrigin(0.5, 0.5)
-		this.progressText.setDepth((displayObject.depth || 0) + 3)
-
-		this.updateProgressBar(scene)
-	}
-
-	private updateProgressBar(scene: Scene) {
-		if (!this.progressBar || !this.progressBarBg || !this.isBuilding) return
-
-		// Use sprite or emoji text position
-		const displayObject = this.sprite || this.emojiText
-		if (!displayObject) return
-
-		const barWidth = this.mapObject.metadata?.footprint 
-			? this.mapObject.metadata.footprint.width * 32 
-			: displayObject.displayWidth || 64
-		const barHeight = 6
-		const barX = displayObject.x - (this.emojiText ? barWidth / 2 : 0)
-		const barY = displayObject.y - (this.emojiText ? (this.mapObject.metadata?.footprint?.height || 1) * 32 / 2 + 15 : 15)
-
-		// Update progress bar
-		this.progressBar.clear()
-		const progress = Math.max(0, Math.min(100, this.buildingProgress))
-		const progressWidth = (barWidth * progress) / 100
-
-		// Color based on stage
-		let color = 0x00ff00 // Green for completed
-		if (this.buildingStage === ConstructionStage.Foundation) {
-			color = 0xffaa00 // Orange for foundation
-		} else if (this.buildingStage === ConstructionStage.Constructing) {
-			color = 0x00aaff // Blue for constructing
-		}
-
-		this.progressBar.fillStyle(color, 0.8)
-		this.progressBar.fillRect(barX, barY, progressWidth, barHeight)
-
-		// Update progress text
-		if (this.progressText) {
-			this.progressText.setText(`${Math.round(progress)}%`)
-			this.progressText.setPosition(barX + barWidth / 2, barY - 10)
-		}
-
-		// Hide if completed
-		if (this.buildingStage === ConstructionStage.Completed) {
-			if (this.progressBar) this.progressBar.setVisible(false)
-			if (this.progressBarBg) this.progressBarBg.setVisible(false)
-			if (this.progressText) this.progressText.setVisible(false)
-		} else {
-			if (this.progressBar) this.progressBar.setVisible(true)
-			if (this.progressBarBg) this.progressBarBg.setVisible(true)
-			if (this.progressText) this.progressText.setVisible(true)
-		}
-	}
-
-	public update() {
-		// Update progress bar position if sprite or emoji text moves
-		if (this.isBuilding && (this.sprite || this.emojiText) && (this.progressBar || this.progressBarBg)) {
-			const scene = this.sprite?.scene || this.emojiText?.scene
-			if (scene) {
-				this.updateProgressBar(scene)
-			}
-		}
-		if (this.isHighlighted) {
-			this.updateHighlight()
-		}
+	public update(): void {
+		// no-op
 	}
 
 	public destroy(): void {
+		MapObjectView.debugInstances.delete(this)
 		if (this.highlightHandler) {
 			EventBus.off(UiEvents.Building.Highlight, this.highlightHandler)
-			this.highlightHandler = null
 		}
-		if (this.highlightGraphics) {
-			this.highlightGraphics.destroy()
-			this.highlightGraphics = null
-		}
-		// Remove building event listeners
 		if (this.progressHandler) {
 			EventBus.off(Event.Buildings.SC.Progress, this.progressHandler)
-			this.progressHandler = null
 		}
 		if (this.completedHandler) {
 			EventBus.off(Event.Buildings.SC.Completed, this.completedHandler)
-			this.completedHandler = null
 		}
-		if (this.catalogHandler) {
-			EventBus.off(Event.Buildings.SC.Catalog, this.catalogHandler)
-			this.catalogHandler = null
+		if (this.staticRect) {
+			this.scene.physics.removeStaticRect(this.staticRect)
+			this.staticRect = null
+		}
+		this.disposeModel()
+		this.unsubscribe?.()
+		super.destroy()
+	}
+
+	public getMapObject(): MapObject {
+		return this.mapObject
+	}
+
+	private applyDebugBounds(): void {
+		const enabled = MapObjectView.debugBoundsEnabled
+		this.getMesh().showBoundingBox = enabled
+		this.modelMeshes.forEach((mesh) => {
+			mesh.showBoundingBox = enabled
+		})
+		if (enabled && this.modelRoot) {
+			if (!this.debugRootMesh) {
+				const scene = this.scene.runtime.renderer.scene
+				this.debugRootMesh = MeshBuilder.CreateBox(
+					`debug-model-root-${this.mapObject.id}`,
+					{ size: 4 },
+					scene
+				)
+				this.debugRootMesh.isPickable = false
+				if (!this.debugRootMaterial) {
+					this.debugRootMaterial = new StandardMaterial(`debug-model-root-mat-${this.mapObject.id}`, scene)
+					this.debugRootMaterial.diffuseColor = new Color3(0.2, 0.9, 0.4)
+					this.debugRootMaterial.emissiveColor = new Color3(0.2, 0.9, 0.4)
+					this.debugRootMaterial.specularColor = Color3.Black()
+					this.debugRootMaterial.wireframe = true
+				}
+				this.debugRootMesh.material = this.debugRootMaterial
+				this.debugRootMesh.parent = this.getMesh()
+			}
+			this.debugRootMesh.isVisible = true
+			this.debugRootMesh.position.copyFrom(this.modelRoot.position)
+		} else if (this.debugRootMesh) {
+			this.debugRootMesh.isVisible = false
+		}
+		if (!enabled) {
+			if (this.debugBoundsMesh) {
+				this.debugBoundsMesh.dispose()
+				this.debugBoundsMesh = null
+			}
+			return
 		}
 
-		// Remove click handler if sprite or emoji text is interactive
-		if (this.sprite && this.isBuilding) {
-			this.sprite.off('pointerdown', this.handleBuildingClick, this)
-			this.sprite.removeInteractive()
-		}
-		if (this.emojiText && this.isBuilding) {
-			this.emojiText.off('pointerdown', this.handleBuildingClick, this)
-			this.emojiText.removeInteractive()
-		}
-
-		if (this.unsubscribe) {
-			this.unsubscribe()
-			this.unsubscribe = null
-		}
-		if (this.progressBar) {
-			this.progressBar.destroy()
-			this.progressBar = null
-		}
-		if (this.progressBarBg) {
-			this.progressBarBg.destroy()
-			this.progressBarBg = null
-		}
-		if (this.progressText) {
-			this.progressText.destroy()
-			this.progressText = null
-		}
-		if (this.sprite) {
-			this.sprite.destroy()
-			this.sprite = null
-		}
-		if (this.storageQuantityText) {
-			this.storageQuantityText.destroy()
-			this.storageQuantityText = null
-		}
-		if (this.emojiText) {
-			this.emojiText.destroy()
-			this.emojiText = null
+		const bounds = getBounds(this.modelMeshes)
+		if (!bounds) {
+			if (this.debugBoundsMesh) {
+				this.debugBoundsMesh.isVisible = false
+			}
+			if (!this.debugLoggedNoBounds && this.modelSrc) {
+				this.debugLoggedNoBounds = true
+				const meshSummary = this.modelMeshes.map((mesh) => ({
+					name: mesh.name,
+					type: mesh.getClassName?.() ?? 'unknown',
+					vertices: mesh.getTotalVertices(),
+					isVisible: mesh.isVisible
+				}))
+				console.info('[MapObjectView] Debug bounds: no mesh bounds', {
+					id: this.mapObject.id,
+					modelSrc: this.modelSrc,
+					meshCount: this.modelMeshes.length,
+					meshes: meshSummary
+				})
+			}
+			return
 		}
 
-		if (this.storageSlotHandler) {
-			EventBus.off(UiEvents.Storage.SlotUpdated, this.storageSlotHandler)
-			this.storageSlotHandler = null
+		if (!this.debugBoundsMesh) {
+			const scene = this.scene.runtime.renderer.scene
+			this.debugBoundsMesh = MeshBuilder.CreateBox(`debug-model-bounds-${this.mapObject.id}`, { size: 1 }, scene)
+			this.debugBoundsMesh.isPickable = false
+			if (!this.debugBoundsMaterial) {
+				this.debugBoundsMaterial = new StandardMaterial(`debug-model-mat-${this.mapObject.id}`, scene)
+				this.debugBoundsMaterial.diffuseColor = new Color3(0.9, 0.25, 0.2)
+				this.debugBoundsMaterial.emissiveColor = new Color3(0.9, 0.25, 0.2)
+				this.debugBoundsMaterial.specularColor = Color3.Black()
+				this.debugBoundsMaterial.wireframe = true
+			}
+			this.debugBoundsMesh.material = this.debugBoundsMaterial
+		}
+
+		const size = bounds.max.subtract(bounds.min)
+		const center = bounds.min.add(bounds.max).scale(0.5)
+		this.debugBoundsMesh.isVisible = true
+		this.debugBoundsMesh.position.copyFrom(center)
+		this.debugBoundsMesh.scaling.set(size.x || 0.01, size.y || 0.01, size.z || 0.01)
+		if (!this.debugLoggedBounds && this.modelSrc) {
+			this.debugLoggedBounds = true
+			console.info('[MapObjectView] Debug bounds size', {
+				id: this.mapObject.id,
+				modelSrc: this.modelSrc,
+				center: { x: center.x, y: center.y, z: center.z },
+				size: { x: size.x, y: size.y, z: size.z }
+			})
 		}
 	}
-} 
+}
+
+function isSceneDisposedError(error: unknown): boolean {
+	if (error instanceof Error) {
+		return error.message.includes('Scene has been disposed')
+	}
+	return false
+}
+
+function isSceneDisposed(scene: { isDisposed?: (() => boolean) | boolean } | null): boolean {
+	if (!scene) return false
+	if (typeof scene.isDisposed === 'function') {
+		try {
+			return scene.isDisposed()
+		} catch {
+			return false
+		}
+	}
+	if (typeof scene.isDisposed === 'boolean') {
+		return scene.isDisposed
+	}
+	return false
+}
+
+function isMeshDisposed(mesh: { isDisposed?: (() => boolean) | boolean } | null): boolean {
+	if (!mesh) return false
+	if (typeof mesh.isDisposed === 'function') {
+		try {
+			return mesh.isDisposed()
+		} catch {
+			return false
+		}
+	}
+	if (typeof mesh.isDisposed === 'boolean') {
+		return mesh.isDisposed
+	}
+	return false
+}
+
+function splitAssetUrl(url: string): { rootUrl: string; fileName: string } {
+	const trimmed = url.trim()
+	if (!trimmed) return { rootUrl: '', fileName: '' }
+	const lastSlash = trimmed.lastIndexOf('/')
+	if (lastSlash === -1) {
+		return { rootUrl: '/', fileName: trimmed }
+	}
+	return {
+		rootUrl: trimmed.slice(0, lastSlash + 1),
+		fileName: trimmed.slice(lastSlash + 1)
+	}
+}
+
+function getBounds(meshes: AbstractMesh[]): { min: Vector3; max: Vector3 } | null {
+	let min = new Vector3(Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY)
+	let max = new Vector3(Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY)
+	let found = false
+	meshes.forEach((mesh) => {
+		if (mesh.getTotalVertices() === 0) return
+		mesh.computeWorldMatrix(true)
+		const bounds = mesh.getBoundingInfo().boundingBox
+		min = Vector3.Minimize(min, bounds.minimumWorld)
+		max = Vector3.Maximize(max, bounds.maximumWorld)
+		found = true
+	})
+	return found ? { min, max } : null
+}

@@ -66,16 +66,19 @@ const contentDir = path.join(rootDir, 'content', gameContent);
 const mapsAssetsDir = path.join(contentDir, 'maps');
 const npcsAssetsDir = path.join(contentDir, 'npcs');
 const itemsAssetsDir = path.join(contentDir, 'items');
+const libraryAssetsDir = path.join(contentDir, 'assets');
 const mapsTargetDir = path.join(frontendDir, 'public/assets/maps');
 const npcsTargetDir = path.join(frontendDir, 'public/assets/npcs');
 const itemsTargetDir = path.join(frontendDir, 'public/assets/items');
+const libraryTargetDir = path.join(frontendDir, 'public/assets/library');
+const assetIndexTarget = path.join(frontendDir, 'public/assets/asset-index.json');
 
 // Create target directories if they don't exist
-;[mapsTargetDir, npcsTargetDir, itemsTargetDir].forEach(dir => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-    console.log(`Created directory: ${dir}`);
-  }
+;[mapsTargetDir, npcsTargetDir, itemsTargetDir, libraryTargetDir].forEach(dir => {
+	if (!fs.existsSync(dir)) {
+		fs.mkdirSync(dir, { recursive: true });
+		console.log(`Created directory: ${dir}`);
+	}
 });
 
 // Function to copy files from source to target
@@ -123,6 +126,55 @@ function copyFiles(sourceDir, targetDir, extensions) {
   });
 }
 
+const modelExtensions = ['.glb', '.gltf', '.babylon'];
+const assetExtensions = [...modelExtensions, '.bin', '.png', '.jpg', '.jpeg', '.ktx2', '.webp'];
+
+function collectAssetFiles(sourceDir, extensions, baseDir = sourceDir) {
+	if (!fs.existsSync(sourceDir)) {
+		return [];
+	}
+	const entries = fs.readdirSync(sourceDir);
+	let results = [];
+	entries.forEach((entry) => {
+		const entryPath = path.join(sourceDir, entry);
+		const stat = fs.statSync(entryPath);
+		if (stat.isDirectory()) {
+			results = results.concat(collectAssetFiles(entryPath, extensions, baseDir));
+			return;
+		}
+		const ext = path.extname(entry).toLowerCase();
+		if (!extensions.includes(ext)) {
+			return;
+		}
+		const relativePath = path.relative(baseDir, entryPath);
+		results.push(relativePath);
+	});
+	return results;
+}
+
+function copyAssetLibrary(sourceDir, targetDir, extensions, publicPath, indexEntries) {
+	if (!fs.existsSync(sourceDir)) {
+		console.error(`Source directory does not exist: ${sourceDir}`);
+		return;
+	}
+	const files = collectAssetFiles(sourceDir, extensions);
+	files.forEach((relativePath) => {
+		const sourcePath = path.join(sourceDir, relativePath);
+		const targetPath = path.join(targetDir, relativePath);
+		const targetFolder = path.dirname(targetPath);
+		if (!fs.existsSync(targetFolder)) {
+			fs.mkdirSync(targetFolder, { recursive: true });
+		}
+		fs.copyFileSync(sourcePath, targetPath);
+		const ext = path.extname(relativePath).toLowerCase();
+		if (modelExtensions.includes(ext)) {
+			const webPath = `${publicPath}/${relativePath.split(path.sep).join('/')}`;
+			indexEntries.push(webPath);
+		}
+	});
+	console.log(`Copied ${files.length} asset files from ${sourceDir} to ${targetDir}`);
+}
+
 // Main execution
 (async function main() {
   try {
@@ -137,9 +189,20 @@ function copyFiles(sourceDir, targetDir, extensions) {
     console.log(`Copying NPC assets from ${npcsAssetsDir} to ${npcsTargetDir}`);
     copyFiles(npcsAssetsDir, npcsTargetDir, ['.png', '.json']);
     
-    // Copy items assets to frontend
-    console.log(`Copying items assets from ${itemsAssetsDir} to ${itemsTargetDir}`);
-    copyFiles(itemsAssetsDir, itemsTargetDir, ['.png', '.json']);
+	// Copy items assets to frontend
+	console.log(`Copying items assets from ${itemsAssetsDir} to ${itemsTargetDir}`);
+	copyFiles(itemsAssetsDir, itemsTargetDir, ['.png', '.json']);
+
+	const assetIndexEntries = [];
+	console.log(`Copying asset library from ${libraryAssetsDir} to ${libraryTargetDir}`);
+	copyAssetLibrary(libraryAssetsDir, libraryTargetDir, assetExtensions, '/assets/library', assetIndexEntries);
+
+	const assetIndex = {
+		generatedAt: new Date().toISOString(),
+		assets: Array.from(new Set(assetIndexEntries)).sort()
+	};
+	fs.writeFileSync(assetIndexTarget, JSON.stringify(assetIndex, null, 2));
+	console.log(`Wrote asset index to ${assetIndexTarget}`);
     
     console.log('Content loading completed successfully');
   } catch (error) {

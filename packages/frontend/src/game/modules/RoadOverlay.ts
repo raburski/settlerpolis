@@ -1,93 +1,126 @@
-import type { Scene, GameObjects } from 'phaser'
 import type { RoadTile } from '@rugged/game'
 import { RoadType } from '@rugged/game'
+import type { AbstractMesh } from '@babylonjs/core'
+import { Color3, StandardMaterial } from '@babylonjs/core'
+import type { GameScene } from '../scenes/base/GameScene'
 
-const ROAD_COLORS: Record<RoadType, number> = {
-	[RoadType.None]: 0x000000,
-	[RoadType.Dirt]: 0xb58a58,
-	[RoadType.Stone]: 0x8a8a8a
+const ROAD_COLORS: Record<RoadType, string> = {
+	[RoadType.None]: '#000000',
+	[RoadType.Dirt]: '#b58a58',
+	[RoadType.Stone]: '#8a8a8a'
+}
+
+interface RoadMeshEntry {
+	tile: RoadTile
+	mesh: AbstractMesh
 }
 
 export class RoadOverlay {
-	private graphics: GameObjects.Graphics
+	private scene: GameScene
 	private tileSize: number
-	private tiles = new Map<string, RoadTile>()
-	private pendingTiles = new Map<string, RoadTile>()
+	private tiles = new Map<string, RoadMeshEntry>()
+	private pendingTiles = new Map<string, RoadMeshEntry>()
+	private materialCache = new Map<string, StandardMaterial>()
 
-	constructor(scene: Scene, tileSize: number) {
+	constructor(scene: GameScene, tileSize: number) {
+		this.scene = scene
 		this.tileSize = tileSize
-		this.graphics = scene.add.graphics()
-		this.graphics.setDepth(5)
 	}
 
 	public setTiles(tiles: RoadTile[]): void {
+		this.clearMeshes(this.tiles)
 		this.tiles.clear()
 		for (const tile of tiles) {
-			this.tiles.set(this.key(tile.x, tile.y), tile)
+			this.upsert(tile, this.tiles, 0.9)
 		}
-		this.redraw()
 	}
 
 	public applyUpdates(tiles: RoadTile[]): void {
 		for (const tile of tiles) {
 			const key = this.key(tile.x, tile.y)
 			if (tile.roadType === RoadType.None) {
+				this.disposeEntry(this.tiles.get(key))
 				this.tiles.delete(key)
 				continue
 			}
-			this.tiles.set(key, tile)
+			this.upsert(tile, this.tiles, 0.9)
 		}
-		this.redraw()
 	}
 
 	public setPendingTiles(tiles: RoadTile[]): void {
+		this.clearMeshes(this.pendingTiles)
 		this.pendingTiles.clear()
 		for (const tile of tiles) {
-			if (tile.roadType === RoadType.None) {
-				continue
-			}
-			this.pendingTiles.set(this.key(tile.x, tile.y), tile)
+			if (tile.roadType === RoadType.None) continue
+			this.upsert(tile, this.pendingTiles, 0.3)
 		}
-		this.redraw()
 	}
 
 	public applyPendingUpdates(tiles: RoadTile[]): void {
 		for (const tile of tiles) {
 			const key = this.key(tile.x, tile.y)
 			if (tile.roadType === RoadType.None) {
+				this.disposeEntry(this.pendingTiles.get(key))
 				this.pendingTiles.delete(key)
 				continue
 			}
-			this.pendingTiles.set(key, tile)
+			this.upsert(tile, this.pendingTiles, 0.3)
 		}
-		this.redraw()
+	}
+
+	public update(): void {
+		// no-op
 	}
 
 	public destroy(): void {
-		this.graphics.destroy()
+		this.clearMeshes(this.tiles)
+		this.clearMeshes(this.pendingTiles)
+		this.tiles.clear()
+		this.pendingTiles.clear()
+		this.materialCache.forEach((material) => material.dispose())
+		this.materialCache.clear()
 	}
 
-	private redraw(): void {
-		this.graphics.clear()
-		for (const tile of this.tiles.values()) {
-			const color = ROAD_COLORS[tile.roadType] || ROAD_COLORS[RoadType.Dirt]
-			const x = tile.x * this.tileSize
-			const y = tile.y * this.tileSize
-			this.graphics.fillStyle(color, 0.85)
-			this.graphics.fillRect(x, y, this.tileSize, this.tileSize)
-			this.graphics.lineStyle(1, 0x2e2a24, 0.4)
-			this.graphics.strokeRect(x + 0.5, y + 0.5, this.tileSize - 1, this.tileSize - 1)
+	private upsert(tile: RoadTile, target: Map<string, RoadMeshEntry>, height: number): void {
+		const key = this.key(tile.x, tile.y)
+		const existing = target.get(key)
+		if (existing) {
+			existing.tile = tile
+			const alpha = target === this.pendingTiles ? 0.5 : 1
+			this.applyMaterial(existing.mesh, tile.roadType, alpha)
+			return
 		}
 
-		for (const tile of this.pendingTiles.values()) {
-			const color = ROAD_COLORS[tile.roadType] || ROAD_COLORS[RoadType.Dirt]
-			const x = tile.x * this.tileSize
-			const y = tile.y * this.tileSize
-			this.graphics.fillStyle(color, 0.35)
-			this.graphics.fillRect(x, y, this.tileSize, this.tileSize)
-			this.graphics.lineStyle(1, 0xffffff, 0.5)
-			this.graphics.strokeRect(x + 1, y + 1, this.tileSize - 2, this.tileSize - 2)
+		const size = { width: this.tileSize, length: this.tileSize, height }
+		const mesh = this.scene.runtime.renderer.createBox(`road-${key}`, size)
+		const centerX = tile.x * this.tileSize + this.tileSize / 2
+		const centerY = tile.y * this.tileSize + this.tileSize / 2
+		this.scene.runtime.renderer.setMeshPosition(mesh, centerX, height / 2, centerY)
+		const alpha = target === this.pendingTiles ? 0.5 : 1
+		this.applyMaterial(mesh, tile.roadType, alpha)
+		target.set(key, { tile, mesh })
+	}
+
+	private applyMaterial(mesh: AbstractMesh, roadType: RoadType, alpha: number): void {
+		const color = ROAD_COLORS[roadType] || ROAD_COLORS[RoadType.Dirt]
+		const cacheKey = `${roadType}:${alpha}`
+		let material = this.materialCache.get(cacheKey)
+		if (!material) {
+			material = new StandardMaterial(`road-${cacheKey}`, this.scene.runtime.renderer.scene)
+			material.diffuseColor = Color3.FromHexString(color)
+			material.specularColor = Color3.Black()
+			material.alpha = alpha
+			this.materialCache.set(cacheKey, material)
 		}
+		mesh.material = material
+	}
+
+	private clearMeshes(target: Map<string, RoadMeshEntry>): void {
+		target.forEach((entry) => entry.mesh.dispose())
+	}
+
+	private disposeEntry(entry?: RoadMeshEntry): void {
+		entry?.mesh.dispose()
 	}
 
 	private key(x: number, y: number): string {

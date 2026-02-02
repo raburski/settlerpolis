@@ -1,32 +1,35 @@
-import { Scene, GameObjects, Input } from 'phaser'
 import { EventBus } from '../EventBus'
 import { Event, BuildingDefinition } from '@rugged/game'
 import { buildingService } from '../services/BuildingService'
 import { UiEvents } from '../uiEvents'
+import type { AbstractMesh } from '@babylonjs/core'
+import type { GameScene } from '../scenes/base/GameScene'
+import type { PointerState } from '../input/InputManager'
 
 interface WorkAreaSelectionState {
 	buildingInstanceId: string | null
 	radiusTiles: number
-	ghostSprite: GameObjects.Graphics | null
-	selectionText: GameObjects.Text | null
+	ghostMesh: AbstractMesh | null
+	selectionText: HTMLDivElement | null
 	isValidPosition: boolean
-	lastMousePosition: { x: number, y: number } | null
+	lastMousePosition: { x: number; y: number } | null
 }
 
 export class WorkAreaSelectionManager {
-	private scene: Scene
+	private scene: GameScene
 	private state: WorkAreaSelectionState = {
 		buildingInstanceId: null,
 		radiusTiles: 0,
-		ghostSprite: null,
+		ghostMesh: null,
 		selectionText: null,
 		isValidPosition: true,
 		lastMousePosition: null
 	}
 	private selectHandler: ((data: { buildingInstanceId: string }) => void) | null = null
 	private cancelHandler: (() => void) | null = null
+	private handlersActive = false
 
-	constructor(scene: Scene) {
+	constructor(scene: GameScene) {
 		this.scene = scene
 		this.setupEventListeners()
 	}
@@ -45,8 +48,7 @@ export class WorkAreaSelectionManager {
 	}
 
 	private getTileSize(): number {
-		const map = (this.scene as any).map
-		return map?.tileWidth || map?.tilewidth || 32
+		return this.scene.map?.tileWidth || 32
 	}
 
 	private getWorkAreaRadius(definition?: BuildingDefinition | null): number {
@@ -62,12 +64,11 @@ export class WorkAreaSelectionManager {
 		const radiusTiles = this.getWorkAreaRadius(definition)
 		if (!radiusTiles || radiusTiles <= 0) return
 
-		// Cancel any active building placement
 		EventBus.emit(UiEvents.Construction.Cancel, {})
 
 		this.state.buildingInstanceId = buildingInstanceId
 		this.state.radiusTiles = radiusTiles
-		this.createGhostSprite()
+		this.createGhostMesh()
 		this.setupMouseHandlers()
 
 		const center = building.workAreaCenter ?? building.position
@@ -79,42 +80,46 @@ export class WorkAreaSelectionManager {
 		this.state.radiusTiles = 0
 		this.state.lastMousePosition = null
 		this.state.isValidPosition = true
-		this.destroyGhostSprite()
+		this.destroyGhostMesh()
 		this.removeMouseHandlers()
 	}
 
-	private createGhostSprite() {
-		this.destroyGhostSprite()
+	private createGhostMesh() {
+		this.destroyGhostMesh()
 
-		const ghost = this.scene.add.graphics()
-		ghost.setDepth(200)
-		ghost.setAlpha(0.5)
-		this.state.ghostSprite = ghost
+		const radiusPixels = this.state.radiusTiles * this.getTileSize()
+		const size = { width: radiusPixels * 2, length: radiusPixels * 2, height: 1 }
+		const mesh = this.scene.runtime.renderer.createBox('work-area-ghost', size)
+		this.scene.runtime.renderer.applyTint(mesh, '#00ff00')
+		this.state.ghostMesh = mesh
 
-		const text = this.scene.add.text(16, 16, 'Click to set work area (Esc to cancel)', {
-			fontSize: '16px',
-			color: '#ffffff',
-			backgroundColor: '#000000',
-			padding: { x: 8, y: 4 }
-		})
-		text.setScrollFactor(0)
-		text.setDepth(1000)
+		const text = document.createElement('div')
+		text.textContent = 'Click to set work area (Esc to cancel)'
+		text.style.position = 'absolute'
+		text.style.top = '16px'
+		text.style.left = '16px'
+		text.style.padding = '4px 8px'
+		text.style.background = 'rgba(0,0,0,0.7)'
+		text.style.color = '#ffffff'
+		text.style.fontSize = '14px'
+		text.style.borderRadius = '4px'
+		this.scene.runtime.overlayRoot.appendChild(text)
 		this.state.selectionText = text
 	}
 
-	private destroyGhostSprite() {
-		if (this.state.ghostSprite) {
-			this.state.ghostSprite.destroy()
-			this.state.ghostSprite = null
+	private destroyGhostMesh() {
+		if (this.state.ghostMesh) {
+			this.state.ghostMesh.dispose()
+			this.state.ghostMesh = null
 		}
 		if (this.state.selectionText) {
-			this.state.selectionText.destroy()
+			this.state.selectionText.remove()
 			this.state.selectionText = null
 		}
 	}
 
 	private updateGhostPosition(worldX: number, worldY: number) {
-		if (!this.state.ghostSprite || !this.state.buildingInstanceId) return
+		if (!this.state.ghostMesh || !this.state.buildingInstanceId) return
 
 		const tileSize = this.getTileSize()
 		const snappedX = Math.floor(worldX / tileSize) * tileSize
@@ -124,75 +129,67 @@ export class WorkAreaSelectionManager {
 		const radiusTiles = this.state.radiusTiles
 		const centerTileX = Math.floor(snappedX / tileSize)
 		const centerTileY = Math.floor(snappedY / tileSize)
-		const map = (this.scene as any).map
+		const map = this.scene.map
 
 		let isValid = true
 		if (map) {
+			const maxTileX = map.widthInPixels / tileSize
+			const maxTileY = map.heightInPixels / tileSize
 			const minTileX = centerTileX - radiusTiles
-			const maxTileX = centerTileX + radiusTiles
+			const maxTileXArea = centerTileX + radiusTiles
 			const minTileY = centerTileY - radiusTiles
-			const maxTileY = centerTileY + radiusTiles
-			isValid = minTileX >= 0 && minTileY >= 0 && maxTileX < map.width && maxTileY < map.height
+			const maxTileYArea = centerTileY + radiusTiles
+			isValid = minTileX >= 0 && minTileY >= 0 && maxTileXArea < maxTileX && maxTileYArea < maxTileY
 		}
 
 		this.state.isValidPosition = isValid
-
-		const ghost = this.state.ghostSprite
-		ghost.clear()
-
 		const centerX = snappedX + tileSize / 2
 		const centerY = snappedY + tileSize / 2
-		const radiusPixels = radiusTiles * tileSize
-		const color = this.state.isValidPosition ? 0x00ff00 : 0xff0000
-
-		ghost.fillStyle(color, 0.2)
-		ghost.fillCircle(centerX, centerY, radiusPixels)
-		ghost.lineStyle(2, color, 0.8)
-		ghost.strokeCircle(centerX, centerY, radiusPixels)
-
-		// Draw center tile
-		ghost.fillStyle(color, 0.4)
-		ghost.fillRect(snappedX, snappedY, tileSize, tileSize)
+		this.scene.runtime.renderer.setMeshPosition(this.state.ghostMesh, centerX, 0.5, centerY)
+		this.scene.runtime.renderer.applyTint(this.state.ghostMesh, isValid ? '#00ff00' : '#ff0000')
 	}
 
 	private setupMouseHandlers() {
-		this.scene.input.on('pointermove', this.handleMouseMove, this)
-		this.scene.input.on('pointerdown', this.handleMouseClick, this)
-		this.scene.input.keyboard.on('keydown-ESC', this.handleEscape, this)
+		if (this.handlersActive) return
+		this.scene.runtime.input.on('pointermove', this.handleMouseMove)
+		this.scene.runtime.input.on('pointerup', this.handleMouseClick)
+		window.addEventListener('keydown', this.handleEscape)
+		this.handlersActive = true
 	}
 
 	private removeMouseHandlers() {
-		this.scene.input.off('pointermove', this.handleMouseMove, this)
-		this.scene.input.off('pointerdown', this.handleMouseClick, this)
-		this.scene.input.keyboard.off('keydown-ESC', this.handleEscape, this)
+		if (!this.handlersActive) return
+		this.scene.runtime.input.off('pointermove', this.handleMouseMove)
+		this.scene.runtime.input.off('pointerup', this.handleMouseClick)
+		window.removeEventListener('keydown', this.handleEscape)
+		this.handlersActive = false
 	}
 
-	private handleMouseMove = (pointer: Input.Pointer) => {
+	private handleMouseMove = (pointer: PointerState) => {
 		if (!this.state.buildingInstanceId) return
-
-		const camera = this.scene.cameras.main
-		const worldX = camera.scrollX + pointer.x
-		const worldY = camera.scrollY + pointer.y
-
-		this.updateGhostPosition(worldX, worldY)
+		const world = pointer.world ?? this.scene.runtime.input.getWorldPoint()
+		if (!world) return
+		this.updateGhostPosition(world.x, world.z)
 	}
 
-	private handleMouseClick = (pointer: Input.Pointer) => {
+	private handleMouseClick = (pointer: PointerState) => {
+		if (pointer.wasDrag || pointer.button !== 0) return
 		if (!this.state.buildingInstanceId) return
-
-		if (pointer.rightButtonDown()) {
-			this.cancelSelection()
-			return
+		if (!this.state.lastMousePosition) {
+			const world = pointer.world ?? this.scene.runtime.input.getWorldPoint()
+			if (!world) return
+			this.updateGhostPosition(world.x, world.z)
 		}
-
-		if (pointer.leftButtonDown() && this.state.isValidPosition && this.state.lastMousePosition) {
+		if (this.state.isValidPosition && this.state.lastMousePosition) {
 			this.setWorkArea(this.state.lastMousePosition.x, this.state.lastMousePosition.y)
 		}
 	}
 
-	private handleEscape = () => {
-		this.cancelSelection()
-		EventBus.emit(UiEvents.Building.WorkAreaCancel, {})
+	private handleEscape = (event: KeyboardEvent) => {
+		if (event.code === 'Escape') {
+			this.cancelSelection()
+			EventBus.emit(UiEvents.Building.WorkAreaCancel, {})
+		}
 	}
 
 	private setWorkArea(x: number, y: number) {
@@ -206,9 +203,7 @@ export class WorkAreaSelectionManager {
 		this.cancelSelection()
 	}
 
-	public update() {
-		// no-op for now
-	}
+	public update() {}
 
 	public destroy() {
 		this.cancelSelection()

@@ -1,33 +1,32 @@
-import { EventBus } from "../../EventBus";
-import { UiEvents } from "../../uiEvents";
-import { MapScene } from "./MapScene";
-import { Event } from "@rugged/game"
-import { createLocalPlayer, LocalPlayer } from '../../entities/LocalPlayer'
-import { PlayerView } from '../../entities/Player/View'
-import { PlayerView2 } from '../../entities/Player/View2'
-import { LocalPlayerController } from '../../entities/Player/LocalPlayerController'
-import { createRemotePlayer, RemotePlayer } from '../../entities/RemotePlayer'
-import { createNPC, NPC } from '../../entities/NPC'
-import { createSettler, SettlerController } from '../../entities/Settler'
+import { EventBus } from '../../EventBus'
+import { UiEvents } from '../../uiEvents'
+import { MapScene } from './MapScene'
+import { Event } from '@rugged/game'
+import { createLocalPlayer, type LocalPlayer } from '../../entities/LocalPlayer'
+import { createRemotePlayer, type RemotePlayer } from '../../entities/RemotePlayer'
+import { createNPC, type NPCController } from '../../entities/NPC'
+import { createSettler, type SettlerController } from '../../entities/Settler'
 import { Keyboard } from '../../modules/Keyboard'
-import { createLoot, Loot, DroppedItem } from '../../entities/Loot'
-import { PortalManager } from "../../modules/Portals";
-import networkManager from "../../network";
-import { playerService } from "../../services/PlayerService";
-import { createMapObject, MapObjectEntity } from '../../entities/MapObject'
+import { createLoot, type Loot } from '../../entities/Loot'
+import { PortalManager } from '../../modules/Portals'
+import { playerService } from '../../services/PlayerService'
+import { createMapObject, type MapObjectEntity } from '../../entities/MapObject'
 import { BuildingPlacementManager } from '../../modules/BuildingPlacement'
 import { WorkAreaSelectionManager } from '../../modules/WorkAreaSelection'
+import { ItemPlacementManager } from '../../modules/ItemPlacement'
 import { FX } from '../../modules/FX'
 import { RoadOverlay } from '../../modules/RoadOverlay'
 import { RoadPlacementManager } from '../../modules/RoadPlacement'
 import { TextDisplayService } from '../../services/TextDisplayService'
 import { NPCProximityService } from '../../services/NPCProximityService'
-import { NPCController } from '../../entities/NPC/NPCController'
 import type { Settler, RoadTile } from '@rugged/game'
+import { Vector3 } from '@babylonjs/core'
 import { itemService } from '../../services/ItemService'
+import { sceneManager } from '../../services/SceneManager'
+import type { GameRuntime } from '../../runtime/GameRuntime'
 
 export abstract class GameScene extends MapScene {
-    protected player: LocalPlayer | null = null
+	public player: LocalPlayer | null = null
 	protected remotePlayers: Map<string, RemotePlayer> = new Map()
 	protected droppedItems: Map<string, Loot> = new Map()
 	protected npcs: Map<string, NPCController> = new Map()
@@ -39,145 +38,164 @@ export abstract class GameScene extends MapScene {
 	protected portalManager: PortalManager | null = null
 	protected buildingPlacementManager: BuildingPlacementManager | null = null
 	protected workAreaSelectionManager: WorkAreaSelectionManager | null = null
+	protected itemPlacementManager: ItemPlacementManager | null = null
 	protected fx: FX | null = null
-	protected textDisplayService: TextDisplayService | null = null
+	public textDisplayService: TextDisplayService | null = null
 	protected npcProximityService: NPCProximityService
+	protected sceneData: any = {}
 
-	constructor(config: { key: string, mapKey: string, mapPath: string }) {
-		super(config.key, config.mapKey, config.mapPath)
-		this.npcProximityService = new NPCProximityService(this)
+	constructor(runtime: GameRuntime, config: { mapKey: string; mapPath: string }) {
+		super(runtime, config.mapKey, config.mapPath)
+		this.npcProximityService = new NPCProximityService()
 	}
 
-    protected initializeScene(): void {
-        super.initializeScene()
-		
-		// Initialize keyboard
-		this.keyboard = new Keyboard(this)
+	start(data?: any): void {
+		this.sceneData = data || {}
+		super.start()
+	}
 
-        // Initialize text display service
+	protected initializeScene(): void {
+		super.initializeScene()
+		if (!this.map) return
+
+		this.keyboard = new Keyboard()
 		this.textDisplayService = new TextDisplayService(this)
-
-        // Initialize NPC proximity service
 		this.npcProximityService.initialize()
 
-        // Get scene data passed during transition
-		const sceneData = this.scene.settings.data
-		const playerX = sceneData?.x || 100
-		const playerY = sceneData?.y || 300
-		const isTransition = sceneData?.isTransition || false
-		const suppressAutoJoin = sceneData?.suppressAutoJoin || false
-		
-		// Create player
+		const playerX = this.sceneData?.x || 100
+		const playerY = this.sceneData?.y || 300
+		const isTransition = this.sceneData?.isTransition || false
+		const suppressAutoJoin = this.sceneData?.suppressAutoJoin || false
+
 		this.player = createLocalPlayer(this, playerX, playerY, playerService.playerId)
-		
-		// Position the player
 		this.player.view.updatePosition(playerX, playerY)
-        
-		// Set up multiplayer
+
 		this.setupMultiplayer()
 
-        // Set up camera to follow player
 		this.cameras.main.startFollow(this.player.view)
 
-        // Initialize the portal manager
 		this.portalManager = new PortalManager(this, this.player.view)
-		
-		// Set the portal activated callback
 		this.portalManager.setPortalActivatedCallback((portalData) => {
 			this.transitionToScene(portalData.target, portalData.targetX, portalData.targetY)
 		})
-		
-		// Process portals
 		this.portalManager.processPortals(this.map)
 
-		// Initialize the building placement manager
 		this.buildingPlacementManager = new BuildingPlacementManager(this)
 		this.workAreaSelectionManager = new WorkAreaSelectionManager(this)
 		this.roadPlacementManager = new RoadPlacementManager(this)
-
-		// Initialize FX
-		this.fx = new FX(this)
-
-		// Initialize road overlay
+		this.itemPlacementManager = new ItemPlacementManager(this, this.player.controller)
 		this.roadOverlay = new RoadOverlay(this, this.map.tileWidth)
-
-		// Set up collision for the player
-		this.initializeCollision([this.player.view])
+		this.fx = new FX(this)
 
 		EventBus.emit(UiEvents.Scene.Ready, { mapId: this.mapKey })
 
-		// Only emit join event if this is not a scene transition
 		if (!isTransition && !suppressAutoJoin) {
-			EventBus.emit(Event.Players.CS.Join, { 
-				position: { x: playerX, y: playerY}, 
+			EventBus.emit(Event.Players.CS.Join, {
+				position: { x: playerX, y: playerY },
 				mapId: this.mapKey,
 				appearance: {}
 			})
 		}
-    }
+	}
 
-    update() {
-		if (this.keyboard) {
-			this.keyboard.update()
+	update(deltaMs: number): void {
+		super.update(deltaMs)
+		if (!this.assetsLoaded) return
+
+		this.updateCameraFromKeyboard(deltaMs)
+		this.updateCameraRotationFromKeyboard()
+		this.keyboard?.update()
+		this.portalManager?.update()
+
+		if (this.player) {
+			this.player.controller.update(deltaMs)
 		}
 
-        if (this.portalManager) {
-			this.portalManager.update()
-		}
-
-        if (this.player) {
-            this.player.controller.update()
-        }
-
-		// Update remote players
-		this.remotePlayers.forEach(player => {
-			player.controller.update()
+		this.remotePlayers.forEach((player) => {
+			player.controller.update(deltaMs)
 		})
 
-		// Update NPCs
 		this.npcs.forEach((controller) => {
-			controller.update()
+			controller.update(deltaMs)
 		})
 
-		// Update settlers
-		this.settlers.forEach(settler => {
-			settler.update()
+		this.settlers.forEach((settler) => {
+			settler.update(deltaMs)
 		})
 
-		// Update map objects
-		this.mapObjects.forEach(mapObject => {
-			mapObject.controller.update()
+		this.mapObjects.forEach((mapObject) => {
+			mapObject.controller.update(deltaMs)
 		})
 
-		// Update building placement manager
-		if (this.buildingPlacementManager) {
-			this.buildingPlacementManager.update()
-		}
-		if (this.workAreaSelectionManager) {
-			this.workAreaSelectionManager.update()
-		}
-		if (this.roadPlacementManager) {
-			this.roadPlacementManager.update()
-		}
+		this.buildingPlacementManager?.update()
+		this.workAreaSelectionManager?.update()
+		this.roadPlacementManager?.update()
+		this.itemPlacementManager?.update()
+		this.roadOverlay?.update()
+
+		this.physics.update(deltaMs)
+
+		this.player?.view.syncFromBody()
+
+		this.remotePlayers.forEach((player) => player.view.syncFromBody())
+		this.npcs.forEach((controller) => controller.view.syncFromBody())
+		this.settlers.forEach((settler) => settler.view.syncFromBody())
+		this.mapObjects.forEach((mapObject) => mapObject.view.syncFromBody())
+		this.droppedItems.forEach((item) => item.view.syncFromBody())
 
 		this.textDisplayService?.update()
 
-		// Update NPC proximity service if we have a player
 		if (this.player) {
-			this.npcProximityService.update(
-				{ x: this.player.view.x, y: this.player.view.y },
-				this.npcs
-			)
+			this.npcProximityService.update({ x: this.player.view.x, y: this.player.view.y }, this.npcs)
 		}
-    }
+	}
 
-    private setupMultiplayer() {
-        // Set up multiplayer event listeners
+	private updateCameraFromKeyboard(deltaMs: number): void {
+		if (!this.keyboard) return
+		const speed = 900
+		const verticalMultiplier = 1.25
+		let moveX = 0
+		let moveY = 0
+
+		if (this.keyboard.isMovingLeft()) moveX -= 1
+		if (this.keyboard.isMovingRight()) moveX += 1
+		if (this.keyboard.isMovingUp()) moveY += 1
+		if (this.keyboard.isMovingDown()) moveY -= 1
+
+		if (moveX === 0 && moveY === 0) return
+
+		const distance = (speed * deltaMs) / 1000
+		const camera = this.runtime.renderer.camera
+		const right = camera.getDirection(Vector3.Right())
+		const up = camera.getDirection(Vector3.Up())
+		const rightGround = new Vector3(right.x, 0, right.z)
+		const upGround = new Vector3(up.x, 0, up.z)
+
+		if (rightGround.lengthSquared() === 0 || upGround.lengthSquared() === 0) return
+		rightGround.normalize()
+		upGround.normalize()
+
+		const inputLength = Math.hypot(moveX, moveY) || 1
+		const weightedX = moveX / inputLength
+		const weightedY = (moveY / inputLength) * verticalMultiplier
+		const delta = rightGround.scale(weightedX).add(upGround.scale(weightedY))
+		this.cameras.main.panBy(delta.x * distance, delta.z * distance)
+	}
+
+	private updateCameraRotationFromKeyboard(): void {
+		if (!this.keyboard) return
+		if (this.keyboard.isRotateLeft()) {
+			this.cameras.main.rotateByDegrees(-90)
+		} else if (this.keyboard.isRotateRight()) {
+			this.cameras.main.rotateByDegrees(90)
+		}
+	}
+
+	private setupMultiplayer() {
 		EventBus.on(Event.Players.SC.Joined, this.handlePlayerJoined, this)
 		EventBus.on(Event.Players.SC.Left, this.handlePlayerLeft, this)
 		EventBus.on(Event.Players.SC.Move, this.handlePlayerMove, this)
 
-		// Set up scene event listeners
 		EventBus.on(Event.Loot.SC.Spawn, this.handleAddItems, this)
 		EventBus.on(Event.Loot.SC.Despawn, this.handleRemoveItems, this)
 		EventBus.on(Event.Loot.SC.Update, this.handleUpdateItems, this)
@@ -185,44 +203,34 @@ export abstract class GameScene extends MapScene {
 		EventBus.on(Event.NPC.SC.Spawn, this.handleNPCSpawn, this)
 		EventBus.on(Event.NPC.SC.Despawn, this.handleNPCDespawn, this)
 
-		// Set up map objects event listeners
 		EventBus.on(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn, this)
 		EventBus.on(Event.MapObjects.SC.Despawn, this.handleMapObjectDespawn, this)
 
-		// Set up building event listeners
 		EventBus.on(Event.Buildings.SC.Placed, this.handleBuildingPlaced, this)
 		EventBus.on(Event.Buildings.SC.Progress, this.handleBuildingProgress, this)
 		EventBus.on(Event.Buildings.SC.Completed, this.handleBuildingCompleted, this)
 		EventBus.on(Event.Buildings.SC.Cancelled, this.handleBuildingCancelled, this)
 		EventBus.on(Event.Storage.SC.Spoilage, this.handleStorageSpoilage, this)
 
-		// Set up population event listeners
 		EventBus.on(Event.Population.SC.List, this.handlePopulationList, this)
 		EventBus.on(Event.Population.SC.SettlerSpawned, this.handleSettlerSpawned, this)
 		EventBus.on(Event.Population.SC.SettlerDied, this.handleSettlerDied, this)
 		EventBus.on(UiEvents.Population.SettlerSpawned, this.handleUISettlerSpawned, this)
 		EventBus.on(UiEvents.Population.SettlerDied, this.handleSettlerDied, this)
-		// Note: Position updates are now handled directly by SettlerController via MovementEvents
 		EventBus.on(UiEvents.Population.ProfessionChanged, this.handleSettlerProfessionChanged, this)
 
-		// Set up road event listeners
 		EventBus.on(Event.Roads.SC.Sync, this.handleRoadSync, this)
 		EventBus.on(Event.Roads.SC.Updated, this.handleRoadUpdated, this)
 		EventBus.on(Event.Roads.SC.PendingSync, this.handleRoadPendingSync, this)
 		EventBus.on(Event.Roads.SC.PendingUpdated, this.handleRoadPendingUpdated, this)
 	}
 
-	private handlePlayerJoined = (data: { playerId: string, position: { x: number, y: number } }) => {
-		const remotePlayer = createRemotePlayer(
-			this,
-			data.position.x,
-			data.position.y,
-			data.playerId
-		)
+	private handlePlayerJoined = (data: { playerId: string; position: { x: number; y: number } }) => {
+		const remotePlayer = createRemotePlayer(this, data.position.x, data.position.y, data.playerId)
 		this.remotePlayers.set(data.playerId, remotePlayer)
 	}
 
-	private handlePlayerMove = (data) => {
+	private handlePlayerMove = (data: any) => {
 		const remotePlayer = this.remotePlayers.get(data.sourcePlayerId)
 		if (remotePlayer) {
 			remotePlayer.controller.handlePlayerMoved(data)
@@ -237,8 +245,7 @@ export abstract class GameScene extends MapScene {
 		}
 	}
 
-	private handleAddItems = (data: { item: DroppedItem }) => {
-		console.log('[CLIENT DEBUG] handleAddItems called with item:', data.item)
+	private handleAddItems = (data: { item: any }) => {
 		if (!this.player) return
 
 		const existingLoot = this.droppedItems.get(data.item.id)
@@ -249,9 +256,6 @@ export abstract class GameScene extends MapScene {
 
 		const loot = createLoot(this, data.item, this.player.view)
 		this.droppedItems.set(data.item.id, loot)
-		console.log('[CLIENT DEBUG] Added item to droppedItems. Current items:',
-			Array.from(this.droppedItems.keys())
-		)
 	}
 
 	private handleRemoveItems = (data: { itemId: string }) => {
@@ -262,7 +266,7 @@ export abstract class GameScene extends MapScene {
 		}
 	}
 
-	private handleUpdateItems = (data: { item: DroppedItem }) => {
+	private handleUpdateItems = (data: { item: any }) => {
 		const loot = this.droppedItems.get(data.item.id)
 		if (loot) {
 			loot.view.setQuantity(data.item.quantity)
@@ -272,45 +276,12 @@ export abstract class GameScene extends MapScene {
 		}
 	}
 
-	private handleNPCSpawn = (data: { npc: NPC }) => {
+	private handleNPCSpawn = (data: { npc: any }) => {
 		const npc = createNPC(this, data.npc.position.x, data.npc.position.y, data.npc)
 		this.npcs.set(data.npc.id, npc)
-
-		// If we have a player, set up collision with the new NPC
-		if (this.player) {
-			this.physics.add.collider(this.player.view, npc.view)
-		}
 	}
 
-	private handleRoadSync = (data: { mapId: string, tiles: RoadTile[] }) => {
-		if (!this.roadOverlay || data.mapId !== this.mapKey) {
-			return
-		}
-		this.roadOverlay.setTiles(data.tiles)
-	}
-
-	private handleRoadUpdated = (data: { mapId: string, tiles: RoadTile[] }) => {
-		if (!this.roadOverlay || data.mapId !== this.mapKey) {
-			return
-		}
-		this.roadOverlay.applyUpdates(data.tiles)
-	}
-
-	private handleRoadPendingSync = (data: { mapId: string, tiles: RoadTile[] }) => {
-		if (!this.roadOverlay || data.mapId !== this.mapKey) {
-			return
-		}
-		this.roadOverlay.setPendingTiles(data.tiles)
-	}
-
-	private handleRoadPendingUpdated = (data: { mapId: string, tiles: RoadTile[] }) => {
-		if (!this.roadOverlay || data.mapId !== this.mapKey) {
-			return
-		}
-		this.roadOverlay.applyPendingUpdates(data.tiles)
-	}
-
-	private handleNPCDespawn = (data: { npc: NPC }) => {
+	private handleNPCDespawn = (data: { npc: any }) => {
 		const npcController = this.npcs.get(data.npc.id)
 		if (npcController) {
 			npcController.destroy()
@@ -318,25 +289,16 @@ export abstract class GameScene extends MapScene {
 		}
 	}
 
-	private handleNPCList = (data: { npcs: NPC[] }) => {
-		// Clear existing NPCs first
-		this.npcs.forEach(npc => npc.controller.destroy())
+	private handleNPCList = (data: { npcs: any[] }) => {
+		this.npcs.forEach((npc) => npc.destroy())
 		this.npcs.clear()
-
-		// Create new NPCs
-		data.npcs.forEach(npcData => {
+		data.npcs.forEach((npcData) => {
 			const npc = createNPC(this, npcData.position.x, npcData.position.y, npcData)
 			this.npcs.set(npcData.id, npc)
-
-			// If we have a player, set up collision with NPCs
-			if (this.player) {
-				this.physics.add.collider(this.player.view, npc.view)
-			}
 		})
 	}
 
 	private handleMapObjectSpawn = (data: { object: any }) => {
-		// Only add objects for the current map
 		if (data.object.mapId === this.mapKey) {
 			const existing = this.mapObjects.get(data.object.id)
 			if (existing) {
@@ -345,11 +307,6 @@ export abstract class GameScene extends MapScene {
 			}
 			const mapObject = createMapObject(this, data.object)
 			this.mapObjects.set(data.object.id, mapObject)
-			
-			// If we have a player, set up collision with the map object
-			if (this.player) {
-				this.physics.add.collider(this.player.view, mapObject.view.getSprite())
-			}
 		}
 	}
 
@@ -361,58 +318,35 @@ export abstract class GameScene extends MapScene {
 		}
 	}
 
-	private handleBuildingPlaced = (data: { building: any }) => {
-		// Building is already handled via MapObject spawn, but we can add specific logic here
-		console.log('[GameScene] Building placed:', data.building)
+	private handleBuildingPlaced = (_data: { building: any }) => {
+		void _data
+	}
+	private handleBuildingProgress = (_data: { buildingInstanceId: string; progress: number; stage: string }) => {
+		void _data
+	}
+	private handleBuildingCompleted = (_data: { building: any }) => {
+		void _data
+	}
+	private handleBuildingCancelled = (_data: { buildingInstanceId: string; refundedItems: any[] }) => {
+		void _data
 	}
 
-	private handleBuildingProgress = (data: { buildingInstanceId: string, progress: number, stage: string }) => {
-		// Find the map object associated with this building and update its progress
-		// For Phase A, we'll update the visual representation
-		console.log('[GameScene] Building progress:', data)
-	}
-
-	private handleBuildingCompleted = (data: { building: any }) => {
-		// Update building visual to show completed state
-		console.log('[GameScene] Building completed:', data.building)
-	}
-
-	private handleBuildingCancelled = (data: { buildingInstanceId: string, refundedItems: any[] }) => {
-		// Building removal is handled via MapObject despawn
-		console.log('[GameScene] Building cancelled:', data)
-	}
-
-	// Population event handlers
 	private handlePopulationList = (data: { settlers: Settler[] }) => {
-		// Clear existing settlers first
-		this.settlers.forEach(settler => settler.destroy())
+		this.settlers.forEach((settler) => settler.destroy())
 		this.settlers.clear()
 
-		// Create new settlers
-		data.settlers.forEach(settlerData => {
-			// Only create settlers for the current map
+		data.settlers.forEach((settlerData) => {
 			if (settlerData.mapId === this.mapKey) {
 				const settler = createSettler(this, settlerData)
 				this.settlers.set(settlerData.id, settler)
-
-				// Set up collision with player if we have one
-				if (this.player) {
-					this.physics.add.collider(this.player.view, settler.view)
-				}
 			}
 		})
 	}
 
 	private handleSettlerSpawned = (data: { settler: Settler }) => {
-		// Only create settler if it's for the current map
 		if (data.settler.mapId === this.mapKey) {
 			const settler = createSettler(this, data.settler)
 			this.settlers.set(data.settler.id, settler)
-
-			// Set up collision with player if we have one
-			if (this.player) {
-				this.physics.add.collider(this.player.view, settler.view)
-			}
 		}
 	}
 
@@ -425,136 +359,90 @@ export abstract class GameScene extends MapScene {
 	}
 
 	private handleUISettlerSpawned = (settlerData: Settler) => {
-		// Handle UI-triggered settler spawn (from PopulationService)
-		if (settlerData.mapId === this.mapKey) {
-			// Check if settler already exists
-			if (!this.settlers.has(settlerData.id)) {
-				const settler = createSettler(this, settlerData)
-				this.settlers.set(settlerData.id, settler)
-
-				// Set up collision with player if we have one
-				if (this.player) {
-					this.physics.add.collider(this.player.view, settler.view)
-				}
-			}
+		if (settlerData.mapId === this.mapKey && !this.settlers.has(settlerData.id)) {
+			const settler = createSettler(this, settlerData)
+			this.settlers.set(settlerData.id, settler)
 		}
 	}
 
-	private handleSettlerPositionUpdate = (data: { settlerId: string, position: { x: number, y: number } }) => {
-		const settler = this.settlers.get(data.settlerId)
-		if (settler) {
-			// Position updates are handled by the controller via event subscription
-			// This is just for UI-triggered updates
-		}
+	private handleSettlerProfessionChanged = (_data: { settlerId: string; oldProfession: any; newProfession: any }) => {
+		void _data
 	}
 
-	private handleSettlerProfessionChanged = (data: { settlerId: string, oldProfession: any, newProfession: any }) => {
-		const settler = this.settlers.get(data.settlerId)
-		if (settler) {
-			// Profession changes are handled by the controller via event subscription
-			// This is just for UI-triggered updates
-		}
+	private handleRoadSync = (data: { mapId: string; tiles: RoadTile[] }) => {
+		if (!this.roadOverlay || data.mapId !== this.mapKey) return
+		this.roadOverlay.setTiles(data.tiles)
 	}
 
-    	// Transition to a new scene with a fade effect
+	private handleRoadUpdated = (data: { mapId: string; tiles: RoadTile[] }) => {
+		if (!this.roadOverlay || data.mapId !== this.mapKey) return
+		this.roadOverlay.applyUpdates(data.tiles)
+	}
+
+	private handleRoadPendingSync = (data: { mapId: string; tiles: RoadTile[] }) => {
+		if (!this.roadOverlay || data.mapId !== this.mapKey) return
+		this.roadOverlay.setPendingTiles(data.tiles)
+	}
+
+	private handleRoadPendingUpdated = (data: { mapId: string; tiles: RoadTile[] }) => {
+		if (!this.roadOverlay || data.mapId !== this.mapKey) return
+		this.roadOverlay.applyPendingUpdates(data.tiles)
+	}
+
 	protected transitionToScene(targetScene: string, targetX: number = 0, targetY: number = 0) {
-		// Prevent multiple transitions
 		if (this.transitioning) return
 		this.transitioning = true
-		
-		// Store the player's current position for the new scene
-		const playerX = this.player.view.x
-		const playerY = this.player.view.y
 
-		// Send transition event to server
-		// this.multiplayerService.transitionToScene(targetX, targetY, targetScene)
-		
-		// Clean up resources before transitioning
-		this.cleanupScene()
-		
-		// Create a fade out effect
-		this.cameras.main.fade(500, 0, 0, 0)
-		
-		// Wait for the fade to complete before transitioning
-		this.cameras.main.once('camerafadeoutcomplete', () => {
-			// Start the new scene with the player's position and the current map ID
-			this.scene.start(targetScene, { 
-				x: targetX, 
-				y: targetY,
-				playerX: playerX,
-				playerY: playerY,
-				isTransition: true,
-				fromMapId: this.mapKey
-			})
+		const mapped = sceneManager.getSceneKeyForTarget(targetScene) || targetScene
+		EventBus.emit(Event.Map.CS.Transition, {
+			toMapId: mapped,
+			position: { x: targetX, y: targetY }
 		})
 	}
 
+	protected cleanupScene(): void {
+		this.keyboard?.destroy()
+		this.keyboard = null
 
-    protected cleanupScene(): void {
-		// Clean up keyboard
-		if (this.keyboard) {
-			this.keyboard.destroy()
-			this.keyboard = null
-		}
+		this.fx?.destroy()
+		this.fx = null
 
-		// Clean up FX
-		if (this.fx) {
-			this.fx.destroy()
-			this.fx = null
-		}
+		this.textDisplayService?.destroy()
+		this.textDisplayService = null
 
-		// Clean up text display service
-		if (this.textDisplayService) {
-			this.textDisplayService.destroy()
-			this.textDisplayService = null
-		}
+		this.player?.controller.destroy()
+		this.player = null
 
-		// Clean up player
-		if (this.player) {
-			this.player.controller.destroy()
-			this.player = null
-		}
-
-		// Clean up remote players
-		this.remotePlayers.forEach(player => {
-			player.controller.destroy()
-		})
+		this.remotePlayers.forEach((player) => player.controller.destroy())
 		this.remotePlayers.clear()
 
-		// Clean up dropped items
-		this.droppedItems.forEach(item => {
-			item.controller.destroy()
-		})
+		this.droppedItems.forEach((item) => item.controller.destroy())
 		this.droppedItems.clear()
 
-		// Clean up NPCs
-		this.npcs.forEach(npc => {
-			npc.controller.destroy()
-		})
+		this.npcs.forEach((npc) => npc.destroy())
 		this.npcs.clear()
 
-		// Clean up map objects
-		this.mapObjects.forEach(mapObject => {
-			mapObject.controller.destroy()
-		})
+		this.mapObjects.forEach((mapObject) => mapObject.controller.destroy())
 		this.mapObjects.clear()
 
-		// Clean up portal manager
-		if (this.portalManager) {
-			this.portalManager = null
-		}
+		this.portalManager?.cleanup()
+		this.portalManager = null
 
-		// Clean up item placement manager
-		if (this.itemPlacementManager) {
-			this.itemPlacementManager.destroy()
-			this.itemPlacementManager = null
-		}
-		if (this.roadPlacementManager) {
-			this.roadPlacementManager.destroy()
-			this.roadPlacementManager = null
-		}
+		this.roadPlacementManager?.destroy()
+		this.roadPlacementManager = null
 
-		// Clean up event listeners
+		this.workAreaSelectionManager?.destroy()
+		this.workAreaSelectionManager = null
+
+		this.itemPlacementManager?.destroy()
+		this.itemPlacementManager = null
+
+		this.buildingPlacementManager?.destroy()
+		this.buildingPlacementManager = null
+
+		this.roadOverlay?.destroy()
+		this.roadOverlay = null
+
 		EventBus.off(Event.Players.SC.Joined, this.handlePlayerJoined)
 		EventBus.off(Event.Players.SC.Left, this.handlePlayerLeft)
 		EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems)
@@ -570,64 +458,21 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(Event.Roads.SC.Updated, this.handleRoadUpdated)
 		EventBus.off(Event.Roads.SC.PendingSync, this.handleRoadPendingSync)
 		EventBus.off(Event.Roads.SC.PendingUpdated, this.handleRoadPendingUpdated)
-
-		if (this.roadOverlay) {
-			this.roadOverlay.destroy()
-			this.roadOverlay = null
-		}
 	}
 
-    public destroy(): void {
-		// Remove event listeners
-		EventBus.off(Event.Players.SC.Joined, this.handlePlayerJoined)
-		EventBus.off(Event.Players.SC.Left, this.handlePlayerLeft)
-		EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems)
-		EventBus.off(Event.Loot.SC.Despawn, this.handleRemoveItems)
-		EventBus.off(Event.Loot.SC.Update, this.handleUpdateItems)
-		EventBus.off(Event.NPC.SC.List, this.handleNPCList)
-		EventBus.off(Event.NPC.SC.Spawn, this.handleNPCSpawn)
-		EventBus.off(Event.NPC.SC.Despawn, this.handleNPCDespawn)
-		EventBus.off(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn)
-		EventBus.off(Event.MapObjects.SC.Despawn, this.handleMapObjectDespawn)
-		EventBus.off(Event.Storage.SC.Spoilage, this.handleStorageSpoilage)
-		EventBus.off(Event.Roads.SC.Sync, this.handleRoadSync)
-		EventBus.off(Event.Roads.SC.Updated, this.handleRoadUpdated)
-		EventBus.off(Event.Roads.SC.PendingSync, this.handleRoadPendingSync)
-		EventBus.off(Event.Roads.SC.PendingUpdated, this.handleRoadPendingUpdated)
-
-		if (this.roadOverlay) {
-			this.roadOverlay.destroy()
-			this.roadOverlay = null
-		}
-
-		if (this.roadPlacementManager) {
-			this.roadPlacementManager.destroy()
-			this.roadPlacementManager = null
-		}
-		
+	destroy(): void {
+		this.cleanupScene()
 		this.npcProximityService.destroy()
 		super.destroy()
 	}
 
-	private handleNPCUpdate = (data: { npc: NPC }) => {
-		const existingController = this.npcs.get(data.npc.id)
-		if (existingController) {
-			existingController.updateNPC(data.npc)
-		} else {
-			const controller = createNPC(data.npc, this)
-			this.npcs.set(data.npc.id, controller)
-		}
-	}
-
-	private handleStorageSpoilage = (data: { buildingInstanceId: string, slotId: string, itemType: string, spoiledQuantity: number, position: { x: number, y: number } }) => {
-		if (!this.textDisplayService) {
-			return
-		}
+	private handleStorageSpoilage = (data: { buildingInstanceId: string; slotId: string; itemType: string; spoiledQuantity: number; position: { x: number; y: number } }) => {
+		if (!this.textDisplayService) return
 		const itemMeta = itemService.getItemType(data.itemType)
-		const emoji = itemMeta?.emoji || '🗑️'
+		const emoji = itemMeta?.emoji || ''
+		const message = emoji ? `-${data.spoiledQuantity} ${emoji} spoiled` : `-${data.spoiledQuantity} spoiled`
 		this.textDisplayService.displayMessage({
-			message: `-${data.spoiledQuantity} ${emoji} spoiled`,
-			scene: this,
+			message,
 			worldPosition: data.position,
 			fontSize: '16px',
 			color: '#d35400',
@@ -635,5 +480,4 @@ export abstract class GameScene extends MapScene {
 			duration: 2000
 		})
 	}
-
 }

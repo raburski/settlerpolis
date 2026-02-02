@@ -2,14 +2,13 @@ import { BuildingWorkKind } from '../../../Buildings/work'
 import { WorkStepType, WorkWaitReason } from '../types'
 import type { BuildingWorkHandler } from './types'
 
-const getAllowedMarketItemTypes = (definition: { storage?: { capacities: Record<string, number>, slots?: Array<{ itemType: string }> }, marketDistribution?: { itemTypes?: string[] } }): string[] => {
+const getAllowedMarketItemTypes = (definition: { storageSlots?: Array<{ itemType: string }>, marketDistribution?: { itemTypes?: string[] } }): string[] => {
 	if (definition.marketDistribution?.itemTypes && definition.marketDistribution.itemTypes.length > 0) {
 		return definition.marketDistribution.itemTypes
 	}
 
-	const fromCapacity = Object.keys(definition.storage?.capacities || {})
-	const fromSlots = (definition.storage?.slots || []).map(slot => slot.itemType)
-	return Array.from(new Set([...fromCapacity, ...fromSlots]))
+	const fromSlots = (definition.storageSlots || []).map(slot => slot.itemType)
+	return Array.from(new Set(fromSlots))
 }
 
 export const MarketWorkHandler: BuildingWorkHandler = {

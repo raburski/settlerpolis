@@ -1,15 +1,15 @@
-import { Scene, Scenes } from 'phaser'
 import { Event } from '@rugged/game'
 import { EventBus } from '../EventBus'
 import { DynamicGameScene } from '../scenes/DynamicGameScene'
+import type { GameRuntime } from '../runtime/GameRuntime'
 
 /**
  * SceneManager service for handling dynamic map loading and management
  */
 export class SceneManager {
-	private game: Phaser.Game | null = null
+	private runtime: GameRuntime | null = null
 	private activeMap: string | null = null
-	private mapInstances: Map<string, string> = new Map() // Maps mapId to scene key
+	private mapInstances: Map<string, DynamicGameScene> = new Map()
 
 	constructor() {
 		this.setupEventHandlers()
@@ -18,8 +18,13 @@ export class SceneManager {
 	/**
 	 * Initialize the SceneManager with the game instance
 	 */
-	public init(game: Phaser.Game): void {
-		this.game = game
+	public init(runtime: GameRuntime): void {
+		if (this.runtime && this.runtime !== runtime) {
+			this.mapInstances.forEach((scene) => scene.destroy())
+			this.mapInstances.clear()
+			this.activeMap = null
+		}
+		this.runtime = runtime
 	}
 
 	/**
@@ -36,36 +41,33 @@ export class SceneManager {
 	private handleMapLoad = (data: { mapId: string, mapUrl: string, position?: { x: number, y: number }, suppressAutoJoin?: boolean }): void => {
 		console.log('[SceneManager] Map load event received:', data)
 		
-		if (!this.game) {
-			console.error('[SceneManager] Game instance not initialized')
+		if (!this.runtime) {
+			console.error('[SceneManager] Runtime not initialized')
 			return
 		}
 
 		const { mapId, mapUrl, position, suppressAutoJoin } = data
 		
 		// Check if we already have a scene for this map
-		if (this.mapInstances.has(mapId)) {
+		const existingScene = this.mapInstances.get(mapId)
+		if (existingScene) {
 			console.log(`[SceneManager] Scene for map ${mapId} already exists, transitioning to it`)
-			this.transitionToMap(mapId, position, { suppressAutoJoin })
+			this.transitionToMap(existingScene, position, { suppressAutoJoin })
 			return
 		}
 		
-		// Create a new scene dynamically
 		try {
-			// Register the scene with Phaser
 			const dynamicScene = new DynamicGameScene({
-				key: mapId,
 				mapId,
-				mapUrl
+				mapUrl,
+				runtime: this.runtime
 			})
 			
-			this.game.scene.add(mapId, dynamicScene, false)
-			this.mapInstances.set(mapId, mapId)
+			this.mapInstances.set(mapId, dynamicScene)
 			
 			console.log(`[SceneManager] Created new scene for map ${mapId}`)
 			
-			// Start the scene
-			this.transitionToMap(mapId, position, { suppressAutoJoin })
+			this.transitionToMap(dynamicScene, position, { suppressAutoJoin })
 		} catch (error) {
 			console.error(`[SceneManager] Error creating scene for map ${mapId}:`, error)
 		}
@@ -74,24 +76,16 @@ export class SceneManager {
 	/**
 	 * Transition to a map with optional position
 	 */
-	private transitionToMap(mapId: string, position?: { x: number, y: number }, options?: { suppressAutoJoin?: boolean }): void {
-		if (!this.game) return
+	private transitionToMap(scene: DynamicGameScene, position?: { x: number, y: number }, options?: { suppressAutoJoin?: boolean }): void {
+		if (!this.runtime) return
 
-		const sceneManager = this.game.scene
-		
-		// If we have an active map, stop it first
-		if (this.activeMap && this.activeMap !== mapId) {
-			sceneManager.stop(this.activeMap)
-		}
-		
-		// Start the new scene
-		sceneManager.start(mapId, {
+		const mapId = scene.getMapId()
+		this.runtime.setScene(scene, {
 			x: position?.x || 100,
 			y: position?.y || 400,
-			isTransition: !!this.activeMap,
+			isTransition: Boolean(this.activeMap),
 			suppressAutoJoin: options?.suppressAutoJoin
 		})
-		
 		this.activeMap = mapId
 	}
 

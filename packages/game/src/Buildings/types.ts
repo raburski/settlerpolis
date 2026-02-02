@@ -64,9 +64,27 @@ export interface BuildingDefinition {
 		foundation: string
 		completed: string
 	}
+	render?: {
+		modelSrc: string
+		transform?: {
+			rotation?: { x: number; y: number; z: number }
+			scale?: { x: number; y: number; z: number }
+			elevation?: number
+		}
+	}
+	storageSlots?: import('../Storage/types').StorageSlotDefinition[]
+	storagePreservation?: import('../Storage/types').StoragePreservation
 	footprint: {
 		width: number
 		height: number
+	}
+	entryPoint?: {
+		x: number
+		y: number
+	}
+	centerPoint?: {
+		x: number
+		y: number
 	}
 	constructionTime: number // in seconds
 	costs: BuildingCost[]
@@ -119,7 +137,6 @@ export interface BuildingDefinition {
 	// Phase C: Production and storage
 	productionRecipe?: ProductionRecipe
 	autoProduction?: ProductionRecipe
-	storage?: import('../Storage/types').StorageCapacity
 }
 
 export interface BuildingInstance {
@@ -128,6 +145,7 @@ export interface BuildingInstance {
 	playerId: PlayerId
 	mapId: MapId
 	position: Position
+	rotation?: number
 	workAreaCenter?: Position
 	stage: ConstructionStage
 	progress: number // 0-100 (construction progress, only advances during Constructing stage)
@@ -141,6 +159,7 @@ export interface BuildingInstance {
 export interface PlaceBuildingData {
 	buildingId: BuildingId
 	position: Position
+	rotation?: number
 }
 
 export interface CancelBuildingData {

@@ -1,19 +1,16 @@
-import { Scene } from 'phaser'
+import type { GameScene } from '../../scenes/base/GameScene'
+import type { MapObject } from '@rugged/game'
 import { MapObjectView } from './View'
 import { MapObjectController } from './Controller'
-import { MapObject } from '@rugged/game'
 
-export interface MapObjectEntity {
+export type MapObjectEntity = {
 	view: MapObjectView
 	controller: MapObjectController
+	mapObject: MapObject
 }
 
-export function createMapObject(scene: Scene, mapObject: MapObject): MapObjectEntity {
+export const createMapObject = (scene: GameScene, mapObject: MapObject): MapObjectEntity => {
 	const view = new MapObjectView(scene, mapObject)
 	const controller = new MapObjectController(scene, view, mapObject)
-	
-	return {
-		view,
-		controller
-	}
-} 
+	return { view, controller, mapObject }
+}

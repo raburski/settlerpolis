@@ -19,6 +19,7 @@ import { SettlerInfoPanel } from './SettlerInfoPanel'
 import { SaveLoadPanel } from './SaveLoadPanel'
 import { EventBus } from "../EventBus"
 import { Event, FXType } from '@rugged/game'
+import { UiEvents } from '../uiEvents'
 
 export const UIContainer = () => {
 	const [isVisible, setIsVisible] = useState(true)
@@ -26,6 +27,7 @@ export const UIContainer = () => {
 	const [isPopulationOpen, setIsPopulationOpen] = useState(false)
 	const [isLogisticsOpen, setIsLogisticsOpen] = useState(false)
 	const [saveLoadMode, setSaveLoadMode] = useState<'save' | 'load' | null>(null)
+	const [showDebugBounds, setShowDebugBounds] = useState(false)
 	const stockButtonRef = useRef<HTMLButtonElement | null>(null)
 	const [stockAnchor, setStockAnchor] = useState<DOMRect | null>(null)
 	const populationButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -127,6 +129,14 @@ export const UIContainer = () => {
 					setIsStockOpen(false)
 					setIsPopulationOpen(false)
 					setIsLogisticsOpen((prev) => !prev)
+				}}
+				showDebugBounds={showDebugBounds}
+				onToggleDebugBounds={() => {
+					setShowDebugBounds((prev) => {
+						const next = !prev
+						EventBus.emit(UiEvents.Debug.BoundsToggle, { enabled: next })
+						return next
+					})
 				}}
 				onOpenSave={() => setSaveLoadMode('save')}
 				onOpenLoad={() => setSaveLoadMode('load')}

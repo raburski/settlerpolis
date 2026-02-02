@@ -1,9 +1,11 @@
-import { Scene } from 'phaser'
-import { NPCView } from "./View"
+import type { GameScene } from '../../scenes/base/GameScene'
+import type { NPC } from '@rugged/game'
+import { NPCView } from './View'
 import { NPCController } from './Controller'
-import { NPC } from "@rugged/game"
 
-export const createNPC = (scene: Scene, x: number, y: number, npcData: NPC): NPCController => {
-	const view = new NPCView(scene, x, y, npcData.speed, npcData.id, npcData.interactable)
-	return new NPCController(view, scene, npcData)
-} 
+export const createNPC = (scene: GameScene, x: number, y: number, npc: NPC): NPCController => {
+	const view = new NPCView(scene, x, y, npc.id)
+	return new NPCController(view, scene, npc)
+}
+
+export { NPCView, NPCController }

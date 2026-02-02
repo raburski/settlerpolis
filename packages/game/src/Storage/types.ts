@@ -10,22 +10,16 @@ export enum StorageReservationStatus {
 	Cancelled = 'cancelled'
 }
 
-export interface StorageCapacity {
-	// Record of itemType -> maximum capacity for that item type
-	// If itemType is not in the record, that item type cannot be stored
-	// Empty record = no storage capacity
-	capacities: Record<ItemType, number> // itemType -> max capacity
-	// Optional storage preservation modifiers (lower = slows spoilage)
-	preservation?: {
-		spoilageMultiplier: number
-	}
-	// Fixed storage slots (tile offsets relative to building origin)
-	slots?: Array<{
-		itemType: ItemType
-		offset: { x: number, y: number }
-		hidden?: boolean
-		maxQuantity?: number
-	}>
+export interface StorageSlotDefinition {
+	itemType: ItemType
+	offset: { x: number, y: number }
+	hidden?: boolean
+	maxQuantity?: number
+}
+
+export interface StoragePreservation {
+	// Lower multiplier slows spoilage. 1 = normal spoilage.
+	spoilageMultiplier: number
 }
 
 export interface StorageSlot {

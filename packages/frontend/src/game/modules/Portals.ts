@@ -1,5 +1,4 @@
-import { Scene, GameObjects, Input, Physics } from 'phaser'
-import { Player } from '../entities/Player'
+import type { GameScene } from '../scenes/base/GameScene'
 
 interface PortalData {
 	target: string
@@ -7,205 +6,109 @@ interface PortalData {
 	targetY: number
 }
 
+interface PortalZone {
+	bounds: { x: number; y: number; width: number; height: number }
+	data: PortalData
+	name: string
+}
+
 export class PortalManager {
-	private scene: Scene
-	private player: Player
-	private portalZones: Phaser.GameObjects.Zone[] = []
-	private portalRects: Phaser.GameObjects.Rectangle[] = []
-	private portalKey: Phaser.Input.Keyboard.Key | null = null
+	private scene: GameScene
+	private player: any
+	private portalZones: PortalZone[] = []
 	private portalActivatedCallback: ((portalData: PortalData) => void) | null = null
 	private currentPortalMessage: string | null = null
+	private keyDown: boolean = false
+	private boundKeyDown: (event: KeyboardEvent) => void
+	private boundKeyUp: (event: KeyboardEvent) => void
 
-	constructor(scene: Scene, player: Player) {
+	constructor(scene: GameScene, player: any) {
 		this.scene = scene
 		this.player = player
-		this.initializePortalKey()
+		this.boundKeyDown = (event) => {
+			if (event.code === 'KeyE') {
+				this.keyDown = true
+			}
+		}
+		this.boundKeyUp = (event) => {
+			if (event.code === 'KeyE') {
+				this.keyDown = false
+			}
+		}
+		window.addEventListener('keydown', this.boundKeyDown)
+		window.addEventListener('keyup', this.boundKeyUp)
 	}
 
-	/**
-	 * Initialize the portal activation key
-	 */
-	private initializePortalKey(): void {
-		this.portalKey = this.scene.input.keyboard.addKey(Input.Keyboard.KeyCodes.E)
-	}
-
-	/**
-	 * Update the portal manager
-	 */
 	public update(): void {
 		this.checkPortalOverlap()
 		this.checkPortalActivation()
 	}
 
-	/**
-	 * Check if player is overlapping with a portal and show/hide message
-	 */
 	private checkPortalOverlap(): void {
 		let isOverlappingAny = false
-
-		// Check if the player is overlapping with any portal zone
 		for (const zone of this.portalZones) {
-			const portalData = zone.getData('portalData') as PortalData
-			if (!portalData) continue
-
-			const playerSprite = this.player
-			if (!playerSprite) continue
-
-			const playerBounds = playerSprite.getBounds()
-			const zoneBounds = zone.getBounds()
-
-			if (Phaser.Geom.Rectangle.Overlaps(playerBounds, zoneBounds)) {
+			const playerBounds = this.player.getBounds()
+			if (this.rectsOverlap(playerBounds, zone.bounds)) {
 				isOverlappingAny = true
-				const portalName = zone.getData('portalName') as string
-				const message = `Press E to enter ${portalName}`
-				
-				// Only show message if it's different from current
+				const message = `Press E to enter ${zone.name}`
 				if (this.currentPortalMessage !== message) {
 					this.currentPortalMessage = message
-					this.player.displaySystemMessage(message)
+					this.player.displaySystemMessage?.(message)
 				}
 				break
 			}
 		}
 
-		// Clear message if not overlapping any portal
 		if (!isOverlappingAny && this.currentPortalMessage) {
 			this.currentPortalMessage = null
-			this.player.displaySystemMessage(null)
+			this.player.displaySystemMessage?.(null)
 		}
 	}
 
-	/**
-	 * Check if the portal activation key is pressed and handle portal activation
-	 */
 	private checkPortalActivation(): void {
-		if (!this.portalKey || !this.portalKey.isDown) return
-
-		// Check if the player is overlapping with any portal zone
+		if (!this.keyDown) return
 		for (const zone of this.portalZones) {
-			const portalData = zone.getData('portalData') as PortalData
-			if (!portalData) continue
-
-			// Check if the player is overlapping with the zone
-			const playerSprite = this.player
-			if (!playerSprite) continue
-
-			const playerBounds = playerSprite.getBounds()
-			const zoneBounds = zone.getBounds()
-
-			if (Phaser.Geom.Rectangle.Overlaps(playerBounds, zoneBounds)) {
-				// Activate the portal
-				if (this.portalActivatedCallback) {
-					this.portalActivatedCallback(portalData)
-				}
+			const playerBounds = this.player.getBounds()
+			if (this.rectsOverlap(playerBounds, zone.bounds)) {
+				this.portalActivatedCallback?.(zone.data)
 				break
 			}
 		}
 	}
 
-	/**
-	 * Process portals from the map
-	 */
-	public processPortals(map: Phaser.Tilemaps.Tilemap): void {
-		// Get the portals layer
+	public processPortals(map: { getObjectLayer: (name: string) => { objects: any[] } | null }): void {
 		const portalsLayer = map.getObjectLayer('portals')
 		if (!portalsLayer) return
 
-		// Process each portal
-		for (const obj of portalsLayer.objects) {
-			try {
-				// Create a white semi-transparent rectangle for the portal
-				const portalRect = this.scene.add.rectangle(
-					obj.x + obj.width/2, 
-					obj.y + obj.height/2, 
-					obj.width, 
-					obj.height,
-					0xffffff,
-					0.1
-				)
-				this.portalRects.push(portalRect)
-
-				// Create a zone for the portal
-				const zone = this.scene.add.zone(
-					obj.x + obj.width/2, 
-					obj.y + obj.height/2, 
-					obj.width, 
-					obj.height
-				)
-				this.scene.physics.world.enable(zone)
-				this.portalZones.push(zone)
-
-				// Store portal data
-				const portalData: PortalData = {
-					target: obj.properties.find((p: any) => p.name === 'target')?.value || '',
-					targetX: obj.properties.find((p: any) => p.name === 'targetX')?.value || 0,
-					targetY: obj.properties.find((p: any) => p.name === 'targetY')?.value || 0
-				}
-				zone.setData('portalData', portalData)
-
-				// Store portal name (use target scene name if no specific name provided)
-				const portalName = obj.name || portalData.target
-				zone.setData('portalName', portalName)
-
-                const sceneData = this.scene.scene.settings.data
-                const fromMapId = sceneData?.fromMapId
-        
-                // Find a portal that matches the previous map ID
-                const matchingPortal = fromMapId ? portalsLayer.objects.find(obj => {
-                    const portalData = obj.properties?.find(prop => prop.name === 'target')
-                    return portalData?.value === fromMapId
-                }) : null
-        
-                // If a matching portal is found, position the player at that portal's location
-                if (matchingPortal) {
-                    // Center the player in the portal
-                    const centerX = matchingPortal.x + (matchingPortal.width / 2)
-                    const centerY = matchingPortal.y + (matchingPortal.height / 2)
-                    this.player.setPosition(centerX, centerY)
-                }
-
-			} catch (error) {
-				console.error('Error processing portal:', error)
+		this.portalZones = portalsLayer.objects.map((obj) => {
+			const data: PortalData = {
+				target: obj.properties?.find((p: any) => p.name === 'target')?.value || '',
+				targetX: obj.properties?.find((p: any) => p.name === 'targetX')?.value || 0,
+				targetY: obj.properties?.find((p: any) => p.name === 'targetY')?.value || 0
 			}
-		}
+			return {
+				bounds: { x: obj.x, y: obj.y - obj.height, width: obj.width, height: obj.height },
+				data,
+				name: obj.name || data.target
+			}
+		})
 	}
 
-	/**
-	 * Clean up portal resources
-	 */
 	public cleanup(): void {
-		// Clean up portal zones
-		for (const zone of this.portalZones) {
-			if (zone.body) {
-				zone.body.enable = false
-			}
-			zone.destroy()
-		}
 		this.portalZones = []
-
-		// Clean up portal rectangles
-		for (const rect of this.portalRects) {
-			rect.destroy()
-		}
-		this.portalRects = []
-
-		// Remove the portal key
-		if (this.portalKey) {
-			this.scene.input.keyboard.removeKey(this.portalKey)
-			this.portalKey = null
-		}
-
-		// Clear any remaining portal message
 		if (this.currentPortalMessage) {
 			this.currentPortalMessage = null
-			this.player.displaySystemMessage(null)
+			this.player.displaySystemMessage?.(null)
 		}
+		window.removeEventListener('keydown', this.boundKeyDown)
+		window.removeEventListener('keyup', this.boundKeyUp)
 	}
 
-	/**
-	 * Set the callback for when a portal is activated
-	 */
 	public setPortalActivatedCallback(callback: (portalData: PortalData) => void): void {
 		this.portalActivatedCallback = callback
 	}
-} 
+
+	private rectsOverlap(a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }): boolean {
+		return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
+	}
+}

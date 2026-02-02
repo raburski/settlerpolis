@@ -1,11 +1,15 @@
-import React from 'react'
+import React, { useMemo, useState } from 'react'
 import styles from './Settings.module.css'
 import { useEventBus } from './hooks/useEventBus'
 import { useSlidingPanel } from './hooks/useSlidingPanel'
 import { UiEvents } from '../uiEvents'
+import { EventBus } from '../EventBus'
+import { getHighFidelity, setHighFidelity } from '../services/DisplaySettings'
 
 export function Settings() {
 	const { isVisible, isExiting, toggle, close } = useSlidingPanel()
+	const initialHighFidelity = useMemo(() => getHighFidelity(), [])
+	const [highFidelity, setHighFidelityState] = useState(initialHighFidelity)
 
 	useEventBus(UiEvents.Settings.Toggle, toggle)
 	useEventBus(UiEvents.Inventory.Toggle, close)
@@ -13,6 +17,12 @@ export function Settings() {
 	useEventBus(UiEvents.Relationships.Toggle, close)
 
 	const handleClose = () => close()
+	const handleHighFidelityChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+		const enabled = event.target.checked
+		setHighFidelityState(enabled)
+		setHighFidelity(enabled)
+		EventBus.emit(UiEvents.Settings.HighFidelity, { enabled })
+	}
 
 	if (!isVisible && !isExiting) {
 		return null
@@ -60,6 +70,16 @@ export function Settings() {
 					<div className={styles.settingCard}>
 						<h3 className={styles.settingTitle}>Graphics</h3>
 						<div className={styles.settingContent}>
+							<div className={styles.settingRow}>
+								<label htmlFor="highFidelity">High fidelity (Retina)</label>
+								<input
+									id="highFidelity"
+									type="checkbox"
+									className={styles.checkbox}
+									checked={highFidelity}
+									onChange={handleHighFidelityChange}
+								/>
+							</div>
 							<div className={styles.settingRow}>
 								<label htmlFor="quality">Quality</label>
 								<select id="quality" className={styles.select}>

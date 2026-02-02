@@ -1,229 +1,155 @@
-import { Scene, GameObjects } from 'phaser'
+import { Vector3 } from '@babylonjs/core'
+import type { GameScene } from '../scenes/base/GameScene'
 
 interface TextDisplayOptions {
 	message: string
-	scene: Scene
-	worldPosition: { x: number, y: number }
+	worldPosition: { x: number; y: number }
 	fontSize?: string
 	color?: string
 	backgroundColor?: string
-	padding?: { x: number, y: number }
+	padding?: { x: number; y: number }
 	duration?: number
-	entityId?: string // Optional ID of the entity to follow
+	entityId?: string
+}
+
+interface ActiveText {
+	element: HTMLDivElement
+	worldPosition: { x: number; y: number }
 }
 
 export class TextDisplayService {
-	private scene: Scene
-	private textContainer: GameObjects.Container
-	private activeTexts: Map<string, GameObjects.Text>
-	private entityTexts: Map<string, Set<string>> // Maps entityId to set of textIds
+	private scene: GameScene
+	private container: HTMLDivElement
+	private activeTexts: Map<string, ActiveText>
+	private entityTexts: Map<string, Set<string>>
 
-	constructor(scene: Scene) {
+	constructor(scene: GameScene) {
 		this.scene = scene
-		// Create container at (0,0) and set it to follow the camera
-		this.textContainer = scene.add.container(0, 0)
-		this.textContainer.setDepth(999999) // Ensure it's always on top
 		this.activeTexts = new Map()
 		this.entityTexts = new Map()
+		this.container = document.createElement('div')
+		this.container.style.position = 'absolute'
+		this.container.style.top = '0'
+		this.container.style.left = '0'
+		this.container.style.width = '100%'
+		this.container.style.height = '100%'
+		this.container.style.pointerEvents = 'none'
+		this.scene.runtime.overlayRoot.appendChild(this.container)
 	}
 
-	displayMessage(options: TextDisplayOptions): GameObjects.Text {
-		const {
-			message,
-			worldPosition,
-			fontSize = '14px',
-			color = '#ffffff',
-			backgroundColor = '#000000',
-			padding = { x: 4, y: 4 },
-			duration = 3000,
-			entityId
-		} = options
-
-		const text = this.createText({
-			message,
-			worldPosition,
-			fontSize,
-			color,
-			backgroundColor,
-			padding,
-			duration,
-			entityId
+	displayMessage(options: TextDisplayOptions): HTMLDivElement {
+		return this.createText({
+			message: options.message,
+			worldPosition: options.worldPosition,
+			fontSize: options.fontSize || '14px',
+			color: options.color || '#ffffff',
+			backgroundColor: options.backgroundColor || '#000000',
+			padding: options.padding || { x: 4, y: 4 },
+			duration: options.duration || 3000,
+			entityId: options.entityId
 		})
-
-		return text
 	}
 
-	displaySystemMessage(options: TextDisplayOptions): GameObjects.Text | null {
-		const {
-			message,
-			worldPosition,
-			fontSize = '14px',
-			color = '#FF0000',
-			backgroundColor = '#000000',
-			padding = { x: 4, y: 4 },
-			duration = 5000,
-			entityId
-		} = options
+	displaySystemMessage(options: TextDisplayOptions): HTMLDivElement | null {
+		if (!options.message) return null
+		return this.createText({
+			message: options.message,
+			worldPosition: options.worldPosition,
+			fontSize: options.fontSize || '14px',
+			color: options.color || '#ff4444',
+			backgroundColor: options.backgroundColor || '#000000',
+			padding: options.padding || { x: 4, y: 4 },
+			duration: options.duration || 5000,
+			entityId: options.entityId
+		})
+	}
 
-		if (!message) {
-			return null
+	displayEmoji(options: TextDisplayOptions): HTMLDivElement {
+		return this.createText({
+			message: options.message,
+			worldPosition: options.worldPosition,
+			fontSize: options.fontSize || '26px',
+			color: options.color || '#ffffff',
+			backgroundColor: options.backgroundColor || 'transparent',
+			padding: options.padding || { x: 0, y: 0 },
+			duration: options.duration || 2000,
+			entityId: options.entityId
+		})
+	}
+
+	private createText(options: TextDisplayOptions): HTMLDivElement {
+		const element = document.createElement('div')
+		element.textContent = options.message
+		element.style.position = 'absolute'
+		element.style.fontSize = options.fontSize || '14px'
+		element.style.color = options.color || '#ffffff'
+		element.style.background = options.backgroundColor || 'transparent'
+		element.style.padding = `${options.padding?.y ?? 0}px ${options.padding?.x ?? 0}px`
+		element.style.borderRadius = '4px'
+		element.style.whiteSpace = 'nowrap'
+		element.style.transform = 'translate(-50%, -100%)'
+
+		this.container.appendChild(element)
+
+		const id = `${Date.now()}-${Math.random()}`
+		this.activeTexts.set(id, { element, worldPosition: options.worldPosition })
+
+		if (options.entityId) {
+			if (!this.entityTexts.has(options.entityId)) {
+				this.entityTexts.set(options.entityId, new Set())
+			}
+			this.entityTexts.get(options.entityId)?.add(id)
 		}
 
-		const text = this.createText({
-			message,
-			worldPosition,
-			fontSize,
-			color,
-			backgroundColor,
-			padding,
-			duration,
-			entityId
-		})
+		window.setTimeout(() => {
+			this.removeText(id, options.entityId)
+		}, options.duration || 3000)
 
-		return text
+		return element
 	}
 
-	displayEmoji(options: TextDisplayOptions): GameObjects.Text {
-		const {
-			message,
-			worldPosition,
-			fontSize = '26px',
-			color = '#ffffff',
-			backgroundColor = 'transparent',
-			padding = { x: 0, y: 0 },
-			duration = 2000,
-			entityId
-		} = options
-
-		const text = this.createText({
-			message,
-			worldPosition,
-			fontSize,
-			color,
-			backgroundColor,
-			padding,
-			duration,
-			entityId
-		})
-
-		return text
-	}
-
-	private createText(options: TextDisplayOptions): GameObjects.Text {
-		const {
-			message,
-			worldPosition,
-			fontSize,
-			color,
-			backgroundColor,
-			padding,
-			duration,
-			entityId
-		} = options
-
-		// Create text at (0,0) relative to the container
-		const text = this.scene.add.text(0, 0, message, {
-			fontSize,
-			color,
-			backgroundColor,
-			padding,
-			align: 'center'
-		})
-
-		// Center the text
-		text.setOrigin(0.5, 0.5)
-
-		// Store world position in text data for updates
-		text.setData('worldPosition', worldPosition)
-
-		// Add to container
-		this.textContainer.add(text)
-
-		// Store reference
-		const textId = `${Date.now()}-${Math.random()}`
-		this.activeTexts.set(textId, text)
-
-		// If text is associated with an entity, track it
+	private removeText(id: string, entityId?: string): void {
+		const entry = this.activeTexts.get(id)
+		if (!entry) return
+		entry.element.remove()
+		this.activeTexts.delete(id)
 		if (entityId) {
-			if (!this.entityTexts.has(entityId)) {
-				this.entityTexts.set(entityId, new Set())
+			this.entityTexts.get(entityId)?.delete(id)
+			if (this.entityTexts.get(entityId)?.size === 0) {
+				this.entityTexts.delete(entityId)
 			}
-			this.entityTexts.get(entityId)?.add(textId)
 		}
-
-		// Auto-remove after duration
-		this.scene.time.delayedCall(duration, () => {
-			if (text && text.active) {
-				// Remove from entity tracking if needed
-				if (entityId) {
-					this.entityTexts.get(entityId)?.delete(textId)
-					if (this.entityTexts.get(entityId)?.size === 0) {
-						this.entityTexts.delete(entityId)
-					}
-				}
-				text.destroy()
-				this.activeTexts.delete(textId)
-			}
-		})
-
-		return text
 	}
 
-	updateEntityPosition(entityId: string, position: { x: number, y: number }): void {
-		// Get all texts associated with this entity
+	updateEntityPosition(entityId: string, position: { x: number; y: number }): void {
 		const textIds = this.entityTexts.get(entityId)
 		if (!textIds) return
-
-		// Update position for each text
-		textIds.forEach(textId => {
-			const text = this.activeTexts.get(textId)
-			if (text && text.active) {
-				text.setData('worldPosition', position)
+		textIds.forEach((id) => {
+			const entry = this.activeTexts.get(id)
+			if (entry) {
+				entry.worldPosition = position
 			}
 		})
 	}
 
-	update() {
-		// Update positions of all active texts based on their world positions
-		this.activeTexts.forEach((text, id) => {
-			const worldPosition = text.getData('worldPosition')
-			if (worldPosition) {
-				// Convert world position to screen position
-				const screenPosition = this.scene.cameras.main.getWorldPoint(worldPosition.x, worldPosition.y)
-				
-				// Position text relative to the container
-				text.setPosition(
-					screenPosition.x - this.scene.cameras.main.scrollX,
-					screenPosition.y - this.scene.cameras.main.scrollY - 50 // Offset above entity
-				)
-			}
+	update(): void {
+		this.activeTexts.forEach((entry) => {
+			const screen = this.scene.runtime.renderer.worldToScreen(new Vector3(entry.worldPosition.x, 0, entry.worldPosition.y))
+			entry.element.style.left = `${screen.x}px`
+			entry.element.style.top = `${screen.y}px`
 		})
 	}
 
-	/**
-	 * Cleans up all text displays associated with an entity
-	 * @param entityId The ID of the entity whose text displays should be cleaned up
-	 */
 	cleanupEntityTexts(entityId: string): void {
 		const textIds = this.entityTexts.get(entityId)
 		if (!textIds) return
-
-		// Destroy all texts associated with this entity
-		textIds.forEach(textId => {
-			const text = this.activeTexts.get(textId)
-			if (text && text.active) {
-				text.destroy()
-				this.activeTexts.delete(textId)
-			}
-		})
-
-		// Remove entity from tracking
-		this.entityTexts.delete(entityId)
+		textIds.forEach((id) => this.removeText(id, entityId))
 	}
 
-	destroy() {
-		this.textContainer.destroy()
+	destroy(): void {
+		this.activeTexts.forEach((entry) => entry.element.remove())
 		this.activeTexts.clear()
 		this.entityTexts.clear()
+		this.container.remove()
 	}
-} 
+}

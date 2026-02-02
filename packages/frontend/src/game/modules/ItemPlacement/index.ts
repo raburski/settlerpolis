@@ -1,50 +1,38 @@
-import { Scene } from 'phaser'
-import { Event } from "@rugged/game"
-import { playerService } from '../../services/PlayerService'
-import { EquipmentSlotType } from '@rugged/game'
+import { Event } from '@rugged/game'
+import { EquipmentSlotType, ItemCategory, PLACE_RANGE } from '@rugged/game'
+import { EventBus } from '../../EventBus'
 import { itemService } from '../../services/ItemService'
-import { ItemCategory } from '@rugged/game'
-import { EventBus } from "../../EventBus"
-import { Player, PLACE_RANGE } from '@rugged/game'
-import { itemTextureService } from '../../services/ItemTextureService'
-import { BasePlayerController } from "../../entities/Player/BaseController"
+import type { GameScene } from '../../scenes/base/GameScene'
+import type { BasePlayerController } from '../../entities/Player/BaseController'
+import type { AbstractMesh } from '@babylonjs/core'
+import type { PointerState } from '../../input/InputManager'
 
 export class ItemPlacementManager {
-	private scene: Scene
+	private scene: GameScene
 	private playerController: BasePlayerController
-	private previewSprite: Phaser.GameObjects.Sprite | null = null
-	private placementText: Phaser.GameObjects.Text | null = null
+	private previewMesh: AbstractMesh | null = null
+	private placementText: HTMLDivElement | null = null
 	private isPlacementModeActive = false
 	private currentItem: any = null
 	private hasMouseMoved = false
 
-	constructor(scene: Scene, playerController: PlayerController) {
+	constructor(scene: GameScene, playerController: BasePlayerController) {
 		this.scene = scene
 		this.playerController = playerController
 		this.setupEventListeners()
 	}
 
 	private setupEventListeners() {
-		// Listen for equipment updates to check for placeable items
 		EventBus.on(Event.Players.SC.Equip, this.handleItemEquipped, this)
 		EventBus.on(Event.Players.SC.Unequip, this.handleItemUnequipped, this)
-		
-		// Listen for pointer move to update preview position
-		this.scene.input.on('pointermove', this.handlePointerMove, this)
-		
-		// Listen for pointer down to place the item
-		this.scene.input.on('pointerdown', this.handlePointerDown, this)
+		this.scene.runtime.input.on('pointermove', this.handlePointerMove)
+		this.scene.runtime.input.on('pointerup', this.handlePointerDown)
 	}
 
-	private handleItemEquipped = (data: { itemId: string, slotType: EquipmentSlotType, item: any, sourcePlayerId: string }) => {
+	private handleItemEquipped = (data: { itemId: string; slotType: EquipmentSlotType; item: any; sourcePlayerId: string }) => {
 		if (data.sourcePlayerId && data.sourcePlayerId !== this.playerController.playerId) return
-
-		// Only handle hand slot items
 		if (data.slotType === EquipmentSlotType.Hand && data.item) {
-			// Get item metadata from the service
 			const itemMetadata = itemService.getItemType(data.item.itemType)
-			
-			// Check if the item is placeable using the metadata
 			if (itemMetadata && itemMetadata.category === ItemCategory.Placeable) {
 				this.activatePlacementMode(data.item)
 			} else {
@@ -53,9 +41,8 @@ export class ItemPlacementManager {
 		}
 	}
 
-	private handleItemUnequipped = (data: { slotType: EquipmentSlotType, item: any, sourcePlayerId: string }) => {
+	private handleItemUnequipped = (data: { slotType: EquipmentSlotType; item: any; sourcePlayerId: string }) => {
 		if (data.sourcePlayerId && data.sourcePlayerId !== this.playerController.playerId) return
-		// Only handle hand slot items
 		if (data.slotType === EquipmentSlotType.Hand && this.isPlacementModeActive) {
 			this.deactivatePlacementMode()
 		}
@@ -66,65 +53,45 @@ export class ItemPlacementManager {
 		this.currentItem = item
 		this.hasMouseMoved = false
 
-		// Get item metadata for sprite information
 		const itemMetadata = itemService.getItemType(item.itemType)
-		
-		// Get the appropriate texture for the preview
-		const texture = this.getTexture(itemMetadata)
-		
-		// Create a semi-transparent preview sprite but keep it hidden initially
-		this.previewSprite = this.scene.add.sprite(0, 0, texture.key, texture.frame)
-		this.previewSprite.setAlpha(0.5)
-		this.previewSprite.setDepth(1000) // Ensure it's above other game objects
-		this.previewSprite.setOrigin(0, 0) // Set anchor to top-left corner
-		this.previewSprite.setVisible(false) // Hide initially
-		
-		// Set the scale from the texture configuration
-		this.previewSprite.setScale(texture.scale)
-
-		// Set the display size based on placement size
-		const defaultSize = 32
-		if (itemMetadata?.placement?.size) {
-			this.previewSprite.setDisplaySize(
-				itemMetadata.placement.size.width * defaultSize,
-				itemMetadata.placement.size.height * defaultSize
-			)
-		} else {
-			this.previewSprite.setDisplaySize(defaultSize, defaultSize)
-		}
-
-		// Create placement instructions text but keep it hidden initially
-		this.placementText = this.scene.add.text(16, 16, 'Click to place item', {
-			fontSize: '16px',
-			color: '#ffffff',
-			backgroundColor: '#000000',
-			padding: { x: 8, y: 4 }
+		const size = this.getPlacementSize(itemMetadata)
+		const mesh = this.scene.runtime.renderer.createBox('item-preview', {
+			width: size.width,
+			length: size.height,
+			height: this.scene.map?.tileHeight ? this.scene.map.tileHeight * 0.5 : 16
 		})
-		this.placementText.setDepth(1000)
-		this.placementText.setVisible(false) // Hide initially
+		const emoji = itemMetadata?.emoji
+		if (emoji) {
+			this.scene.runtime.renderer.applyEmoji(mesh, emoji)
+		} else {
+			this.scene.runtime.renderer.applyTint(mesh, '#ffffff')
+		}
+		this.previewMesh = mesh
+
+		const text = document.createElement('div')
+		text.textContent = 'Click to place item'
+		text.style.position = 'absolute'
+		text.style.top = '16px'
+		text.style.left = '16px'
+		text.style.padding = '4px 8px'
+		text.style.background = 'rgba(0,0,0,0.7)'
+		text.style.color = '#ffffff'
+		text.style.fontSize = '14px'
+		text.style.borderRadius = '4px'
+		text.style.display = 'none'
+		this.scene.runtime.overlayRoot.appendChild(text)
+		this.placementText = text
 	}
-	
-	private getTexture(itemMetadata: any): { key: string, frame: number, scale: number } {
-		// If we have metadata with a placement property, try to get the placeable texture
-		if (itemMetadata?.placement) {
-			const placeableTexture = itemTextureService.getPlaceableItemTexture(this.currentItem.itemType)
-			if (placeableTexture) {
-				return placeableTexture
+
+	private getPlacementSize(itemMetadata: any): { width: number; height: number } {
+		const tileSize = this.scene.map?.tileWidth || 32
+		if (itemMetadata?.placement?.size) {
+			return {
+				width: itemMetadata.placement.size.width * tileSize,
+				height: itemMetadata.placement.size.height * tileSize
 			}
 		}
-		
-		// Fallback to regular item texture
-		const regularTexture = itemTextureService.getItemTexture(this.currentItem.itemType)
-		if (regularTexture) {
-			return regularTexture
-		}
-		
-		// If no texture is found, use the emoji as a fallback
-		return {
-			key: itemMetadata?.emoji || 'default_item',
-			frame: 0,
-			scale: 1
-		}
+		return { width: tileSize, height: tileSize }
 	}
 
 	private deactivatePlacementMode() {
@@ -132,139 +99,80 @@ export class ItemPlacementManager {
 		this.currentItem = null
 		this.hasMouseMoved = false
 
-		if (this.previewSprite) {
-			this.previewSprite.destroy()
-			this.previewSprite = null
+		if (this.previewMesh) {
+			this.previewMesh.dispose()
+			this.previewMesh = null
 		}
 
 		if (this.placementText) {
-			this.placementText.destroy()
+			this.placementText.remove()
 			this.placementText = null
 		}
 	}
 
-	private handlePointerMove(pointer: Phaser.Input.Pointer) {
-		if (!this.isPlacementModeActive || !this.previewSprite) return
+	private handlePointerMove = (pointer: PointerState) => {
+		if (!this.isPlacementModeActive || !this.previewMesh) return
+		const worldPoint = pointer.world ?? this.scene.runtime.input.getWorldPoint()
+		if (!worldPoint) return
 
-		// Set hasMouseMoved to true on first move
 		if (!this.hasMouseMoved) {
 			this.hasMouseMoved = true
-			this.previewSprite.setVisible(true)
 			if (this.placementText) {
-				this.placementText.setVisible(true)
+				this.placementText.style.display = 'block'
 			}
 		}
 
-		// Get the world position of the pointer
-		const worldPoint = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y)
-		
-		// Use a fixed offset of gridSize/2 for more centered tracking
-		const gridSize = 32
-		const offsetX = gridSize / 2
-		const offsetY = gridSize / 2
-		
-		// Snap to grid (32x32), accounting for the fixed offset
-		const snappedX = Math.floor((worldPoint.x - offsetX) / gridSize) * gridSize
-		const snappedY = Math.floor((worldPoint.y - offsetY) / gridSize) * gridSize
+		const gridSize = this.scene.map?.tileWidth || 32
+		const offset = gridSize / 2
+		const snappedX = Math.floor((worldPoint.x - offset) / gridSize) * gridSize
+		const snappedY = Math.floor((worldPoint.z - offset) / gridSize) * gridSize
 
-		// Update preview sprite position
-		this.previewSprite.setPosition(snappedX, snappedY)
+		const size = this.getPlacementSize(itemService.getItemType(this.currentItem.itemType))
+		const centerX = snappedX + size.width / 2
+		const centerY = snappedY + size.height / 2
+		this.scene.runtime.renderer.setMeshPosition(this.previewMesh, centerX, gridSize * 0.25, centerY)
 
-		// Show/hide placement text based on distance to player
 		if (this.placementText && this.hasMouseMoved) {
-			// Get player position from the scene
 			const playerPosition = this.playerController.getPosition()
-			
-			// Get item metadata for size information
-			const itemMetadata = itemService.getItemType(this.currentItem.itemType)
-			const defaultSize = 32
-			const width = itemMetadata?.placement?.size?.width || 1
-			const height = itemMetadata?.placement?.size?.height || 1
-			
-			// Calculate center point for distance check
-			const centerX = snappedX + (width * defaultSize) / 2
-			const centerY = snappedY + (height * defaultSize) / 2
-			
-			const distance = Phaser.Math.Distance.Between(
-				playerPosition.x,
-				playerPosition.y,
-				centerX,
-				centerY
-			)
-
-			this.placementText.setVisible(distance <= PLACE_RANGE && this.hasMouseMoved)
+			const distance = Math.hypot(playerPosition.x - centerX, playerPosition.y - centerY)
+			this.placementText.style.display = distance <= PLACE_RANGE ? 'block' : 'none'
 		}
 	}
 
-	private handlePointerDown(pointer: Phaser.Input.Pointer) {
-		if (!this.isPlacementModeActive || !this.currentItem || !this.previewSprite) return
+	private handlePointerDown = (pointer: PointerState) => {
+		if (pointer.wasDrag || pointer.button !== 0) return
+		if (!this.isPlacementModeActive || !this.currentItem || !this.previewMesh) return
+		const worldPoint = pointer.world ?? this.scene.runtime.input.getWorldPoint()
+		if (!worldPoint) return
 
-		// Get the world position of the pointer
-		const worldPoint = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y)
-		
-		// Use a fixed offset of gridSize/2 for more centered tracking
-		const gridSize = 32
-		const offsetX = gridSize / 2
-		const offsetY = gridSize / 2
-		
-		// Snap to grid (32x32), accounting for the fixed offset
-		const snappedX = Math.floor((worldPoint.x - offsetX) / gridSize) * gridSize
-		const snappedY = Math.floor((worldPoint.y - offsetY) / gridSize) * gridSize
+		const gridSize = this.scene.map?.tileWidth || 32
+		const offset = gridSize / 2
+		const snappedX = Math.floor((worldPoint.x - offset) / gridSize) * gridSize
+		const snappedY = Math.floor((worldPoint.z - offset) / gridSize) * gridSize
 
-		// Get player position from the scene
 		const playerPosition = this.playerController.getPosition()
-		
-		// Get item metadata for size information
-		const itemMetadata = itemService.getItemType(this.currentItem.itemType)
-		const defaultSize = 32
-		const width = itemMetadata?.placement?.size?.width || 1
-		const height = itemMetadata?.placement?.size?.height || 1
-		
-		// Calculate center point for distance check
-		const centerX = snappedX + (width * defaultSize) / 2
-		const centerY = snappedY + (height * defaultSize) / 2
-		
-		// Calculate distance to player using center point
-		const distance = Phaser.Math.Distance.Between(
-			playerPosition.x,
-			playerPosition.y,
-			centerX,
-			centerY
-		)
+		const size = this.getPlacementSize(itemService.getItemType(this.currentItem.itemType))
+		const centerX = snappedX + size.width / 2
+		const centerY = snappedY + size.height / 2
+		const distance = Math.hypot(playerPosition.x - centerX, playerPosition.y - centerY)
 
-		// Only allow placement if within range
 		if (distance <= PLACE_RANGE) {
-			console.log('Attempting to place item:', this.currentItem)
-			console.log('Event name:', Event.Players.CS.Place)
-			
-			// Send placement event to server using Players.CS.Place
 			EventBus.emit(Event.Players.CS.Place, {
 				position: { x: snappedX, y: snappedY },
-				rotation: 0, // Default rotation
-				metadata: {} // Empty metadata object
+				rotation: 0,
+				metadata: {}
 			})
-			
-			console.log('Event emitted')
-
-			// Deactivate placement mode
 			this.deactivatePlacementMode()
-		} else {
-			console.log('Too far to place item. Distance:', distance)
 		}
 	}
 
-	public update() {
-		// Update logic if needed
-	}
+	public update() {}
 
 	public destroy() {
-		// Clean up event listeners
 		EventBus.off(Event.Players.SC.Equip, this.handleItemEquipped)
 		EventBus.off(Event.Players.SC.Unequip, this.handleItemUnequipped)
-		this.scene.input.off('pointermove', this.handlePointerMove)
-		this.scene.input.off('pointerdown', this.handlePointerDown)
-
-		// Clean up game objects
+		this.scene.runtime.input.off('pointermove', this.handlePointerMove)
+		this.scene.runtime.input.off('pointerup', this.handlePointerDown)
 		this.deactivatePlacementMode()
 	}
-} 
+}
