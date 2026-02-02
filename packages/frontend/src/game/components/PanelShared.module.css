@@ -111,6 +111,12 @@
 .workerRow {
 	display: flex;
 	align-items: center;
+	gap: 8px;
+}
+
+.workerRowButton {
+	display: flex;
+	align-items: center;
 	justify-content: space-between;
 	gap: 12px;
 	width: 100%;
@@ -123,20 +129,46 @@
 	cursor: pointer;
 	text-align: left;
 	transition: background 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+	flex: 1;
 }
 
-.workerRow:hover {
+.workerRowButton:hover {
 	background: rgba(255, 255, 255, 0.08);
 	border-color: rgba(255, 255, 255, 0.16);
 }
 
-.workerRow:active {
+.workerRowButton:active {
 	transform: translateY(1px);
 }
 
-.workerRow:focus-visible {
+.workerRowButton:focus-visible {
 	outline: 2px solid rgba(25, 118, 210, 0.6);
 	outline-offset: 2px;
+}
+
+.workerUnassignButton {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	background: rgba(255, 255, 255, 0.04);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 6px;
+	color: #f5c2c2;
+	font-size: 14px;
+	cursor: pointer;
+	transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.workerUnassignButton:hover {
+	background: rgba(211, 47, 47, 0.2);
+	border-color: rgba(211, 47, 47, 0.4);
+	color: #ff6b6b;
+}
+
+.workerUnassignButton:active {
+	transform: translateY(1px);
 }
 
 .workerInfo {

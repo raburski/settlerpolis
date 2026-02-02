@@ -17,7 +17,8 @@ class ToolAvailabilityService {
 		[ProfessionType.Miner]: 0,
 		[ProfessionType.Farmer]: 0,
 		[ProfessionType.Miller]: 0,
-		[ProfessionType.Baker]: 0
+		[ProfessionType.Baker]: 0,
+		[ProfessionType.Vendor]: 0
 	}
 
 	constructor() {
@@ -124,7 +125,8 @@ class ToolAvailabilityService {
 			[ProfessionType.Miner]: this.professionToolCounts[ProfessionType.Miner] > 0,
 			[ProfessionType.Farmer]: true,
 			[ProfessionType.Miller]: true,
-			[ProfessionType.Baker]: true
+			[ProfessionType.Baker]: true,
+			[ProfessionType.Vendor]: true
 		}
 	}
 

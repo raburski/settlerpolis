@@ -11,6 +11,7 @@ import { TriggerManager } from "../Triggers"
 import { BuildingManager } from "../Buildings"
 import { PopulationManager } from "../Population"
 import { ResourceNodesManager } from "../ResourceNodes"
+import { WildlifeManager } from "../Wildlife"
 import { dialogueCompose } from "../Dialogue/utils"
 import { DialogueTree } from "../Dialogue/types"
 import { GameContent, ScheduleOptions, Trigger } from "../types"
@@ -32,6 +33,7 @@ export class ContentLoader {
 	private building: BuildingManager,
 	private population: PopulationManager,
 	private resourceNodes: ResourceNodesManager,
+	private wildlife: WildlifeManager,
 	private logger: Logger
 	) {
 		this.loadAllContent()
@@ -39,9 +41,9 @@ export class ContentLoader {
 
 	public async loadAllContent() {
 		this.logger.log('Starting to load all content')
+		await this.loadMaps()
+		await this.loadItems()
 		await Promise.all([
-			this.loadMaps(),
-			this.loadItems(),
 			this.loadQuests(),
 			this.loadNPCs(),
 			this.loadDialogues(),
@@ -52,9 +54,10 @@ export class ContentLoader {
 			this.loadAffinityWeights(),
 			this.loadBuildings(),
 			this.loadProfessions(),
-			this.loadProfessionTools(),
-			this.loadResourceNodes()
+			this.loadProfessionTools()
 		])
+		await this.loadResourceNodes()
+		this.wildlife.initializeForestSpawns()
 		this.logger.log('Finished loading all content')
 	}
 
@@ -224,5 +227,7 @@ export class ContentLoader {
 		if (this.content.resourceNodes && this.content.resourceNodes.length > 0) {
 			this.resourceNodes.spawnNodes(this.content.resourceNodes)
 		}
+
+		this.resourceNodes.rebuildBlockingCollision()
 	}
 }

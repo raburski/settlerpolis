@@ -8,5 +8,11 @@ export default {
 	description: 'Freshly baked bread',
 	category: ItemCategory.Consumable,
 	stackable: true,
-	maxStackSize: 50
+	maxStackSize: 50,
+	spoilage: {
+		shelfLifeDays: 3,
+		baseRatePerDay: 0.18,
+		lossMinPct: 0.2,
+		lossMaxPct: 0.6
+	}
 } as ItemMetadata

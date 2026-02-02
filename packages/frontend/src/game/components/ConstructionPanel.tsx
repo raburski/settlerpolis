@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { EventBus } from '../EventBus'
-import { Event, BuildingDefinition } from '@rugged/game'
+import { Event, BuildingCategory, BuildingDefinition, RoadType } from '@rugged/game'
 import { itemService } from '../services/ItemService'
 import styles from './ConstructionPanel.module.css'
 
@@ -48,7 +48,9 @@ const ItemEmoji: React.FC<{ itemType: string }> = ({ itemType }) => {
 export const ConstructionPanel: React.FC = () => {
 	const [isVisible, setIsVisible] = useState(true) // Visible by default for Phase A testing
 	const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null)
+	const [selectedRoadType, setSelectedRoadType] = useState<RoadType | null>(null)
 	const [buildings, setBuildings] = useState<BuildingDefinition[]>([])
+	const [selectedCategory, setSelectedCategory] = useState<BuildingCategory>(BuildingCategory.Civil)
 
 	useEffect(() => {
 		// Try to load buildings from content first (fallback)
@@ -82,9 +84,14 @@ export const ConstructionPanel: React.FC = () => {
 			setSelectedBuilding(null)
 		}
 
+		const handleRoadCancelled = () => {
+			setSelectedRoadType(null)
+		}
+
 		EventBus.on(Event.Buildings.SC.Catalog, handleBuildingCatalog)
 		EventBus.on('ui:construction:toggle', handleToggle)
 		EventBus.on(Event.Buildings.SC.Placed, handleBuildingPlaced)
+		EventBus.on('ui:road:cancelled', handleRoadCancelled)
 		
 		// Request catalog after a short delay to ensure server is ready
 		// This is a fallback in case the catalog wasn't sent on join
@@ -98,10 +105,15 @@ export const ConstructionPanel: React.FC = () => {
 			EventBus.off(Event.Buildings.SC.Catalog, handleBuildingCatalog)
 			EventBus.off('ui:construction:toggle', handleToggle)
 			EventBus.off(Event.Buildings.SC.Placed, handleBuildingPlaced)
+			EventBus.off('ui:road:cancelled', handleRoadCancelled)
 		}
 	}, []) // Run once on mount
 
 	const handleBuildingSelect = (buildingId: string) => {
+		if (selectedRoadType) {
+			EventBus.emit('ui:road:cancel', {})
+			setSelectedRoadType(null)
+		}
 		setSelectedBuilding((prev) => {
 			if (prev === buildingId) {
 				EventBus.emit('ui:construction:cancel', {})
@@ -112,9 +124,38 @@ export const ConstructionPanel: React.FC = () => {
 		})
 	}
 
+	const handleRoadSelect = (roadType: RoadType) => {
+		setSelectedRoadType((prev) => {
+			if (prev === roadType) {
+				EventBus.emit('ui:road:cancel', {})
+				return null
+			}
+			EventBus.emit('ui:construction:cancel', {})
+			setSelectedBuilding(null)
+			EventBus.emit('ui:road:select', { roadType })
+			return roadType
+		})
+	}
+
 	const selectedDefinition = selectedBuilding
 		? buildings.find((building) => building.id === selectedBuilding) || null
 		: null
+
+	const filteredBuildings = buildings.filter((building) => building.category === selectedCategory)
+
+	useEffect(() => {
+		if (selectedBuilding && !filteredBuildings.some(building => building.id === selectedBuilding)) {
+			setSelectedBuilding(null)
+			EventBus.emit('ui:construction:cancel', {})
+		}
+	}, [selectedBuilding, filteredBuildings])
+
+	useEffect(() => {
+		if (selectedRoadType && selectedCategory !== BuildingCategory.Infrastructure) {
+			setSelectedRoadType(null)
+			EventBus.emit('ui:road:cancel', {})
+		}
+	}, [selectedCategory, selectedRoadType])
 
 	if (!isVisible) {
 		return null
@@ -122,25 +163,86 @@ export const ConstructionPanel: React.FC = () => {
 
 	return (
 		<div className={styles.panel}>
+			<div className={styles.categoryTabs}>
+				<button
+					className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Infrastructure ? styles.categoryTabSelected : ''}`}
+					onClick={() => setSelectedCategory(BuildingCategory.Infrastructure)}
+					title="Infrastructure"
+				>
+					🛣️
+				</button>
+				<button
+					className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Civil ? styles.categoryTabSelected : ''}`}
+					onClick={() => setSelectedCategory(BuildingCategory.Civil)}
+					title="Civil"
+				>
+					🏠
+				</button>
+				<button
+					className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Storage ? styles.categoryTabSelected : ''}`}
+					onClick={() => setSelectedCategory(BuildingCategory.Storage)}
+					title="Storage"
+				>
+					📦
+				</button>
+				<button
+					className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Food ? styles.categoryTabSelected : ''}`}
+					onClick={() => setSelectedCategory(BuildingCategory.Food)}
+					title="Food"
+				>
+					🌾
+				</button>
+				<button
+					className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Industry ? styles.categoryTabSelected : ''}`}
+					onClick={() => setSelectedCategory(BuildingCategory.Industry)}
+					title="Industry"
+				>
+					🏭
+				</button>
+			</div>
 			<div className={styles.content}>
-				<div className={styles.buildingsList}>
-					{buildings.length === 0 ? (
-						<div className={styles.emptyState}>
-							<p>No buildings available</p>
-							<p className={styles.emptyHint}>Waiting for building catalog...</p>
-						</div>
-					) : (
-						buildings.map(building => (
-							<div
-								key={building.id}
-								className={`${styles.buildingItem} ${selectedBuilding === building.id ? styles.selected : ''}`}
-								onClick={() => handleBuildingSelect(building.id)}
-								title={building.description || building.name}
-							>
-								<div className={styles.buildingIcon}>{building.icon || '🏗️'}</div>
+				<div className={styles.leftColumn}>
+					<div className={styles.buildingsList}>
+						{selectedCategory !== BuildingCategory.Infrastructure && filteredBuildings.length === 0 ? (
+							<div className={styles.emptyState}>
+								<p>No buildings in this category</p>
+								<p className={styles.emptyHint}>
+									Waiting for building catalog...
+								</p>
 							</div>
-						))
-					)}
+						) : (
+							<>
+								{selectedCategory === BuildingCategory.Infrastructure && (
+									<>
+										<div
+											className={`${styles.buildingItem} ${selectedRoadType === RoadType.Dirt ? styles.selected : ''}`}
+											onClick={() => handleRoadSelect(RoadType.Dirt)}
+											title="Dirt road"
+										>
+											<div className={styles.buildingIcon}>🟫</div>
+										</div>
+										<div
+											className={`${styles.buildingItem} ${selectedRoadType === RoadType.Stone ? styles.selected : ''}`}
+											onClick={() => handleRoadSelect(RoadType.Stone)}
+											title="Stone road"
+										>
+											<div className={styles.buildingIcon}>🪨</div>
+										</div>
+									</>
+								)}
+								{filteredBuildings.map(building => (
+									<div
+										key={building.id}
+										className={`${styles.buildingItem} ${selectedBuilding === building.id ? styles.selected : ''}`}
+										onClick={() => handleBuildingSelect(building.id)}
+										title={building.description || building.name}
+									>
+										<div className={styles.buildingIcon}>{building.icon || '🏗️'}</div>
+									</div>
+								))}
+							</>
+						)}
+					</div>
 				</div>
 				<div className={styles.separator} aria-hidden="true" />
 				<div className={styles.detailPanel}>
@@ -156,8 +258,20 @@ export const ConstructionPanel: React.FC = () => {
 								))}
 							</div>
 						</>
+					) : selectedRoadType ? (
+						<>
+							<div className={styles.detailIcon}>{selectedRoadType === RoadType.Dirt ? '🟫' : '🪨'}</div>
+							<div className={styles.detailName}>{selectedRoadType === RoadType.Dirt ? 'Dirt road' : 'Stone road'}</div>
+							<div className={styles.detailCosts}>
+								{selectedRoadType === RoadType.Dirt ? (
+									<span className={styles.cost}>No cost</span>
+								) : (
+									<span className={styles.cost}>1x <ItemEmoji itemType="stone" /> / tile</span>
+								)}
+							</div>
+						</>
 					) : (
-						<div className={styles.detailEmpty}>Select a building</div>
+						<div className={styles.detailEmpty}>Select a building or road</div>
 					)}
 				</div>
 			</div>

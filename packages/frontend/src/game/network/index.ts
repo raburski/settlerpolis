@@ -1,4 +1,7 @@
-import { GameManager, EventManager } from '@rugged/game'
+import { GameManager, EventManager, Event, Receiver } from '@rugged/game'
+import type { GameSnapshotV1 } from '@rugged/game'
+import { EventBus } from '../EventBus'
+import { playerService } from '../services/PlayerService'
 import { LocalManager } from "./LocalManager"
 import { NetworkEventManager, NetworkManager } from "./NetworkManager"
 import { FrontendMapUrlService } from '../services/MapUrlService'
@@ -45,6 +48,99 @@ function getNetworkManager(): NetworkEventManager {
 			.map((entry: string) => entry.trim())
 			.filter(Boolean)
 		const gameManager = new GameManager(localManager.server, content, mapUrlService, { logAllowlist })
+		const storageKey = `rugged:snapshots:${CONTENT_FOLDER}`
+		const loadSnapshots = () => {
+			const raw = localStorage.getItem(storageKey)
+			if (!raw) {
+				return []
+			}
+			try {
+				const parsed = JSON.parse(raw)
+				return Array.isArray(parsed) ? parsed : []
+			} catch (error) {
+				console.warn('[Snapshot] Failed to parse snapshot list', error)
+				return []
+			}
+		}
+		const saveSnapshots = (entries: Array<{ name: string, savedAt: number, snapshot: GameSnapshotV1 }>) => {
+			localStorage.setItem(storageKey, JSON.stringify(entries))
+		}
+		const saveSnapshot = (name: string) => {
+			const snapshot = gameManager.serialize()
+			const trimmed = name?.trim() || 'Quick Save'
+			const entries = loadSnapshots()
+			const savedAt = Date.now()
+			const existingIndex = entries.findIndex((entry) => entry.name === trimmed)
+			const nextEntry = { name: trimmed, savedAt, snapshot }
+			if (existingIndex >= 0) {
+				entries[existingIndex] = nextEntry
+			} else {
+				entries.push(nextEntry)
+			}
+			saveSnapshots(entries)
+			return snapshot
+		}
+		const listSnapshots = () => {
+			return loadSnapshots().map((entry) => ({ name: entry.name, savedAt: entry.savedAt }))
+		}
+		const loadSnapshot = (name: string) => {
+			const entries = loadSnapshots()
+			const entry = entries.find((item) => item.name === name)
+			if (!entry) {
+				console.warn(`[Snapshot] No snapshot found for "${name}"`)
+				return false
+			}
+			const snapshot = entry.snapshot as GameSnapshotV1
+			gameManager.deserialize(snapshot)
+			const playerId = playerService.playerId
+			const player = snapshot.state.players.players.find(entry => entry.playerId === playerId)
+			if (player) {
+				const mapUrl = mapUrlService.getMapUrl(player.mapId)
+				let resolved = false
+				let fallbackTimer: number | undefined
+				const handleSceneReady = (data: { mapId?: string }) => {
+					if (data?.mapId !== player.mapId) {
+						return
+					}
+					resolved = true
+					EventBus.off('ui:scene:ready', handleSceneReady)
+					if (fallbackTimer !== undefined) {
+						window.clearTimeout(fallbackTimer)
+					}
+					localManager.client.emit(Receiver.All, Event.Players.CS.Join, {
+						position: player.position,
+						mapId: player.mapId,
+						appearance: player.appearance,
+						skipStartingItems: true
+					})
+				}
+				EventBus.on('ui:scene:ready', handleSceneReady)
+				fallbackTimer = window.setTimeout(() => {
+					if (resolved) {
+						return
+					}
+					EventBus.off('ui:scene:ready', handleSceneReady)
+					localManager.client.emit(Receiver.All, Event.Players.CS.Join, {
+						position: player.position,
+						mapId: player.mapId,
+						appearance: player.appearance,
+						skipStartingItems: true
+					})
+				}, 750)
+				localManager.server.emit(Receiver.Sender, Event.Map.SC.Load, {
+					mapId: player.mapId,
+					mapUrl,
+					position: player.position,
+					suppressAutoJoin: true
+				}, player.playerId)
+			} else {
+				console.warn('[Snapshot] No matching player in snapshot to resync client state')
+			}
+			return true
+		}
+		;(window as any).__ruggedSaveSnapshot = saveSnapshot
+		;(window as any).__ruggedLoadSnapshot = loadSnapshot
+		;(window as any).__ruggedListSnapshots = listSnapshots
 		return localManager.client
 	}
 }

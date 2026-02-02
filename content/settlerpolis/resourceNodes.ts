@@ -5,11 +5,12 @@ export const resourceNodeDefinitions: ResourceNodeDefinition[] = [
 	{
 		id: 'tree',
 		name: 'Tree',
-		nodeItemType: ItemType.Logs,
+		nodeItemType: ItemType.Tree,
 		outputItemType: ItemType.Logs,
 		harvestQuantity: 1,
 		harvestTimeMs: 2500,
-		maxHarvests: 6
+		maxHarvests: 6,
+		blocksMovement: true
 	},
 	{
 		id: 'stone_deposit',

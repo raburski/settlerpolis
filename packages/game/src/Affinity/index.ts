@@ -4,10 +4,14 @@ import { AffinityEvents } from './events'
 import { Receiver } from '../types'
 import { getOverallNPCApproach } from './utils'
 import { Logger } from '../Logs'
+import { SimulationEvents } from '../Simulation/events'
+import type { SimulationTickData } from '../Simulation/types'
+import type { AffinitySnapshot } from '../state/types'
 
 export class AffinityManager {
 	private affinities: Map<string, AffinityData> = new Map()
 	private npcWeights: Map<string, Partial<Record<AffinitySentimentType, number>>> = new Map()
+	private simulationTimeMs = 0
 
 	constructor(
 		private event: EventManager,
@@ -17,6 +21,10 @@ export class AffinityManager {
 	}
 
 	private setupEventHandlers() {
+		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+			this.simulationTimeMs = data.nowMs
+		})
+
 		// Handle affinity update requests
 		this.event.on(AffinityEvents.SS.Update, (data: AffinityUpdateEventData, client: EventClient) => {
 			const { playerId, npcId, sentimentType, set, add } = data
@@ -65,7 +73,7 @@ export class AffinityManager {
 				playerId,
 				npcId,
 				sentiments,
-				lastUpdated: Date.now()
+				lastUpdated: this.simulationTimeMs
 			}
 			
 			this.affinities.set(key, affinityData)
@@ -82,7 +90,7 @@ export class AffinityManager {
 		const clampedValue = Math.max(-100, Math.min(100, value))
 		
 		affinityData.sentiments[sentimentType] = clampedValue
-		affinityData.lastUpdated = Date.now()
+		affinityData.lastUpdated = this.simulationTimeMs
 		
 		const overallScore = this.calculateOverallScore(playerId, npcId)
 		const approach = getOverallNPCApproach(affinityData.sentiments)
@@ -112,7 +120,7 @@ export class AffinityManager {
 		const newValue = Math.max(-100, Math.min(100, currentValue + change))
 		
 		affinityData.sentiments[sentimentType] = newValue
-		affinityData.lastUpdated = Date.now()
+		affinityData.lastUpdated = this.simulationTimeMs
 		
 		const overallScore = this.calculateOverallScore(playerId, npcId)
 		const approach = getOverallNPCApproach(affinityData.sentiments)
@@ -208,4 +216,31 @@ export class AffinityManager {
 		
 		return { affinities }
 	}
-} 
+
+	serialize(): AffinitySnapshot {
+		return {
+			affinities: Array.from(this.affinities.values()).map(affinity => ({
+				...affinity,
+				sentiments: { ...affinity.sentiments }
+			})),
+			simulationTimeMs: this.simulationTimeMs
+		}
+	}
+
+	deserialize(state: AffinitySnapshot): void {
+		this.affinities.clear()
+		for (const affinity of state.affinities) {
+			const key = this.getAffinityKey(affinity.playerId, affinity.npcId)
+			this.affinities.set(key, {
+				...affinity,
+				sentiments: { ...affinity.sentiments }
+			})
+		}
+		this.simulationTimeMs = state.simulationTimeMs
+	}
+
+	reset(): void {
+		this.affinities.clear()
+		this.simulationTimeMs = 0
+	}
+}

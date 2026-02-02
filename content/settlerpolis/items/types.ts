@@ -2,6 +2,7 @@ export enum ItemType {
 	Rabbit = 'rabbit',
 	Carrot = 'carrot',
 	Logs = 'logs',
+	Tree = 'tree',
 	Stone = 'stone',
 	Planks = 'planks',
 	Water = 'water',

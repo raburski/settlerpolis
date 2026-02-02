@@ -1,6 +1,6 @@
 import { Scene } from 'phaser'
 import { SettlerView } from './View'
-import { Event, Settler, ProfessionType, SettlerState } from '@rugged/game'
+import { Event, Settler, ProfessionType, SettlerState, NeedType } from '@rugged/game'
 import { EventBus } from '../../EventBus'
 import { GameScene } from '../../scenes/base/GameScene'
 
@@ -19,15 +19,22 @@ export class SettlerController {
 		EventBus.on(Event.Population.SC.SettlerUpdated, this.handleSettlerUpdated, this)
 		EventBus.on(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
 		EventBus.on(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
+		EventBus.on('ui:settler:highlight', this.handleHighlight, this)
+		EventBus.on(Event.Needs.SS.NeedInterruptStarted, this.handleNeedInterruptStarted, this)
+		EventBus.on(Event.Needs.SS.NeedInterruptEnded, this.handleNeedInterruptEnded, this)
 
 		this.view.updateState(this.settler.state)
 		this.view.updateCarriedItem(this.settler.state === SettlerState.CarryingItem ? this.settler.stateContext.carryingItemType : undefined)
+		this.view.updateNeeds(this.settler.needs)
 	}
 
-	private handleMoveToPosition = (data: { entityId: string, targetPosition: { x: number, y: number }, mapName: string }) => {
+	private handleMoveToPosition = (data: { entityId: string, targetPosition: { x: number, y: number }, mapName: string, speed?: number }) => {
 		// Only update if it's our settler and on the same map
 		if (data.entityId === this.settler.id) {
 			if (data.mapName === this.settler.mapName) {
+				if (typeof data.speed === 'number') {
+					this.view.setSpeed(data.speed)
+				}
 				// Update settler position for interpolation
 				this.view.setTargetPosition(data.targetPosition.x, data.targetPosition.y)
 				// Note: We don't update settler.position here - the view will interpolate
@@ -84,6 +91,26 @@ private handleWorkerUnassigned = (data: { settlerId: string, assignmentId: strin
 		}
 	}
 
+	private handleHighlight = (data: { settlerId: string, highlighted: boolean }) => {
+		if (data.settlerId === this.settler.id) {
+			this.view.setHighlighted(data.highlighted)
+		}
+	}
+
+	private handleNeedInterruptStarted = (data: { settlerId: string, needType: NeedType }) => {
+		if (data.settlerId !== this.settler.id) {
+			return
+		}
+		const kind = data.needType === NeedType.Hunger ? 'hunger' : data.needType === NeedType.Fatigue ? 'fatigue' : null
+		this.view.updateNeedActivity(kind)
+	}
+
+	private handleNeedInterruptEnded = (data: { settlerId: string }) => {
+		if (data.settlerId === this.settler.id) {
+			this.view.updateNeedActivity(null)
+		}
+	}
+
 	public update(): void {
 		this.view.preUpdate()
 	}
@@ -125,6 +152,7 @@ private handleWorkerUnassigned = (data: { settlerId: string, assignmentId: strin
 		this.view.updateState(settlerData.state)
 		this.view.updateProfession(settlerData.profession)
 		this.view.updateCarriedItem(settlerData.state === SettlerState.CarryingItem ? settlerData.stateContext.carryingItemType : undefined)
+		this.view.updateNeeds(settlerData.needs)
 	}
 
 	public destroy(): void {
@@ -135,6 +163,9 @@ private handleWorkerUnassigned = (data: { settlerId: string, assignmentId: strin
 		EventBus.off(Event.Population.SC.SettlerUpdated, this.handleSettlerUpdated, this)
 		EventBus.off(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
 		EventBus.off(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
+		EventBus.off('ui:settler:highlight', this.handleHighlight, this)
+		EventBus.off(Event.Needs.SS.NeedInterruptStarted, this.handleNeedInterruptStarted, this)
+		EventBus.off(Event.Needs.SS.NeedInterruptEnded, this.handleNeedInterruptEnded, this)
 		// Destroy the view
 		this.view.destroy()
 	}

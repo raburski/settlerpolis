@@ -25,8 +25,11 @@ import type { SimulationManager } from '../Simulation'
 import type { ResourceNodesManager } from '../ResourceNodes'
 import type { ReservationSystem } from '../Reservation'
 import type { WorkProviderManager } from '../Settlers/WorkProvider'
+import type { NeedsManager } from '../Needs'
+import type { RoadManager } from '../Roads'
 import type { EventManager } from '../events'
 import type { Logger } from '../Logs'
+import type { WildlifeManager } from '../Wildlife'
 
 export interface Managers {
 	chat: ChatManager
@@ -55,7 +58,10 @@ export interface Managers {
 	simulation: SimulationManager
 	resourceNodes: ResourceNodesManager
 	reservations: ReservationSystem
+	roads: RoadManager
 	work: WorkProviderManager
+	needs: NeedsManager
+	wildlife: WildlifeManager
 }
 
 export class ManagersHub implements Managers {
@@ -87,5 +93,8 @@ export class ManagersHub implements Managers {
 	simulation!: SimulationManager
 	resourceNodes!: ResourceNodesManager
 	reservations!: ReservationSystem
+	roads!: RoadManager
 	work!: WorkProviderManager
+	needs!: NeedsManager
+	wildlife!: WildlifeManager
 }

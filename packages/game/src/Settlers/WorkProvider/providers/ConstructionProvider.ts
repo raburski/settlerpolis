@@ -1,5 +1,5 @@
 import type { WorkProvider, WorkStep } from '../types'
-import { WorkStepType, WorkWaitReason } from '../types'
+import { WorkProviderType, WorkStepType, WorkWaitReason } from '../types'
 import type { WorkProviderDeps } from '..'
 import type { Logger } from '../../../Logs'
 import { ConstructionStage } from '../../../Buildings/types'
@@ -7,7 +7,7 @@ import { ProfessionType } from '../../../Population/types'
 
 export class ConstructionProvider implements WorkProvider {
 	public readonly id: string
-	public readonly type = 'construction' as const
+	public readonly type = WorkProviderType.Construction
 	private assigned = new Set<string>()
 
 	constructor(
@@ -51,9 +51,6 @@ export class ConstructionProvider implements WorkProvider {
 		}
 
 		if (settler.profession !== ProfessionType.Builder) {
-			if (settler.profession === ProfessionType.Carrier) {
-				return { type: WorkStepType.AcquireTool, profession: ProfessionType.Builder }
-			}
 			return { type: WorkStepType.Wait, reason: WorkWaitReason.WrongProfession }
 		}
 

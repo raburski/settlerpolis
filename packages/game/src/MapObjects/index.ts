@@ -10,6 +10,7 @@ import { PlayerJoinData, PlayerTransitionData } from '../Players/types'
 import { Position } from '../types'
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
+import type { MapObjectsSnapshot } from '../state/types'
 
 export interface MapObjectsDeps {
 	items: ItemsManager
@@ -255,6 +256,11 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 		return undefined
 	}
 
+	// Restore an object without emitting events or checking collisions (snapshot load)
+	public restoreObject(mapObject: MapObject): void {
+		this.addObjectToMap(mapObject)
+	}
+
 	public placeObject(playerId: string, data: PlaceObjectData, client: EventClient): MapObject | null {
 		// Check for collisions (pass metadata so buildings can use footprint)
 		const hasCollision = this.checkCollision(client.currentGroup, data.position, data.item, data.metadata)
@@ -282,4 +288,38 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 
 		return object
 	}
-} 
+
+	serialize(): MapObjectsSnapshot {
+		return {
+			objectsByMap: Array.from(this.mapObjectsByMap.entries()).map(([mapName, mapObjects]) => ([
+				mapName,
+				Array.from(mapObjects.values()).map(object => ({
+					...object,
+					position: { ...object.position },
+					item: { ...object.item },
+					metadata: object.metadata ? { ...object.metadata } : undefined
+				}))
+			]))
+		}
+	}
+
+	deserialize(state: MapObjectsSnapshot): void {
+		this.mapObjectsByMap.clear()
+		for (const [mapName, objects] of state.objectsByMap) {
+			const mapObjects = new Map<string, MapObject>()
+			for (const object of objects) {
+				mapObjects.set(object.id, {
+					...object,
+					position: { ...object.position },
+					item: { ...object.item },
+					metadata: object.metadata ? { ...object.metadata } : undefined
+				})
+			}
+			this.mapObjectsByMap.set(mapName, mapObjects)
+		}
+	}
+
+	reset(): void {
+		this.mapObjectsByMap.clear()
+	}
+}

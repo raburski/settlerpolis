@@ -56,5 +56,13 @@ export const professions: ProfessionDefinition[] = [
 		canBuild: false,
 		canCarry: true,
 		canWorkBuildings: ['bakery']
+	},
+	{
+		type: ProfessionType.Vendor,
+		name: 'Vendor',
+		description: 'A settler who distributes market goods',
+		canBuild: false,
+		canCarry: true,
+		canWorkBuildings: ['market']
 	}
 ]

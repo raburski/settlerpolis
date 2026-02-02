@@ -13,7 +13,9 @@ import {
 	BuildingCompletedData,
 	BuildingCancelledData,
 	ProductionStatus,
-	ProductionRecipe
+	ProductionRecipe,
+	SetWorkAreaData,
+	BuildingWorkAreaUpdatedData
 } from './types'
 import { Receiver } from '../Receiver'
 import { v4 as uuidv4 } from 'uuid'
@@ -31,6 +33,7 @@ import { SimulationEvents } from '../Simulation/events'
 import { SimulationTickData } from '../Simulation/types'
 import type { StorageManager } from '../Storage'
 import { BaseManager } from '../Managers'
+import type { BuildingsSnapshot, BuildingInstanceSnapshot } from '../state/types'
 
 export interface BuildingDeps {
 	inventory: InventoryManager
@@ -44,7 +47,6 @@ export interface BuildingDeps {
 export class BuildingManager extends BaseManager<BuildingDeps> {
 	private buildings = new Map<string, BuildingInstance>() // buildingInstanceId -> BuildingInstance
 	private definitions = new Map<BuildingId, BuildingDefinition>() // buildingId -> BuildingDefinition
-	private constructionTimers = new Map<string, NodeJS.Timeout>() // buildingInstanceId -> timer
 	private buildingToMapObject = new Map<string, string>() // buildingInstanceId -> mapObjectId
 	private readonly TICK_INTERVAL_MS = 1000 // Update construction progress every second
 	private resourceRequests: Map<string, Set<string>> = new Map() // buildingInstanceId -> Set<itemType> (resources still needed)
@@ -83,6 +85,11 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		// Handle building cancellation
 		this.event.on<CancelBuildingData>(BuildingsEvents.CS.Cancel, (data, client) => {
 			this.cancelBuilding(data, client)
+		})
+		
+		// Handle work area updates
+		this.event.on<SetWorkAreaData>(BuildingsEvents.CS.SetWorkArea, (data, client) => {
+			this.setWorkArea(data, client)
 		})
 
 		// Handle player join to send existing buildings and building catalog
@@ -278,63 +285,13 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			return
 		}
 
-		// Stop construction timer if exists
-		const timer = this.constructionTimers.get(buildingInstanceId)
-		if (timer) {
-			clearTimeout(timer)
-			this.constructionTimers.delete(buildingInstanceId)
-		}
+		const isDemolition = building.stage === ConstructionStage.Completed
+		const refundedItems = isDemolition
+			? this.calculateDemolitionRefund(building)
+			: this.calculateCollectedRefund(building)
 
-		// Refund collected resources (drop them on the ground)
-		const refundedItems: BuildingCost[] = []
-		if (this.managers.loot) {
-			// Create fake client for dropping items
-			const fakeClient: EventClient = {
-				id: building.playerId,
-				currentGroup: building.mapName,
-				emit: (receiver, event, data, target?) => {
-					this.event.emit(receiver, event, data, target)
-				},
-				setGroup: (group: string) => {
-					// No-op for fake client
-				}
-			}
-
-			for (const [itemType, quantity] of building.collectedResources.entries()) {
-				for (let i = 0; i < quantity; i++) {
-					const item: Item = {
-						id: uuidv4(),
-						itemType: itemType
-					}
-					// Drop item near building position (spread in a grid)
-					const dropPosition = {
-						x: building.position.x + (i % 3) * 32,
-						y: building.position.y + Math.floor(i / 3) * 32
-					}
-					// Drop item on the ground using LootManager
-					this.managers.loot.dropItem(item, dropPosition, fakeClient)
-					refundedItems.push({ itemType, quantity: 1 })
-				}
-			}
-		} else {
-			// LootManager not available - just track refunded items
-			for (const [itemType, quantity] of building.collectedResources.entries()) {
-				refundedItems.push({ itemType, quantity })
-			}
-		}
-
-		// Clean up resource requests
-		this.resourceRequests.delete(buildingInstanceId)
-
-		// Remove building from map objects
-		const mapObjectId = this.buildingToMapObject.get(buildingInstanceId)
-		if (mapObjectId) {
-			this.managers.mapObjects.removeObjectById(mapObjectId, building.mapName)
-			this.buildingToMapObject.delete(buildingInstanceId)
-		}
-
-		// Remove building instance
-		this.buildings.delete(buildingInstanceId)
+		this.dropRefundItems(building, refundedItems)
+		this.removeBuildingInstance(building)
 
 		// Emit cancelled event
 		const cancelledData: BuildingCancelledData = {
@@ -342,6 +299,111 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			refundedItems
 		}
 		client.emit(Receiver.Group, BuildingsEvents.SC.Cancelled, cancelledData, building.mapName)
+	}
+
+	private calculateCollectedRefund(building: BuildingInstance): BuildingCost[] {
+		const refundedItems: BuildingCost[] = []
+		for (const [itemType, quantity] of building.collectedResources.entries()) {
+			if (quantity > 0) {
+				refundedItems.push({ itemType, quantity })
+			}
+		}
+		return refundedItems
+	}
+
+	private calculateDemolitionRefund(building: BuildingInstance): BuildingCost[] {
+		const definition = this.definitions.get(building.buildingId)
+		if (!definition) {
+			return []
+		}
+		return definition.costs
+			.map(cost => ({
+				itemType: cost.itemType,
+				quantity: Math.floor(cost.quantity * 0.5)
+			}))
+			.filter(cost => cost.quantity > 0)
+	}
+
+	private dropRefundItems(building: BuildingInstance, refundedItems: BuildingCost[]): void {
+		if (!this.managers.loot || refundedItems.length === 0) {
+			return
+		}
+
+		// Create fake client for dropping items
+		const fakeClient: EventClient = {
+			id: building.playerId,
+			currentGroup: building.mapName,
+			emit: (receiver, event, data, target?) => {
+				this.event.emit(receiver, event, data, target)
+			},
+			setGroup: (_group: string) => {
+				// No-op for fake client
+			}
+		}
+
+		let dropIndex = 0
+		for (const { itemType, quantity } of refundedItems) {
+			for (let i = 0; i < quantity; i++) {
+				const item: Item = {
+					id: uuidv4(),
+					itemType
+				}
+				// Drop item near building position (spread in a grid)
+				const dropPosition = {
+					x: building.position.x + (dropIndex % 3) * 32,
+					y: building.position.y + Math.floor(dropIndex / 3) * 32
+				}
+				this.managers.loot.dropItem(item, dropPosition, fakeClient)
+				dropIndex += 1
+			}
+		}
+	}
+
+	private removeBuildingInstance(building: BuildingInstance): void {
+		// Clean up resource requests and worker tracking
+		this.resourceRequests.delete(building.id)
+		this.assignedWorkers.delete(building.id)
+		this.activeConstructionWorkers.delete(building.id)
+		this.autoProductionState.delete(building.id)
+
+		// Remove storage piles/records before deleting the building
+		if (this.managers.storage) {
+			this.managers.storage.removeBuildingStorage(building.id)
+		}
+
+		// Remove building from map objects
+		const mapObjectId = this.buildingToMapObject.get(building.id)
+		if (mapObjectId) {
+			this.managers.mapObjects.removeObjectById(mapObjectId, building.mapName)
+			this.buildingToMapObject.delete(building.id)
+		}
+
+		// Remove building instance
+		this.buildings.delete(building.id)
+	}
+
+	private setWorkArea(data: SetWorkAreaData, client: EventClient) {
+		const { buildingInstanceId, center } = data
+		const building = this.buildings.get(buildingInstanceId)
+		if (!building) {
+			this.logger.error(`Building instance not found: ${buildingInstanceId}`)
+			return
+		}
+
+		// Verify ownership
+		if (building.playerId !== client.id) {
+			this.logger.error(`Player ${client.id} does not own building ${buildingInstanceId}`)
+			return
+		}
+
+		building.workAreaCenter = { x: center.x, y: center.y }
+
+		const updatedData: BuildingWorkAreaUpdatedData = {
+			buildingInstanceId: building.id,
+			center: building.workAreaCenter
+		}
+
+		this.event.emit(Receiver.Group, BuildingsEvents.SC.WorkAreaUpdated, updatedData, building.mapName)
 	}
 
 	// Initialize building with resource collection
@@ -904,6 +966,8 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			this.logger.debug(`Loaded building: ${definition.id} - ${definition.name}`)
 		}
 		this.logger.log(`Total building definitions: ${this.definitions.size}`)
+
+		this.initializeStorageForExistingBuildings()
 		
 		// After buildings are loaded, send catalog to all existing clients
 		// This ensures clients that connected before buildings were loaded will still receive them
@@ -1100,10 +1164,101 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	public destroy() {
-		// Clear all timers
-		for (const timer of this.constructionTimers.values()) {
-			clearTimeout(timer)
+		// no-op for now (tick-driven construction)
+	}
+
+	serialize(): BuildingsSnapshot {
+		const buildings: BuildingInstanceSnapshot[] = Array.from(this.buildings.values()).map(building => ({
+			...building,
+			position: { ...building.position },
+			workAreaCenter: building.workAreaCenter ? { ...building.workAreaCenter } : undefined,
+			collectedResources: Array.from(building.collectedResources.entries())
+		}))
+
+		return {
+			buildings,
+			resourceRequests: Array.from(this.resourceRequests.entries()).map(([buildingId, needed]) => ([
+				buildingId,
+				Array.from(needed.values())
+			])),
+			assignedWorkers: Array.from(this.assignedWorkers.entries()).map(([buildingId, workers]) => ([
+				buildingId,
+				Array.from(workers.values())
+			])),
+			activeConstructionWorkers: Array.from(this.activeConstructionWorkers.entries()).map(([buildingId, workers]) => ([
+				buildingId,
+				Array.from(workers.values())
+			])),
+			autoProductionState: Array.from(this.autoProductionState.entries()),
+			buildingToMapObject: Array.from(this.buildingToMapObject.entries()),
+			simulationTimeMs: this.simulationTimeMs,
+			tickAccumulatorMs: this.tickAccumulatorMs
 		}
-		this.constructionTimers.clear()
+	}
+
+	deserialize(state: BuildingsSnapshot): void {
+		this.buildings.clear()
+		for (const building of state.buildings) {
+			const collectedResources = new Map(building.collectedResources)
+			const restored: BuildingInstance = {
+				...building,
+				position: { ...building.position },
+				workAreaCenter: building.workAreaCenter ? { ...building.workAreaCenter } : undefined,
+				collectedResources
+			}
+			this.buildings.set(restored.id, restored)
+		}
+
+		this.resourceRequests.clear()
+		for (const [buildingId, needed] of state.resourceRequests) {
+			this.resourceRequests.set(buildingId, new Set(needed))
+		}
+
+		this.assignedWorkers.clear()
+		for (const [buildingId, workers] of state.assignedWorkers) {
+			this.assignedWorkers.set(buildingId, new Set(workers))
+		}
+
+		this.activeConstructionWorkers.clear()
+		for (const [buildingId, workers] of state.activeConstructionWorkers) {
+			this.activeConstructionWorkers.set(buildingId, new Set(workers))
+		}
+
+		this.autoProductionState = new Map(state.autoProductionState)
+		this.buildingToMapObject = new Map(state.buildingToMapObject)
+		this.simulationTimeMs = state.simulationTimeMs
+		this.tickAccumulatorMs = state.tickAccumulatorMs
+
+		this.initializeStorageForExistingBuildings()
+	}
+
+	private initializeStorageForExistingBuildings(): void {
+		if (!this.managers.storage || this.definitions.size === 0) {
+			return
+		}
+		for (const building of this.buildings.values()) {
+			if (building.stage !== ConstructionStage.Completed) {
+				continue
+			}
+			const definition = this.definitions.get(building.buildingId)
+			if (!definition?.storage) {
+				continue
+			}
+			if (this.managers.storage.getBuildingStorage(building.id)) {
+				continue
+			}
+			this.managers.storage.initializeBuildingStorage(building.id)
+		}
+	}
+
+	reset(): void {
+		this.buildings.clear()
+		this.resourceRequests.clear()
+		this.assignedWorkers.clear()
+		this.activeConstructionWorkers.clear()
+		this.autoProductionState.clear()
+		this.buildingToMapObject.clear()
+		this.simulationTimeMs = 0
+		this.tickAccumulatorMs = 0
 	}
 }

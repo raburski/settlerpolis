@@ -104,6 +104,8 @@ export interface MapLoadResponseData {
 	paths: PathData
 	triggers: MapTrigger[]
 	mapUrl?: string
+	position?: Position
+	suppressAutoJoin?: boolean
 }
 
 export interface MapTransitionData {

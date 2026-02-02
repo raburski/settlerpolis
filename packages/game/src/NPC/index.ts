@@ -16,8 +16,9 @@ import type { MovementManager } from '../Movement'
 import { MovementEntity } from '../Movement'
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
-
-const ROUTINE_CHECK_INTERVAL = 60000 // Check routines every minute
+import { SimulationEvents } from '../Simulation/events'
+import type { SimulationTickData } from '../Simulation/types'
+import type { NPCSnapshot } from '../state/types'
 
 export interface NPCDeps {
 	dialogue: DialogueManager
@@ -29,9 +30,8 @@ export interface NPCDeps {
 
 export class NPCManager extends BaseManager<NPCDeps> {
 	private npcs: Map<string, NPC> = new Map()
-	private routineTimeouts: Map<string, NodeJS.Timeout> = new Map()
-	private routineCheckInterval: NodeJS.Timeout | null = null
 	private pausedRoutines: Map<string, NPCRoutineStep> = new Map()
+	private lastRoutineCheckKey: string | null = null
 
 	constructor(
 		managers: NPCDeps,
@@ -40,7 +40,6 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	) {
 		super(managers)
 		this.setupEventHandlers()
-		this.startRoutineCheck()
 	}
 
 	public loadNPCs(npcs: NPC[]) {
@@ -81,6 +80,10 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	}
 
 	private setupEventHandlers() {
+		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+			this.handleSimulationTick(data)
+		})
+
 		// Send NPCs list when player joins or transitions to a map
 		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data: PlayerJoinData, client: EventClient) => {
 			const mapNPCs = this.getMapNPCs(data.mapId)
@@ -165,6 +168,15 @@ export class NPCManager extends BaseManager<NPCDeps> {
 		})
 	}
 
+	private handleSimulationTick(_data: SimulationTickData): void {
+		const currentKey = this.managers.time.getFormattedTime()
+		if (currentKey === this.lastRoutineCheckKey) {
+			return
+		}
+		this.lastRoutineCheckKey = currentKey
+		this.checkAllRoutines()
+	}
+
 	private getMapNPCs(mapId: string): NPC[] {
 		return Array.from(this.npcs.values()).filter(npc => npc.mapId === mapId && npc.active !== false)
 	}
@@ -228,15 +240,6 @@ export class NPCManager extends BaseManager<NPCDeps> {
 
 	public getNPC(npcId: string): NPC | undefined {
 		return this.npcs.get(npcId)
-	}
-
-	private startRoutineCheck() {
-		if (this.routineCheckInterval) {
-			clearInterval(this.routineCheckInterval)
-		}
-		this.routineCheckInterval = setInterval(() => {
-			this.checkAllRoutines()
-		}, ROUTINE_CHECK_INTERVAL)
 	}
 
 	private checkAllRoutines() {
@@ -303,11 +306,6 @@ export class NPCManager extends BaseManager<NPCDeps> {
 		// Unregister all NPCs from MovementManager
 		for (const npcId of this.npcs.keys()) {
 			this.managers.movement.unregisterEntity(npcId)
-		}
-
-		// Clear routine check interval
-		if (this.routineCheckInterval) {
-			clearInterval(this.routineCheckInterval)
 		}
 
 		// Clear paused routines
@@ -399,7 +397,53 @@ export class NPCManager extends BaseManager<NPCDeps> {
 			})
 		}
 	}
-	
+
+	serialize(): NPCSnapshot {
+		return {
+			npcs: Array.from(this.npcs.values()).map(npc => ({
+				...npc,
+				position: { ...npc.position },
+				attributes: npc.attributes ? { ...npc.attributes } : undefined
+			})),
+			pausedRoutines: Array.from(this.pausedRoutines.entries()).map(([npcId, step]) => ([
+				npcId,
+				{ ...step }
+			])),
+			lastRoutineCheckKey: this.lastRoutineCheckKey
+		}
+	}
+
+	deserialize(state: NPCSnapshot): void {
+		this.npcs.clear()
+		this.pausedRoutines.clear()
+		this.lastRoutineCheckKey = state.lastRoutineCheckKey
+
+		for (const npc of state.npcs) {
+			const restored: NPC = {
+				...npc,
+				position: { ...npc.position },
+				attributes: npc.attributes ? { ...npc.attributes } : undefined
+			}
+			this.npcs.set(restored.id, restored)
+			this.managers.movement.registerEntity({
+				id: restored.id,
+				position: restored.position,
+				mapName: restored.mapId,
+				speed: restored.speed
+			})
+		}
+
+		for (const [npcId, step] of state.pausedRoutines) {
+			this.pausedRoutines.set(npcId, { ...step })
+		}
+	}
+
+	reset(): void {
+		this.npcs.clear()
+		this.pausedRoutines.clear()
+		this.lastRoutineCheckKey = null
+	}
+
 	private handleNPCGo(data: NPCGoData) {
 		this.handleGoEvent(data)
 	}

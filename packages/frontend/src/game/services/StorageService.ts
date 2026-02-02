@@ -7,8 +7,17 @@ interface BuildingStorage {
 	capacities: Record<string, number> // itemType -> capacity
 }
 
+interface StorageSlotState {
+	slotId: string
+	buildingInstanceId: string
+	itemType: string
+	quantity: number
+	position: { x: number, y: number }
+}
+
 class StorageServiceClass {
 	private buildingStorages = new Map<string, BuildingStorage>() // buildingInstanceId -> BuildingStorage
+	private slotStates = new Map<string, StorageSlotState>() // slotId -> state
 
 	constructor() {
 		this.setupEventHandlers()
@@ -64,6 +73,11 @@ class StorageServiceClass {
 		}) => {
 			console.log('[StorageService] Reservation cancelled:', data)
 		})
+
+		EventBus.on(Event.Storage.SC.StorageSlotUpdated, (data: StorageSlotState) => {
+			this.slotStates.set(data.slotId, { ...data })
+			EventBus.emit('ui:storage:slot-updated', { ...data })
+		})
 	}
 
 	// Get storage for a building
@@ -96,6 +110,14 @@ class StorageServiceClass {
 			return {}
 		}
 		return { ...storage.items }
+	}
+
+	public getSlotQuantity(slotId: string): number {
+		return this.slotStates.get(slotId)?.quantity || 0
+	}
+
+	public getSlotState(slotId: string): StorageSlotState | undefined {
+		return this.slotStates.get(slotId)
 	}
 
 	public getAllBuildingStorages(): BuildingStorage[] {

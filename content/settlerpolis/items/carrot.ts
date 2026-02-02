@@ -8,7 +8,13 @@ const carrot: ItemMetadata = {
 	description: "A fresh carrot. Perfect for rabbits!",
 	category: ItemCategory.Consumable,
 	stackable: true,
-	maxStackSize: 16
+	maxStackSize: 16,
+	spoilage: {
+		shelfLifeDays: 7,
+		baseRatePerDay: 0.12,
+		lossMinPct: 0.1,
+		lossMaxPct: 0.4
+	}
 }
 
 export default carrot 

@@ -37,6 +37,7 @@ export interface PlayerJoinData extends PlayerSourcedData {
 	position: WorldPosition
 	mapId: string        // This is the primary property now
 	appearance?: any
+	skipStartingItems?: boolean
 }
 
 export interface PlayerTransitionData extends PlayerSourcedData {

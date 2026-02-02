@@ -21,7 +21,8 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Farmer]: 0,
 			[ProfessionType.Miller]: 0,
-			[ProfessionType.Baker]: 0
+			[ProfessionType.Baker]: 0,
+			[ProfessionType.Vendor]: 0
 		},
 		byProfessionActive: {
 			[ProfessionType.Carrier]: 0,
@@ -30,10 +31,12 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Farmer]: 0,
 			[ProfessionType.Miller]: 0,
-			[ProfessionType.Baker]: 0
+			[ProfessionType.Baker]: 0,
+			[ProfessionType.Vendor]: 0
 		},
 		idleCount: 0,
-		workingCount: 0
+		workingCount: 0,
+		housingCapacity: 0
 	})
 	const [toolAvailability, setToolAvailability] = useState<Record<ProfessionType, boolean>>(
 		toolAvailabilityService.getAvailability()
@@ -45,7 +48,8 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 		[ProfessionType.Miner]: 0,
 		[ProfessionType.Farmer]: 0,
 		[ProfessionType.Miller]: 0,
-		[ProfessionType.Baker]: 0
+		[ProfessionType.Baker]: 0,
+		[ProfessionType.Vendor]: 0
 	})
 
 	useEffect(() => {
@@ -74,7 +78,8 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 				[ProfessionType.Miner]: 0,
 				[ProfessionType.Farmer]: 0,
 				[ProfessionType.Miller]: 0,
-				[ProfessionType.Baker]: 0
+				[ProfessionType.Baker]: 0,
+				[ProfessionType.Vendor]: 0
 			}
 			populationService.getSettlers().forEach(settler => {
 				if (settler.state === SettlerState.Idle) {
@@ -116,7 +121,8 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 		[ProfessionType.Miner]: 'Miner',
 		[ProfessionType.Farmer]: 'Farmer',
 		[ProfessionType.Miller]: 'Miller',
-		[ProfessionType.Baker]: 'Baker'
+		[ProfessionType.Baker]: 'Baker',
+		[ProfessionType.Vendor]: 'Vendor'
 	}
 
 	const professionIcons: Record<ProfessionType, string> = {
@@ -126,7 +132,8 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 		[ProfessionType.Miner]: '⛏️',
 		[ProfessionType.Farmer]: '🌾',
 		[ProfessionType.Miller]: '🌬️',
-		[ProfessionType.Baker]: '🥖'
+		[ProfessionType.Baker]: '🥖',
+		[ProfessionType.Vendor]: '🛍️'
 	}
 
 	const handleRequestToolPickup = (profession: ProfessionType) => {
@@ -181,7 +188,7 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 						const activeCount = stats.byProfessionActive[professionType] || 0
 						const canRequestTool = toolAvailability[professionType] || false
 						const isCarrier = professionType === ProfessionType.Carrier
-						const requiresTool = ![ProfessionType.Carrier, ProfessionType.Farmer, ProfessionType.Miller, ProfessionType.Baker].includes(professionType)
+						const requiresTool = ![ProfessionType.Carrier, ProfessionType.Farmer, ProfessionType.Miller, ProfessionType.Baker, ProfessionType.Vendor].includes(professionType)
 						const canRevert = (idleByProfession[professionType] || 0) > 0
 						let addTitle = `Request ${professionLabels[professionType]} tool pickup`
 						if (!canRequestTool) {

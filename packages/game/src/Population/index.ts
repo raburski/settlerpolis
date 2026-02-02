@@ -11,9 +11,11 @@ import {
 	SpawnSettlerData,
 	RequestListData
 } from './types'
+import { NEED_CRITICAL_THRESHOLD } from '../Needs/NeedsState'
 import { Receiver } from '../Receiver'
 import { v4 as uuidv4 } from 'uuid'
 import type { BuildingManager } from '../Buildings'
+import { ConstructionStage } from '../Buildings/types'
 import type { Scheduler } from '../Scheduler'
 import type { MapManager } from '../Map'
 import type { LootManager } from '../Loot'
@@ -25,8 +27,11 @@ import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
 import { PopulationStats } from './Stats'
 import type { PlayerJoinData } from '../Players/types'
+import { SimulationEvents } from '../Simulation/events'
+import type { SimulationTickData } from '../Simulation/types'
+import type { PopulationSnapshot } from '../state/types'
 
-const SETTLER_SPEED = 164 // pixels per second (2 tiles per second at 32px per tile)
+const SETTLER_SPEED = 80 // pixels per second (slower baseline)
 
 export interface PopulationDeps {
 	buildings: BuildingManager
@@ -40,11 +45,13 @@ export interface PopulationDeps {
 
 export class PopulationManager extends BaseManager<PopulationDeps> {
 	private settlers = new Map<string, Settler>() // settlerId -> Settler
-	private spawnTimers = new Map<string, NodeJS.Timeout>() // houseId -> timer
+	private houseOccupants = new Map<string, Set<string>>() // houseId -> settlerIds
 	private professionTools = new Map<string, ProfessionType>() // itemType -> ProfessionType
 	private professions = new Map<ProfessionType, ProfessionDefinition>() // professionType -> ProfessionDefinition
 	private stats: PopulationStats
 	private startingPopulation: Array<{ profession: ProfessionType, count: number }> = []
+	private houseSpawnSchedule = new Map<string, { nextSpawnAtMs: number, rateMs: number }>()
+	private simulationTimeMs = 0
 
 	constructor(
 		managers: PopulationDeps,
@@ -61,6 +68,9 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 				return Array.from(this.settlers.values()).filter(
 					s => s.mapName === mapName && s.playerId === playerId
 				)
+			},
+			(mapName: string, playerId: string) => {
+				return this.getHousingCapacity(mapName, playerId)
 			}
 		)
 
@@ -69,6 +79,10 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	}
 
 	private setupEventHandlers(): void {
+		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+			this.handleSimulationTick(data)
+		})
+
 		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
 			if (this.hasAnySettlersForPlayer(client.id)) {
 				return
@@ -94,6 +108,35 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 				settler.position = data.position
 			}
 		})
+	}
+
+	private handleSimulationTick(data: SimulationTickData): void {
+		this.simulationTimeMs = data.nowMs
+		this.processHouseSpawns()
+	}
+
+	private processHouseSpawns(): void {
+		if (this.houseSpawnSchedule.size === 0) {
+			return
+		}
+
+		for (const [houseId, schedule] of this.houseSpawnSchedule.entries()) {
+			if (this.simulationTimeMs < schedule.nextSpawnAtMs) {
+				continue
+			}
+
+			const house = this.managers.buildings.getBuildingInstance(houseId)
+			if (!house) {
+				this.houseSpawnSchedule.delete(houseId)
+				continue
+			}
+
+			// Catch up if the simulation advanced past multiple intervals
+			while (this.simulationTimeMs >= schedule.nextSpawnAtMs) {
+				this.spawnSettler({ houseBuildingInstanceId: houseId })
+				schedule.nextSpawnAtMs += schedule.rateMs
+			}
+		}
 	}
 
 	// Public method to load profession tools (called from ContentLoader)
@@ -135,11 +178,138 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		return Array.from(this.settlers.values())
 			.filter(settler => settler.mapName === mapName && settler.playerId === playerId)
 			.filter(settler => settler.state === SettlerState.Idle)
+			.filter(settler => !this.isSettlerCritical(settler))
 	}
 
 	public getAvailableCarriers(mapName: string, playerId: string): Settler[] {
 		return this.getAvailableSettlers(mapName, playerId)
 			.filter(settler => settler.profession === ProfessionType.Carrier)
+	}
+
+	private getHousingCapacity(mapName: string, playerId: string): number {
+		let capacity = 0
+		for (const building of this.managers.buildings.getAllBuildings()) {
+			if (building.mapName !== mapName || building.playerId !== playerId) {
+				continue
+			}
+			if (building.stage !== ConstructionStage.Completed) {
+				continue
+			}
+			const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
+			if (!definition?.spawnsSettlers) {
+				continue
+			}
+			capacity += definition.maxOccupants ?? 0
+		}
+		return capacity
+	}
+
+	private getHouseCapacity(houseId: string): number {
+		const building = this.managers.buildings.getBuildingInstance(houseId)
+		if (!building) {
+			return 0
+		}
+		const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
+		if (!definition?.spawnsSettlers) {
+			return 0
+		}
+		return definition.maxOccupants ?? 0
+	}
+
+	private getHouseOccupants(houseId: string): Set<string> {
+		let occupants = this.houseOccupants.get(houseId)
+		if (!occupants) {
+			occupants = new Set<string>()
+			this.houseOccupants.set(houseId, occupants)
+		}
+		return occupants
+	}
+
+	public getHouseOccupantCount(houseId: string): number {
+		const occupants = this.houseOccupants.get(houseId)
+		return occupants ? occupants.size : 0
+	}
+
+	public moveSettlerToHouse(settlerId: string, houseId: string): boolean {
+		return this.assignSettlerToHouse(settlerId, houseId)
+	}
+
+	private removeSettlerFromHouse(settlerId: string): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler?.houseId) {
+			return
+		}
+		const occupants = this.houseOccupants.get(settler.houseId)
+		occupants?.delete(settlerId)
+		settler.houseId = undefined
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+	}
+
+	private assignSettlerToHouse(settlerId: string, houseId: string): boolean {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return false
+		}
+		const capacity = this.getHouseCapacity(houseId)
+		if (capacity <= 0) {
+			return false
+		}
+		const occupants = this.getHouseOccupants(houseId)
+		if (occupants.size >= capacity) {
+			return false
+		}
+		if (settler.houseId && settler.houseId !== houseId) {
+			this.removeSettlerFromHouse(settlerId)
+		}
+		occupants.add(settlerId)
+		settler.houseId = houseId
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+		return true
+	}
+
+	private assignHomelessToHouse(houseId: string): void {
+		const building = this.managers.buildings.getBuildingInstance(houseId)
+		if (!building) {
+			return
+		}
+		const capacity = this.getHouseCapacity(houseId)
+		if (capacity <= 0) {
+			return
+		}
+		const occupants = this.getHouseOccupants(houseId)
+		let available = capacity - occupants.size
+		if (available <= 0) {
+			return
+		}
+		const homeless = Array.from(this.settlers.values())
+			.filter(settler => settler.mapName === building.mapName && settler.playerId === building.playerId)
+			.filter(settler => !settler.houseId)
+			.sort((a, b) => a.createdAt - b.createdAt)
+
+		for (const settler of homeless) {
+			if (available <= 0) {
+				break
+			}
+			if (this.assignSettlerToHouse(settler.id, houseId)) {
+				available -= 1
+			}
+		}
+	}
+
+	private canSpawnFromHouse(houseId: string): boolean {
+		const capacity = this.getHouseCapacity(houseId)
+		if (capacity <= 0) {
+			return false
+		}
+		const occupants = this.getHouseOccupants(houseId)
+		return occupants.size < capacity
+	}
+
+	private isSettlerCritical(settler: Settler): boolean {
+		if (!settler.needs) {
+			return false
+		}
+		return settler.needs.hunger <= NEED_CRITICAL_THRESHOLD || settler.needs.fatigue <= NEED_CRITICAL_THRESHOLD
 	}
 
 	public setSettlerState(settlerId: string, state: SettlerState): void {
@@ -230,6 +400,18 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
 	}
 
+	public setSettlerNeeds(settlerId: string, needs: { hunger: number, fatigue: number }): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return
+		}
+		settler.needs = {
+			hunger: Math.max(0, Math.min(1, needs.hunger)),
+			fatigue: Math.max(0, Math.min(1, needs.fatigue))
+		}
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+	}
+
 	public setSettlerProfession(settlerId: string, profession: ProfessionType): void {
 		const settler = this.settlers.get(settlerId)
 		if (!settler) {
@@ -292,21 +474,25 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		}
 
 		const spawnRateMs = buildingDef.spawnRate * 1000
-		if (this.spawnTimers.has(buildingInstanceId)) {
+		if (this.houseSpawnSchedule.has(buildingInstanceId)) {
 			return
 		}
 
+		this.assignHomelessToHouse(buildingInstanceId)
 		this.spawnSettler({ houseBuildingInstanceId: buildingInstanceId })
-
-		const timer = setInterval(() => {
-			this.spawnSettler({ houseBuildingInstanceId: buildingInstanceId })
-		}, spawnRateMs)
-		this.spawnTimers.set(buildingInstanceId, timer)
+		this.houseSpawnSchedule.set(buildingInstanceId, {
+			nextSpawnAtMs: this.simulationTimeMs + spawnRateMs,
+			rateMs: spawnRateMs
+		})
 	}
 
 	private spawnSettler(data: SpawnSettlerData): Settler | null {
 		const house = this.managers.buildings.getBuildingInstance(data.houseBuildingInstanceId)
 		if (!house) {
+			return null
+		}
+
+		if (!this.canSpawnFromHouse(house.id)) {
 			return null
 		}
 
@@ -321,10 +507,11 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			stateContext: {},
 			houseId: house.id,
 			speed: SETTLER_SPEED,
-			createdAt: Date.now()
+			createdAt: this.simulationTimeMs
 		}
 
 		this.settlers.set(id, settler)
+		this.getHouseOccupants(house.id).add(id)
 		this.managers.movement.registerEntity({
 			id: settler.id,
 			position: settler.position,
@@ -338,7 +525,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	}
 
 	public spawnInitialPopulation(mapName: string, playerId: string, spawnPosition: Position): void {
-		const now = Date.now()
+		const now = this.simulationTimeMs
 		for (const popEntry of this.startingPopulation) {
 			if (!this.professions.has(popEntry.profession)) {
 				this.logger.warn(`Starting population profession ${popEntry.profession} does not exist, skipping`)
@@ -406,6 +593,61 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			idleCount,
 			workingCount
 		})
+	}
+
+	serialize(): PopulationSnapshot {
+		return {
+			settlers: Array.from(this.settlers.values()).map(settler => ({
+				...settler,
+				position: { ...settler.position },
+				stateContext: { ...settler.stateContext },
+				needs: settler.needs ? { ...settler.needs } : undefined
+			})),
+			houseOccupants: Array.from(this.houseOccupants.entries()).map(([houseId, occupants]) => ([
+				houseId,
+				Array.from(occupants.values())
+			])),
+			houseSpawnSchedule: Array.from(this.houseSpawnSchedule.entries()),
+			simulationTimeMs: this.simulationTimeMs
+		}
+	}
+
+	deserialize(state: PopulationSnapshot): void {
+		this.settlers.clear()
+		this.houseOccupants.clear()
+		this.houseSpawnSchedule.clear()
+		this.simulationTimeMs = state.simulationTimeMs
+
+		for (const settler of state.settlers) {
+			const restored: Settler = {
+				...settler,
+				position: { ...settler.position },
+				stateContext: { ...settler.stateContext },
+				needs: settler.needs ? { ...settler.needs } : undefined
+			}
+			this.settlers.set(restored.id, restored)
+			this.managers.movement.registerEntity({
+				id: restored.id,
+				position: restored.position,
+				mapName: restored.mapName,
+				speed: restored.speed
+			})
+		}
+
+		for (const [houseId, occupants] of state.houseOccupants) {
+			this.houseOccupants.set(houseId, new Set(occupants))
+		}
+
+		for (const [houseId, schedule] of state.houseSpawnSchedule) {
+			this.houseSpawnSchedule.set(houseId, { ...schedule })
+		}
+	}
+
+	reset(): void {
+		this.settlers.clear()
+		this.houseOccupants.clear()
+		this.houseSpawnSchedule.clear()
+		this.simulationTimeMs = 0
 	}
 
 	private getEmptyByProfession(): Record<ProfessionType, number> {

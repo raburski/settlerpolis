@@ -14,6 +14,9 @@ type TopBarProps = {
 	onTogglePopulation: () => void
 	isLogisticsOpen: boolean
 	onToggleLogistics: () => void
+	onOpenSave: () => void
+	onOpenLoad: () => void
+	resourceButtonRef?: React.Ref<HTMLButtonElement>
 	populationButtonRef?: React.Ref<HTMLButtonElement>
 	logisticsButtonRef?: React.Ref<HTMLButtonElement>
 }
@@ -46,6 +49,9 @@ export const TopBar: React.FC<TopBarProps> = ({
 	onTogglePopulation,
 	isLogisticsOpen,
 	onToggleLogistics,
+	onOpenSave,
+	onOpenLoad,
+	resourceButtonRef,
 	populationButtonRef,
 	logisticsButtonRef
 }) => {
@@ -53,10 +59,14 @@ export const TopBar: React.FC<TopBarProps> = ({
 	const [populationTotal, setPopulationTotal] = useState(
 		populationService.getStats().totalCount
 	)
+	const [housingCapacity, setHousingCapacity] = useState(
+		populationService.getStats().housingCapacity || 0
+	)
 
 	useEffect(() => {
 		const handleStatsUpdated = (data: PopulationStatsData) => {
 			setPopulationTotal(data.totalCount)
+			setHousingCapacity(data.housingCapacity || 0)
 		}
 
 		EventBus.on('ui:population:stats-updated', handleStatsUpdated)
@@ -71,7 +81,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 		{ id: 'logs', label: 'Logs' },
 		{ id: 'planks', label: 'Planks' }
 	]
-
+	const populationLabel = `${populationTotal}/${housingCapacity}`
 	return (
 		<div className={styles.topBar}>
 			<div className={styles.left}>
@@ -84,6 +94,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 					data-active={isStockOpen}
 					onClick={onToggleStock}
 					aria-pressed={isStockOpen}
+					ref={resourceButtonRef}
 				>
 					{resourceItems.map((item) => (
 						<span key={item.id} className={styles.resourceItem} title={item.label}>
@@ -103,7 +114,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 					ref={populationButtonRef}
 				>
 					<span className={styles.populationIcon}>👥</span>
-					<span className={styles.populationValue}>{populationTotal}</span>
+					<span className={styles.populationValue}>{populationLabel}</span>
 				</button>
 				<button
 					type="button"
@@ -117,7 +128,16 @@ export const TopBar: React.FC<TopBarProps> = ({
 					<span className={styles.logisticsLabel}>Logistics</span>
 				</button>
 			</div>
-			<div className={styles.right} />
+			<div className={styles.right}>
+				<div className={styles.snapshotButtons}>
+					<button type="button" className={styles.snapshotButton} onClick={onOpenSave}>
+						Save
+					</button>
+					<button type="button" className={styles.snapshotButton} onClick={onOpenLoad}>
+						Load
+					</button>
+				</div>
+			</div>
 		</div>
 	)
 }

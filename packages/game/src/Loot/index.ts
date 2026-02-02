@@ -8,6 +8,9 @@ import { LootEvents } from './events'
 import { v4 as uuidv4 } from 'uuid'
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
+import { SimulationEvents } from '../Simulation/events'
+import type { SimulationTickData } from '../Simulation/types'
+import type { LootSnapshot } from '../state/types'
 
 export interface LootDeps {
 	items: ItemsManager
@@ -19,6 +22,8 @@ export class LootManager extends BaseManager<LootDeps> {
 	private itemReservations = new Map<string, string>()
 	private readonly DROPPED_ITEM_LIFESPAN = 5 * 60 * 1000 // 5 minutes in milliseconds
 	private readonly ITEM_CLEANUP_INTERVAL = 30 * 1000 // Check every 30 seconds
+	private simulationTimeMs = 0
+	private cleanupAccumulatorMs = 0
 
 	constructor(
 		managers: LootDeps,
@@ -27,7 +32,6 @@ export class LootManager extends BaseManager<LootDeps> {
 	) {
 		super(managers)
 		this.setupEventHandlers()
-		this.startItemCleanupInterval()
 	}
 
 	private getRandomInRange(range: Range | number): number {
@@ -58,6 +62,10 @@ export class LootManager extends BaseManager<LootDeps> {
 	}
 
 	private setupEventHandlers() {
+		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+			this.handleSimulationTick(data)
+		})
+
 		// Handle player join and map transition to send items
 		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
 			const mapId = data.mapId
@@ -106,6 +114,16 @@ export class LootManager extends BaseManager<LootDeps> {
 				this.event.emit(Receiver.Group, Event.Loot.SC.Update, payload, data.mapId)
 			})
 		})
+	}
+
+	private handleSimulationTick(data: SimulationTickData): void {
+		this.simulationTimeMs = data.nowMs
+		this.cleanupAccumulatorMs += data.deltaMs
+		if (this.cleanupAccumulatorMs < this.ITEM_CLEANUP_INTERVAL) {
+			return
+		}
+		this.cleanupAccumulatorMs -= this.ITEM_CLEANUP_INTERVAL
+		this.cleanupExpiredItems()
 	}
 
 	public reserveItem(itemId: string, ownerId: string): boolean {
@@ -258,7 +276,7 @@ export class LootManager extends BaseManager<LootDeps> {
 					id: preferredItemId || uuidv4(),
 					itemType,
 					position,
-					droppedAt: Date.now(),
+					droppedAt: this.simulationTimeMs,
 					quantity: 1
 				}
 				mapDroppedItems.push(item)
@@ -274,7 +292,7 @@ export class LootManager extends BaseManager<LootDeps> {
 				id: preferredItemId || uuidv4(),
 				itemType,
 				position,
-				droppedAt: Date.now(),
+				droppedAt: this.simulationTimeMs,
 				quantity: stackQuantity
 			}
 			mapDroppedItems.push(item)
@@ -287,19 +305,17 @@ export class LootManager extends BaseManager<LootDeps> {
 		this.droppedItems.set(mapId, mapDroppedItems)
 	}
 
-	private startItemCleanupInterval() {
-		setInterval(() => {
-			const now = Date.now()
-			this.droppedItems.forEach((items, mapId) => {
-				const expiredItemIds = items
-					.filter(item => now - item.droppedAt > this.DROPPED_ITEM_LIFESPAN)
-					.map(item => item.id)
+	private cleanupExpiredItems() {
+		const now = this.simulationTimeMs
+		this.droppedItems.forEach((items, mapId) => {
+			const expiredItemIds = items
+				.filter(item => now - item.droppedAt > this.DROPPED_ITEM_LIFESPAN)
+				.map(item => item.id)
 
-				if (expiredItemIds.length > 0) {
-					this.removeExpiredItems(mapId, expiredItemIds)
-				}
-			})
-		}, this.ITEM_CLEANUP_INTERVAL)
+			if (expiredItemIds.length > 0) {
+				this.removeExpiredItems(mapId, expiredItemIds)
+			}
+		})
 	}
 
 	private removeExpiredItems(mapId: string, expiredItemIds: string[]) {
@@ -355,4 +371,45 @@ export class LootManager extends BaseManager<LootDeps> {
 		const foundItem = mapItems?.find(item => item.id === id)
 		return foundItem
 	}
-} 
+
+	serialize(): LootSnapshot {
+		return {
+			droppedItems: Array.from(this.droppedItems.entries()).map(([mapId, items]) => ([
+				mapId,
+				items.map(item => ({
+					...item,
+					position: { ...item.position }
+				}))
+			])),
+			itemReservations: Array.from(this.itemReservations.entries()),
+			cleanupAccumulatorMs: this.cleanupAccumulatorMs
+		}
+	}
+
+	deserialize(state: LootSnapshot): void {
+		this.droppedItems.clear()
+		this.itemIdToMapId.clear()
+		this.itemReservations.clear()
+		this.cleanupAccumulatorMs = state.cleanupAccumulatorMs
+		for (const [mapId, items] of state.droppedItems) {
+			const nextItems = items.map(item => ({
+				...item,
+				position: { ...item.position }
+			}))
+			this.droppedItems.set(mapId, nextItems)
+			for (const item of nextItems) {
+				this.itemIdToMapId.set(item.id, mapId)
+			}
+		}
+		for (const [itemId, ownerId] of state.itemReservations) {
+			this.itemReservations.set(itemId, ownerId)
+		}
+	}
+
+	reset(): void {
+		this.droppedItems.clear()
+		this.itemIdToMapId.clear()
+		this.itemReservations.clear()
+		this.cleanupAccumulatorMs = 0
+	}
+}

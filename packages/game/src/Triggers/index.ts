@@ -7,6 +7,7 @@ import { Position } from '../types'
 import type { MapManager } from '../Map'
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
+import type { TriggersSnapshot } from '../state/types'
 
 const PROXIMITY_DEACTIVATION_BUFFER = 50 // pixels
 
@@ -274,4 +275,58 @@ export class TriggerManager extends BaseManager<TriggerDeps> {
 		this.playerActiveTriggers.clear()
 		this.playerConditionTriggers.clear()
 	}
-} 
+
+	serialize(): TriggersSnapshot {
+		return {
+			triggers: Array.from(this.triggers.values()).map(trigger => ({ ...trigger })),
+			activeTriggers: Array.from(this.activeTriggers.values()),
+			activeProximityTriggers: Array.from(this.activeProximityTriggers.values()),
+			usedTriggers: Array.from(this.usedTriggers.values()),
+			playerActiveTriggers: Array.from(this.playerActiveTriggers.entries()).map(([playerId, triggers]) => ([
+				playerId,
+				Array.from(triggers.values())
+			])),
+			playerConditionTriggers: Array.from(this.playerConditionTriggers.entries()).map(([playerId, triggers]) => ([
+				playerId,
+				Array.from(triggers.entries())
+			]))
+		}
+	}
+
+	deserialize(state: TriggersSnapshot): void {
+		this.triggers.clear()
+		this.activeTriggers.clear()
+		this.activeProximityTriggers.clear()
+		this.usedTriggers.clear()
+		this.playerActiveTriggers.clear()
+		this.playerConditionTriggers.clear()
+
+		for (const trigger of state.triggers) {
+			this.triggers.set(trigger.id, { ...trigger })
+		}
+		for (const triggerId of state.activeTriggers) {
+			this.activeTriggers.add(triggerId)
+		}
+		for (const triggerId of state.activeProximityTriggers) {
+			this.activeProximityTriggers.add(triggerId)
+		}
+		for (const triggerId of state.usedTriggers) {
+			this.usedTriggers.add(triggerId)
+		}
+		for (const [playerId, triggers] of state.playerActiveTriggers) {
+			this.playerActiveTriggers.set(playerId, new Set(triggers))
+		}
+		for (const [playerId, triggers] of state.playerConditionTriggers) {
+			this.playerConditionTriggers.set(playerId, new Map(triggers))
+		}
+	}
+
+	reset(): void {
+		this.triggers.clear()
+		this.activeTriggers.clear()
+		this.activeProximityTriggers.clear()
+		this.usedTriggers.clear()
+		this.playerActiveTriggers.clear()
+		this.playerConditionTriggers.clear()
+	}
+}

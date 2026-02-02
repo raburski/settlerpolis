@@ -52,9 +52,12 @@ export class NPCController {
 		}
 	}
 
-	private handleMoveToPosition = (data: { entityId: string, targetPosition: { x: number, y: number }, mapName: string }) => {
+	private handleMoveToPosition = (data: { entityId: string, targetPosition: { x: number, y: number }, mapName: string, speed?: number }) => {
 		// Only update if it's our NPC and on the same map
 		if (data.entityId === this.npc.id && data.mapName === this.npc.mapId) {
+			if (typeof data.speed === 'number') {
+				this.view.setSpeed(data.speed)
+			}
 			// Update NPC position for interpolation
 			this.view.setTargetPosition(data.targetPosition.x, data.targetPosition.y)
 			// Update text display service with new position

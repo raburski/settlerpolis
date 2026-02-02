@@ -27,8 +27,9 @@ export const FarmingWorkHandler: BuildingWorkHandler = {
 		}
 
 		const tileSize = map.tiledMap.tilewidth || 32
-		const buildingTileX = Math.floor(building.position.x / tileSize)
-		const buildingTileY = Math.floor(building.position.y / tileSize)
+		const workCenter = building.workAreaCenter ?? building.position
+		const buildingTileX = Math.floor(workCenter.x / tileSize)
+		const buildingTileY = Math.floor(workCenter.y / tileSize)
 
 		const isWithinRadius = (position: { x: number, y: number }) => {
 			const tileX = Math.floor(position.x / tileSize)
@@ -40,11 +41,12 @@ export const FarmingWorkHandler: BuildingWorkHandler = {
 
 		const availableNodes = managers.resourceNodes.getAvailableNodes(building.mapName, farm.cropNodeType)
 			.filter(node => isWithinRadius(node.position))
+		const allowHarvest = farm.allowHarvest !== false
 
-		if (availableNodes.length > 0) {
+		if (allowHarvest && availableNodes.length > 0) {
 			const closest = availableNodes.reduce((best, node) => {
-				const bestDistance = calculateDistance(building.position, best.position)
-				const nodeDistance = calculateDistance(building.position, node.position)
+				const bestDistance = calculateDistance(workCenter, best.position)
+				const nodeDistance = calculateDistance(workCenter, node.position)
 				return nodeDistance < bestDistance ? node : best
 			})
 
@@ -64,6 +66,13 @@ export const FarmingWorkHandler: BuildingWorkHandler = {
 
 		const existingNodes = managers.resourceNodes.getNodes(building.mapName, farm.cropNodeType)
 			.filter(node => isWithinRadius(node.position))
+		const spacingTiles = Math.max(0, farm.minSpacingTiles ?? 0)
+		const spacingNodes = spacingTiles > 0
+			? existingNodes.map(node => ({
+				x: Math.floor(node.position.x / tileSize),
+				y: Math.floor(node.position.y / tileSize)
+			}))
+			: []
 
 		if (farm.maxPlots && existingNodes.length >= farm.maxPlots) {
 			return { type: WorkStepType.Wait, reason: WorkWaitReason.NoPlots }
@@ -95,7 +104,22 @@ export const FarmingWorkHandler: BuildingWorkHandler = {
 				if (occupiedTiles.has(`${tileX},${tileY}`)) {
 					continue
 				}
+				if (spacingTiles > 0) {
+					let tooClose = false
+					for (const node of spacingNodes) {
+						if (Math.abs(node.x - tileX) <= spacingTiles && Math.abs(node.y - tileY) <= spacingTiles) {
+							tooClose = true
+							break
+						}
+					}
+					if (tooClose) {
+						continue
+					}
+				}
 				if (managers.map.isCollision(building.mapName, tileX, tileY)) {
+					continue
+				}
+				if (managers.roads.isRoadPlannedOrBuilt(building.mapName, tileX, tileY)) {
 					continue
 				}
 				const worldPosition = { x: tileX * tileSize, y: tileY * tileSize }

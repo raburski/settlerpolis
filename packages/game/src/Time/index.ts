@@ -5,20 +5,23 @@ import { Receiver } from '../Receiver'
 import { SimulationEvents } from '../Simulation/events'
 import { SimulationTickData } from '../Simulation/types'
 import { Logger } from '../Logs'
+import type { TimeSnapshot } from '../state/types'
+
+const DEFAULT_TIME_DATA: TimeData = {
+	time: {
+		hours: 8,
+		minutes: 0,
+		day: 1,
+		month: 1,
+		year: 1
+	},
+	isPaused: false,
+	timeSpeed: 1000 // 1 real second = 1 game minute
+}
 
 export class TimeManager {
-	private timeData: TimeData = {
-		time: { 
-			hours: 8, 
-			minutes: 0,
-			day: 1,
-			month: 1,
-			year: 1
-		},
-		isPaused: false,
-		timeSpeed: 1000 // 1 real second = 1 game minute
-	}
-	private lastBroadcastHour: number = 8
+	private timeData: TimeData = { ...DEFAULT_TIME_DATA, time: { ...DEFAULT_TIME_DATA.time } }
+	private lastBroadcastHour: number = DEFAULT_TIME_DATA.time.hours
 	private tickAccumulatorMs = 0
 
 	constructor(
@@ -184,4 +187,32 @@ export class TimeManager {
 		const { hours, minutes } = this.timeData.time
 		return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
 	}
-} 
+
+	serialize(): TimeSnapshot {
+		return {
+			timeData: {
+				time: { ...this.timeData.time },
+				isPaused: this.timeData.isPaused,
+				timeSpeed: this.timeData.timeSpeed
+			},
+			lastBroadcastHour: this.lastBroadcastHour,
+			tickAccumulatorMs: this.tickAccumulatorMs
+		}
+	}
+
+	deserialize(state: TimeSnapshot): void {
+		this.timeData = {
+			time: { ...state.timeData.time },
+			isPaused: state.timeData.isPaused,
+			timeSpeed: state.timeData.timeSpeed
+		}
+		this.lastBroadcastHour = state.lastBroadcastHour
+		this.tickAccumulatorMs = state.tickAccumulatorMs
+	}
+
+	reset(): void {
+		this.timeData = { ...DEFAULT_TIME_DATA, time: { ...DEFAULT_TIME_DATA.time } }
+		this.lastBroadcastHour = DEFAULT_TIME_DATA.time.hours
+		this.tickAccumulatorMs = 0
+	}
+}

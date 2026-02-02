@@ -10,11 +10,13 @@ import { Settings } from './Settings'
 import { TopBar } from './TopBar'
 import { StockPanel } from './StockPanel'
 import { SystemMessages } from './SystemMessages'
+import { Notifications } from './Notifications'
 import { ConstructionPanel } from './ConstructionPanel'
 import { BuildingInfoPanel } from './BuildingInfoPanel'
 import { PopulationPanel } from './PopulationPanel'
 import { LogisticsPanel } from './LogisticsPanel'
 import { SettlerInfoPanel } from './SettlerInfoPanel'
+import { SaveLoadPanel } from './SaveLoadPanel'
 import { EventBus } from "../EventBus"
 import { Event, FXType } from '@rugged/game'
 
@@ -23,6 +25,9 @@ export const UIContainer = () => {
 	const [isStockOpen, setIsStockOpen] = useState(false)
 	const [isPopulationOpen, setIsPopulationOpen] = useState(false)
 	const [isLogisticsOpen, setIsLogisticsOpen] = useState(false)
+	const [saveLoadMode, setSaveLoadMode] = useState<'save' | 'load' | null>(null)
+	const stockButtonRef = useRef<HTMLButtonElement | null>(null)
+	const [stockAnchor, setStockAnchor] = useState<DOMRect | null>(null)
 	const populationButtonRef = useRef<HTMLButtonElement | null>(null)
 	const [populationAnchor, setPopulationAnchor] = useState<DOMRect | null>(null)
 	const logisticsButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -40,6 +45,25 @@ export const UIContainer = () => {
 			EventBus.off(handleEvent)
 		}
 	}, [])
+
+	useEffect(() => {
+		if (!isStockOpen) {
+			return
+		}
+
+		const updateAnchor = () => {
+			if (stockButtonRef.current) {
+				setStockAnchor(stockButtonRef.current.getBoundingClientRect())
+			}
+		}
+
+		updateAnchor()
+		window.addEventListener('resize', updateAnchor)
+
+		return () => {
+			window.removeEventListener('resize', updateAnchor)
+		}
+	}, [isStockOpen])
 
 	useEffect(() => {
 		if (!isPopulationOpen) {
@@ -95,19 +119,31 @@ export const UIContainer = () => {
 				isPopulationOpen={isPopulationOpen}
 				onTogglePopulation={() => {
 					setIsStockOpen(false)
+					setIsLogisticsOpen(false)
 					setIsPopulationOpen((prev) => !prev)
 				}}
 				isLogisticsOpen={isLogisticsOpen}
 				onToggleLogistics={() => {
 					setIsStockOpen(false)
+					setIsPopulationOpen(false)
 					setIsLogisticsOpen((prev) => !prev)
 				}}
+				onOpenSave={() => setSaveLoadMode('save')}
+				onOpenLoad={() => setSaveLoadMode('load')}
+				resourceButtonRef={stockButtonRef}
 				populationButtonRef={populationButtonRef}
 				logisticsButtonRef={logisticsButtonRef}
 			/>
+			<SaveLoadPanel
+				isOpen={saveLoadMode !== null}
+				mode={saveLoadMode ?? 'save'}
+				onClose={() => setSaveLoadMode(null)}
+			/>
+			<Notifications />
 			<StockPanel
 				isVisible={isStockOpen}
 				onClose={() => setIsStockOpen(false)}
+				anchorRect={stockAnchor}
 			/>
 			<Chat />
 			<Inventory />

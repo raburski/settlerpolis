@@ -26,9 +26,9 @@ export type ScheduleOptions = {
 
 export type ScheduledEvent = ScheduleOptions & {
 	id: string // Make id required for ScheduledEvent
-	lastRun?: Date
-	nextRun?: Date
+	lastRunAtSimMs?: number
+	nextRunAtSimMs?: number
+	lastRunAtGameTimeKey?: string
 	isActive: boolean // Required in ScheduledEvent (will be set to true if not specified in options)
 	createdAt: Time
 }
-

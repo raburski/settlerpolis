@@ -11,10 +11,44 @@
 	padding: var(--spacing-sm);
 	color: #fffbe7;
 	z-index: var(--z-index-modal);
-	height: 104px;
+	height: 176px;
 	overflow: hidden;
 	box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
 	font-family: 'Press Start 2P', monospace;
+}
+
+.categoryTabs {
+	display: flex;
+	gap: 6px;
+	justify-content: flex-start;
+	align-items: flex-start;
+	margin-bottom: 6px;
+}
+
+.categoryTab {
+	background: rgba(44, 24, 16, 0.9);
+	border: 2px solid #2c1810;
+	color: #fffbe7;
+	width: 32px;
+	height: 32px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	font-size: 16px;
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
+	transition: all 0.2s ease;
+}
+
+.categoryTab:hover {
+	background: rgba(74, 44, 31, 0.95);
+	border-color: #ffe066;
+}
+
+.categoryTabSelected {
+	background: rgba(74, 44, 31, 0.95);
+	border-color: #ffe066;
+	box-shadow: 0 0 0 2px #ffe066;
 }
 
 .content {
@@ -22,6 +56,13 @@
 	gap: var(--spacing-sm);
 	align-items: stretch;
 	height: 100%;
+}
+
+.leftColumn {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
 }
 
 .separator {
@@ -71,6 +112,7 @@
 	padding-bottom: var(--spacing-xs);
 	justify-content: start;
 	align-content: start;
+	min-height: 0;
 }
 
 .buildingItem {

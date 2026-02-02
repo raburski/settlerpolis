@@ -1,6 +1,7 @@
 import { EventBus } from '../EventBus'
 import { Event } from '@rugged/game'
-import { Settler, PopulationListData, PopulationStatsData, ProfessionType, SettlerState } from '@rugged/game'
+import { Settler, PopulationListData, PopulationStatsData, ProfessionType, SettlerState, ConstructionStage, WorkerRequestFailureReason } from '@rugged/game'
+import { buildingService } from './BuildingService'
 import type { WorkAssignment } from '@rugged/game/Settlers/WorkProvider/types'
 
 class PopulationServiceClass {
@@ -15,7 +16,8 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Farmer]: 0,
 			[ProfessionType.Miller]: 0,
-			[ProfessionType.Baker]: 0
+			[ProfessionType.Baker]: 0,
+			[ProfessionType.Vendor]: 0
 		},
 		byProfessionActive: {
 			[ProfessionType.Carrier]: 0,
@@ -24,10 +26,12 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Farmer]: 0,
 			[ProfessionType.Miller]: 0,
-			[ProfessionType.Baker]: 0
+			[ProfessionType.Baker]: 0,
+			[ProfessionType.Vendor]: 0
 		},
 		idleCount: 0,
-		workingCount: 0
+		workingCount: 0,
+		housingCapacity: 0
 	}
 
 	constructor() {
@@ -44,7 +48,11 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 		// Handle statistics updates
 		EventBus.on(Event.Population.SC.StatsUpdated, (data: PopulationStatsData) => {
 			console.log('[PopulationService] Received population stats update:', data)
-			this.stats = this.normalizeStats(data)
+			const normalized = this.normalizeStats(data)
+			this.stats = {
+				...normalized,
+				housingCapacity: this.getHousingCapacityForSettlers(Array.from(this.settlers.values()))
+			}
 			EventBus.emit('ui:population:stats-updated', this.stats)
 		})
 
@@ -112,9 +120,20 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 		})
 
 		// Handle worker request failed
-		EventBus.on(Event.Population.SC.WorkerRequestFailed, (data: { reason: string, buildingInstanceId: string }) => {
+		EventBus.on(Event.Population.SC.WorkerRequestFailed, (data: { reason: WorkerRequestFailureReason, buildingInstanceId: string }) => {
 			console.warn('[PopulationService] Worker request failed:', data)
 			EventBus.emit('ui:population:worker-request-failed', data)
+		})
+
+		// Recalculate housing capacity when houses change
+		EventBus.on(Event.Buildings.SC.Catalog, () => {
+			this.updateStatsFromSettlers()
+		})
+		EventBus.on(Event.Buildings.SC.Completed, () => {
+			this.updateStatsFromSettlers()
+		})
+		EventBus.on(Event.Buildings.SC.Cancelled, () => {
+			this.updateStatsFromSettlers()
 		})
 	}
 
@@ -157,8 +176,35 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 			byProfession,
 			byProfessionActive,
 			idleCount: data.idleCount,
-			workingCount: data.workingCount
+			workingCount: data.workingCount,
+			housingCapacity: data.housingCapacity ?? 0
 		}
+	}
+
+	private getHousingCapacityForSettlers(settlers: Settler[]): number {
+		if (settlers.length === 0) {
+			return 0
+		}
+		const mapName = settlers[0].mapName
+		const playerId = settlers[0].playerId
+		const buildings = buildingService.getAllBuildingInstances()
+		let capacity = 0
+
+		for (const building of buildings) {
+			if (building.mapName !== mapName || building.playerId !== playerId) {
+				continue
+			}
+			if (building.stage !== ConstructionStage.Completed) {
+				continue
+			}
+			const definition = buildingService.getBuildingDefinition(building.buildingId)
+			if (!definition?.spawnsSettlers) {
+				continue
+			}
+			capacity += definition.maxOccupants ?? 0
+		}
+
+		return capacity
 	}
 
 	private calculateStatsFromSettlers(): PopulationStatsData {
@@ -186,7 +232,8 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 			byProfession,
 			byProfessionActive,
 			idleCount,
-			workingCount
+			workingCount,
+			housingCapacity: this.getHousingCapacityForSettlers(Array.from(this.settlers.values()))
 		}
 	}
 

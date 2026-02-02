@@ -3,6 +3,7 @@ import { FlagsEvents } from './events'
 import { Flag, SetFlagData, UnsetFlagData, FlagScope } from './types'
 import { Receiver } from '../Receiver'
 import { Logger } from '../Logs'
+import type { FlagsSnapshot } from '../state/types'
 
 export class FlagsManager {
 	private flags: Map<string, Flag> = new Map()
@@ -135,5 +136,23 @@ export class FlagsManager {
 
 	public loadFlags() {
 		// TODO: Implement flag loading from content
+	}
+
+	serialize(): FlagsSnapshot {
+		return {
+			flags: Array.from(this.flags.values()).map(flag => ({ ...flag }))
+		}
+	}
+
+	deserialize(state: FlagsSnapshot): void {
+		this.flags.clear()
+		for (const flag of state.flags) {
+			const key = this.getFlagKey(flag.name, flag.scope, flag.playerId, flag.mapId)
+			this.flags.set(key, { ...flag })
+		}
+	}
+
+	reset(): void {
+		this.flags.clear()
 	}
 } 

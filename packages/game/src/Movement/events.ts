@@ -3,6 +3,7 @@ export const MovementEvents = {
 		MoveToPosition: 'ss:movement:move-to-position',
 		CancelMovement: 'ss:movement:cancel',
 		StepComplete: 'ss:movement:step-complete',
+		SegmentComplete: 'ss:movement:segment-complete',
 		PathComplete: 'ss:movement:path-complete' // Path completed, optionally includes targetType/targetId if target exists
 	},
 	SC: {

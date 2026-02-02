@@ -27,10 +27,15 @@ import { MovementManager } from './Movement'
 import { ProfessionType } from './Population/types'
 import { StorageManager } from './Storage'
 import { ReservationSystem } from './Reservation'
+import { RoadManager } from './Roads'
 import { SimulationManager } from './Simulation'
 import { ResourceNodesManager } from './ResourceNodes'
 import { WorkProviderManager } from './Settlers/WorkProvider'
+import { NeedsManager } from './Needs'
 import { ManagersHub } from './Managers'
+import { WildlifeManager } from './Wildlife'
+import { SnapshotService } from './state/SnapshotService'
+import type { GameSnapshotV1 } from './state/types'
 
 // Export types and events
 export * from './types'
@@ -38,6 +43,12 @@ export * from './events'
 export * from './consts'
 export * from './utils'
 export * from './Settlers/WorkProvider'
+export * from './Needs'
+export * from './Roads'
+export * from './Wildlife'
+export * from './state/types'
+export { SnapshotService } from './state/SnapshotService'
+export type { Serializable } from './state/Serializable'
 export { EquipmentSlot, EquipmentSlotType }
 // export { Event } from './events' 
 
@@ -51,6 +62,7 @@ export interface GameManagerOptions {
 export class GameManager {
 	private contentLoader: ContentLoader
 	private managers: ManagersHub
+	private snapshotService: SnapshotService
 
 	constructor(
 		private event: EventManager,
@@ -92,6 +104,7 @@ export class GameManager {
 		this.managers.npc = new NPCManager(this.managers, event, this.managers.logs.getLogger('NPCManager'))
 		this.managers.scheduler = new Scheduler(this.managers, event, this.managers.logs.getLogger('Scheduler'))
 		this.managers.mapObjects = new MapObjectsManager(this.managers, event, this.managers.logs.getLogger('MapObjectsManager'))
+		this.managers.wildlife = new WildlifeManager(this.managers, event, this.managers.logs.getLogger('WildlifeManager'))
 		this.managers.resourceNodes = new ResourceNodesManager(this.managers, event, this.managers.logs.getLogger('ResourceNodesManager'))
 		this.managers.buildings = new BuildingManager(this.managers, event, this.managers.logs.getLogger('BuildingManager'))
 		// Convert startingPopulation from content (string profession) to ProfessionType
@@ -108,12 +121,18 @@ export class GameManager {
 		
 		// Create StorageManager after BuildingManager (to avoid circular dependency)
 		this.managers.storage = new StorageManager(this.managers, event, this.managers.logs.getLogger('StorageManager'))
+
+		// Create RoadManager after StorageManager so it can consume road materials
+		this.managers.roads = new RoadManager(this.managers, event, this.managers.logs.getLogger('RoadManager'))
 		
 		// Create ReservationSystem after Storage/Loot/ResourceNodes/Population
 		this.managers.reservations = new ReservationSystem(this.managers)
 
 		// Create WorkProviderManager after BuildingManager, PopulationManager, StorageManager, and ReservationSystem
 		this.managers.work = new WorkProviderManager(this.managers, event, this.managers.logs.getLogger('WorkProviderManager'))
+
+		// Create NeedsManager after WorkProviderManager so it can preempt action queues
+		this.managers.needs = new NeedsManager(this.managers, event, this.managers.logs.getLogger('NeedsManager'))
 		
 		this.managers.trigger = new TriggerManager(
 			this.managers,
@@ -151,6 +170,7 @@ export class GameManager {
 			this.managers.buildings,
 			this.managers.population,
 			this.managers.resourceNodes,
+			this.managers.wildlife,
 			this.managers.logs.getLogger('ContentLoader')
 		)
 		
@@ -187,7 +207,9 @@ export class GameManager {
 			'StorageManager',
 			'SimulationManager',
 			'ResourceNodesManager',
-			'WorkProviderManager'
+			'WorkProviderManager',
+			'NeedsManager',
+			'WildlifeManager'
 		]
 		for (const managerName of quietManagers) {
 			this.managers.logs.setManagerLevel(managerName, LogLevel.Warn)
@@ -195,9 +217,27 @@ export class GameManager {
 		
 		this.setupEventHandlers()
 		this.managers.simulation.start()
+
+		this.snapshotService = new SnapshotService(this.managers)
 	}
 
 	private setupEventHandlers() {
 		// No handlers needed here anymore - all moved to appropriate modules
 	}
-} 
+
+	public saveState(): GameSnapshotV1 {
+		return this.snapshotService.serialize()
+	}
+
+	public loadState(snapshot: GameSnapshotV1): void {
+		this.snapshotService.deserialize(snapshot)
+	}
+
+	public serialize(): GameSnapshotV1 {
+		return this.snapshotService.serialize()
+	}
+
+	public deserialize(snapshot: GameSnapshotV1): void {
+		this.snapshotService.deserialize(snapshot)
+	}
+}

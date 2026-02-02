@@ -11,6 +11,7 @@ export interface ResourceNodeDefinition {
 	harvestQuantity: number
 	harvestTimeMs?: number
 	maxHarvests: number // Number of harvest actions before depletion
+	blocksMovement?: boolean
 }
 
 export interface ResourceNodeSpawn {

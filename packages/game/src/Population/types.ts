@@ -9,7 +9,8 @@ export enum ProfessionType {
 	Miner = 'miner',
 	Farmer = 'farmer',
 	Miller = 'miller',
-	Baker = 'baker'
+	Baker = 'baker',
+	Vendor = 'vendor'
 	// Note: Settlers can change profession when assigned to specific buildings
 }
 
@@ -22,11 +23,26 @@ export enum SettlerState {
 	MovingToBuilding = 'moving_to_building',   // Moving to assigned building
 	Working = 'working',              // Actively working at a building
 	WaitingForWork = 'waiting_for_work', // At building but no work available (optional)
+	Packing = 'packing',              // Packing up belongings before changing home
+	Unpacking = 'unpacking',          // Unpacking belongings after moving home
 	MovingToItem = 'moving_to_item',        // Moving to pick up item from ground
 	CarryingItem = 'carrying_item',         // Carrying item and moving to construction site for delivery
 	MovingToResource = 'moving_to_resource', // Moving to resource node for harvesting
+	MovingHome = 'moving_home',          // Moving to current/new home
 	Harvesting = 'harvesting',             // Harvesting at a resource node
 	AssignmentFailed = 'assignment_failed',    // Assignment failed, needs cleanup
+}
+
+export enum WorkerRequestFailureReason {
+	NoAvailableWorker = 'no_available_worker',
+	NoBuilderAvailable = 'no_builder_available',
+	NoSuitableProfession = 'no_suitable_profession',
+	NoAvailableTool = 'no_available_tool',
+	BuildingNotFound = 'building_not_found',
+	BuildingDefinitionNotFound = 'building_definition_not_found',
+	BuildingDoesNotNeedWorkers = 'building_does_not_need_workers',
+	BuildingNotUnderConstruction = 'building_not_under_construction',
+	BuildingCompleted = 'building_completed'
 }
 
 
@@ -76,6 +92,10 @@ export interface Settler {
 	profession: ProfessionType
 	state: SettlerState
 	stateContext: SettlerStateContext  // Context for current state
+	needs?: {
+		hunger: number
+		fatigue: number
+	}
 	houseId?: string // House that spawned this settler
 	buildingId?: string  // Can be derived from stateContext
 	speed: number
@@ -116,6 +136,7 @@ export interface PopulationListData {
 	byProfessionActive: Record<ProfessionType, number>
 	idleCount: number
 	workingCount: number
+	housingCapacity: number
 }
 
 export interface PopulationStatsData {
@@ -124,6 +145,7 @@ export interface PopulationStatsData {
 	byProfessionActive: Record<ProfessionType, number>
 	idleCount: number
 	workingCount: number
+	housingCapacity: number
 }
 
 export interface ProfessionTool {

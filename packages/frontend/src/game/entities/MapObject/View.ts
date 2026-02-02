@@ -4,10 +4,12 @@ import { ItemMetadata } from '@rugged/game'
 import { itemService } from "../../services/ItemService"
 import { itemTextureService } from "../../services/ItemTextureService"
 import { buildingService } from "../../services/BuildingService"
+import { storageService } from '../../services/StorageService'
 import { EventBus } from '../../EventBus'
 import { Event } from '@rugged/game'
 
 export class MapObjectView {
+	private scene: Scene
 	private sprite: GameObjects.Sprite | null = null
 	private emojiText: GameObjects.Text | null = null
 	private mapObject: MapObject
@@ -15,21 +17,36 @@ export class MapObjectView {
 	private progressBar: GameObjects.Graphics | null = null
 	private progressBarBg: GameObjects.Graphics | null = null
 	private progressText: GameObjects.Text | null = null
+	private highlightGraphics: GameObjects.Graphics | null = null
+	private isHighlighted: boolean = false
+	private highlightHandler: ((data: { buildingInstanceId: string, highlighted: boolean }) => void) | null = null
 	private isBuilding: boolean = false
+	private isStoragePile: boolean = false
+	private storageSlotId: string | null = null
+	private storageQuantityText: GameObjects.Text | null = null
+	private storageSlotHandler: ((data: { slotId: string, quantity: number }) => void) | null = null
 	private buildingProgress: number = 0
 	private buildingStage: ConstructionStage | null = null
 	private progressHandler: ((data: { buildingInstanceId: string, progress: number, stage: string }) => void) | null = null
 	private completedHandler: ((data: { building: any }) => void) | null = null
+	private isEmojiFallback: boolean = false
+	private catalogHandler: ((data: { buildings: BuildingDefinition[] }) => void) | null = null
+	private readonly treeGrowthStages = [0.65, 0.82, 1]
 
 	constructor(scene: Scene, mapObject: MapObject) {
+		this.scene = scene
 		this.mapObject = mapObject
 		
 		// Check if this is a building
 		this.isBuilding = Boolean(mapObject.metadata?.buildingId || mapObject.metadata?.buildingInstanceId)
+		this.isStoragePile = Boolean(mapObject.metadata?.storagePile)
+		this.storageSlotId = mapObject.metadata?.storageSlotId || null
 		if (this.isBuilding) {
 			this.buildingProgress = mapObject.metadata?.progress || 0
 			this.buildingStage = mapObject.metadata?.stage || ConstructionStage.Foundation
 			this.setupBuildingEvents(scene)
+			this.setupHighlightEvents()
+			this.setupCatalogEvents()
 		}
 		
 		// Subscribe to item metadata updates
@@ -41,6 +58,19 @@ export class MapObjectView {
 				}
 			}
 		})
+	}
+
+	private setupHighlightEvents(): void {
+		this.highlightHandler = (data: { buildingInstanceId: string, highlighted: boolean }) => {
+			if (!this.isBuilding) {
+				return
+			}
+			if (this.mapObject.metadata?.buildingInstanceId !== data.buildingInstanceId) {
+				return
+			}
+			this.setHighlighted(data.highlighted)
+		}
+		EventBus.on('ui:building:highlight', this.highlightHandler)
 	}
 
 	private setupBuildingEvents(scene: Scene) {
@@ -78,11 +108,35 @@ export class MapObjectView {
 		}
 		EventBus.on(Event.Buildings.SC.Completed, this.completedHandler)
 	}
+
+	private setupCatalogEvents(): void {
+		this.catalogHandler = () => {
+			if (!this.isBuilding) {
+				return
+			}
+			if (this.buildingStage !== ConstructionStage.Completed) {
+				return
+			}
+			this.replaceSpriteWithEmoji(this.scene)
+		}
+		EventBus.on(Event.Buildings.SC.Catalog, this.catalogHandler)
+	}
 	
 	private initializeSprite(scene: Scene, itemMetadata: ItemMetadata): void {
+		if (this.isStoragePile) {
+			this.createStoragePile(scene, itemMetadata)
+			return
+		}
 		// For completed buildings, use emoji text instead of sprite
 		if (this.isBuilding && this.buildingStage === ConstructionStage.Completed) {
 			this.replaceSpriteWithEmoji(scene)
+			return
+		}
+
+		const hasPlaceableTexture = Boolean(itemTextureService.getPlaceableItemTexture(this.mapObject.item.itemType))
+		const hasItemTexture = Boolean(itemTextureService.getItemTexture(this.mapObject.item.itemType))
+		if (!hasPlaceableTexture && !hasItemTexture && itemMetadata?.emoji) {
+			this.createEmojiFallback(scene, itemMetadata)
 			return
 		}
 
@@ -112,6 +166,11 @@ export class MapObjectView {
 		// Set the display size based on the item type
 		this.setDisplaySize(itemMetadata)
 
+		// Apply tree-specific visuals (growth + anchor) after sizing
+		if (this.isTreeResourceNode() && this.sprite) {
+			this.applyTreeVisuals(scene, this.sprite)
+		}
+
 		// Make building sprites interactive/clickable
 		if (this.isBuilding) {
 			this.sprite.setInteractive({ useHandCursor: true })
@@ -119,11 +178,47 @@ export class MapObjectView {
 		}
 	}
 
+	private createEmojiFallback(scene: Scene, itemMetadata: ItemMetadata): void {
+		if (this.emojiText) return
+
+		this.isEmojiFallback = true
+		const tileSize = 32
+		const footprint = this.mapObject.metadata?.footprint
+		const width = footprint ? footprint.width * tileSize : tileSize
+		const height = footprint ? footprint.height * tileSize : tileSize
+		const centerX = this.mapObject.position.x + width / 2
+		const centerY = this.mapObject.position.y + height / 2
+		const emoji = itemMetadata.emoji || '❓'
+		const fontSize = footprint ? Math.min(width, height) * 0.9 : 20
+
+		this.emojiText = scene.add.text(centerX, centerY, emoji, {
+			fontSize: `${fontSize}px`,
+			align: 'center'
+		})
+		this.emojiText.setOrigin(0.5, 0.5)
+		this.emojiText.setDepth(this.mapObject.position.y)
+
+		if (this.isTreeResourceNode()) {
+			this.applyTreeVisuals(scene, this.emojiText)
+		}
+
+		if (this.isBuilding) {
+			this.emojiText.setInteractive({ useHandCursor: true })
+			this.emojiText.on('pointerdown', this.handleBuildingClick, this)
+		}
+
+		if (itemMetadata?.placement?.blocksMovement || footprint) {
+			scene.physics.add.existing(this.emojiText, true)
+			const body = this.emojiText.body as Phaser.Physics.Arcade.Body
+			if (body) {
+				body.setSize(width, height)
+				body.setOffset(-width / 2, -height / 2)
+			}
+		}
+	}
+
 	private replaceSpriteWithEmoji(scene: Scene): void {
 		if (!this.isBuilding || !this.mapObject.metadata?.footprint) return
-
-		// If emoji text already exists, don't recreate it
-		if (this.emojiText) return
 
 		// Get building definition to access icon
 		const buildingId = this.mapObject.metadata.buildingId
@@ -149,22 +244,29 @@ export class MapObjectView {
 			this.sprite = null
 		}
 
-		// Create emoji text centered in the footprint
 		const centerX = this.mapObject.position.x + width / 2
 		const centerY = this.mapObject.position.y + height / 2
 
-		this.emojiText = scene.add.text(centerX, centerY, emoji, {
-			fontSize: `${fontSize}px`,
-			align: 'center'
-		})
-		this.emojiText.setOrigin(0.5, 0.5)
-		this.emojiText.setDepth(this.mapObject.position.y)
+		if (this.emojiText) {
+			this.emojiText.setText(emoji)
+			this.emojiText.setFontSize(fontSize)
+			this.emojiText.setPosition(centerX, centerY)
+			this.emojiText.setDepth(this.mapObject.position.y)
+		} else {
+			// Create emoji text centered in the footprint
+			this.emojiText = scene.add.text(centerX, centerY, emoji, {
+				fontSize: `${fontSize}px`,
+				align: 'center'
+			})
+			this.emojiText.setOrigin(0.5, 0.5)
+			this.emojiText.setDepth(this.mapObject.position.y)
 
-		// Make emoji text interactive/clickable
-		this.emojiText.setInteractive({ useHandCursor: true })
-		this.emojiText.on('pointerdown', this.handleBuildingClick, this)
+			// Make emoji text interactive/clickable
+			this.emojiText.setInteractive({ useHandCursor: true })
+			this.emojiText.on('pointerdown', this.handleBuildingClick, this)
+		}
 
-		// Add physics body using the footprint
+		// Ensure physics body matches footprint
 		scene.physics.add.existing(this.emojiText, true)
 		const body = this.emojiText.body as Phaser.Physics.Arcade.Body
 		if (body) {
@@ -173,6 +275,98 @@ export class MapObjectView {
 		}
 
 		console.log(`[MapObjectView] Replaced sprite with emoji text: ${emoji} at size ${fontSize}px for footprint ${this.mapObject.metadata.footprint.width}x${this.mapObject.metadata.footprint.height}`)
+	}
+
+	private setHighlighted(highlighted: boolean): void {
+		if (this.isHighlighted === highlighted) {
+			return
+		}
+		this.isHighlighted = highlighted
+		if (!highlighted) {
+			this.highlightGraphics?.setVisible(false)
+			return
+		}
+		if (!this.highlightGraphics) {
+			this.highlightGraphics = this.scene.add.graphics()
+		}
+		this.updateHighlight()
+		this.highlightGraphics.setVisible(true)
+	}
+
+	private updateHighlight(): void {
+		if (!this.highlightGraphics) {
+			return
+		}
+		const tileSize = 32
+		const footprint = this.mapObject.metadata?.footprint
+		const width = footprint ? footprint.width * tileSize : (this.sprite?.displayWidth || this.emojiText?.displayWidth || tileSize)
+		const height = footprint ? footprint.height * tileSize : (this.sprite?.displayHeight || this.emojiText?.displayHeight || tileSize)
+		const x = this.mapObject.position.x
+		const y = this.mapObject.position.y
+		const padding = 3
+
+		this.highlightGraphics.clear()
+		this.highlightGraphics.fillStyle(0xffd54f, 0.08)
+		this.highlightGraphics.fillRect(x - padding, y - padding, width + padding * 2, height + padding * 2)
+		this.highlightGraphics.lineStyle(3, 0xffd54f, 0.9)
+		this.highlightGraphics.strokeRect(x - padding, y - padding, width + padding * 2, height + padding * 2)
+
+		const displayDepth = this.sprite?.depth ?? this.emojiText?.depth ?? this.mapObject.position.y
+		this.highlightGraphics.setDepth(displayDepth + 0.5)
+	}
+
+	private createStoragePile(scene: Scene, itemMetadata: ItemMetadata): void {
+		if (this.emojiText) return
+
+		const tileSize = 32
+		const centerX = this.mapObject.position.x + tileSize / 2
+		const centerY = this.mapObject.position.y + tileSize / 2
+
+		const emoji = itemMetadata.emoji || '📦'
+		this.emojiText = scene.add.text(centerX, centerY, emoji, {
+			fontSize: '20px',
+			align: 'center'
+		})
+		this.emojiText.setOrigin(0.5, 0.5)
+		this.emojiText.setDepth(this.mapObject.position.y)
+
+		this.storageQuantityText = scene.add.text(
+			this.mapObject.position.x + tileSize - 6,
+			this.mapObject.position.y + tileSize - 6,
+			'',
+			{
+				fontSize: '12px',
+				color: '#ffffff',
+				backgroundColor: '#000000',
+				padding: { x: 4, y: 2 },
+				align: 'center'
+			}
+		)
+		this.storageQuantityText.setOrigin(0.5, 0.5)
+		this.storageQuantityText.setDepth(this.mapObject.position.y + 1)
+		this.storageQuantityText.setVisible(false)
+
+		if (this.storageSlotId) {
+			const initialQuantity = storageService.getSlotQuantity(this.storageSlotId)
+			this.updateStoragePileQuantity(initialQuantity)
+			this.storageSlotHandler = (data: { slotId: string, quantity: number }) => {
+				if (data.slotId === this.storageSlotId) {
+					this.updateStoragePileQuantity(data.quantity)
+				}
+			}
+			EventBus.on('ui:storage:slot-updated', this.storageSlotHandler)
+		}
+	}
+
+	private updateStoragePileQuantity(quantity: number): void {
+		if (!this.storageQuantityText) return
+		if (quantity > 1) {
+			this.storageQuantityText.setText(`${quantity}`)
+			this.storageQuantityText.setVisible(true)
+		} else {
+			this.storageQuantityText.setText('')
+			this.storageQuantityText.setVisible(false)
+		}
 	}
 
 	private handleBuildingClick = (pointer: Phaser.Input.Pointer) => {
@@ -193,6 +387,42 @@ export class MapObjectView {
 				buildingId: this.mapObject.metadata?.buildingId
 			})
 		}
+	}
+
+	private isTreeResourceNode(): boolean {
+		return this.mapObject.metadata?.resourceNode === true && this.mapObject.metadata?.resourceNodeType === 'tree'
+	}
+
+	private applyTreeVisuals(scene: Scene, displayObject: Phaser.GameObjects.Sprite | Phaser.GameObjects.Text): void {
+		const tileSize = 32
+		const baseX = this.mapObject.position.x + tileSize / 2
+		const baseY = this.mapObject.position.y + tileSize
+
+		displayObject.setOrigin(0.5, 1)
+		displayObject.setPosition(baseX, baseY)
+
+		const baseScaleX = displayObject.scaleX || 1
+		const baseScaleY = displayObject.scaleY || 1
+		const [small, medium, large] = this.treeGrowthStages
+
+		displayObject.setScale(baseScaleX * small, baseScaleY * small)
+		scene.tweens.add({
+			targets: displayObject,
+			scaleX: baseScaleX * medium,
+			scaleY: baseScaleY * medium,
+			duration: 1200,
+			ease: 'Sine.easeOut',
+			onComplete: () => {
+				if (!displayObject.active) return
+				scene.tweens.add({
+					targets: displayObject,
+					scaleX: baseScaleX * large,
+					scaleY: baseScaleY * large,
+					duration: 1600,
+					ease: 'Sine.easeOut'
+				})
+			}
+		})
 	}
 	
 	private getTexture(itemMetadata: ItemMetadata): { key: string, frame: number, scale: number } {
@@ -220,6 +450,7 @@ export class MapObjectView {
 	
 	private setDisplaySize(itemMetadata: ItemMetadata): void {
 		if (!this.sprite) return
+		if (this.isStoragePile) return
 		
 		const tileSize = 32 // Default tile size
 		
@@ -243,6 +474,12 @@ export class MapObjectView {
 	public getSprite(): GameObjects.Sprite | null {
 		// Return emoji text as sprite for collision detection if building is completed
 		if (this.emojiText && this.isBuilding && this.buildingStage === ConstructionStage.Completed) {
+			return this.emojiText as any
+		}
+		if (this.emojiText && this.isStoragePile) {
+			return this.emojiText as any
+		}
+		if (this.emojiText && this.isEmojiFallback) {
 			return this.emojiText as any
 		}
 		return this.sprite
@@ -345,9 +582,20 @@ export class MapObjectView {
 				this.updateProgressBar(scene)
 			}
 		}
+		if (this.isHighlighted) {
+			this.updateHighlight()
+		}
 	}
 
 	public destroy(): void {
+		if (this.highlightHandler) {
+			EventBus.off('ui:building:highlight', this.highlightHandler)
+			this.highlightHandler = null
+		}
+		if (this.highlightGraphics) {
+			this.highlightGraphics.destroy()
+			this.highlightGraphics = null
+		}
 		// Remove building event listeners
 		if (this.progressHandler) {
 			EventBus.off(Event.Buildings.SC.Progress, this.progressHandler)
@@ -356,6 +604,10 @@ export class MapObjectView {
 		if (this.completedHandler) {
 			EventBus.off(Event.Buildings.SC.Completed, this.completedHandler)
 			this.completedHandler = null
+		}
+		if (this.catalogHandler) {
+			EventBus.off(Event.Buildings.SC.Catalog, this.catalogHandler)
+			this.catalogHandler = null
 		}
 
 		// Remove click handler if sprite or emoji text is interactive
@@ -388,9 +640,18 @@ export class MapObjectView {
 			this.sprite.destroy()
 			this.sprite = null
 		}
+		if (this.storageQuantityText) {
+			this.storageQuantityText.destroy()
+			this.storageQuantityText = null
+		}
 		if (this.emojiText) {
 			this.emojiText.destroy()
 			this.emojiText = null
+		}
+
+		if (this.storageSlotHandler) {
+			EventBus.off('ui:storage:slot-updated', this.storageSlotHandler)
+			this.storageSlotHandler = null
 		}
 	}
 } 

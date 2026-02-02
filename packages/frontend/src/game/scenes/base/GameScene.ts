@@ -15,11 +15,15 @@ import networkManager from "../../network";
 import { playerService } from "../../services/PlayerService";
 import { createMapObject, MapObjectEntity } from '../../entities/MapObject'
 import { BuildingPlacementManager } from '../../modules/BuildingPlacement'
+import { WorkAreaSelectionManager } from '../../modules/WorkAreaSelection'
 import { FX } from '../../modules/FX'
+import { RoadOverlay } from '../../modules/RoadOverlay'
+import { RoadPlacementManager } from '../../modules/RoadPlacement'
 import { TextDisplayService } from '../../services/TextDisplayService'
 import { NPCProximityService } from '../../services/NPCProximityService'
 import { NPCController } from '../../entities/NPC/NPCController'
-import { Settler } from '@rugged/game'
+import type { Settler, RoadTile } from '@rugged/game'
+import { itemService } from '../../services/ItemService'
 
 export abstract class GameScene extends MapScene {
     protected player: LocalPlayer | null = null
@@ -28,9 +32,12 @@ export abstract class GameScene extends MapScene {
 	protected npcs: Map<string, NPCController> = new Map()
 	protected settlers: Map<string, SettlerController> = new Map()
 	protected mapObjects: Map<string, MapObjectEntity> = new Map()
+	protected roadOverlay: RoadOverlay | null = null
+	protected roadPlacementManager: RoadPlacementManager | null = null
 	protected keyboard: Keyboard | null = null
 	protected portalManager: PortalManager | null = null
 	protected buildingPlacementManager: BuildingPlacementManager | null = null
+	protected workAreaSelectionManager: WorkAreaSelectionManager | null = null
 	protected fx: FX | null = null
 	protected textDisplayService: TextDisplayService | null = null
 	protected npcProximityService: NPCProximityService
@@ -57,6 +64,7 @@ export abstract class GameScene extends MapScene {
 		const playerX = sceneData?.x || 100
 		const playerY = sceneData?.y || 300
 		const isTransition = sceneData?.isTransition || false
+		const suppressAutoJoin = sceneData?.suppressAutoJoin || false
 		
 		// Create player
 		this.player = createLocalPlayer(this, playerX, playerY, playerService.playerId)
@@ -83,15 +91,22 @@ export abstract class GameScene extends MapScene {
 
 		// Initialize the building placement manager
 		this.buildingPlacementManager = new BuildingPlacementManager(this)
+		this.workAreaSelectionManager = new WorkAreaSelectionManager(this)
+		this.roadPlacementManager = new RoadPlacementManager(this)
 
 		// Initialize FX
 		this.fx = new FX(this)
 
+		// Initialize road overlay
+		this.roadOverlay = new RoadOverlay(this, this.map.tileWidth)
+
 		// Set up collision for the player
 		this.initializeCollision([this.player.view])
 
+		EventBus.emit('ui:scene:ready', { mapId: this.mapKey })
+
 		// Only emit join event if this is not a scene transition
-		if (!isTransition) {
+		if (!isTransition && !suppressAutoJoin) {
 			EventBus.emit(Event.Players.CS.Join, { 
 				position: { x: playerX, y: playerY}, 
 				mapId: this.mapKey,
@@ -137,6 +152,12 @@ export abstract class GameScene extends MapScene {
 		if (this.buildingPlacementManager) {
 			this.buildingPlacementManager.update()
 		}
+		if (this.workAreaSelectionManager) {
+			this.workAreaSelectionManager.update()
+		}
+		if (this.roadPlacementManager) {
+			this.roadPlacementManager.update()
+		}
 
 		this.textDisplayService?.update()
 
@@ -172,6 +193,7 @@ export abstract class GameScene extends MapScene {
 		EventBus.on(Event.Buildings.SC.Progress, this.handleBuildingProgress, this)
 		EventBus.on(Event.Buildings.SC.Completed, this.handleBuildingCompleted, this)
 		EventBus.on(Event.Buildings.SC.Cancelled, this.handleBuildingCancelled, this)
+		EventBus.on(Event.Storage.SC.Spoilage, this.handleStorageSpoilage, this)
 
 		// Set up population event listeners
 		EventBus.on(Event.Population.SC.List, this.handlePopulationList, this)
@@ -179,6 +201,12 @@ export abstract class GameScene extends MapScene {
 		EventBus.on('ui:population:settler-spawned', this.handleUISettlerSpawned, this)
 		// Note: Position updates are now handled directly by SettlerController via MovementEvents
 		EventBus.on('ui:population:profession-changed', this.handleSettlerProfessionChanged, this)
+
+		// Set up road event listeners
+		EventBus.on(Event.Roads.SC.Sync, this.handleRoadSync, this)
+		EventBus.on(Event.Roads.SC.Updated, this.handleRoadUpdated, this)
+		EventBus.on(Event.Roads.SC.PendingSync, this.handleRoadPendingSync, this)
+		EventBus.on(Event.Roads.SC.PendingUpdated, this.handleRoadPendingUpdated, this)
 	}
 
 	private handlePlayerJoined = (data: { playerId: string, position: { x: number, y: number } }) => {
@@ -251,6 +279,34 @@ export abstract class GameScene extends MapScene {
 		}
 	}
 
+	private handleRoadSync = (data: { mapName: string, tiles: RoadTile[] }) => {
+		if (!this.roadOverlay || data.mapName !== this.mapKey) {
+			return
+		}
+		this.roadOverlay.setTiles(data.tiles)
+	}
+
+	private handleRoadUpdated = (data: { mapName: string, tiles: RoadTile[] }) => {
+		if (!this.roadOverlay || data.mapName !== this.mapKey) {
+			return
+		}
+		this.roadOverlay.applyUpdates(data.tiles)
+	}
+
+	private handleRoadPendingSync = (data: { mapName: string, tiles: RoadTile[] }) => {
+		if (!this.roadOverlay || data.mapName !== this.mapKey) {
+			return
+		}
+		this.roadOverlay.setPendingTiles(data.tiles)
+	}
+
+	private handleRoadPendingUpdated = (data: { mapName: string, tiles: RoadTile[] }) => {
+		if (!this.roadOverlay || data.mapName !== this.mapKey) {
+			return
+		}
+		this.roadOverlay.applyPendingUpdates(data.tiles)
+	}
+
 	private handleNPCDespawn = (data: { npc: NPC }) => {
 		const npcController = this.npcs.get(data.npc.id)
 		if (npcController) {
@@ -279,6 +335,11 @@ export abstract class GameScene extends MapScene {
 	private handleMapObjectSpawn = (data: { object: any }) => {
 		// Only add objects for the current map
 		if (data.object.mapName === this.mapKey) {
+			const existing = this.mapObjects.get(data.object.id)
+			if (existing) {
+				existing.controller.destroy()
+				this.mapObjects.delete(data.object.id)
+			}
 			const mapObject = createMapObject(this, data.object)
 			this.mapObjects.set(data.object.id, mapObject)
 			
@@ -477,6 +538,10 @@ export abstract class GameScene extends MapScene {
 			this.itemPlacementManager.destroy()
 			this.itemPlacementManager = null
 		}
+		if (this.roadPlacementManager) {
+			this.roadPlacementManager.destroy()
+			this.roadPlacementManager = null
+		}
 
 		// Clean up event listeners
 		EventBus.off(Event.Players.SC.Joined, this.handlePlayerJoined)
@@ -489,6 +554,16 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(Event.NPC.SC.Despawn, this.handleNPCDespawn)
 		EventBus.off(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn)
 		EventBus.off(Event.MapObjects.SC.Despawn, this.handleMapObjectDespawn)
+		EventBus.off(Event.Storage.SC.Spoilage, this.handleStorageSpoilage)
+		EventBus.off(Event.Roads.SC.Sync, this.handleRoadSync)
+		EventBus.off(Event.Roads.SC.Updated, this.handleRoadUpdated)
+		EventBus.off(Event.Roads.SC.PendingSync, this.handleRoadPendingSync)
+		EventBus.off(Event.Roads.SC.PendingUpdated, this.handleRoadPendingUpdated)
+
+		if (this.roadOverlay) {
+			this.roadOverlay.destroy()
+			this.roadOverlay = null
+		}
 	}
 
     public destroy(): void {
@@ -503,6 +578,21 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(Event.NPC.SC.Despawn, this.handleNPCDespawn)
 		EventBus.off(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn)
 		EventBus.off(Event.MapObjects.SC.Despawn, this.handleMapObjectDespawn)
+		EventBus.off(Event.Storage.SC.Spoilage, this.handleStorageSpoilage)
+		EventBus.off(Event.Roads.SC.Sync, this.handleRoadSync)
+		EventBus.off(Event.Roads.SC.Updated, this.handleRoadUpdated)
+		EventBus.off(Event.Roads.SC.PendingSync, this.handleRoadPendingSync)
+		EventBus.off(Event.Roads.SC.PendingUpdated, this.handleRoadPendingUpdated)
+
+		if (this.roadOverlay) {
+			this.roadOverlay.destroy()
+			this.roadOverlay = null
+		}
+
+		if (this.roadPlacementManager) {
+			this.roadPlacementManager.destroy()
+			this.roadPlacementManager = null
+		}
 		
 		this.npcProximityService.destroy()
 		super.destroy()
@@ -516,6 +606,23 @@ export abstract class GameScene extends MapScene {
 			const controller = createNPC(data.npc, this)
 			this.npcs.set(data.npc.id, controller)
 		}
+	}
+
+	private handleStorageSpoilage = (data: { buildingInstanceId: string, slotId: string, itemType: string, spoiledQuantity: number, position: { x: number, y: number } }) => {
+		if (!this.textDisplayService) {
+			return
+		}
+		const itemMeta = itemService.getItemType(data.itemType)
+		const emoji = itemMeta?.emoji || '🗑️'
+		this.textDisplayService.displayMessage({
+			message: `-${data.spoiledQuantity} ${emoji} spoiled`,
+			scene: this,
+			worldPosition: data.position,
+			fontSize: '16px',
+			color: '#d35400',
+			backgroundColor: 'transparent',
+			duration: 2000
+		})
 	}
 
 }

@@ -5,17 +5,19 @@ import { Settler, PopulationStatsData, PopulationListData, ProfessionType, Settl
 import { PlayerJoinData, PlayerTransitionData } from '../Players/types'
 
 type SettlersGetter = (mapName: string, playerId: string) => Settler[]
+type HousingCapacityGetter = (mapName: string, playerId: string) => number
 
 export class PopulationStats {
 	constructor(
 		private event: EventManager,
-		private getSettlers: SettlersGetter
+		private getSettlers: SettlersGetter,
+		private getHousingCapacity: HousingCapacityGetter
 	) {}
 
 	/**
 	 * Calculate population statistics from a list of settlers
 	 */
-	public calculate(settlers: Settler[]): PopulationStatsData {
+	public calculate(settlers: Settler[], housingCapacity: number): PopulationStatsData {
 		const byProfession: Record<ProfessionType, number> = {
 			[ProfessionType.Carrier]: 0,
 			[ProfessionType.Builder]: 0,
@@ -23,7 +25,8 @@ export class PopulationStats {
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Farmer]: 0,
 			[ProfessionType.Miller]: 0,
-			[ProfessionType.Baker]: 0
+			[ProfessionType.Baker]: 0,
+			[ProfessionType.Vendor]: 0
 		}
 		const byProfessionActive: Record<ProfessionType, number> = {
 			[ProfessionType.Carrier]: 0,
@@ -32,7 +35,8 @@ export class PopulationStats {
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Farmer]: 0,
 			[ProfessionType.Miller]: 0,
-			[ProfessionType.Baker]: 0
+			[ProfessionType.Baker]: 0,
+			[ProfessionType.Vendor]: 0
 		}
 
 		let idleCount = 0
@@ -56,7 +60,8 @@ export class PopulationStats {
 			byProfession,
 			byProfessionActive,
 			idleCount,
-			workingCount
+			workingCount,
+			housingCapacity
 		}
 	}
 
@@ -66,9 +71,10 @@ export class PopulationStats {
 	public sendPopulationList(client: EventClient, mapName: string): void {
 		// 1. Get all settlers for player and map
 		const settlers = this.getSettlers(mapName, client.id)
+		const housingCapacity = this.getHousingCapacity(mapName, client.id)
 
 		// 2. Calculate statistics (totalCount, byProfession, idleCount, workingCount)
-		const stats = this.calculate(settlers)
+		const stats = this.calculate(settlers, housingCapacity)
 
 		// 3. Emit sc:population:list with PopulationListData (settlers array + statistics)
 		const listData: PopulationListData = {
@@ -85,9 +91,10 @@ export class PopulationStats {
 	public emitPopulationStatsUpdate(client: EventClient, mapName: string): void {
 		// 1. Get all settlers for player and map
 		const settlers = this.getSettlers(mapName, client.id)
+		const housingCapacity = this.getHousingCapacity(mapName, client.id)
 
 		// 2. Calculate statistics only (totalCount, byProfession, idleCount, workingCount)
-		const stats = this.calculate(settlers)
+		const stats = this.calculate(settlers, housingCapacity)
 
 		// 3. Emit sc:population:stats-updated with PopulationStatsData (statistics only)
 		// Use event.emit to send to all clients in the group (map)

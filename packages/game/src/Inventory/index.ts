@@ -8,6 +8,7 @@ import type { ItemsManager } from "../Items"
 import { INVENTORY_GRID_ROWS, INVENTORY_GRID_COLUMNS } from '../consts'
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
+import type { InventorySnapshot } from '../state/types'
 
 const DEFAULT_INVENTORY_ITEM_NAME = 'chainfolk_rug'
 
@@ -344,4 +345,29 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 		const slot = inventory.slots.find(slot => slot.item?.id === itemId)
 		return slot?.item || undefined
 	}
-} 
+
+	serialize(): InventorySnapshot {
+		return {
+			inventories: Array.from(this.inventories.entries()).map(([playerId, inventory]) => ([
+				playerId,
+				{ slots: inventory.slots.map(slot => ({ position: { ...slot.position }, item: slot.item ? { ...slot.item } : null })) }
+			]))
+		}
+	}
+
+	deserialize(state: InventorySnapshot): void {
+		this.inventories.clear()
+		for (const [playerId, inventory] of state.inventories) {
+			this.inventories.set(playerId, {
+				slots: inventory.slots.map(slot => ({
+					position: { ...slot.position },
+					item: slot.item ? { ...slot.item } : null
+				}))
+			})
+		}
+	}
+
+	reset(): void {
+		this.inventories.clear()
+	}
+}

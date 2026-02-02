@@ -9,6 +9,7 @@ import { CutsceneEvents } from "../Cutscene/events"
 import type { ConditionEffectManager } from "../ConditionEffect"
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
+import type { DialogueSnapshot } from '../state/types'
 
 const DEFAULT_START_NODE = 'start'
 
@@ -296,4 +297,27 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 		const currentNodeId = this.currentNodes.get(playerId)
 		return currentNodeId === nodeId
 	}
-} 
+
+	serialize(): DialogueSnapshot {
+		return {
+			activeDialogues: Array.from(this.activeDialogues.entries()),
+			currentNodes: Array.from(this.currentNodes.entries())
+		}
+	}
+
+	deserialize(state: DialogueSnapshot): void {
+		this.activeDialogues.clear()
+		this.currentNodes.clear()
+		for (const [clientId, dialogueId] of state.activeDialogues) {
+			this.activeDialogues.set(clientId, dialogueId)
+		}
+		for (const [clientId, nodeId] of state.currentNodes) {
+			this.currentNodes.set(clientId, nodeId)
+		}
+	}
+
+	reset(): void {
+		this.activeDialogues.clear()
+		this.currentNodes.clear()
+	}
+}

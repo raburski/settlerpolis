@@ -79,5 +79,9 @@ export const startingItems: StartingItem[] = [
 	// 40 logs below (positive y) as piles of up to 8
 	...generatePiles(ItemType.Logs, [8, 8, 8, 8, 8], -2, 3, 4),
 	// 40 stones above (negative y) as piles of up to 8
-	...generatePiles(ItemType.Stone, [8, 8, 8, 8, 8], -2, -5, 4)
+	...generatePiles(ItemType.Stone, [8, 8, 8, 8, 8], -2, -5, 4),
+	// 40 planks to the right as piles of up to 10
+	...generatePiles(ItemType.Planks, [10, 10, 10, 10], 4, -1, 2),
+	// Bread near the starting area as small piles
+	...generatePiles(ItemType.Bread, [6, 6], 2, 3, 2)
 ]

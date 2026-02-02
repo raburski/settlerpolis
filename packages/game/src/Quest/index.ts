@@ -14,6 +14,7 @@ import {
 import type { ConditionEffectManager } from "../ConditionEffect"
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
+import type { QuestSnapshot } from '../state/types'
 
 export interface QuestDeps {
 	conditionEffect: ConditionEffectManager
@@ -793,4 +794,51 @@ export class QuestManager extends BaseManager<QuestDeps> {
 			}
 		}
 	}
-} 
+
+	serialize(): QuestSnapshot {
+		return {
+			playerQuestStates: Array.from(this.playerQuestStates.entries()).map(([playerId, state]) => ([
+				playerId,
+				{
+					...state,
+					activeQuests: state.activeQuests.map(progress => ({ ...progress, completedSteps: [...progress.completedSteps] })),
+					completedQuests: [...state.completedQuests]
+				}
+			])),
+			globalQuestStates: Array.from(this.globalQuestStates.entries()).map(([questId, progress]) => ([
+				questId,
+				{ ...progress, completedSteps: [...progress.completedSteps] }
+			])),
+			sharedQuestStates: Array.from(this.sharedQuestStates.entries()).map(([questId, progress]) => ([
+				questId,
+				{ ...progress, completedSteps: [...progress.completedSteps] }
+			]))
+		}
+	}
+
+	deserialize(state: QuestSnapshot): void {
+		this.playerQuestStates.clear()
+		this.globalQuestStates.clear()
+		this.sharedQuestStates.clear()
+
+		for (const [playerId, questState] of state.playerQuestStates) {
+			this.playerQuestStates.set(playerId, {
+				...questState,
+				activeQuests: questState.activeQuests.map(progress => ({ ...progress, completedSteps: [...progress.completedSteps] })),
+				completedQuests: [...questState.completedQuests]
+			})
+		}
+		for (const [questId, progress] of state.globalQuestStates) {
+			this.globalQuestStates.set(questId, { ...progress, completedSteps: [...progress.completedSteps] })
+		}
+		for (const [questId, progress] of state.sharedQuestStates) {
+			this.sharedQuestStates.set(questId, { ...progress, completedSteps: [...progress.completedSteps] })
+		}
+	}
+
+	reset(): void {
+		this.playerQuestStates.clear()
+		this.globalQuestStates.clear()
+		this.sharedQuestStates.clear()
+	}
+}

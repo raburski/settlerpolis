@@ -26,6 +26,12 @@ export class MovementController {
 		this.speed = options.speed
 		this.options = options
 	}
+
+	setSpeed(speed: number): void {
+		if (speed > 0) {
+			this.speed = speed
+		}
+	}
 	
 	/**
 	 * Set target position and start movement interpolation
@@ -136,4 +142,3 @@ export class MovementController {
 		}
 	}
 }
-
