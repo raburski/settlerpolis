@@ -1,6 +1,7 @@
 import type { ActionHandler } from './types'
 import { WorkActionType } from '../types'
 import { MoveActionHandler } from './move'
+import { FollowPathActionHandler } from './followPath'
 import { WaitActionHandler } from './wait'
 import { ConsumeActionHandler } from './consume'
 import { SleepActionHandler } from './sleep'
@@ -19,6 +20,7 @@ import { ChangeHomeActionHandler } from './changeHome'
 
 export const ActionHandlers: Record<WorkActionType, ActionHandler> = {
 	[WorkActionType.Move]: MoveActionHandler,
+	[WorkActionType.FollowPath]: FollowPathActionHandler,
 	[WorkActionType.Wait]: WaitActionHandler,
 	[WorkActionType.Construct]: ConstructActionHandler,
 	[WorkActionType.BuildRoad]: BuildRoadActionHandler,

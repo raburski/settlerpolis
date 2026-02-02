@@ -47,6 +47,7 @@ export enum WorkWaitReason {
 
 export enum WorkActionType {
 	Move = 'move',
+	FollowPath = 'follow_path',
 	Wait = 'wait',
 	Construct = 'construct',
 	BuildRoad = 'build_road',
@@ -106,6 +107,7 @@ export type TransportTarget =
 
 export type WorkAction =
 	| { type: WorkActionType.Move, position: Position, targetType?: string, targetId?: string, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.FollowPath, path: Position[], targetType?: string, targetId?: string, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Wait, durationMs: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Construct, buildingInstanceId: string, durationMs: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.BuildRoad, jobId: string, durationMs: number, setState?: import('../../Population/types').SettlerState }

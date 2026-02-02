@@ -9,7 +9,8 @@ export const resourceNodeDefinitions: ResourceNodeDefinition[] = [
 		outputItemType: ItemType.Logs,
 		harvestQuantity: 1,
 		harvestTimeMs: 2500,
-		maxHarvests: 6
+		maxHarvests: 6,
+		blocksMovement: true
 	},
 	{
 		id: 'stone_deposit',

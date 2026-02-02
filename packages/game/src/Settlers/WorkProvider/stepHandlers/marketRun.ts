@@ -14,6 +14,7 @@ const DEFAULT_ROAD_SEARCH_RADIUS = 8
 const DEFAULT_HOUSE_SEARCH_RADIUS = 3
 const DEFAULT_CARRY_QUANTITY = 8
 const DEFAULT_DELIVERY_QUANTITY = 2
+const DEFAULT_WALKABLE_SEARCH_RADIUS = 4
 
 const toTile = (position: Position, tileSize: number): TilePosition => ({
 	x: Math.floor(position.x / tileSize),
@@ -24,6 +25,54 @@ const toWorld = (tile: TilePosition, tileSize: number): Position => ({
 	x: tile.x * tileSize + tileSize / 2,
 	y: tile.y * tileSize + tileSize / 2
 })
+
+const findNearestWalkableTile = (
+	collision: { width: number, height: number, data: number[] } | undefined,
+	origin: TilePosition,
+	maxRadius: number
+): TilePosition | null => {
+	if (!collision) {
+		return origin
+	}
+	const isWalkable = (tile: TilePosition) => {
+		if (tile.x < 0 || tile.y < 0 || tile.x >= collision.width || tile.y >= collision.height) {
+			return false
+		}
+		const index = tile.y * collision.width + tile.x
+		return collision.data[index] === 0
+	}
+	if (isWalkable(origin)) {
+		return origin
+	}
+	for (let radius = 1; radius <= maxRadius; radius++) {
+		for (let dx = -radius; dx <= radius; dx++) {
+			const dy = radius - Math.abs(dx)
+			const candidates = [
+				{ x: origin.x + dx, y: origin.y + dy },
+				{ x: origin.x + dx, y: origin.y - dy }
+			]
+			for (const candidate of candidates) {
+				if (isWalkable(candidate)) {
+					return candidate
+				}
+			}
+		}
+	}
+	return null
+}
+
+const resolveWalkablePosition = (
+	collision: { width: number, height: number, data: number[] } | undefined,
+	position: Position,
+	tileSize: number
+): Position | null => {
+	const origin = toTile(position, tileSize)
+	const walkable = findNearestWalkableTile(collision, origin, DEFAULT_WALKABLE_SEARCH_RADIUS)
+	if (!walkable) {
+		return null
+	}
+	return toWorld(walkable, tileSize)
+}
 
 const isRoadTile = (roadData: { width: number, height: number, data: Array<RoadType | null> } | null, tile: TilePosition): boolean => {
 	if (!roadData) {
@@ -71,28 +120,62 @@ const getRoadNeighbors = (roadData: { width: number, height: number, data: Array
 	return neighbors.filter(neighbor => isRoadTile(roadData, neighbor))
 }
 
-const buildRoadWalk = (roadData: { width: number, height: number, data: Array<RoadType | null> } | null, start: TilePosition | null, maxSteps: number): TilePosition[] => {
+const tileKey = (tile: TilePosition): string => `${tile.x},${tile.y}`
+
+const buildGreedyRoadWalk = (roadData: { width: number, height: number, data: Array<RoadType | null> } | null, start: TilePosition | null, maxSteps: number): TilePosition[] => {
 	if (!roadData || !start || maxSteps <= 0) {
 		return []
 	}
-	const route: TilePosition[] = [start]
-	const visited = new Set<string>([`${start.x},${start.y}`])
-	let current = start
 
-	for (let i = 0; i < maxSteps; i++) {
+	const route: TilePosition[] = [start]
+	const visited = new Set<string>([tileKey(start)])
+	const stack: TilePosition[] = [start]
+	let steps = 0
+
+	const countUnvisitedNeighbors = (tile: TilePosition): number => {
+		return getRoadNeighbors(roadData, tile).filter(neighbor => !visited.has(tileKey(neighbor))).length
+	}
+
+	while (steps < maxSteps) {
+		const current = stack[stack.length - 1]
+		if (!current) {
+			break
+		}
 		const neighbors = getRoadNeighbors(roadData, current)
-		if (neighbors.length === 0) {
+		const unvisited = neighbors.filter(neighbor => !visited.has(tileKey(neighbor)))
+		if (unvisited.length > 0) {
+			let minScore = Number.POSITIVE_INFINITY
+			let candidates: TilePosition[] = []
+			for (const neighbor of unvisited) {
+				const score = countUnvisitedNeighbors(neighbor)
+				if (score < minScore) {
+					minScore = score
+					candidates = [neighbor]
+				} else if (score === minScore) {
+					candidates.push(neighbor)
+				}
+			}
+			const next = candidates[Math.floor(Math.random() * candidates.length)]
+			if (!next) {
+				break
+			}
+			visited.add(tileKey(next))
+			stack.push(next)
+			route.push(next)
+			steps += 1
+			continue
+		}
+
+		if (stack.length <= 1) {
 			break
 		}
-		const unvisited = neighbors.filter(neighbor => !visited.has(`${neighbor.x},${neighbor.y}`))
-		const candidates = unvisited.length > 0 ? unvisited : neighbors
-		const next = candidates[Math.floor(Math.random() * candidates.length)]
-		if (!next) {
+		stack.pop()
+		const backtrack = stack[stack.length - 1]
+		if (!backtrack) {
 			break
 		}
-		route.push(next)
-		visited.add(`${next.x},${next.y}`)
-		current = next
+		route.push(backtrack)
+		steps += 1
 	}
 
 	return route
@@ -136,6 +219,7 @@ export const MarketRunHandler: StepHandler = {
 		const roadSearchRadius = config.roadSearchRadiusTiles ?? DEFAULT_ROAD_SEARCH_RADIUS
 		const houseSearchRadius = config.houseSearchRadiusTiles ?? DEFAULT_HOUSE_SEARCH_RADIUS
 		const deliveryQuantity = Math.max(1, config.deliveryQuantity ?? DEFAULT_DELIVERY_QUANTITY)
+		const collision = map.collision
 
 		const settler = managers.population.getSettler(settlerId)
 		if (!settler) {
@@ -162,7 +246,10 @@ export const MarketRunHandler: StepHandler = {
 		}
 
 		if (!itemType) {
-			return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
+			if (allowedTypes.length === 0) {
+				return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
+			}
+			itemType = allowedTypes[0]
 		}
 
 		const resolvedItemType = itemType
@@ -175,14 +262,10 @@ export const MarketRunHandler: StepHandler = {
 			.filter(entry => managers.storage.acceptsItemType(entry.building.id, resolvedItemType))
 			.filter(entry => managers.storage.hasAvailableStorage(entry.building.id, resolvedItemType, deliveryQuantity))
 
-		if (houses.length === 0) {
-			return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
-		}
-
 		const roadData = managers.roads.getRoadData(market.mapName)
 		const marketTile = toTile(market.position, tileSize)
 		const startRoad = findClosestRoadTile(roadData, marketTile, roadSearchRadius)
-		const roadRoute = buildRoadWalk(roadData, startRoad, Math.max(1, maxDistanceTiles))
+		const roadRoute = buildGreedyRoadWalk(roadData, startRoad, Math.max(1, maxDistanceTiles))
 
 		const actions: WorkAction[] = []
 		const releaseFns: Array<() => void> = []
@@ -192,20 +275,30 @@ export const MarketRunHandler: StepHandler = {
 			const maxCarry = Math.max(1, config.carryQuantity ?? managers.items.getItemMetadata(resolvedItemType)?.maxStackSize ?? DEFAULT_CARRY_QUANTITY)
 			const available = managers.storage.getAvailableQuantity(market.id, resolvedItemType)
 			remaining = Math.min(maxCarry, available)
-			if (remaining <= 0) {
-				return { actions: [{ type: WorkActionType.Wait, durationMs: 1200, setState: SettlerState.WaitingForWork }] }
-			}
+			if (remaining > 0) {
+				let reservation = reservationSystem.reserveStorageOutgoingInternal(market.id, resolvedItemType, remaining, assignment.assignmentId)
+				if (!reservation && remaining > 1) {
+					reservation = reservationSystem.reserveStorageOutgoingInternal(market.id, resolvedItemType, 1, assignment.assignmentId)
+				}
 
-			const reservation = reservationSystem.reserveStorageOutgoing(market.id, resolvedItemType, remaining, assignment.assignmentId)
-			if (!reservation) {
-				return { actions: [{ type: WorkActionType.Wait, durationMs: 1200, setState: SettlerState.WaitingForWork }] }
+				if (reservation) {
+					const reservationId = reservation.reservationId
+					const reservedQuantity = reservation.quantity
+					releaseFns.push(() => reservationSystem.releaseStorageReservation(reservationId))
+					remaining = reservedQuantity
+					const withdrawPosition = resolveWalkablePosition(collision, market.position, tileSize) ?? market.position
+					actions.push(
+						{ type: WorkActionType.Move, position: withdrawPosition, targetType: 'building', targetId: market.id, setState: SettlerState.MovingToBuilding },
+						{ type: WorkActionType.WithdrawStorage, buildingInstanceId: market.id, itemType: resolvedItemType, quantity: reservedQuantity, reservationId, setState: SettlerState.CarryingItem }
+					)
+				} else {
+					remaining = 0
+				}
 			}
-			releaseFns.push(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
+		}
 
-			actions.push(
-				{ type: WorkActionType.Move, position: reservation.position, targetType: 'storage_slot', targetId: reservation.reservationId, setState: SettlerState.MovingToBuilding },
-				{ type: WorkActionType.WithdrawStorage, buildingInstanceId: market.id, itemType: resolvedItemType, quantity: remaining, reservationId: reservation.reservationId, setState: SettlerState.CarryingItem }
-			)
+		if (remaining <= 0) {
+			return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
 		}
 
 		if (startRoad) {
@@ -223,23 +316,35 @@ export const MarketRunHandler: StepHandler = {
 
 		const fallbackTile = startRoad ?? marketTile
 		const routeTiles = roadRoute.length > 0 ? roadRoute : [fallbackTile]
-		let lastRoadTile = routeTiles[routeTiles.length - 1] ?? fallbackTile
+		let lastRoadTile = routeTiles[0] ?? fallbackTile
+		let segmentTiles: TilePosition[] = routeTiles.length > 0 ? [routeTiles[0]] : []
 
-		for (let index = 0; index < routeTiles.length; index++) {
-			const roadTile = routeTiles[index]
-
-			if (!(index === 0 && startRoad)) {
+		const flushSegment = () => {
+			if (segmentTiles.length > 1) {
+				const endTile = segmentTiles[segmentTiles.length - 1]
 				actions.push({
-					type: WorkActionType.Move,
-					position: toWorld(roadTile, tileSize),
+					type: WorkActionType.FollowPath,
+					path: segmentTiles.map(tile => toWorld(tile, tileSize)),
 					targetType: 'road',
-					targetId: `${roadTile.x},${roadTile.y}`,
+					targetId: `${endTile.x},${endTile.y}`,
 					setState: SettlerState.Moving
 				})
 			}
+			if (segmentTiles.length > 0) {
+				segmentTiles = [segmentTiles[segmentTiles.length - 1]]
+			}
+		}
+
+		for (let index = 0; index < routeTiles.length; index++) {
+			const roadTile = routeTiles[index]
+			lastRoadTile = roadTile
+
+			if (index > 0) {
+				segmentTiles.push(roadTile)
+			}
 
 			if (remaining <= 0 || stops >= maxStops) {
-				continue
+				break
 			}
 
 			const houseCandidate = houses
@@ -261,19 +366,17 @@ export const MarketRunHandler: StepHandler = {
 				continue
 			}
 
-			const path = managers.map.findPath(market.mapName, toWorld(roadTile, tileSize), reservation.position, {
-				roadData: roadData || undefined,
-				allowDiagonal: true
-			})
-			if (!path || path.length === 0) {
-				reservationSystem.releaseStorageReservation(reservation.reservationId)
+			releaseFns.push(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
+
+			const deliverPosition = resolveWalkablePosition(collision, houseCandidate.building.position, tileSize)
+			if (!deliverPosition) {
 				continue
 			}
 
-			releaseFns.push(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
+			flushSegment()
 
 			actions.push(
-				{ type: WorkActionType.Move, position: reservation.position, targetType: 'storage_slot', targetId: reservation.reservationId, setState: SettlerState.CarryingItem },
+				{ type: WorkActionType.Move, position: deliverPosition, targetType: 'building', targetId: houseCandidate.building.id, setState: SettlerState.CarryingItem },
 				{ type: WorkActionType.DeliverStorage, buildingInstanceId: houseCandidate.building.id, itemType: resolvedItemType, quantity: deliverQty, reservationId: reservation.reservationId, setState: SettlerState.Working }
 			)
 
@@ -290,13 +393,22 @@ export const MarketRunHandler: StepHandler = {
 			remaining -= deliverQty
 			delivered.add(houseCandidate.building.id)
 			stops += 1
+
+			if (remaining <= 0 || stops >= maxStops) {
+				break
+			}
+		}
+
+		if (segmentTiles.length > 1) {
+			flushSegment()
 		}
 
 		const returnPosition = lastRoadTile ? toWorld(lastRoadTile, tileSize) : market.position
 		if (calculateDistance(returnPosition, market.position) > tileSize) {
+			const approachPosition = resolveWalkablePosition(collision, market.position, tileSize) ?? market.position
 			actions.push({
 				type: WorkActionType.Move,
-				position: market.position,
+				position: approachPosition,
 				targetType: 'building',
 				targetId: market.id,
 				setState: SettlerState.MovingToBuilding
@@ -307,8 +419,9 @@ export const MarketRunHandler: StepHandler = {
 			const returnReservation = reservationSystem.reserveStorageIncoming(market.id, resolvedItemType, remaining, assignment.assignmentId)
 			if (returnReservation) {
 				releaseFns.push(() => reservationSystem.releaseStorageReservation(returnReservation.reservationId))
+				const deliverPosition = resolveWalkablePosition(collision, market.position, tileSize) ?? market.position
 				actions.push(
-					{ type: WorkActionType.Move, position: returnReservation.position, targetType: 'storage_slot', targetId: returnReservation.reservationId, setState: SettlerState.CarryingItem },
+					{ type: WorkActionType.Move, position: deliverPosition, targetType: 'building', targetId: market.id, setState: SettlerState.CarryingItem },
 					{ type: WorkActionType.DeliverStorage, buildingInstanceId: market.id, itemType: resolvedItemType, quantity: remaining, reservationId: returnReservation.reservationId, setState: SettlerState.Working }
 				)
 			} else {

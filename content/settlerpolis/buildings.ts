@@ -172,12 +172,12 @@ export const buildings: BuildingDefinition[] = [
 		spawnRate: 30, // Spawn a settler every 30 seconds
 		storage: {
 			capacities: {
-				[ItemType.Bread]: 50,
-				[ItemType.Carrot]: 16
+				[ItemType.Bread]: 3,
+				[ItemType.Carrot]: 3
 			},
 			slots: [
-				{ itemType: ItemType.Bread, offset: { x: 1, y: 1 }, hidden: true },
-				{ itemType: ItemType.Carrot, offset: { x: 1, y: 0 }, hidden: true }
+				{ itemType: ItemType.Bread, offset: { x: 1, y: 1 }, hidden: true, maxQuantity: 3 },
+				{ itemType: ItemType.Carrot, offset: { x: 1, y: 0 }, hidden: true, maxQuantity: 3 }
 			]
 		}
 	},
@@ -199,10 +199,6 @@ export const buildings: BuildingDefinition[] = [
 		costs: [
 			{
 				itemType: ItemType.Logs,
-				quantity: 1
-			},
-			{
-				itemType: ItemType.Stone,
 				quantity: 1
 			}
 		],
@@ -239,10 +235,6 @@ export const buildings: BuildingDefinition[] = [
 		costs: [
 			{
 				itemType: ItemType.Logs,
-				quantity: 1
-			},
-			{
-				itemType: ItemType.Stone,
 				quantity: 1
 			}
 		],
@@ -573,7 +565,7 @@ export const buildings: BuildingDefinition[] = [
 				desiredQuantity: 12
 			}
 		],
-		requiredProfession: ProfessionType.Carrier,
+		requiredProfession: ProfessionType.Vendor,
 		workerSlots: 1,
 		marketDistribution: {
 			maxDistanceTiles: 24,

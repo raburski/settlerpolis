@@ -76,7 +76,8 @@ export const SettlerInfoPanel: React.FC = () => {
 		[ProfessionType.Miner]: 'Miner',
 		[ProfessionType.Farmer]: 'Farmer',
 		[ProfessionType.Miller]: 'Miller',
-		[ProfessionType.Baker]: 'Baker'
+		[ProfessionType.Baker]: 'Baker',
+		[ProfessionType.Vendor]: 'Vendor'
 	}
 
 	const professionIcons: Record<ProfessionType, string> = {
@@ -86,7 +87,8 @@ export const SettlerInfoPanel: React.FC = () => {
 		[ProfessionType.Miner]: '⛏️',
 		[ProfessionType.Farmer]: '🌾',
 		[ProfessionType.Miller]: '🌬️',
-		[ProfessionType.Baker]: '🥖'
+		[ProfessionType.Baker]: '🥖',
+		[ProfessionType.Vendor]: '🛍️'
 	}
 
 	const getStateLabel = (state: SettlerState): string => {
@@ -97,6 +99,8 @@ export const SettlerInfoPanel: React.FC = () => {
 				return '✨ Spawned'
 			case SettlerState.Assigned:
 				return '📌 Assigned'
+			case SettlerState.Moving:
+				return '🚶 Moving'
 			case SettlerState.MovingToTool:
 				return '🚶 Moving to Tool'
 			case SettlerState.MovingToBuilding:

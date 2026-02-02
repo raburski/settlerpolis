@@ -12,6 +12,7 @@ export interface StorageCapacity {
 		itemType: string
 		offset: { x: number, y: number }
 		hidden?: boolean
+		maxQuantity?: number
 	}>
 }
 

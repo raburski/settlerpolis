@@ -427,6 +427,12 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			return
 		}
 
+		this.actionSystem.abort(data.settlerId)
+		this.movementFailureCounts.delete(data.settlerId)
+		this.movementRecoveryUntil.delete(data.settlerId)
+		this.movementRecoveryReason.delete(data.settlerId)
+		this.pendingDispatchAtMs.delete(data.settlerId)
+
 		this.assignments.delete(data.settlerId)
 		if (assignment.buildingInstanceId) {
 			this.assignmentsByBuilding.get(assignment.buildingInstanceId)?.delete(data.settlerId)
@@ -1086,6 +1092,16 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		}
 
 		this.logisticsProvider.deserialize(state.logistics)
+
+		for (const assignment of this.assignments.values()) {
+			if (this.actionSystem.isBusy(assignment.settlerId)) {
+				continue
+			}
+			if (this.pauseRequests.has(assignment.settlerId) || this.pausedContexts.has(assignment.settlerId)) {
+				continue
+			}
+			this.dispatchNextStep(assignment.settlerId)
+		}
 	}
 
 	reset(): void {

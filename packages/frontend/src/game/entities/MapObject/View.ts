@@ -31,6 +31,7 @@ export class MapObjectView {
 	private completedHandler: ((data: { building: any }) => void) | null = null
 	private isEmojiFallback: boolean = false
 	private catalogHandler: ((data: { buildings: BuildingDefinition[] }) => void) | null = null
+	private readonly treeGrowthStages = [0.65, 0.82, 1]
 
 	constructor(scene: Scene, mapObject: MapObject) {
 		this.scene = scene
@@ -165,6 +166,11 @@ export class MapObjectView {
 		// Set the display size based on the item type
 		this.setDisplaySize(itemMetadata)
 
+		// Apply tree-specific visuals (growth + anchor) after sizing
+		if (this.isTreeResourceNode() && this.sprite) {
+			this.applyTreeVisuals(scene, this.sprite)
+		}
+
 		// Make building sprites interactive/clickable
 		if (this.isBuilding) {
 			this.sprite.setInteractive({ useHandCursor: true })
@@ -191,6 +197,10 @@ export class MapObjectView {
 		})
 		this.emojiText.setOrigin(0.5, 0.5)
 		this.emojiText.setDepth(this.mapObject.position.y)
+
+		if (this.isTreeResourceNode()) {
+			this.applyTreeVisuals(scene, this.emojiText)
+		}
 
 		if (this.isBuilding) {
 			this.emojiText.setInteractive({ useHandCursor: true })
@@ -377,6 +387,42 @@ export class MapObjectView {
 				buildingId: this.mapObject.metadata?.buildingId
 			})
 		}
+	}
+
+	private isTreeResourceNode(): boolean {
+		return this.mapObject.metadata?.resourceNode === true && this.mapObject.metadata?.resourceNodeType === 'tree'
+	}
+
+	private applyTreeVisuals(scene: Scene, displayObject: Phaser.GameObjects.Sprite | Phaser.GameObjects.Text): void {
+		const tileSize = 32
+		const baseX = this.mapObject.position.x + tileSize / 2
+		const baseY = this.mapObject.position.y + tileSize
+
+		displayObject.setOrigin(0.5, 1)
+		displayObject.setPosition(baseX, baseY)
+
+		const baseScaleX = displayObject.scaleX || 1
+		const baseScaleY = displayObject.scaleY || 1
+		const [small, medium, large] = this.treeGrowthStages
+
+		displayObject.setScale(baseScaleX * small, baseScaleY * small)
+		scene.tweens.add({
+			targets: displayObject,
+			scaleX: baseScaleX * medium,
+			scaleY: baseScaleY * medium,
+			duration: 1200,
+			ease: 'Sine.easeOut',
+			onComplete: () => {
+				if (!displayObject.active) return
+				scene.tweens.add({
+					targets: displayObject,
+					scaleX: baseScaleX * large,
+					scaleY: baseScaleY * large,
+					duration: 1600,
+					ease: 'Sine.easeOut'
+				})
+			}
+		})
 	}
 	
 	private getTexture(itemMetadata: ItemMetadata): { key: string, frame: number, scale: number } {

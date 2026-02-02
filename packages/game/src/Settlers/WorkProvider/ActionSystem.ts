@@ -66,6 +66,16 @@ export class ActionSystem {
 		return this.queues.has(settlerId)
 	}
 
+	public abort(settlerId: string): void {
+		const queue = this.queues.get(settlerId)
+		if (!queue) {
+			return
+		}
+		this.managers.movement.cancelMovement(settlerId)
+		this.releaseReservations(queue.actions, queue.context?.reservationOwnerId, settlerId)
+		this.queues.delete(settlerId)
+	}
+
 	public registerContextResolver(kind: ActionQueueContext['kind'], resolver: ActionQueueContextResolver): void {
 		this.contextResolvers.set(kind, resolver)
 	}

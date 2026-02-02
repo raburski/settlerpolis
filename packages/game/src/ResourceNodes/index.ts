@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { EventManager, EventClient, Event } from '../events'
 import type { MapObjectsManager } from '../MapObjects'
+import type { MapManager } from '../Map'
 import type { ItemsManager } from '../Items'
 import { Item } from '../Items/types'
 import { Position } from '../types'
@@ -19,6 +20,7 @@ const TILE_SIZE = 32
 const WORLD_PLAYER_ID = 'world'
 
 export interface ResourceNodesDeps {
+	map: MapManager
 	mapObjects: MapObjectsManager
 	items: ItemsManager
 }
@@ -130,6 +132,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			this.nodes.set(nodeId, node)
 		}
 
+		this.rebuildBlockingCollision()
 		this.logger.log(`[ResourceNodesManager] Spawned ${this.nodes.size} resource nodes`)
 	}
 
@@ -209,6 +212,10 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		if (node.remainingHarvests <= 0) {
 			if (node.mapObjectId) {
 				this.managers.mapObjects.removeObjectById(node.mapObjectId, node.mapName)
+			}
+			const def = this.definitions.get(node.nodeType)
+			if (def) {
+				this.updateCollisionForNode(node, def, false)
 			}
 			this.nodes.delete(node.id)
 		}
@@ -305,6 +312,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		}
 
 		this.nodes.set(nodeId, node)
+		this.updateCollisionForNode(node, def, true)
 		return node
 	}
 
@@ -347,7 +355,43 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			if (node.mapObjectId) {
 				this.managers.mapObjects.removeObjectById(node.mapObjectId, node.mapName)
 			}
+			const def = this.definitions.get(node.nodeType)
+			if (def) {
+				this.updateCollisionForNode(node, def, false)
+			}
 			this.nodes.delete(node.id)
+		}
+	}
+
+	private updateCollisionForNode(node: ResourceNodeInstance, def: ResourceNodeDefinition, blocked: boolean): void {
+		const shouldBlock = def.blocksMovement ?? def.id === 'tree'
+		if (!shouldBlock) return
+		const map = this.managers.map.getMap(node.mapName)
+		if (!map) return
+
+		const tileX = Math.floor(node.position.x / map.tiledMap.tilewidth)
+		const tileY = Math.floor(node.position.y / map.tiledMap.tileheight)
+		this.managers.map.setDynamicCollision(node.mapName, tileX, tileY, blocked)
+	}
+
+	public rebuildBlockingCollision(mapName?: string): void {
+		const nodes = Array.from(this.nodes.values())
+		const mapNames = new Set<string>()
+
+		for (const node of nodes) {
+			if (mapName && node.mapName !== mapName) continue
+			mapNames.add(node.mapName)
+		}
+
+		for (const name of mapNames) {
+			this.managers.map.resetDynamicCollision(name)
+		}
+
+		for (const node of nodes) {
+			if (mapName && node.mapName !== mapName) continue
+			const def = this.definitions.get(node.nodeType)
+			if (!def) continue
+			this.updateCollisionForNode(node, def, true)
 		}
 	}
 

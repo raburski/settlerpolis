@@ -103,6 +103,7 @@ export interface BuildingDefinition {
 		houseSearchRadiusTiles?: number
 		carryQuantity?: number
 		deliveryQuantity?: number
+		patrolStrideTiles?: number
 	}
 	amenitySlots?: {
 		count: number

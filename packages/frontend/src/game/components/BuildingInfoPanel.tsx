@@ -9,6 +9,7 @@ import { productionService } from '../services/ProductionService'
 import { DraggablePanel } from './DraggablePanel'
 import { useResourceList } from './hooks/useResourceList'
 import sharedStyles from './PanelShared.module.css'
+import confirmStyles from './ConfirmDialog.module.css'
 
 // Component to display item emoji that reactively updates when metadata loads
 const ItemEmoji: React.FC<{ itemType: string }> = ({ itemType }) => {
@@ -45,6 +46,7 @@ export const BuildingInfoPanel: React.FC = () => {
 	const [buildingDefinition, setBuildingDefinition] = useState<BuildingDefinition | null>(null)
 	const [errorMessage, setErrorMessage] = useState<string | null>(null)
 	const [workerStatus, setWorkerStatus] = useState<string | null>(null)
+	const [showDemolishConfirm, setShowDemolishConfirm] = useState(false)
 	const resourceTypes = useResourceList()
 
 	useEffect(() => {
@@ -57,6 +59,7 @@ export const BuildingInfoPanel: React.FC = () => {
 			setBuildingDefinition(data.buildingDefinition)
 			setErrorMessage(null) // Clear any previous errors
 			setWorkerStatus(null) // Clear any previous status
+			setShowDemolishConfirm(false)
 			setIsVisible(true)
 			EventBus.emit('ui:building:highlight', { buildingInstanceId: data.buildingInstance.id, highlighted: true })
 			// Close settler panel if open
@@ -83,6 +86,7 @@ export const BuildingInfoPanel: React.FC = () => {
 		const handleBuildingCancelled = (data: { buildingInstanceId: string }) => {
 			if (buildingInstance && buildingInstance.id === data.buildingInstanceId) {
 				setIsVisible(false)
+				setShowDemolishConfirm(false)
 				EventBus.emit('ui:building:highlight', { buildingInstanceId: buildingInstance.id, highlighted: false })
 				setBuildingInstance(null)
 				setBuildingDefinition(null)
@@ -92,6 +96,7 @@ export const BuildingInfoPanel: React.FC = () => {
 		// Listen for close panel event
 		const handleClosePanel = () => {
 			setIsVisible(false)
+			setShowDemolishConfirm(false)
 			if (buildingInstance) {
 				EventBus.emit('ui:building:highlight', { buildingInstanceId: buildingInstance.id, highlighted: false })
 			}
@@ -267,11 +272,31 @@ export const BuildingInfoPanel: React.FC = () => {
 		}
 	}
 
+	const handleDemolishBuilding = () => {
+		if (buildingInstance && buildingInstance.stage === ConstructionStage.Completed) {
+			setShowDemolishConfirm(true)
+		}
+	}
+
+	const handleConfirmDemolish = () => {
+		if (buildingInstance && buildingInstance.stage === ConstructionStage.Completed) {
+			EventBus.emit(Event.Buildings.CS.Cancel, {
+				buildingInstanceId: buildingInstance.id
+			})
+		}
+		setShowDemolishConfirm(false)
+	}
+
+	const handleCancelDemolish = () => {
+		setShowDemolishConfirm(false)
+	}
+
 	const handleClose = () => {
 		if (buildingInstance) {
 			EventBus.emit('ui:building:highlight', { buildingInstanceId: buildingInstance.id, highlighted: false })
 		}
 		setIsVisible(false)
+		setShowDemolishConfirm(false)
 		setBuildingInstance(null)
 		setBuildingDefinition(null)
 		EventBus.emit('ui:building:close')
@@ -283,6 +308,7 @@ export const BuildingInfoPanel: React.FC = () => {
 
 	const canCancel = buildingInstance.stage === ConstructionStage.CollectingResources || buildingInstance.stage === ConstructionStage.Constructing
 	const isCompleted = buildingInstance.stage === ConstructionStage.Completed
+	const canDemolish = isCompleted
 	const isConstructing = buildingInstance.stage === ConstructionStage.Constructing
 	const isCollectingResources = buildingInstance.stage === ConstructionStage.CollectingResources
 	const hasWorkerSlots = buildingDefinition.workerSlots !== undefined
@@ -333,7 +359,8 @@ export const BuildingInfoPanel: React.FC = () => {
 		[ProfessionType.Miner]: 'Miner',
 		[ProfessionType.Farmer]: 'Farmer',
 		[ProfessionType.Miller]: 'Miller',
-		[ProfessionType.Baker]: 'Baker'
+		[ProfessionType.Baker]: 'Baker',
+		[ProfessionType.Vendor]: 'Vendor'
 	}
 
 	const professionIcons: Record<ProfessionType, string> = {
@@ -343,7 +370,8 @@ export const BuildingInfoPanel: React.FC = () => {
 		[ProfessionType.Miner]: '⛏️',
 		[ProfessionType.Farmer]: '🌾',
 		[ProfessionType.Miller]: '🌬️',
-		[ProfessionType.Baker]: '🥖'
+		[ProfessionType.Baker]: '🥖',
+		[ProfessionType.Vendor]: '🛍️'
 	}
 
 	const formatWaitReason = (reason?: string): string | null => {
@@ -566,6 +594,47 @@ export const BuildingInfoPanel: React.FC = () => {
 					</button>
 					<div className={sharedStyles.cancelHint}>
 						Resources will be refunded to your inventory
+					</div>
+				</div>
+			)}
+
+			{canDemolish && (
+				<div className={sharedStyles.actions}>
+					<button className={sharedStyles.cancelButton} onClick={handleDemolishBuilding}>
+						Demolish Building
+					</button>
+					<div className={sharedStyles.cancelHint}>
+						Drops 50% of construction costs on the ground
+					</div>
+				</div>
+			)}
+
+			{showDemolishConfirm && (
+				<div className={confirmStyles.overlay} onClick={handleCancelDemolish}>
+					<div className={confirmStyles.modal} onClick={(event) => event.stopPropagation()}>
+						<div className={confirmStyles.titleRow}>
+							<span className={confirmStyles.icon}>⚠️</span>
+							<h2>Demolish {buildingDefinition.name}?</h2>
+						</div>
+						<p className={confirmStyles.message}>
+							This will permanently remove the building and drop 50% of its construction costs on the ground.
+						</p>
+						<div className={confirmStyles.actions}>
+							<button
+								type="button"
+								className={confirmStyles.cancelButton}
+								onClick={handleCancelDemolish}
+							>
+								Keep Building
+							</button>
+							<button
+								type="button"
+								className={confirmStyles.confirmButton}
+								onClick={handleConfirmDemolish}
+							>
+								Demolish
+							</button>
+						</div>
 					</div>
 				</div>
 			)}

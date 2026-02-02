@@ -34,7 +34,8 @@ export class SettlerView extends BaseMovementView {
 		[ProfessionType.Miner]: 0x808080, // Gray
 		[ProfessionType.Farmer]: 0x7fbf3f, // Green
 		[ProfessionType.Miller]: 0x6aa0ff, // Light blue
-		[ProfessionType.Baker]: 0xd2a679 // Wheat
+		[ProfessionType.Baker]: 0xd2a679, // Wheat
+		[ProfessionType.Vendor]: 0xff4d6d // Pink
 	}
 	private professionEmojis: Record<ProfessionType, string> = {
 		[ProfessionType.Carrier]: '👤',
@@ -43,13 +44,14 @@ export class SettlerView extends BaseMovementView {
 		[ProfessionType.Miner]: '⛏️',
 		[ProfessionType.Farmer]: '🌾',
 		[ProfessionType.Miller]: '🌬️',
-		[ProfessionType.Baker]: '🥖'
+		[ProfessionType.Baker]: '🥖',
+		[ProfessionType.Vendor]: '🛍️'
 	}
 
 	constructor(scene: GameScene, x: number = 0, y: number = 0, settlerId: string, profession: ProfessionType, speed: number = 64) {
 		super(scene, x, y, speed)
 		
-		this.baseDepth = 150 // Higher than NPCs (100) but lower than players
+		this.baseDepth = 10000 // Ensure settlers render above buildings and map objects
 		this.settlerId = settlerId
 		this.profession = profession
 		this.state = SettlerState.Idle

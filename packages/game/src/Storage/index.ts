@@ -13,6 +13,7 @@ import { SimulationTickData } from '../Simulation/types'
 import { BaseManager } from '../Managers'
 import type { Position } from '../types'
 import type { Item } from '../Items/types'
+import { ConstructionStage } from '../Buildings/types'
 import type { StorageSnapshot, BuildingStorageSnapshot } from '../state/types'
 
 export interface StorageDeps {
@@ -210,7 +211,10 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 		const tileSize = this.getTileSize(building.mapName)
 		for (const slotDef of definition.storage.slots) {
-			const pileSize = this.getPileSize(slotDef.itemType)
+			const basePileSize = this.getPileSize(slotDef.itemType)
+			const pileSize = typeof slotDef.maxQuantity === 'number'
+				? Math.max(1, Math.min(basePileSize, slotDef.maxQuantity))
+				: basePileSize
 			const slotId = uuidv4()
 			const position: Position = {
 				x: building.position.x + slotDef.offset.x * tileSize,
@@ -244,6 +248,32 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	// Get building storage
 	public getBuildingStorage(buildingInstanceId: string): BuildingStorage | undefined {
 		return this.buildingStorages.get(buildingInstanceId)
+	}
+
+	// Remove storage for a demolished/removed building
+	public removeBuildingStorage(buildingInstanceId: string): void {
+		const storage = this.buildingStorages.get(buildingInstanceId)
+		if (!storage) {
+			return
+		}
+
+		const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
+		if (building) {
+			for (const slot of storage.slots.values()) {
+				if (slot.mapObjectId) {
+					this.managers.mapObjects.removeObjectById(slot.mapObjectId, building.mapName)
+					slot.mapObjectId = undefined
+				}
+			}
+		}
+
+		for (const [reservationId, reservation] of this.reservations.entries()) {
+			if (reservation.buildingInstanceId === buildingInstanceId) {
+				this.reservations.delete(reservationId)
+			}
+		}
+
+		this.buildingStorages.delete(buildingInstanceId)
 	}
 
 	// Reserve storage space for delivery (incoming or outgoing) at a specific slot
@@ -610,6 +640,14 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 	// Get storage capacity for item type (reads from BuildingDefinition)
 	public getStorageCapacity(buildingInstanceId: string, itemType: string): number {
+		const storage = this.buildingStorages.get(buildingInstanceId)
+		if (storage) {
+			const slots = this.getSlotsForItem(storage, itemType)
+			if (slots.length > 0) {
+				return slots.reduce((sum, slot) => sum + slot.pileSize, 0)
+			}
+		}
+
 		const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
 		if (!building) {
 			return 0
@@ -852,6 +890,69 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		}
 		this.simulationTimeMs = state.simulationTimeMs
 		this.tickAccumulatorMs = state.tickAccumulatorMs
+
+		this.initializeStorageForMissingBuildings()
+		this.releaseStalePendingReservations()
+		this.syncSlotCapacitiesFromDefinitions()
+	}
+
+	private initializeStorageForMissingBuildings(): void {
+		const buildings = this.managers.buildings.getAllBuildings()
+		for (const building of buildings) {
+			if (building.stage !== ConstructionStage.Completed) {
+				continue
+			}
+			const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
+			if (!definition?.storage) {
+				continue
+			}
+			if (this.buildingStorages.has(building.id)) {
+				continue
+			}
+			this.initializeBuildingStorage(building.id)
+		}
+	}
+
+	private releaseStalePendingReservations(): void {
+		const MAX_PENDING_AGE_MS = 2 * 60 * 1000
+		for (const reservation of this.reservations.values()) {
+			if (reservation.status !== 'pending') {
+				continue
+			}
+			if (this.simulationTimeMs - reservation.createdAt < MAX_PENDING_AGE_MS) {
+				continue
+			}
+			this.releaseReservation(reservation.reservationId)
+		}
+	}
+
+	private syncSlotCapacitiesFromDefinitions(): void {
+		for (const [buildingInstanceId, storage] of this.buildingStorages.entries()) {
+			const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
+			if (!building) {
+				continue
+			}
+			const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
+			if (!definition?.storage?.slots || definition.storage.slots.length === 0) {
+				continue
+			}
+			const tileSize = this.getTileSize(building.mapName)
+			for (const slotDef of definition.storage.slots) {
+				if (typeof slotDef.maxQuantity !== 'number') {
+					continue
+				}
+				const basePileSize = this.getPileSize(slotDef.itemType)
+				const desiredPileSize = Math.max(1, Math.min(basePileSize, slotDef.maxQuantity))
+				const expectedX = building.position.x + slotDef.offset.x * tileSize
+				const expectedY = building.position.y + slotDef.offset.y * tileSize
+				const slots = this.getSlotsForItem(storage, slotDef.itemType)
+				const matched = slots.find(slot => Math.abs(slot.position.x - expectedX) < 0.01 && Math.abs(slot.position.y - expectedY) < 0.01)
+				if (!matched) {
+					continue
+				}
+				matched.pileSize = desiredPileSize
+			}
+		}
 	}
 
 	reset(): void {

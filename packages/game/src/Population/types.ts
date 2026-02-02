@@ -9,7 +9,8 @@ export enum ProfessionType {
 	Miner = 'miner',
 	Farmer = 'farmer',
 	Miller = 'miller',
-	Baker = 'baker'
+	Baker = 'baker',
+	Vendor = 'vendor'
 	// Note: Settlers can change profession when assigned to specific buildings
 }
 

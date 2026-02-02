@@ -285,56 +285,13 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			return
 		}
 
-		// Refund collected resources (drop them on the ground)
-		const refundedItems: BuildingCost[] = []
-		if (this.managers.loot) {
-			// Create fake client for dropping items
-			const fakeClient: EventClient = {
-				id: building.playerId,
-				currentGroup: building.mapName,
-				emit: (receiver, event, data, target?) => {
-					this.event.emit(receiver, event, data, target)
-				},
-				setGroup: (group: string) => {
-					// No-op for fake client
-				}
-			}
+		const isDemolition = building.stage === ConstructionStage.Completed
+		const refundedItems = isDemolition
+			? this.calculateDemolitionRefund(building)
+			: this.calculateCollectedRefund(building)
 
-			for (const [itemType, quantity] of building.collectedResources.entries()) {
-				for (let i = 0; i < quantity; i++) {
-					const item: Item = {
-						id: uuidv4(),
-						itemType: itemType
-					}
-					// Drop item near building position (spread in a grid)
-					const dropPosition = {
-						x: building.position.x + (i % 3) * 32,
-						y: building.position.y + Math.floor(i / 3) * 32
-					}
-					// Drop item on the ground using LootManager
-					this.managers.loot.dropItem(item, dropPosition, fakeClient)
-					refundedItems.push({ itemType, quantity: 1 })
-				}
-			}
-		} else {
-			// LootManager not available - just track refunded items
-			for (const [itemType, quantity] of building.collectedResources.entries()) {
-				refundedItems.push({ itemType, quantity })
-			}
-		}
-
-		// Clean up resource requests
-		this.resourceRequests.delete(buildingInstanceId)
-
-		// Remove building from map objects
-		const mapObjectId = this.buildingToMapObject.get(buildingInstanceId)
-		if (mapObjectId) {
-			this.managers.mapObjects.removeObjectById(mapObjectId, building.mapName)
-			this.buildingToMapObject.delete(buildingInstanceId)
-		}
-
-		// Remove building instance
-		this.buildings.delete(buildingInstanceId)
+		this.dropRefundItems(building, refundedItems)
+		this.removeBuildingInstance(building)
 
 		// Emit cancelled event
 		const cancelledData: BuildingCancelledData = {
@@ -342,6 +299,87 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			refundedItems
 		}
 		client.emit(Receiver.Group, BuildingsEvents.SC.Cancelled, cancelledData, building.mapName)
+	}
+
+	private calculateCollectedRefund(building: BuildingInstance): BuildingCost[] {
+		const refundedItems: BuildingCost[] = []
+		for (const [itemType, quantity] of building.collectedResources.entries()) {
+			if (quantity > 0) {
+				refundedItems.push({ itemType, quantity })
+			}
+		}
+		return refundedItems
+	}
+
+	private calculateDemolitionRefund(building: BuildingInstance): BuildingCost[] {
+		const definition = this.definitions.get(building.buildingId)
+		if (!definition) {
+			return []
+		}
+		return definition.costs
+			.map(cost => ({
+				itemType: cost.itemType,
+				quantity: Math.floor(cost.quantity * 0.5)
+			}))
+			.filter(cost => cost.quantity > 0)
+	}
+
+	private dropRefundItems(building: BuildingInstance, refundedItems: BuildingCost[]): void {
+		if (!this.managers.loot || refundedItems.length === 0) {
+			return
+		}
+
+		// Create fake client for dropping items
+		const fakeClient: EventClient = {
+			id: building.playerId,
+			currentGroup: building.mapName,
+			emit: (receiver, event, data, target?) => {
+				this.event.emit(receiver, event, data, target)
+			},
+			setGroup: (_group: string) => {
+				// No-op for fake client
+			}
+		}
+
+		let dropIndex = 0
+		for (const { itemType, quantity } of refundedItems) {
+			for (let i = 0; i < quantity; i++) {
+				const item: Item = {
+					id: uuidv4(),
+					itemType
+				}
+				// Drop item near building position (spread in a grid)
+				const dropPosition = {
+					x: building.position.x + (dropIndex % 3) * 32,
+					y: building.position.y + Math.floor(dropIndex / 3) * 32
+				}
+				this.managers.loot.dropItem(item, dropPosition, fakeClient)
+				dropIndex += 1
+			}
+		}
+	}
+
+	private removeBuildingInstance(building: BuildingInstance): void {
+		// Clean up resource requests and worker tracking
+		this.resourceRequests.delete(building.id)
+		this.assignedWorkers.delete(building.id)
+		this.activeConstructionWorkers.delete(building.id)
+		this.autoProductionState.delete(building.id)
+
+		// Remove storage piles/records before deleting the building
+		if (this.managers.storage) {
+			this.managers.storage.removeBuildingStorage(building.id)
+		}
+
+		// Remove building from map objects
+		const mapObjectId = this.buildingToMapObject.get(building.id)
+		if (mapObjectId) {
+			this.managers.mapObjects.removeObjectById(mapObjectId, building.mapName)
+			this.buildingToMapObject.delete(building.id)
+		}
+
+		// Remove building instance
+		this.buildings.delete(building.id)
 	}
 
 	private setWorkArea(data: SetWorkAreaData, client: EventClient) {
@@ -928,6 +966,8 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			this.logger.debug(`Loaded building: ${definition.id} - ${definition.name}`)
 		}
 		this.logger.log(`Total building definitions: ${this.definitions.size}`)
+
+		this.initializeStorageForExistingBuildings()
 		
 		// After buildings are loaded, send catalog to all existing clients
 		// This ensures clients that connected before buildings were loaded will still receive them
@@ -1188,6 +1228,27 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.buildingToMapObject = new Map(state.buildingToMapObject)
 		this.simulationTimeMs = state.simulationTimeMs
 		this.tickAccumulatorMs = state.tickAccumulatorMs
+
+		this.initializeStorageForExistingBuildings()
+	}
+
+	private initializeStorageForExistingBuildings(): void {
+		if (!this.managers.storage || this.definitions.size === 0) {
+			return
+		}
+		for (const building of this.buildings.values()) {
+			if (building.stage !== ConstructionStage.Completed) {
+				continue
+			}
+			const definition = this.definitions.get(building.buildingId)
+			if (!definition?.storage) {
+				continue
+			}
+			if (this.managers.storage.getBuildingStorage(building.id)) {
+				continue
+			}
+			this.managers.storage.initializeBuildingStorage(building.id)
+		}
 	}
 
 	reset(): void {

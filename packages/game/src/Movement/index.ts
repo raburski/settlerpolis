@@ -111,6 +111,39 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		return this.startMovementWithPath(entityId, path, options, targetPosition)
 	}
 
+	public moveAlongPath(
+		entityId: string,
+		path: Position[],
+		options?: MoveToPositionOptions
+	): boolean {
+		const entity = this.entities.get(entityId)
+		if (!entity) {
+			this.logger.error(`Entity not found: ${entityId}`)
+			return false
+		}
+
+		if (!path || path.length === 0) {
+			this.logger.warn(`No path provided for ${entityId}`)
+			return false
+		}
+
+		const timestamp = this.simulationTimeMs
+		const targetPosition = path[path.length - 1]
+		this.logger.log(`[MOVEMENT START] entityId=${entityId} | from=(${Math.round(entity.position.x)},${Math.round(entity.position.y)}) | to=(${Math.round(targetPosition.x)},${Math.round(targetPosition.y)}) | targetType=${options?.targetType || 'none'} | targetId=${options?.targetId || 'none'} | time=${timestamp}`)
+
+		const hadExistingMovement = this.tasks.has(entityId)
+		if (hadExistingMovement) {
+			this.logger.warn(`[MOVEMENT CANCELLED] Cancelling existing movement for ${entityId} before starting new movement`)
+		}
+		this.cancelMovement(entityId)
+
+		const startDistance = calculateDistance(entity.position, path[0])
+		const normalizedPath = startDistance > 1 ? [{ ...entity.position }, ...path] : path
+		const finalTarget = normalizedPath[normalizedPath.length - 1]
+
+		return this.startMovementWithPath(entityId, normalizedPath, options, finalTarget)
+	}
+
 	private startMovementWithPath(
 		entityId: string,
 		path: Position[],

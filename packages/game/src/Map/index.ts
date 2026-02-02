@@ -15,6 +15,8 @@ const FETCH = true//typeof window !== 'undefined'
 
 export class MapManager {
 	private maps: Map<string, MapData> = new Map()
+	private baseCollision: Map<string, number[]> = new Map()
+	private dynamicCollisionCounts: Map<string, Int16Array> = new Map()
 	private readonly MAPS_DIR = '/assets/maps/'//FETCH ? '/assets/maps/' : path.join(__dirname, '../../../assets/maps')
 	private debug = true
 	private defaultMapId: string = 'town' // Default starting map
@@ -240,6 +242,54 @@ export class MapManager {
 		return this.maps.get(mapId)
 	}
 
+	public setDynamicCollision(mapId: string, tileX: number, tileY: number, blocked: boolean): void {
+		const map = this.maps.get(mapId)
+		if (!map) return
+
+		if (tileX < 0 || tileY < 0 || tileX >= map.collision.width || tileY >= map.collision.height) {
+			return
+		}
+
+		const base = this.baseCollision.get(mapId)
+		if (!base) return
+
+		let counts = this.dynamicCollisionCounts.get(mapId)
+		if (!counts) {
+			counts = new Int16Array(map.collision.data.length)
+			this.dynamicCollisionCounts.set(mapId, counts)
+		}
+
+		const index = tileY * map.collision.width + tileX
+		if (index < 0 || index >= map.collision.data.length) {
+			return
+		}
+
+		if (blocked) {
+			counts[index] += 1
+			if (counts[index] === 1 && base[index] === 0) {
+				map.collision.data[index] = 1
+			}
+			return
+		}
+
+		if (counts[index] <= 0) return
+		counts[index] -= 1
+		if (counts[index] === 0 && base[index] === 0) {
+			map.collision.data[index] = 0
+		}
+	}
+
+	public resetDynamicCollision(mapId: string): void {
+		const map = this.maps.get(mapId)
+		if (!map) return
+
+		const base = this.baseCollision.get(mapId)
+		if (!base) return
+
+		map.collision.data = base.slice()
+		this.dynamicCollisionCounts.set(mapId, new Int16Array(map.collision.data.length))
+	}
+
 	public getMapIds(): string[] {
 		return Array.from(this.maps.keys())
 	}
@@ -391,6 +441,8 @@ export class MapManager {
 				}
 
 				this.maps.set(mapId, mapData)
+				this.baseCollision.set(mapId, mapData.collision.data.slice())
+				this.dynamicCollisionCounts.set(mapId, new Int16Array(mapData.collision.data.length))
 			} catch (error) {
 				this.logger.error(`Error loading map ${mapId}:`, error)
 			}
