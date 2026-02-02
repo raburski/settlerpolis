@@ -3,6 +3,7 @@ import { Event } from '@rugged/game'
 import { Settler, PopulationListData, PopulationStatsData, ProfessionType, SettlerState, ConstructionStage, WorkerRequestFailureReason } from '@rugged/game'
 import { buildingService } from './BuildingService'
 import type { WorkAssignment } from '@rugged/game/Settlers/WorkProvider/types'
+import { UiEvents } from '../uiEvents'
 
 class PopulationServiceClass {
 	private settlers = new Map<string, Settler>() // settlerId -> Settler
@@ -53,14 +54,14 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 				...normalized,
 				housingCapacity: this.getHousingCapacityForSettlers(Array.from(this.settlers.values()))
 			}
-			EventBus.emit('ui:population:stats-updated', this.stats)
+			EventBus.emit(UiEvents.Population.StatsUpdated, this.stats)
 		})
 
 		// Handle settler spawned
 		EventBus.on(Event.Population.SC.SettlerSpawned, (data: { settler: Settler }) => {
 			console.log('[PopulationService] Settler spawned:', data.settler)
 			this.settlers.set(data.settler.id, data.settler)
-			EventBus.emit('ui:population:settler-spawned', data.settler)
+			EventBus.emit(UiEvents.Population.SettlerSpawned, data.settler)
 			this.updateStatsFromSettlers()
 		})
 
@@ -72,8 +73,8 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 			const settler = this.settlers.get(data.settlerId)
 			if (settler) {
 				settler.profession = data.newProfession
-				EventBus.emit('ui:population:profession-changed', data)
-				EventBus.emit('ui:population:settler-updated', { settlerId: data.settlerId })
+				EventBus.emit(UiEvents.Population.ProfessionChanged, data)
+				EventBus.emit(UiEvents.Population.SettlerUpdated, { settlerId: data.settlerId })
 				this.updateStatsFromSettlers()
 			}
 		})
@@ -88,8 +89,8 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 					assignmentId: data.assignment.assignmentId
 				}
 				settler.buildingId = data.buildingInstanceId
-				EventBus.emit('ui:population:worker-assigned', data)
-				EventBus.emit('ui:population:settler-updated', { settlerId: data.settlerId })
+				EventBus.emit(UiEvents.Population.WorkerAssigned, data)
+				EventBus.emit(UiEvents.Population.SettlerUpdated, { settlerId: data.settlerId })
 				this.updateStatsFromSettlers()
 			}
 		})
@@ -98,7 +99,7 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 		EventBus.on(Event.Population.SC.SettlerUpdated, (data: { settler: Settler }) => {
 			const settler = data.settler
 			this.settlers.set(settler.id, settler)
-			EventBus.emit('ui:population:settler-updated', { settlerId: settler.id })
+			EventBus.emit(UiEvents.Population.SettlerUpdated, { settlerId: settler.id })
 			this.updateStatsFromSettlers()
 		})
 
@@ -113,8 +114,8 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 				}
 				settler.buildingId = undefined
 				settler.state = SettlerState.Idle
-				EventBus.emit('ui:population:worker-unassigned', data)
-				EventBus.emit('ui:population:settler-updated', { settlerId: data.settlerId })
+				EventBus.emit(UiEvents.Population.WorkerUnassigned, data)
+				EventBus.emit(UiEvents.Population.SettlerUpdated, { settlerId: data.settlerId })
 				this.updateStatsFromSettlers()
 			}
 		})
@@ -122,7 +123,7 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 		// Handle worker request failed
 		EventBus.on(Event.Population.SC.WorkerRequestFailed, (data: { reason: WorkerRequestFailureReason, buildingInstanceId: string }) => {
 			console.warn('[PopulationService] Worker request failed:', data)
-			EventBus.emit('ui:population:worker-request-failed', data)
+			EventBus.emit(UiEvents.Population.WorkerRequestFailed, data)
 		})
 
 		// Recalculate housing capacity when houses change
@@ -151,7 +152,7 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 		this.updateStatsFromSettlers()
 
 		// Emit UI event
-		EventBus.emit('ui:population:list-loaded', data)
+		EventBus.emit(UiEvents.Population.ListLoaded, data)
 	}
 
 	private getEmptyByProfession(): Record<ProfessionType, number> {
@@ -185,13 +186,13 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 		if (settlers.length === 0) {
 			return 0
 		}
-		const mapName = settlers[0].mapName
+		const mapId = settlers[0].mapId
 		const playerId = settlers[0].playerId
 		const buildings = buildingService.getAllBuildingInstances()
 		let capacity = 0
 
 		for (const building of buildings) {
-			if (building.mapName !== mapName || building.playerId !== playerId) {
+			if (building.mapId !== mapId || building.playerId !== playerId) {
 				continue
 			}
 			if (building.stage !== ConstructionStage.Completed) {
@@ -239,7 +240,7 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 
 	private updateStatsFromSettlers(): void {
 		this.stats = this.calculateStatsFromSettlers()
-		EventBus.emit('ui:population:stats-updated', this.stats)
+		EventBus.emit(UiEvents.Population.StatsUpdated, this.stats)
 	}
 
 	// Public getters

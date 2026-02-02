@@ -19,7 +19,7 @@ export interface RoadManagerDeps {
 
 interface RoadJob {
 	jobId: string
-	mapName: string
+	mapId: string
 	playerId: string
 	tileX: number
 	tileY: number
@@ -68,12 +68,12 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 	})
 }
 
-	public getRoadData(mapName: string): RoadData | null {
-		return this.ensureRoadData(mapName)
+	public getRoadData(mapId: string): RoadData | null {
+		return this.ensureRoadData(mapId)
 	}
 
-	public getRoadTypeAtTile(mapName: string, tileX: number, tileY: number): RoadType {
-		const roadData = this.ensureRoadData(mapName)
+	public getRoadTypeAtTile(mapId: string, tileX: number, tileY: number): RoadType {
+		const roadData = this.ensureRoadData(mapId)
 		if (!roadData) {
 			return RoadType.None
 		}
@@ -86,48 +86,48 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 		return roadData.data[index] ?? RoadType.None
 	}
 
-	public isRoadPlannedOrBuilt(mapName: string, tileX: number, tileY: number): boolean {
-		if (this.getRoadTypeAtTile(mapName, tileX, tileY) !== RoadType.None) {
+	public isRoadPlannedOrBuilt(mapId: string, tileX: number, tileY: number): boolean {
+		if (this.getRoadTypeAtTile(mapId, tileX, tileY) !== RoadType.None) {
 			return true
 		}
-		const jobs = this.jobsByMap.get(mapName)
+		const jobs = this.jobsByMap.get(mapId)
 		if (!jobs || jobs.length === 0) {
 			return false
 		}
 		return jobs.some(job => job.tileX === tileX && job.tileY === tileY)
 	}
 
-	public getSpeedMultiplier(mapName: string, position: { x: number, y: number }): number {
-		const roadData = this.ensureRoadData(mapName)
+	public getSpeedMultiplier(mapId: string, position: { x: number, y: number }): number {
+		const roadData = this.ensureRoadData(mapId)
 		if (!roadData) {
 			return 1
 		}
 
-		const tileSize = this.getTileSize(mapName)
+		const tileSize = this.getTileSize(mapId)
 		const tileX = Math.floor(position.x / tileSize)
 		const tileY = Math.floor(position.y / tileSize)
-		const roadType = this.getRoadTypeAtTile(mapName, tileX, tileY)
+		const roadType = this.getRoadTypeAtTile(mapId, tileX, tileY)
 		return ROAD_SPEED_MULTIPLIERS[roadType] || 1
 	}
 
 	public getSpeedMultiplierForSegment(
-		mapName: string,
+		mapId: string,
 		fromPosition: { x: number, y: number },
 		toPosition: { x: number, y: number }
 	): number {
-		const roadData = this.ensureRoadData(mapName)
+		const roadData = this.ensureRoadData(mapId)
 		if (!roadData) {
 			return 1
 		}
 
-		const tileSize = this.getTileSize(mapName)
+		const tileSize = this.getTileSize(mapId)
 		const fromTileX = Math.floor(fromPosition.x / tileSize)
 		const fromTileY = Math.floor(fromPosition.y / tileSize)
 		const toTileX = Math.floor(toPosition.x / tileSize)
 		const toTileY = Math.floor(toPosition.y / tileSize)
 
-		const fromType = this.getRoadTypeAtTile(mapName, fromTileX, fromTileY)
-		const toType = this.getRoadTypeAtTile(mapName, toTileX, toTileY)
+		const fromType = this.getRoadTypeAtTile(mapId, fromTileX, fromTileY)
+		const toType = this.getRoadTypeAtTile(mapId, toTileX, toTileY)
 		if (fromType === RoadType.None || toType === RoadType.None) {
 			return 1
 		}
@@ -137,19 +137,19 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 		return Math.min(fromMultiplier, toMultiplier)
 	}
 
-	public getPendingJobGroups(): Array<{ mapName: string, playerId: string, count: number }> {
-		const groups = new Map<string, { mapName: string, playerId: string, count: number }>()
+	public getPendingJobGroups(): Array<{ mapId: string, playerId: string, count: number }> {
+		const groups = new Map<string, { mapId: string, playerId: string, count: number }>()
 		for (const jobs of this.jobsByMap.values()) {
 			for (const job of jobs) {
 				if (job.assignedSettlerId) {
 					continue
 				}
-				const key = `${job.mapName}:${job.playerId}`
+				const key = `${job.mapId}:${job.playerId}`
 				const entry = groups.get(key)
 				if (entry) {
 					entry.count += 1
 				} else {
-					groups.set(key, { mapName: job.mapName, playerId: job.playerId, count: 1 })
+					groups.set(key, { mapId: job.mapId, playerId: job.playerId, count: 1 })
 				}
 			}
 		}
@@ -166,8 +166,8 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 		return null
 	}
 
-	public claimJob(mapName: string, playerId: string, settlerId: string): RoadJobData | null {
-		const jobs = this.jobsByMap.get(mapName)
+	public claimJob(mapId: string, playerId: string, settlerId: string): RoadJobData | null {
+		const jobs = this.jobsByMap.get(mapId)
 		if (!jobs || jobs.length === 0) {
 			return null
 		}
@@ -182,18 +182,18 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 	}
 
 	public completeJob(jobId: string): void {
-		for (const [mapName, jobs] of this.jobsByMap.entries()) {
+		for (const [mapId, jobs] of this.jobsByMap.entries()) {
 			const index = jobs.findIndex(job => job.jobId === jobId)
 			if (index < 0) {
 				continue
 			}
 
 			const job = jobs[index]
-			this.setRoadTile(mapName, job.tileX, job.tileY, job.roadType)
-			this.emitPendingRemoval(mapName, job.tileX, job.tileY)
+			this.setRoadTile(mapId, job.tileX, job.tileY, job.roadType)
+			this.emitPendingRemoval(mapId, job.tileX, job.tileY)
 			jobs.splice(index, 1)
 			if (jobs.length === 0) {
-				this.jobsByMap.delete(mapName)
+				this.jobsByMap.delete(mapId)
 			}
 			return
 		}
@@ -210,8 +210,8 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 	}
 
 	private handleRoadRequest(data: RoadBuildRequestData, client: EventClient): void {
-		const mapName = client.currentGroup
-		const roadData = this.ensureRoadData(mapName)
+		const mapId = client.currentGroup
+		const roadData = this.ensureRoadData(mapId)
 		if (!roadData) {
 			return
 		}
@@ -220,8 +220,8 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 			return
 		}
 
-	const collision = this.managers.map.getMap(mapName)?.collision
-	const jobs = this.getJobsForMap(mapName)
+	const collision = this.managers.map.getMap(mapId)?.collision
+	const jobs = this.getJobsForMap(mapId)
 	const addedTiles: RoadTile[] = []
 
 	for (const tile of data.tiles) {
@@ -236,7 +236,7 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 				}
 			}
 
-			const existing = this.getRoadTypeAtTile(mapName, tile.x, tile.y)
+			const existing = this.getRoadTypeAtTile(mapId, tile.x, tile.y)
 			if (existing === data.roadType) {
 				continue
 			}
@@ -246,7 +246,7 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 			}
 
 			if (data.roadType === RoadType.Stone) {
-				const consumed = this.consumeRoadMaterials(mapName, ROAD_UPGRADE_STONE_COST)
+				const consumed = this.consumeRoadMaterials(mapId, ROAD_UPGRADE_STONE_COST)
 				if (!consumed) {
 					this.logger.warn(`[Roads] Not enough stone to upgrade road at ${tile.x},${tile.y}`)
 					continue
@@ -260,7 +260,7 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 
 		jobs.push({
 			jobId: uuidv4(),
-			mapName,
+			mapId,
 			playerId: client.id,
 			tileX: tile.x,
 			tileY: tile.y,
@@ -273,28 +273,28 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 
 	if (addedTiles.length > 0) {
 		this.event.emit(Receiver.Group, RoadEvents.SC.PendingUpdated, {
-			mapName,
+			mapId,
 			tiles: addedTiles
-		} as RoadPendingUpdatedData, mapName)
+		} as RoadPendingUpdatedData, mapId)
 	}
 }
 
-	private consumeRoadMaterials(mapName: string, stoneCost: number): boolean {
+	private consumeRoadMaterials(mapId: string, stoneCost: number): boolean {
 		if (stoneCost <= 0) {
 			return true
 		}
-		const available = this.managers.storage.getTotalQuantity(mapName, 'stone')
+		const available = this.managers.storage.getTotalQuantity(mapId, 'stone')
 		if (available < stoneCost) {
 			return false
 		}
-		return this.managers.storage.consumeFromAnyStorage(mapName, 'stone', stoneCost)
+		return this.managers.storage.consumeFromAnyStorage(mapId, 'stone', stoneCost)
 	}
 
 	private toJobData(job: RoadJob): RoadJobData {
-		const position = this.getWorldPosition(job.mapName, job.tileX, job.tileY)
+		const position = this.getWorldPosition(job.mapId, job.tileX, job.tileY)
 		return {
 			jobId: job.jobId,
-			mapName: job.mapName,
+			mapId: job.mapId,
 			playerId: job.playerId,
 			position,
 			tile: { x: job.tileX, y: job.tileY },
@@ -303,8 +303,8 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 		}
 	}
 
-	private setRoadTile(mapName: string, tileX: number, tileY: number, roadType: RoadType): void {
-		const roadData = this.ensureRoadData(mapName)
+	private setRoadTile(mapId: string, tileX: number, tileY: number, roadType: RoadType): void {
+		const roadData = this.ensureRoadData(mapId)
 		if (!roadData) {
 			return
 		}
@@ -313,13 +313,13 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 		roadData.data[index] = roadType
 
 		this.event.emit(Receiver.Group, RoadEvents.SC.Updated, {
-			mapName,
+			mapId,
 			tiles: [{ x: tileX, y: tileY, roadType }]
-		} as RoadTilesUpdatedData, mapName)
+		} as RoadTilesUpdatedData, mapId)
 	}
 
-	private sendRoadSync(mapName: string, client?: EventClient): void {
-		const roadData = this.ensureRoadData(mapName)
+	private sendRoadSync(mapId: string, client?: EventClient): void {
+		const roadData = this.ensureRoadData(mapId)
 		if (!roadData) {
 			return
 		}
@@ -336,28 +336,28 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 		}
 
 		const payload = {
-			mapName,
+			mapId,
 			tiles
 		} as RoadTilesSyncData
 
 		if (client) {
 			client.emit(Receiver.Sender, RoadEvents.SC.Sync, payload)
 		} else {
-			this.event.emit(Receiver.Group, RoadEvents.SC.Sync, payload, mapName)
+			this.event.emit(Receiver.Group, RoadEvents.SC.Sync, payload, mapId)
 		}
 }
 
-private sendPendingRoadSync(mapName: string, client?: EventClient): void {
-	const jobs = this.jobsByMap.get(mapName)
+private sendPendingRoadSync(mapId: string, client?: EventClient): void {
+	const jobs = this.jobsByMap.get(mapId)
 	if (!jobs || jobs.length === 0) {
 		const payload = {
-			mapName,
+			mapId,
 			tiles: []
 		} as RoadPendingSyncData
 		if (client) {
 			client.emit(Receiver.Sender, RoadEvents.SC.PendingSync, payload)
 		} else {
-			this.event.emit(Receiver.Group, RoadEvents.SC.PendingSync, payload, mapName)
+			this.event.emit(Receiver.Group, RoadEvents.SC.PendingSync, payload, mapId)
 		}
 		return
 	}
@@ -369,30 +369,30 @@ private sendPendingRoadSync(mapName: string, client?: EventClient): void {
 	}))
 
 	const payload = {
-		mapName,
+		mapId,
 		tiles
 	} as RoadPendingSyncData
 	if (client) {
 		client.emit(Receiver.Sender, RoadEvents.SC.PendingSync, payload)
 	} else {
-		this.event.emit(Receiver.Group, RoadEvents.SC.PendingSync, payload, mapName)
+		this.event.emit(Receiver.Group, RoadEvents.SC.PendingSync, payload, mapId)
 	}
 }
 
-private emitPendingRemoval(mapName: string, tileX: number, tileY: number): void {
+private emitPendingRemoval(mapId: string, tileX: number, tileY: number): void {
 	this.event.emit(Receiver.Group, RoadEvents.SC.PendingUpdated, {
-		mapName,
+		mapId,
 		tiles: [{ x: tileX, y: tileY, roadType: RoadType.None }]
-	} as RoadPendingUpdatedData, mapName)
+	} as RoadPendingUpdatedData, mapId)
 }
 
-private ensureRoadData(mapName: string): RoadData | null {
-		let roadData = this.roadsByMap.get(mapName)
+private ensureRoadData(mapId: string): RoadData | null {
+		let roadData = this.roadsByMap.get(mapId)
 		if (roadData) {
 			return roadData
 		}
 
-		const map = this.managers.map.getMap(mapName)
+		const map = this.managers.map.getMap(mapId)
 		if (!map) {
 			return null
 		}
@@ -403,26 +403,26 @@ private ensureRoadData(mapName: string): RoadData | null {
 			data: new Array(map.tiledMap.width * map.tiledMap.height).fill(RoadType.None)
 		}
 
-		this.roadsByMap.set(mapName, roadData)
+		this.roadsByMap.set(mapId, roadData)
 		return roadData
 	}
 
-	private getJobsForMap(mapName: string): RoadJob[] {
-		let jobs = this.jobsByMap.get(mapName)
+	private getJobsForMap(mapId: string): RoadJob[] {
+		let jobs = this.jobsByMap.get(mapId)
 		if (!jobs) {
 			jobs = []
-			this.jobsByMap.set(mapName, jobs)
+			this.jobsByMap.set(mapId, jobs)
 		}
 		return jobs
 	}
 
-	private getTileSize(mapName: string): number {
-		const map = this.managers.map.getMap(mapName)
+	private getTileSize(mapId: string): number {
+		const map = this.managers.map.getMap(mapId)
 		return map?.tiledMap.tilewidth || 32
 	}
 
-	private getWorldPosition(mapName: string, tileX: number, tileY: number): { x: number, y: number } {
-		const tileSize = this.getTileSize(mapName)
+	private getWorldPosition(mapId: string, tileX: number, tileY: number): { x: number, y: number } {
+		const tileSize = this.getTileSize(mapId)
 		return {
 			x: tileX * tileSize + tileSize / 2,
 			y: tileY * tileSize + tileSize / 2
@@ -436,11 +436,11 @@ private ensureRoadData(mapName: string): RoadData | null {
 	serialize(): RoadsSnapshot {
 		return {
 			roadsByMap: Array.from(this.roadsByMap.entries()),
-			jobsByMap: Array.from(this.jobsByMap.entries()).map(([mapName, jobs]) => ([
-				mapName,
+			jobsByMap: Array.from(this.jobsByMap.entries()).map(([mapId, jobs]) => ([
+				mapId,
 				jobs.map(job => ({
 					jobId: job.jobId,
-					mapName: job.mapName,
+					mapId: job.mapId,
 					playerId: job.playerId,
 					tileX: job.tileX,
 					tileY: job.tileY,
@@ -456,10 +456,10 @@ private ensureRoadData(mapName: string): RoadData | null {
 	deserialize(state: RoadsSnapshot): void {
 		this.roadsByMap = new Map(state.roadsByMap)
 		this.jobsByMap.clear()
-		for (const [mapName, jobs] of state.jobsByMap) {
-			this.jobsByMap.set(mapName, jobs.map(job => ({
+		for (const [mapId, jobs] of state.jobsByMap) {
+			this.jobsByMap.set(mapId, jobs.map(job => ({
 				jobId: job.jobId,
-				mapName: job.mapName,
+				mapId: job.mapId,
 				playerId: job.playerId,
 				tileX: job.tileX,
 				tileY: job.tileY,

@@ -4,8 +4,8 @@ import { Receiver } from '../Receiver'
 import { Settler, PopulationStatsData, PopulationListData, ProfessionType, SettlerState, RequestListData } from './types'
 import { PlayerJoinData, PlayerTransitionData } from '../Players/types'
 
-type SettlersGetter = (mapName: string, playerId: string) => Settler[]
-type HousingCapacityGetter = (mapName: string, playerId: string) => number
+type SettlersGetter = (mapId: string, playerId: string) => Settler[]
+type HousingCapacityGetter = (mapId: string, playerId: string) => number
 
 export class PopulationStats {
 	constructor(
@@ -68,10 +68,10 @@ export class PopulationStats {
 	/**
 	 * Send population list to client (full state: settlers + statistics)
 	 */
-	public sendPopulationList(client: EventClient, mapName: string): void {
+	public sendPopulationList(client: EventClient, mapId: string): void {
 		// 1. Get all settlers for player and map
-		const settlers = this.getSettlers(mapName, client.id)
-		const housingCapacity = this.getHousingCapacity(mapName, client.id)
+		const settlers = this.getSettlers(mapId, client.id)
+		const housingCapacity = this.getHousingCapacity(mapId, client.id)
 
 		// 2. Calculate statistics (totalCount, byProfession, idleCount, workingCount)
 		const stats = this.calculate(settlers, housingCapacity)
@@ -88,17 +88,17 @@ export class PopulationStats {
 	/**
 	 * Emit population statistics update (stats only, no settlers list)
 	 */
-	public emitPopulationStatsUpdate(client: EventClient, mapName: string): void {
+	public emitPopulationStatsUpdate(client: EventClient, mapId: string): void {
 		// 1. Get all settlers for player and map
-		const settlers = this.getSettlers(mapName, client.id)
-		const housingCapacity = this.getHousingCapacity(mapName, client.id)
+		const settlers = this.getSettlers(mapId, client.id)
+		const housingCapacity = this.getHousingCapacity(mapId, client.id)
 
 		// 2. Calculate statistics only (totalCount, byProfession, idleCount, workingCount)
 		const stats = this.calculate(settlers, housingCapacity)
 
 		// 3. Emit sc:population:stats-updated with PopulationStatsData (statistics only)
 		// Use event.emit to send to all clients in the group (map)
-		this.event.emit(Receiver.Group, PopulationEvents.SC.StatsUpdated, stats, mapName)
+		this.event.emit(Receiver.Group, PopulationEvents.SC.StatsUpdated, stats, mapId)
 	}
 
 	/**
@@ -121,9 +121,9 @@ export class PopulationStats {
 
 		// Handle request list event
 		this.event.on<RequestListData>(PopulationEvents.CS.RequestList, (data, client) => {
-			const mapName = (client as any).currentGroup
-			if (mapName) {
-				this.sendPopulationList(client, mapName)
+			const mapId = (client as any).currentGroup
+			if (mapId) {
+				this.sendPopulationList(client, mapId)
 			}
 		})
 	}

@@ -4,6 +4,7 @@ import { Event } from '@rugged/game'
 import styles from './SidePanel.module.css'
 import { itemService } from '../services/ItemService'
 import { ItemCategory } from '@rugged/game'
+import { UiEvents } from '../uiEvents'
 
 const LABEL_TOOLTIP_TIME = 4000
 
@@ -16,22 +17,22 @@ export function SidePanel() {
 	const [hasCompletedQuest, setHasCompletedQuest] = useState(false)
 
 	const handleInventoryClick = () => {
-		EventBus.emit('ui:inventory:toggle')
+		EventBus.emit(UiEvents.Inventory.Toggle)
 		setHasNewQuestItem(false)
 	}
 
 	const handleQuestsClick = () => {
-		EventBus.emit('ui:quests:toggle')
+		EventBus.emit(UiEvents.Quests.Toggle)
 		setHasNewQuest(false)
 		setHasCompletedQuest(false)
 	}
 
 	const handleRelationshipsClick = () => {
-		EventBus.emit('ui:relationships:toggle')
+		EventBus.emit(UiEvents.Relationships.Toggle)
 	}
 
 	const handleSettingsClick = () => {
-		EventBus.emit('ui:settings:toggle')
+		EventBus.emit(UiEvents.Settings.Toggle)
 	}
 
 	useEffect(() => {

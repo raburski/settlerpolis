@@ -2,6 +2,7 @@ import { Scene, Input } from 'phaser'
 import { EventBus } from "../EventBus"
 import { Event } from '@rugged/game'
 import { FXType } from '@rugged/game'
+import { UiEvents } from '../uiEvents'
 
 export class Keyboard {
 	private cursors: Phaser.Types.Input.Keyboard.CursorKeys
@@ -58,7 +59,7 @@ export class Keyboard {
 		this.escapeKey = scene.input.keyboard.addKey(Input.Keyboard.KeyCodes.ESC)
 
 		// Listen for chat input visibility changes
-		EventBus.on('ui:chat:toggle', this.handleChatInputVisible, this)
+		EventBus.on(UiEvents.Chat.Toggle, this.handleChatInputVisible, this)
 
 		// Listen for EnableControls event
 		EventBus.on(Event.FX.SC.Play, this.handleFXEvent, this)
@@ -89,21 +90,21 @@ export class Keyboard {
 		if (this.isInDialogue) {
 			// Handle space to skip animation
 			if (this.spaceKey.isDown && !this.wasSpacePressed) {
-				EventBus.emit('ui:dialogue:skip-animation')
+				EventBus.emit(UiEvents.Dialogue.SkipAnimation)
 			}
 
 			// Handle arrow keys for option selection
 			if (this.upKey.isDown && !this.wasUpPressed) {
-				EventBus.emit('ui:dialogue:option:up')
+				EventBus.emit(UiEvents.Dialogue.OptionUp)
 			}
 			if (this.downKey.isDown && !this.wasDownPressed) {
-				EventBus.emit('ui:dialogue:option:down')
+				EventBus.emit(UiEvents.Dialogue.OptionDown)
 			}
 			if (this.enterKey.isDown && !this.wasEnterPressed) {
-				EventBus.emit('ui:dialogue:option:confirm')
+				EventBus.emit(UiEvents.Dialogue.OptionConfirm)
 			}
 			if (this.escapeKey.isDown) {
-				EventBus.emit('ui:dialogue:close')
+				EventBus.emit(UiEvents.Dialogue.Close)
 			}
 
 			// Update was pressed states
@@ -117,13 +118,13 @@ export class Keyboard {
 
 		// Handle regular keyboard input
 		if (this.inventoryKey.isDown && !this.wasInventoryPressed) {
-			EventBus.emit('ui:inventory:toggle')
+			EventBus.emit(UiEvents.Inventory.Toggle)
 		}
 		if (this.questKey.isDown && !this.wasQuestPressed) {
-			EventBus.emit('ui:quests:toggle')
+			EventBus.emit(UiEvents.Quests.Toggle)
 		}
 		if (this.chatKey.isDown && !this.wasChatPressed) {
-			EventBus.emit('ui:chat:toggle', this.chatKey.isDown)
+			EventBus.emit(UiEvents.Chat.Toggle, this.chatKey.isDown)
 		}
 
 		// Update was pressed states
@@ -179,7 +180,7 @@ export class Keyboard {
 	}
 
 	public destroy(): void {
-		EventBus.off('ui:chat:toggle', this.handleChatInputVisible, this)
+		EventBus.off(UiEvents.Chat.Toggle, this.handleChatInputVisible, this)
 		EventBus.off(Event.FX.SC.Play, this.handleFXEvent, this)
 		EventBus.off(Event.Dialogue.SC.Trigger, this.handleDialogueTrigger, this)
 		EventBus.off(Event.Dialogue.SC.End, this.handleDialogueEnd, this)

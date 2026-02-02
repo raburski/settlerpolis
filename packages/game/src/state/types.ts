@@ -22,6 +22,16 @@ import type { PausedContext } from '../Needs/types'
 import type { Trigger } from '../Triggers/types'
 import type { ScheduledEvent } from '../Scheduler/types'
 import type { Position } from '../types'
+import type { MoveTargetType } from '../Movement/types'
+import type {
+	BuildingInstanceId,
+	MapId,
+	PlayerId,
+	ReservationId,
+	RoadJobId,
+	SettlerId,
+	StorageSlotId
+} from '../ids'
 
 export type MapEntries<V> = Array<[string, V]>
 
@@ -102,9 +112,9 @@ export interface BuildingsSnapshot {
 }
 
 export interface BuildingStorageSnapshot {
-	buildingInstanceId: string
+	buildingInstanceId: BuildingInstanceId
 	slots: StorageSlot[]
-	slotsByItem: MapEntries<string[]>
+	slotsByItem: MapEntries<StorageSlotId[]>
 }
 
 export interface StorageSnapshot {
@@ -130,7 +140,7 @@ export interface MovementSnapshot {
 export interface MovementTaskSnapshot {
 	entityId: string
 	targetPosition: Position
-	targetType?: string
+	targetType?: MoveTargetType
 	targetId?: string
 }
 
@@ -185,9 +195,14 @@ export interface ActionSystemQueueSnapshot {
 	context?: ActionQueueContext
 }
 
+export enum ActionQueueContextKind {
+	Work = 'work',
+	Need = 'need'
+}
+
 export type ActionQueueContext =
-	| { kind: 'work', step?: WorkStep, reservationOwnerId?: string }
-	| { kind: 'need', needType: NeedType, satisfyValue?: number, reservationOwnerId?: string }
+	| { kind: ActionQueueContextKind.Work, step?: WorkStep, reservationOwnerId?: string }
+	| { kind: ActionQueueContextKind.Need, needType: NeedType, satisfyValue?: number, reservationOwnerId?: string }
 
 export interface NPCSnapshot {
 	npcs: NPC[]
@@ -227,14 +242,14 @@ export interface RoadsSnapshot {
 }
 
 export interface RoadJobSnapshot {
-	jobId: string
-	mapName: string
-	playerId: string
+	jobId: RoadJobId
+	mapId: MapId
+	playerId: PlayerId
 	tileX: number
 	tileY: number
 	roadType: RoadType
 	createdAt: number
-	assignedSettlerId?: string
+	assignedSettlerId?: SettlerId
 }
 
 export interface TriggersSnapshot {
@@ -259,18 +274,18 @@ export interface ReservationSnapshot {
 }
 
 export interface AmenityReservationSnapshot {
-	reservationId: string
-	buildingInstanceId: string
-	settlerId: string
+	reservationId: ReservationId
+	buildingInstanceId: BuildingInstanceId
+	settlerId: SettlerId
 	slotIndex: number
 	position: Position
 	createdAt: number
 }
 
 export interface HouseReservationSnapshot {
-	reservationId: string
-	houseId: string
-	settlerId: string
+	reservationId: ReservationId
+	houseId: BuildingInstanceId
+	settlerId: SettlerId
 	createdAt: number
 }
 

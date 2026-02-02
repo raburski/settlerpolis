@@ -6,6 +6,7 @@ import { Event } from '@rugged/game'
 import { itemService } from '../services/ItemService'
 import { ItemTexture } from './ItemTexture'
 import { npcAssetsService } from '../services/NPCAssetsService'
+import { UiEvents } from '../uiEvents'
 
 export function DialogUI() {
 	const [activeNode, setActiveNode] = useState<DialogueNode | null>(null)
@@ -44,7 +45,7 @@ export function DialogUI() {
 			setIsAnimating(true)
 			setShowResponses(false)
 			setSelectedOptionIndex(0)
-			EventBus.emit('ui:dialogue:animation:start')
+			EventBus.emit(UiEvents.Dialogue.AnimationStart)
 		}
 
 		const handleDialogueEnd = (data: { dialogueId: string }) => {
@@ -67,7 +68,7 @@ export function DialogUI() {
 				setIsAnimating(false)
 				setTimeout(() => {
 					setShowResponses(true)
-					EventBus.emit('ui:dialogue:responses:show', true)
+					EventBus.emit(UiEvents.Dialogue.ResponsesShow, true)
 				}, 200)
 			}
 		}
@@ -93,7 +94,7 @@ export function DialogUI() {
 				setIsAnimating(false)
 				setTimeout(() => {
 					setShowResponses(true)
-					EventBus.emit('ui:dialogue:responses:show', true)
+					EventBus.emit(UiEvents.Dialogue.ResponsesShow, true)
 				}, 200)
 				return
 			}
@@ -113,11 +114,11 @@ export function DialogUI() {
 		EventBus.on(Event.Dialogue.SC.End, handleDialogueEnd)
 
 		// Listen for keyboard events
-		EventBus.on('ui:dialogue:skip-animation', handleSkipAnimation)
-		EventBus.on('ui:dialogue:option:up', handleOptionUp)
-		EventBus.on('ui:dialogue:option:down', handleOptionDown)
-		EventBus.on('ui:dialogue:option:confirm', handleOptionConfirm)
-		EventBus.on('ui:dialogue:close', handleClose)
+		EventBus.on(UiEvents.Dialogue.SkipAnimation, handleSkipAnimation)
+		EventBus.on(UiEvents.Dialogue.OptionUp, handleOptionUp)
+		EventBus.on(UiEvents.Dialogue.OptionDown, handleOptionDown)
+		EventBus.on(UiEvents.Dialogue.OptionConfirm, handleOptionConfirm)
+		EventBus.on(UiEvents.Dialogue.Close, handleClose)
 
 		// Listen for item type updates
 		const unsubscribe = itemService.onUpdate(handleItemUpdate)
@@ -125,11 +126,11 @@ export function DialogUI() {
 		return () => {
 			EventBus.off(Event.Dialogue.SC.Trigger, handleDialogueTrigger)
 			EventBus.off(Event.Dialogue.SC.End, handleDialogueEnd)
-			EventBus.off('ui:dialogue:skip-animation', handleSkipAnimation)
-			EventBus.off('ui:dialogue:option:up', handleOptionUp)
-			EventBus.off('ui:dialogue:option:down', handleOptionDown)
-			EventBus.off('ui:dialogue:option:confirm', handleOptionConfirm)
-			EventBus.off('ui:dialogue:close', handleClose)
+			EventBus.off(UiEvents.Dialogue.SkipAnimation, handleSkipAnimation)
+			EventBus.off(UiEvents.Dialogue.OptionUp, handleOptionUp)
+			EventBus.off(UiEvents.Dialogue.OptionDown, handleOptionDown)
+			EventBus.off(UiEvents.Dialogue.OptionConfirm, handleOptionConfirm)
+			EventBus.off(UiEvents.Dialogue.Close, handleClose)
 			unsubscribe()
 		}
 	}, [activeNode, isAnimating])
@@ -146,11 +147,11 @@ export function DialogUI() {
 			} else {
 				clearInterval(interval)
 				setIsAnimating(false)
-				EventBus.emit('ui:dialogue:animation:end')
+				EventBus.emit(UiEvents.Dialogue.AnimationEnd)
 				// Add a small delay before showing responses
 				setTimeout(() => {
 					setShowResponses(true)
-					EventBus.emit('ui:dialogue:responses:show', true)
+					EventBus.emit(UiEvents.Dialogue.ResponsesShow, true)
 				}, 200)
 			}
 		}, 40) // Slightly slower for better readability
@@ -162,7 +163,7 @@ export function DialogUI() {
 	useEffect(() => {
 		if (activeNode) {
 			const totalOptions = activeNode.options?.length || (activeNode.next ? 1 : 0)
-			EventBus.emit('ui:dialogue:options:update', { totalOptions })
+			EventBus.emit(UiEvents.Dialogue.OptionsUpdate, { totalOptions })
 		}
 	}, [activeNode])
 

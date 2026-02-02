@@ -4,7 +4,9 @@ import { logisticsService } from '../services/LogisticsService'
 import { buildingService } from '../services/BuildingService'
 import { itemService } from '../services/ItemService'
 import type { LogisticsRequest } from '@rugged/game/Settlers/WorkProvider/types'
+import { LogisticsRequestType } from '@rugged/game/Settlers/WorkProvider/types'
 import styles from './LogisticsPanel.module.css'
+import { UiEvents } from '../uiEvents'
 
 type LogisticsPanelProps = {
 	isVisible: boolean
@@ -70,10 +72,10 @@ export const LogisticsPanel: React.FC<LogisticsPanelProps> = ({ isVisible, ancho
 			setRequests(data || [])
 		}
 
-		EventBus.on('ui:logistics:updated', handleUpdated)
+		EventBus.on(UiEvents.Logistics.Updated, handleUpdated)
 
 		return () => {
-			EventBus.off('ui:logistics:updated', handleUpdated)
+			EventBus.off(UiEvents.Logistics.Updated, handleUpdated)
 		}
 	}, [])
 
@@ -110,7 +112,7 @@ export const LogisticsPanel: React.FC<LogisticsPanelProps> = ({ isVisible, ancho
 				) : (
 					sortedRequests.map((request) => {
 						const building = getBuildingMeta(request.buildingInstanceId)
-						const arrow = request.type === 'output' ? '➡︎' : '⬅︎'
+						const arrow = request.type === LogisticsRequestType.Output ? '➡︎' : '⬅︎'
 						return (
 							<div key={request.id} className={styles.requestCard}>
 								<div className={styles.requestMain}>

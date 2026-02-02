@@ -1,9 +1,24 @@
 import { Position } from '../types'
+import type { MapId } from '../ids'
+
+export enum MoveTargetType {
+	AmenitySlot = 'amenity_slot',
+	Building = 'building',
+	House = 'house',
+	Item = 'item',
+	Plot = 'plot',
+	Resource = 'resource',
+	Road = 'road',
+	RoadTile = 'road_tile',
+	Spot = 'spot',
+	StorageSlot = 'storage_slot',
+	Tool = 'tool'
+}
 
 export interface MovementEntity {
 	id: string
 	position: Position
-	mapName: string
+	mapId: MapId
 	speed: number // pixels per second
 }
 
@@ -11,7 +26,7 @@ export interface MovementTask {
 	entityId: string
 	path: Position[]
 	currentStep: number
-	targetType?: string // 'tool', 'building', 'spot', etc.
+	targetType?: MoveTargetType
 	targetId?: string
 	totalDistance?: number
 	traveledDistance?: number
@@ -32,6 +47,6 @@ export interface MovementCallbacks {
 
 export interface MoveToPositionOptions {
 	callbacks?: MovementCallbacks
-	targetType?: string
+	targetType?: MoveTargetType
 	targetId?: string
 }

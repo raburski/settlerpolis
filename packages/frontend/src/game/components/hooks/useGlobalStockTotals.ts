@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { EventBus } from '../../EventBus'
 import { storageService } from '../../services/StorageService'
+import { UiEvents } from '../../uiEvents'
 
 export const useGlobalStockTotals = () => {
 	const [totals, setTotals] = useState<Record<string, number>>({})
@@ -17,10 +18,10 @@ export const useGlobalStockTotals = () => {
 
 	useEffect(() => {
 		updateTotals()
-		EventBus.on('ui:storage:updated', updateTotals)
+		EventBus.on(UiEvents.Storage.Updated, updateTotals)
 
 		return () => {
-			EventBus.off('ui:storage:updated', updateTotals)
+			EventBus.off(UiEvents.Storage.Updated, updateTotals)
 		}
 	}, [])
 

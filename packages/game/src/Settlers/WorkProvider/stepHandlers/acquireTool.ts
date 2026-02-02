@@ -2,6 +2,8 @@ import { SettlerState } from '../../../Population/types'
 import { WorkActionType, WorkStepType } from '../types'
 import type { WorkAction } from '../types'
 import type { StepHandler, StepHandlerResult } from './types'
+import { ReservationBag } from '../reservations'
+import { MoveTargetType } from '../../../Movement/types'
 
 export const AcquireToolHandler: StepHandler = {
 	type: WorkStepType.AcquireTool,
@@ -18,7 +20,7 @@ export const AcquireToolHandler: StepHandler = {
 			return { actions: [] }
 		}
 
-	const releaseFns: Array<() => void> = []
+	const reservations = new ReservationBag()
 	const toolItemType = managers.population.getToolItemType(step.profession)
 	if (!toolItemType) {
 		const actions: WorkAction[] = [
@@ -30,7 +32,7 @@ export const AcquireToolHandler: StepHandler = {
 				actions.push({
 					type: WorkActionType.Move,
 					position: building.position,
-					targetType: 'building',
+					targetType: MoveTargetType.Building,
 					targetId: building.id,
 					setState: SettlerState.MovingToBuilding
 				})
@@ -42,7 +44,7 @@ export const AcquireToolHandler: StepHandler = {
 		let toolItemId = step.toolItemId
 		let toolPosition = step.toolPosition
 		if (!toolItemId || !toolPosition) {
-			const reservedTool = reservationSystem.reserveToolForProfession(settler.mapName, step.profession, settlerId)
+			const reservedTool = reservationSystem.reserveToolForProfession(settler.mapId, step.profession, settlerId)
 			if (!reservedTool) {
 				return {
 					actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }]
@@ -50,23 +52,23 @@ export const AcquireToolHandler: StepHandler = {
 			}
 			toolItemId = reservedTool.itemId
 			toolPosition = reservedTool.position
-			releaseFns.push(() => reservationSystem.releaseToolReservation(toolItemId!))
+			reservations.add(() => reservationSystem.releaseToolReservation(toolItemId!))
 		}
 
-		const roadData = managers.roads.getRoadData(settler.mapName) || undefined
-		const path = managers.map.findPath(settler.mapName, settler.position, toolPosition!, {
+		const roadData = managers.roads.getRoadData(settler.mapId) || undefined
+		const path = managers.map.findPath(settler.mapId, settler.position, toolPosition!, {
 			roadData,
 			allowDiagonal: true
 		})
 		if (!path || path.length === 0) {
-			releaseFns.forEach(fn => fn())
+			reservations.releaseAll()
 			return {
 				actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }]
 			}
 		}
 
 		const actions: WorkAction[] = [
-			{ type: WorkActionType.Move, position: toolPosition!, targetType: 'tool', targetId: toolItemId, setState: SettlerState.MovingToTool },
+			{ type: WorkActionType.Move, position: toolPosition!, targetType: MoveTargetType.Tool, targetId: toolItemId, setState: SettlerState.MovingToTool },
 			{ type: WorkActionType.PickupTool, itemId: toolItemId!, setState: SettlerState.MovingToTool },
 			{ type: WorkActionType.ChangeProfession, profession: step.profession, setState: SettlerState.Idle }
 		]
@@ -77,7 +79,7 @@ export const AcquireToolHandler: StepHandler = {
 				actions.push({
 					type: WorkActionType.Move,
 					position: building.position,
-					targetType: 'building',
+					targetType: MoveTargetType.Building,
 					targetId: building.id,
 					setState: SettlerState.MovingToBuilding
 				})
@@ -86,7 +88,7 @@ export const AcquireToolHandler: StepHandler = {
 
 		return {
 			actions,
-			releaseReservations: () => releaseFns.forEach(fn => fn())
+			releaseReservations: () => reservations.releaseAll()
 		}
 	}
 }

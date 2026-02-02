@@ -11,6 +11,9 @@ import { TiledMap } from "./types"
 import { BuildingDefinition } from './Buildings/types'
 import { ProfessionDefinition, ProfessionToolDefinition } from './Population/types'
 import { ResourceNodeDefinition, ResourceNodeSpawn } from './ResourceNodes/types'
+import type { ItemType } from './Items/types'
+import type { ProfessionType } from './Population/types'
+import type { MapId } from './ids'
 
 export interface NPCContent extends NPC {
 	sentiments?: AffinitySentiments
@@ -21,7 +24,7 @@ export interface NPCContent extends NPC {
 }
 
 export interface StartingItem {
-	itemType: string
+	itemType: ItemType
 	quantity?: number
 	offset?: {
 		x?: number // Offset in tiles or pixels (depending on tileBased)
@@ -31,7 +34,7 @@ export interface StartingItem {
 }
 
 export interface StartingPopulation {
-	profession: string // ProfessionType
+	profession: ProfessionType // ProfessionType
 	count: number // Number of settlers with this profession to spawn
 }
 
@@ -43,8 +46,8 @@ export interface GameContent {
 	flags: Flag[]
 	schedules: ScheduleOptions[]
 	triggers: Trigger[]
-	maps: Record<string, TiledMap>,
-	defaultMap?: string // Optional default map ID to load initially
+	maps: Record<MapId, TiledMap>,
+	defaultMap?: MapId // Optional default map ID to load initially
 	buildings?: BuildingDefinition[]
 	professions?: ProfessionDefinition[]
 	professionTools?: ProfessionToolDefinition[]
@@ -84,3 +87,4 @@ export * from './Population/types'
 export * from './Storage/types'
 export * from './Simulation/types'
 export * from './ResourceNodes/types'
+export * from './ids'

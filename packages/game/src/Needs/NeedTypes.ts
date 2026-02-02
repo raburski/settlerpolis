@@ -3,6 +3,13 @@ export enum NeedType {
 	Fatigue = 'fatigue'
 }
 
-export type NeedLevel = 'NONE' | 'URGENT' | 'CRITICAL'
+export enum NeedLevel {
+	None = 'NONE',
+	Urgent = 'URGENT',
+	Critical = 'CRITICAL'
+}
 
-export type NeedPriority = 'URGENT' | 'CRITICAL'
+export enum NeedPriority {
+	Urgent = 'URGENT',
+	Critical = 'CRITICAL'
+}

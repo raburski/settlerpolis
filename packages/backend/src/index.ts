@@ -79,9 +79,9 @@ apiRouter.get('/health', (req: Request, res: Response) => {
 })
 
 // Map JSON endpoint
-apiRouter.get('/maps/:mapName.json', (req: Request, res: Response) => {
-	const { mapName } = req.params
-	const mapData = content.maps[mapName]
+apiRouter.get('/maps/:mapId.json', (req: Request, res: Response) => {
+	const { mapId } = req.params
+	const mapData = content.maps[mapId]
 	
 	if (!mapData) {
 		res.status(404).json({ error: 'Map not found' })
@@ -93,7 +93,7 @@ apiRouter.get('/maps/:mapName.json', (req: Request, res: Response) => {
 		res.setHeader('Content-Type', 'application/json')
 		res.json(mapData)
 	} catch (error) {
-		console.error(`Error serving map ${mapName}:`, error)
+		console.error(`Error serving map ${mapId}:`, error)
 		res.status(500).json({ error: 'Failed to serve map data' })
 	}
 })

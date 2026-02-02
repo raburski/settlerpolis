@@ -1,4 +1,4 @@
-import { ItemMetadata, ItemCategory } from '@rugged/game'
+import { ItemMetadata, ItemCategory, ProfessionType } from '@rugged/game'
 import { ItemType } from './types'
 
 export default {
@@ -8,5 +8,5 @@ export default {
 	description: 'A sturdy pickaxe for mining',
 	category: ItemCategory.Tool,
 	stackable: false,
-	changesProfession: 'miner'
+	changesProfession: ProfessionType.Miner
 } as ItemMetadata

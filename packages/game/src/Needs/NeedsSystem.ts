@@ -5,7 +5,7 @@ import type { SimulationTickData } from '../Simulation/types'
 import type { PopulationManager } from '../Population'
 import { SettlerState } from '../Population/types'
 import { MovementEvents } from '../Movement/events'
-import { NeedType, type NeedLevel } from './NeedTypes'
+import { NeedType, NeedLevel } from './NeedTypes'
 import { createDefaultNeedsState, getNeedMeter, type NeedsState } from './NeedsState'
 import { NeedsEvents } from './events'
 import type { NeedsSystemSnapshot } from '../state/types'
@@ -23,8 +23,8 @@ const FATIGUE_CARRY_BASE_PER_TILE = 0.0006
 const FATIGUE_CARRY_DISTANCE_EXPONENT = 1.3
 
 const createDefaultLevels = (): Record<NeedType, NeedLevel> => ({
-	[NeedType.Hunger]: 'NONE',
-	[NeedType.Fatigue]: 'NONE'
+	[NeedType.Hunger]: NeedLevel.None,
+	[NeedType.Fatigue]: NeedLevel.None
 })
 
 export class NeedsSystem {
@@ -96,7 +96,7 @@ export class NeedsSystem {
 		meter.value = clamp(value, 0, 1)
 
 		const levels = this.lastLevels.get(settlerId) ?? createDefaultLevels()
-		levels[needType] = 'NONE'
+		levels[needType] = NeedLevel.None
 		this.lastLevels.set(settlerId, levels)
 
 		this.event.emit(Receiver.All, NeedsEvents.SS.NeedSatisfied, {
@@ -183,17 +183,17 @@ export class NeedsSystem {
 		const last = this.lastLevels.get(settlerId) ?? createDefaultLevels()
 		let nextLevel: NeedLevel
 
-		if (last[needType] !== 'NONE' && value < meter.satisfiedThreshold) {
-			nextLevel = value <= meter.criticalThreshold ? 'CRITICAL' : last[needType]
+		if (last[needType] !== NeedLevel.None && value < meter.satisfiedThreshold) {
+			nextLevel = value <= meter.criticalThreshold ? NeedLevel.Critical : last[needType]
 		} else if (value <= meter.criticalThreshold) {
-			nextLevel = 'CRITICAL'
+			nextLevel = NeedLevel.Critical
 		} else if (value <= meter.urgentThreshold) {
-			nextLevel = 'URGENT'
+			nextLevel = NeedLevel.Urgent
 		} else {
-			nextLevel = 'NONE'
+			nextLevel = NeedLevel.None
 		}
 
-		if (nextLevel === 'URGENT' && last[needType] !== 'URGENT') {
+		if (nextLevel === NeedLevel.Urgent && last[needType] !== NeedLevel.Urgent) {
 			this.event.emit(Receiver.All, NeedsEvents.SS.NeedBecameUrgent, {
 				settlerId,
 				needType,
@@ -201,7 +201,7 @@ export class NeedsSystem {
 			})
 		}
 
-		if (nextLevel === 'CRITICAL' && last[needType] !== 'CRITICAL') {
+		if (nextLevel === NeedLevel.Critical && last[needType] !== NeedLevel.Critical) {
 			this.event.emit(Receiver.All, NeedsEvents.SS.NeedBecameCritical, {
 				settlerId,
 				needType,
@@ -209,7 +209,7 @@ export class NeedsSystem {
 			})
 		}
 
-		if (last[needType] !== 'NONE' && nextLevel === 'NONE' && value >= meter.satisfiedThreshold) {
+		if (last[needType] !== NeedLevel.None && nextLevel === NeedLevel.None && value >= meter.satisfiedThreshold) {
 			this.event.emit(Receiver.All, NeedsEvents.SS.NeedSatisfied, {
 				settlerId,
 				needType,

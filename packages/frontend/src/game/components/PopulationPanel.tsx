@@ -4,6 +4,7 @@ import { populationService } from '../services/PopulationService'
 import { toolAvailabilityService } from '../services/ToolAvailabilityService'
 import { ProfessionType, PopulationStatsData, SettlerState } from '@rugged/game'
 import styles from './PopulationPanel.module.css'
+import { UiEvents } from '../uiEvents'
 
 type PopulationPanelProps = {
 	isVisible: boolean
@@ -62,10 +63,10 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 			setStats(data)
 		}
 
-		EventBus.on('ui:population:stats-updated', handleStatsUpdated)
+		EventBus.on(UiEvents.Population.StatsUpdated, handleStatsUpdated)
 
 		return () => {
-			EventBus.off('ui:population:stats-updated', handleStatsUpdated)
+			EventBus.off(UiEvents.Population.StatsUpdated, handleStatsUpdated)
 		}
 	}, [])
 
@@ -95,12 +96,12 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 			updateIdleCounts()
 		}
 
-		EventBus.on('ui:population:settler-updated', handleSettlerUpdated)
-		EventBus.on('ui:population:list-loaded', handleSettlerUpdated)
+		EventBus.on(UiEvents.Population.SettlerUpdated, handleSettlerUpdated)
+		EventBus.on(UiEvents.Population.ListLoaded, handleSettlerUpdated)
 
 		return () => {
-			EventBus.off('ui:population:settler-updated', handleSettlerUpdated)
-			EventBus.off('ui:population:list-loaded', handleSettlerUpdated)
+			EventBus.off(UiEvents.Population.SettlerUpdated, handleSettlerUpdated)
+			EventBus.off(UiEvents.Population.ListLoaded, handleSettlerUpdated)
 		}
 	}, [])
 

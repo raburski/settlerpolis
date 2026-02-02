@@ -152,7 +152,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 				progress,
 				stage: building.stage
 			}
-			this.event.emit(Receiver.Group, BuildingsEvents.SC.Progress, progressData, building.mapName)
+			this.event.emit(Receiver.Group, BuildingsEvents.SC.Progress, progressData, building.mapId)
 
 			// Check if construction is complete
 			if (progress >= 100 && building.stage === ConstructionStage.Completed) {
@@ -226,7 +226,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			id: buildingInstanceId,
 			buildingId,
 			playerId: client.id,
-			mapName: client.currentGroup,
+			mapId: client.currentGroup,
 			position,
 			stage: ConstructionStage.CollectingResources,
 			progress: 0,
@@ -298,7 +298,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			buildingInstanceId,
 			refundedItems
 		}
-		client.emit(Receiver.Group, BuildingsEvents.SC.Cancelled, cancelledData, building.mapName)
+		client.emit(Receiver.Group, BuildingsEvents.SC.Cancelled, cancelledData, building.mapId)
 	}
 
 	private calculateCollectedRefund(building: BuildingInstance): BuildingCost[] {
@@ -332,7 +332,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		// Create fake client for dropping items
 		const fakeClient: EventClient = {
 			id: building.playerId,
-			currentGroup: building.mapName,
+			currentGroup: building.mapId,
 			emit: (receiver, event, data, target?) => {
 				this.event.emit(receiver, event, data, target)
 			},
@@ -374,7 +374,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		// Remove building from map objects
 		const mapObjectId = this.buildingToMapObject.get(building.id)
 		if (mapObjectId) {
-			this.managers.mapObjects.removeObjectById(mapObjectId, building.mapName)
+			this.managers.mapObjects.removeObjectById(mapObjectId, building.mapId)
 			this.buildingToMapObject.delete(building.id)
 		}
 
@@ -403,7 +403,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			center: building.workAreaCenter
 		}
 
-		this.event.emit(Receiver.Group, BuildingsEvents.SC.WorkAreaUpdated, updatedData, building.mapName)
+		this.event.emit(Receiver.Group, BuildingsEvents.SC.WorkAreaUpdated, updatedData, building.mapId)
 	}
 
 	// Initialize building with resource collection
@@ -506,7 +506,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 				itemType,
 				quantity: newCollected,
 				requiredQuantity: requiredCost.quantity
-			}, building.mapName)
+			}, building.mapId)
 
 		// Check if all resources are collected
 		if (this.hasAllRequiredResources(building)) {
@@ -519,7 +519,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			this.event.emit(Receiver.Group, BuildingsEvents.SC.StageChanged, {
 				buildingInstanceId: building.id,
 				stage: building.stage
-			}, building.mapName)
+			}, building.mapId)
 
 			// Update MapObject metadata
 			const mapObjectId = this.buildingToMapObject.get(building.id)
@@ -566,7 +566,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			id: building.id,
 			buildingId: building.buildingId,
 			playerId: building.playerId,
-			mapName: building.mapName,
+			mapId: building.mapId,
 			stage: building.stage
 		})
 		
@@ -608,7 +608,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.event.emit(Receiver.All, BuildingsEvents.SS.ConstructionCompleted, {
 			buildingInstanceId: building.id,
 			buildingId: building.buildingId,
-			mapName: building.mapName,
+			mapId: building.mapId,
 			playerId: building.playerId
 		})
 
@@ -622,8 +622,8 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		const completedData: BuildingCompletedData = {
 			building: clientBuilding as any
 		}
-		this.logger.log(`Emitting building completed event to group: ${building.mapName}`)
-		this.event.emit(Receiver.Group, BuildingsEvents.SC.Completed, completedData, building.mapName)
+		this.logger.log(`Emitting building completed event to group: ${building.mapId}`)
+		this.event.emit(Receiver.Group, BuildingsEvents.SC.Completed, completedData, building.mapId)
 		this.logger.log(`✓ Building completed event emitted`)
 	}
 
@@ -696,11 +696,11 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionStarted, {
 			buildingInstanceId: building.id,
 			recipe
-		}, building.mapName)
+		}, building.mapId)
 		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionProgress, {
 			buildingInstanceId: building.id,
 			progress: 0
-		}, building.mapName)
+		}, building.mapId)
 	}
 
 	private emitAutoProductionCompleted(building: BuildingInstance, recipe: ProductionRecipe): void {
@@ -708,11 +708,11 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionCompleted, {
 			buildingInstanceId: building.id,
 			recipe
-		}, building.mapName)
+		}, building.mapId)
 		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionProgress, {
 			buildingInstanceId: building.id,
 			progress: 100
-		}, building.mapName)
+		}, building.mapId)
 	}
 
 	private emitAutoProductionStatus(building: BuildingInstance, status: ProductionStatus, progress: number, progressMs: number): void {
@@ -731,20 +731,20 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionStatusChanged, {
 			buildingInstanceId: building.id,
 			status
-		}, building.mapName)
+		}, building.mapId)
 		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionProgress, {
 			buildingInstanceId: building.id,
 			progress: nextProgress
-		}, building.mapName)
+		}, building.mapId)
 	}
 
-	private checkBuildingCollision(mapName: string, position: { x: number, y: number }, definition: BuildingDefinition): boolean {
+	private checkBuildingCollision(mapId: string, position: { x: number, y: number }, definition: BuildingDefinition): boolean {
 		// Get all existing buildings and map objects in this map
-		const existingBuildings = this.getBuildingsForMap(mapName)
-		const existingObjects = this.managers.mapObjects.getAllObjectsForMap(mapName)
+		const existingBuildings = this.getBuildingsForMap(mapId)
+		const existingObjects = this.managers.mapObjects.getAllObjectsForMap(mapId)
 
 		// Get tile size from map (default to 32 if map not loaded)
-		const map = this.managers.map.getMap(mapName)
+		const map = this.managers.map.getMap(mapId)
 		const TILE_SIZE = map?.tiledMap?.tilewidth || 32
 		const buildingWidth = definition.footprint.width * TILE_SIZE
 		const buildingHeight = definition.footprint.height * TILE_SIZE
@@ -752,7 +752,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.logger.debug(`Checking collision for building ${definition.id} at position (${position.x}, ${position.y}) with footprint ${definition.footprint.width}x${definition.footprint.height} (${buildingWidth}x${buildingHeight} pixels)`)
 
 		// Check collision with map tiles (non-passable tiles)
-		if (this.checkMapTileCollision(mapName, position, definition, TILE_SIZE)) {
+		if (this.checkMapTileCollision(mapId, position, definition, TILE_SIZE)) {
 			this.logger.debug(`❌ Collision with map tiles at position:`, position)
 			return true
 		}
@@ -817,22 +817,22 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	/**
 	 * Check if building footprint overlaps with non-passable map tiles
-	 * @param mapName Map identifier
+	 * @param mapId Map identifier
 	 * @param position Building position in pixels
 	 * @param definition Building definition with footprint
 	 * @param tileSize Tile size in pixels
 	 * @returns true if collision with map tiles detected
 	 */
 	private checkMapTileCollision(
-		mapName: string,
+		mapId: string,
 		position: { x: number, y: number },
 		definition: BuildingDefinition,
 		tileSize: number
 	): boolean {
 		// Get map data
-		const map = this.managers.map.getMap(mapName)
+		const map = this.managers.map.getMap(mapId)
 		if (!map) {
-			this.logger.warn(`Map ${mapName} not found, allowing placement`)
+			this.logger.warn(`Map ${mapId} not found, allowing placement`)
 			return false // Allow placement if map not loaded (shouldn't happen)
 		}
 
@@ -847,7 +847,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 				const checkTileY = startTileY + tileY
 
 				// Check if this tile has collision (non-zero value in collision data)
-				if (this.managers.map.isCollision(mapName, checkTileX, checkTileY)) {
+				if (this.managers.map.isCollision(mapId, checkTileX, checkTileY)) {
 					this.logger.debug(`Collision detected at tile (${checkTileX}, ${checkTileY})`)
 					return true
 				}
@@ -924,10 +924,10 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		return refundedItems
 	}
 
-	private sendBuildingsToClient(client: EventClient, mapName?: string) {
-		const targetMap = mapName || client.currentGroup
+	private sendBuildingsToClient(client: EventClient, mapId?: string) {
+		const targetMap = mapId || client.currentGroup
 		const buildingsInMap = Array.from(this.buildings.values()).filter(
-			building => building.mapName === targetMap
+			building => building.mapId === targetMap
 		)
 
 		for (const building of buildingsInMap) {
@@ -1009,9 +1009,9 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		building.productionPaused = paused
 	}
 
-	public getBuildingsForMap(mapName: string): BuildingInstance[] {
+	public getBuildingsForMap(mapId: string): BuildingInstance[] {
 		return Array.from(this.buildings.values()).filter(
-			building => building.mapName === mapName
+			building => building.mapId === mapId
 		)
 	}
 

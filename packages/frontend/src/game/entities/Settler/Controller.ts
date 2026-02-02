@@ -2,6 +2,7 @@ import { Scene } from 'phaser'
 import { SettlerView } from './View'
 import { Event, Settler, ProfessionType, SettlerState, NeedType } from '@rugged/game'
 import { EventBus } from '../../EventBus'
+import { UiEvents } from '../../uiEvents'
 import { GameScene } from '../../scenes/base/GameScene'
 
 export class SettlerController {
@@ -19,7 +20,7 @@ export class SettlerController {
 		EventBus.on(Event.Population.SC.SettlerUpdated, this.handleSettlerUpdated, this)
 		EventBus.on(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
 		EventBus.on(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
-		EventBus.on('ui:settler:highlight', this.handleHighlight, this)
+		EventBus.on(UiEvents.Settler.Highlight, this.handleHighlight, this)
 		EventBus.on(Event.Needs.SS.NeedInterruptStarted, this.handleNeedInterruptStarted, this)
 		EventBus.on(Event.Needs.SS.NeedInterruptEnded, this.handleNeedInterruptEnded, this)
 
@@ -28,10 +29,10 @@ export class SettlerController {
 		this.view.updateNeeds(this.settler.needs)
 	}
 
-	private handleMoveToPosition = (data: { entityId: string, targetPosition: { x: number, y: number }, mapName: string, speed?: number }) => {
+	private handleMoveToPosition = (data: { entityId: string, targetPosition: { x: number, y: number }, mapId: string, speed?: number }) => {
 		// Only update if it's our settler and on the same map
 		if (data.entityId === this.settler.id) {
-			if (data.mapName === this.settler.mapName) {
+			if (data.mapId === this.settler.mapId) {
 				if (typeof data.speed === 'number') {
 					this.view.setSpeed(data.speed)
 				}
@@ -39,14 +40,14 @@ export class SettlerController {
 				this.view.setTargetPosition(data.targetPosition.x, data.targetPosition.y)
 				// Note: We don't update settler.position here - the view will interpolate
 			} else {
-				console.warn(`[SettlerController] Map name mismatch for settler ${data.entityId}: event mapName=${data.mapName}, settler mapName=${this.settler.mapName}`)
+				console.warn(`[SettlerController] Map name mismatch for settler ${data.entityId}: event mapId=${data.mapId}, settler mapId=${this.settler.mapId}`)
 			}
 		}
 	}
 
-	private handlePositionUpdated = (data: { entityId: string, position: { x: number, y: number }, mapName: string }) => {
+	private handlePositionUpdated = (data: { entityId: string, position: { x: number, y: number }, mapId: string }) => {
 		// Only update if it's our settler and on the same map
-		if (data.entityId === this.settler.id && data.mapName === this.settler.mapName) {
+		if (data.entityId === this.settler.id && data.mapId === this.settler.mapId) {
 			// Immediate position update (teleport/sync, no interpolation)
 			this.view.updatePosition(data.position.x, data.position.y)
 			this.settler.position = data.position
@@ -163,7 +164,7 @@ private handleWorkerUnassigned = (data: { settlerId: string, assignmentId: strin
 		EventBus.off(Event.Population.SC.SettlerUpdated, this.handleSettlerUpdated, this)
 		EventBus.off(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
 		EventBus.off(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
-		EventBus.off('ui:settler:highlight', this.handleHighlight, this)
+		EventBus.off(UiEvents.Settler.Highlight, this.handleHighlight, this)
 		EventBus.off(Event.Needs.SS.NeedInterruptStarted, this.handleNeedInterruptStarted, this)
 		EventBus.off(Event.Needs.SS.NeedInterruptEnded, this.handleNeedInterruptEnded, this)
 		// Destroy the view

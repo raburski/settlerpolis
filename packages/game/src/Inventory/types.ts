@@ -43,6 +43,6 @@ export interface AddItemData {
 }
 
 export interface RemoveByTypePayload {
-	itemType: string
+	itemType: ItemType
 	quantity?: number
 }

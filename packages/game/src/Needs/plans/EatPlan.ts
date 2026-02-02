@@ -4,6 +4,7 @@ import type { ReservationSystem, AmenitySlotReservationResult } from '../../Rese
 import { SettlerState } from '../../Population/types'
 import type { WorkAction } from '../../Settlers/WorkProvider/types'
 import { WorkActionType } from '../../Settlers/WorkProvider/types'
+import { MoveTargetType } from '../../Movement/types'
 import type { FoodSource } from '../policies/FoodSourcePolicy'
 import { NeedType } from '../NeedTypes'
 import type { NeedPlanResult } from '../types'
@@ -46,7 +47,7 @@ export const buildEatPlan = (settlerId: string, source: FoodSource, deps: EatPla
 		}
 
 		actions.push(
-			{ type: WorkActionType.Move, position: reservation.position, targetType: 'storage_slot', targetId: reservation.reservationId, setState: SettlerState.MovingToBuilding },
+			{ type: WorkActionType.Move, position: reservation.position, targetType: MoveTargetType.StorageSlot, targetId: reservation.reservationId, setState: SettlerState.MovingToBuilding },
 			{ type: WorkActionType.WithdrawStorage, buildingInstanceId: building.id, itemType: source.itemType, quantity: 1, reservationId: reservation.reservationId, setState: SettlerState.CarryingItem }
 		)
 
@@ -54,7 +55,7 @@ export const buildEatPlan = (settlerId: string, source: FoodSource, deps: EatPla
 			actions.push({
 				type: WorkActionType.Move,
 				position: amenityReservation.position,
-				targetType: 'amenity_slot',
+				targetType: MoveTargetType.AmenitySlot,
 				targetId: amenityReservation.reservationId,
 				setState: SettlerState.CarryingItem
 			})
@@ -68,7 +69,7 @@ export const buildEatPlan = (settlerId: string, source: FoodSource, deps: EatPla
 		}
 		releaseFns.push(() => deps.reservations.releaseLootReservation(source.itemId, settlerId))
 		actions.push(
-			{ type: WorkActionType.Move, position: source.position, targetType: 'item', targetId: source.itemId, setState: SettlerState.MovingToItem },
+			{ type: WorkActionType.Move, position: source.position, targetType: MoveTargetType.Item, targetId: source.itemId, setState: SettlerState.MovingToItem },
 			{ type: WorkActionType.PickupLoot, itemId: source.itemId, setState: SettlerState.CarryingItem }
 		)
 	}

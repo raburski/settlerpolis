@@ -6,6 +6,7 @@ import { itemTextureService } from "../../services/ItemTextureService"
 import { buildingService } from "../../services/BuildingService"
 import { storageService } from '../../services/StorageService'
 import { EventBus } from '../../EventBus'
+import { UiEvents } from '../../uiEvents'
 import { Event } from '@rugged/game'
 
 export class MapObjectView {
@@ -70,7 +71,7 @@ export class MapObjectView {
 			}
 			this.setHighlighted(data.highlighted)
 		}
-		EventBus.on('ui:building:highlight', this.highlightHandler)
+		EventBus.on(UiEvents.Building.Highlight, this.highlightHandler)
 	}
 
 	private setupBuildingEvents(scene: Scene) {
@@ -354,7 +355,7 @@ export class MapObjectView {
 					this.updateStoragePileQuantity(data.quantity)
 				}
 			}
-			EventBus.on('ui:storage:slot-updated', this.storageSlotHandler)
+			EventBus.on(UiEvents.Storage.SlotUpdated, this.storageSlotHandler)
 		}
 	}
 
@@ -382,7 +383,7 @@ export class MapObjectView {
 		// BuildingService will check if building exists and emit selection event
 		const buildingInstanceId = this.mapObject.metadata?.buildingInstanceId
 		if (buildingInstanceId) {
-			EventBus.emit('ui:building:click', {
+			EventBus.emit(UiEvents.Building.Click, {
 				buildingInstanceId,
 				buildingId: this.mapObject.metadata?.buildingId
 			})
@@ -589,7 +590,7 @@ export class MapObjectView {
 
 	public destroy(): void {
 		if (this.highlightHandler) {
-			EventBus.off('ui:building:highlight', this.highlightHandler)
+			EventBus.off(UiEvents.Building.Highlight, this.highlightHandler)
 			this.highlightHandler = null
 		}
 		if (this.highlightGraphics) {
@@ -650,7 +651,7 @@ export class MapObjectView {
 		}
 
 		if (this.storageSlotHandler) {
-			EventBus.off('ui:storage:slot-updated', this.storageSlotHandler)
+			EventBus.off(UiEvents.Storage.SlotUpdated, this.storageSlotHandler)
 			this.storageSlotHandler = null
 		}
 	}

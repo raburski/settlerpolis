@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { EventBus } from '../EventBus'
 import styles from './Chat.module.css'
 import { Event } from '@rugged/game'
+import { UiEvents } from '../uiEvents'
 
 export const Chat: React.FC<ChatProps> = () => {
 	const [isInputVisible, setIsInputVisible] = useState(false)
@@ -17,10 +18,10 @@ export const Chat: React.FC<ChatProps> = () => {
 			
 		}
 
-		EventBus.on('ui:chat:toggle', handleChatToggle)
+		EventBus.on(UiEvents.Chat.Toggle, handleChatToggle)
 
 		return () => {
-			EventBus.off('ui:chat:toggle', handleChatToggle)
+			EventBus.off(UiEvents.Chat.Toggle, handleChatToggle)
 		}
 	}, [isInputVisible])
 
@@ -39,13 +40,13 @@ export const Chat: React.FC<ChatProps> = () => {
 			}
 			
 			setIsInputVisible(false)
-			EventBus.emit('ui:chat:toggle', false)
+			EventBus.emit(UiEvents.Chat.Toggle, false)
 		} else if (e.key === 'Escape') {
 			e.preventDefault()
 			e.stopPropagation()
 			
 			setIsInputVisible(false)
-			EventBus.emit('ui:chat:toggle', false)
+			EventBus.emit(UiEvents.Chat.Toggle, false)
 		}
 	}
 

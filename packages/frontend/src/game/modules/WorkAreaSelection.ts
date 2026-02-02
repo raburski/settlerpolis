@@ -2,6 +2,7 @@ import { Scene, GameObjects, Input } from 'phaser'
 import { EventBus } from '../EventBus'
 import { Event, BuildingDefinition } from '@rugged/game'
 import { buildingService } from '../services/BuildingService'
+import { UiEvents } from '../uiEvents'
 
 interface WorkAreaSelectionState {
 	buildingInstanceId: string | null
@@ -34,13 +35,13 @@ export class WorkAreaSelectionManager {
 		this.selectHandler = (data: { buildingInstanceId: string }) => {
 			this.selectWorkArea(data.buildingInstanceId)
 		}
-		EventBus.on('ui:building:work-area:select', this.selectHandler)
+		EventBus.on(UiEvents.Building.WorkAreaSelect, this.selectHandler)
 
 		this.cancelHandler = () => {
 			this.cancelSelection()
 		}
-		EventBus.on('ui:building:work-area:cancel', this.cancelHandler)
-		EventBus.on('ui:building:close', this.cancelHandler)
+		EventBus.on(UiEvents.Building.WorkAreaCancel, this.cancelHandler)
+		EventBus.on(UiEvents.Building.Close, this.cancelHandler)
 	}
 
 	private getTileSize(): number {
@@ -62,7 +63,7 @@ export class WorkAreaSelectionManager {
 		if (!radiusTiles || radiusTiles <= 0) return
 
 		// Cancel any active building placement
-		EventBus.emit('ui:construction:cancel', {})
+		EventBus.emit(UiEvents.Construction.Cancel, {})
 
 		this.state.buildingInstanceId = buildingInstanceId
 		this.state.radiusTiles = radiusTiles
@@ -191,7 +192,7 @@ export class WorkAreaSelectionManager {
 
 	private handleEscape = () => {
 		this.cancelSelection()
-		EventBus.emit('ui:building:work-area:cancel', {})
+		EventBus.emit(UiEvents.Building.WorkAreaCancel, {})
 	}
 
 	private setWorkArea(x: number, y: number) {
@@ -213,12 +214,12 @@ export class WorkAreaSelectionManager {
 		this.cancelSelection()
 
 		if (this.selectHandler) {
-			EventBus.off('ui:building:work-area:select', this.selectHandler)
+			EventBus.off(UiEvents.Building.WorkAreaSelect, this.selectHandler)
 			this.selectHandler = null
 		}
 		if (this.cancelHandler) {
-			EventBus.off('ui:building:work-area:cancel', this.cancelHandler)
-			EventBus.off('ui:building:close', this.cancelHandler)
+			EventBus.off(UiEvents.Building.WorkAreaCancel, this.cancelHandler)
+			EventBus.off(UiEvents.Building.Close, this.cancelHandler)
 			this.cancelHandler = null
 		}
 	}

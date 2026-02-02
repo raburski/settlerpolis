@@ -5,11 +5,12 @@ import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
 import type { WorkProviderManager } from '../Settlers/WorkProvider'
 import { NeedsEvents } from './events'
-import { NeedType, type NeedPriority } from './NeedTypes'
+import { NeedType, NeedPriority } from './NeedTypes'
 import type { NeedsSystem } from './NeedsSystem'
 import type { NeedPlanner } from './NeedPlanner'
 import type { ContextPausedEventData, NeedPlanFailedEventData, NeedPlanCreatedEventData, NeedInterruptEventData, NeedSatisfiedEventData } from './types'
 import type { NeedInterruptSnapshot } from '../state/types'
+import { ActionQueueContextKind } from '../state/types'
 
 interface PendingNeed {
 	needType: NeedType
@@ -43,8 +44,8 @@ export class NeedInterruptController {
 		private logger: Logger
 	) {
 		this.setupEventHandlers()
-		this.work.registerActionContextResolver('need', (settlerId, context) => {
-			if (context.kind !== 'need') {
+		this.work.registerActionContextResolver(ActionQueueContextKind.Need, (settlerId, context) => {
+			if (context.kind !== ActionQueueContextKind.Need) {
 				return {}
 			}
 			return {
@@ -65,10 +66,10 @@ export class NeedInterruptController {
 
 	private setupEventHandlers(): void {
 		this.event.on(NeedsEvents.SS.NeedBecameUrgent, data => {
-			this.handleNeedTrigger(data.settlerId, data.needType, 'URGENT')
+			this.handleNeedTrigger(data.settlerId, data.needType, NeedPriority.Urgent)
 		})
 		this.event.on(NeedsEvents.SS.NeedBecameCritical, data => {
-			this.handleNeedTrigger(data.settlerId, data.needType, 'CRITICAL')
+			this.handleNeedTrigger(data.settlerId, data.needType, NeedPriority.Critical)
 		})
 		this.event.on(NeedsEvents.SS.ContextPaused, (data: ContextPausedEventData) => {
 			this.handleContextPaused(data)
@@ -115,8 +116,8 @@ export class NeedInterruptController {
 		}
 
 		if (state.activeNeed) {
-			if (state.activeNeed === needType && state.priority === 'URGENT' && priority === 'CRITICAL') {
-				state.priority = 'CRITICAL'
+			if (state.activeNeed === needType && state.priority === NeedPriority.Urgent && priority === NeedPriority.Critical) {
+				state.priority = NeedPriority.Critical
 			}
 			return
 		}
@@ -125,7 +126,7 @@ export class NeedInterruptController {
 			if (state.pendingNeed.needType === needType && state.pendingNeed.priority === priority) {
 				return
 			}
-			if (state.pendingNeed.priority === 'URGENT' && priority === 'CRITICAL') {
+			if (state.pendingNeed.priority === NeedPriority.Urgent && priority === NeedPriority.Critical) {
 				state.pendingNeed = { needType, priority }
 				this.emitInterruptRequested(settlerId, needType, priority)
 			}
@@ -172,7 +173,7 @@ export class NeedInterruptController {
 		} as NeedInterruptEventData)
 
 		const context = {
-			kind: 'need' as const,
+			kind: ActionQueueContextKind.Need,
 			needType,
 			satisfyValue: plan.satisfyValue,
 			reservationOwnerId: data.settlerId

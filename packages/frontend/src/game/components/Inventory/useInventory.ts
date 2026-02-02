@@ -5,10 +5,12 @@ import { itemService } from '../../services/ItemService'
 import { EquipmentSlotType, INVENTORY_GRID_COLUMNS, INVENTORY_GRID_ROWS, EquipmentSlot } from '@rugged/game'
 import { InventorySlot, Position, Item } from '@rugged/game'
 import { usePlayerId } from '../hooks/usePlayerId'
+import { useEventBus } from '../hooks/useEventBus'
+import { useSlidingPanel } from '../hooks/useSlidingPanel'
+import { UiEvents } from '../../uiEvents'
 
 export const useInventory = () => {
-	const [isVisible, setIsVisible] = useState(false)
-	const [isExiting, setIsExiting] = useState(false)
+	const { isVisible, isExiting, toggle, close } = useSlidingPanel()
 	const [slots, setSlots] = useState<InventorySlot[]>([])
 	const [updateCounter, setUpdateCounter] = useState<number>(0)
 	const [draggedItem, setDraggedItem] = useState<Item | null>(null)
@@ -19,55 +21,13 @@ export const useInventory = () => {
 	})
 	const inventoryRef = useRef<HTMLDivElement>(null)
 
-	// Handle inventory visibility
+	useEventBus(UiEvents.Inventory.Toggle, toggle)
+	useEventBus(UiEvents.Quests.Toggle, close)
+	useEventBus(UiEvents.Relationships.Toggle, close)
+	useEventBus(UiEvents.Settings.Toggle, close)
+
+	// Sync equipment changes from server
 	useEffect(() => {
-		const handleToggle = () => {
-			if (isVisible) {
-				// Start exit animation
-				setIsExiting(true)
-				// Wait for animation to complete before hiding
-				setTimeout(() => {
-					setIsVisible(false)
-					setIsExiting(false)
-				}, 300) // Match animation duration
-			} else {
-				setIsVisible(true)
-			}
-		}
-
-		const handleQuestsToggle = () => {
-			// Close inventory when quests are opened
-			if (isVisible) {
-				setIsExiting(true)
-				setTimeout(() => {
-					setIsVisible(false)
-					setIsExiting(false)
-				}, 300)
-			}
-		}
-
-		const handleRelationshipsToggle = () => {
-			// Close inventory when relationships is opened
-			if (isVisible) {
-				setIsExiting(true)
-				setTimeout(() => {
-					setIsVisible(false)
-					setIsExiting(false)
-				}, 300)
-			}
-		}
-
-		const handleSettingsToggle = () => {
-			// Close inventory when settings is opened
-			if (isVisible) {
-				setIsExiting(true)
-				setTimeout(() => {
-					setIsVisible(false)
-					setIsExiting(false)
-				}, 300)
-			}
-		}
-
 		const handleItemEquipped = (data: { itemId: string, slotType: EquipmentSlotType, item: Item, sourcePlayerId: string }) => {
 			if (data.sourcePlayerId && data.sourcePlayerId !== playerId) return
 			setEquippedItems(prev => ({
@@ -83,23 +43,14 @@ export const useInventory = () => {
 				[data.slotType]: null
 			}))
 		}
-
-		EventBus.on('ui:inventory:toggle', handleToggle)
-		EventBus.on('ui:quests:toggle', handleQuestsToggle)
-		EventBus.on('ui:relationships:toggle', handleRelationshipsToggle)
-		EventBus.on('ui:settings:toggle', handleSettingsToggle)
 		EventBus.on(Event.Players.SC.Equip, handleItemEquipped)
 		EventBus.on(Event.Players.SC.Unequip, handleItemUnequipped)
 
 		return () => {
-			EventBus.off('ui:inventory:toggle', handleToggle)
-			EventBus.off('ui:quests:toggle', handleQuestsToggle)
-			EventBus.off('ui:relationships:toggle', handleRelationshipsToggle)
-			EventBus.off('ui:settings:toggle', handleSettingsToggle)
 			EventBus.off(Event.Players.SC.Equip, handleItemEquipped)
 			EventBus.off(Event.Players.SC.Unequip, handleItemUnequipped)
 		}
-	}, [isVisible, playerId])
+	}, [playerId])
 
 	// Set up drag and drop event handlers
 	useEffect(() => {
@@ -132,13 +83,13 @@ export const useInventory = () => {
 		// Handle drag enter events
 		const handleDragEnter = (e: DragEvent) => {
 			e.preventDefault()
-			EventBus.emit('inventory:item:dragEnter')
+			EventBus.emit(UiEvents.Inventory.DragEnter)
 		}
 		
 		// Handle drag leave events
 		const handleDragLeave = (e: DragEvent) => {
 			e.preventDefault()
-			EventBus.emit('inventory:item:dragLeave')
+			EventBus.emit(UiEvents.Inventory.DragLeave)
 		}
 		
 		// Add event listeners to the game container
@@ -393,13 +344,7 @@ export const useInventory = () => {
 		})
 	}
 
-	const handleClose = () => {
-		setIsExiting(true)
-		setTimeout(() => {
-			setIsVisible(false)
-			setIsExiting(false)
-		}, 300)
-	}
+	const handleClose = () => close()
 
 	return {
 		isVisible,
@@ -419,4 +364,4 @@ export const useInventory = () => {
 		handleUnequipItem,
 		handleClose
 	}
-} 
+}

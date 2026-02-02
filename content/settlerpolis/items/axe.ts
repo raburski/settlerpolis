@@ -1,4 +1,4 @@
-import { ItemMetadata, ItemCategory } from '@rugged/game'
+import { ItemMetadata, ItemCategory, ProfessionType } from '@rugged/game'
 import { ItemType } from './types'
 
 export const axeItem: ItemMetadata = {
@@ -8,6 +8,5 @@ export const axeItem: ItemMetadata = {
 	description: 'An axe that turns settlers into woodcutters',
 	category: ItemCategory.Tool,
 	stackable: false,
-	changesProfession: 'woodcutter'
+	changesProfession: ProfessionType.Woodcutter
 }
-

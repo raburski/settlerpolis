@@ -1,13 +1,16 @@
 import { Position } from '../types'
 import { Item } from '../Items/types'
+import type { MapId, MapObjectId, PlayerId } from '../ids'
+
+export type { MapObjectId } from '../ids'
 
 export interface MapObject {
-	id: string
+	id: MapObjectId
 	item: Item
 	position: Position
 	rotation: number
-	playerId: string
-	mapName: string
+	playerId: PlayerId
+	mapId: MapId
 	metadata?: Record<string, any>
 }
 
@@ -19,7 +22,7 @@ export interface PlaceObjectData {
 }
 
 export interface RemoveObjectData {
-	objectId: string
+	objectId: MapObjectId
 }
 
 export interface SpawnObjectData {
@@ -27,5 +30,5 @@ export interface SpawnObjectData {
 }
 
 export interface DespawnObjectData {
-	objectId: string
+	objectId: MapObjectId
 } 

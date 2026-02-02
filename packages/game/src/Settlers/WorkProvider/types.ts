@@ -1,8 +1,20 @@
 import type { Position } from '../../types'
-import type { ProfessionType, SettlerId } from '../../Population/types'
+import type { ProfessionType } from '../../Population/types'
 import type { ItemType } from '../../Items/types'
 import type { ProductionRecipe } from '../../Buildings/types'
 import type { RoadType } from '../../Roads'
+import type { MoveTargetType } from '../../Movement/types'
+import type {
+	BuildingInstanceId,
+	LogisticsRequestId,
+	LootItemId,
+	ResourceNodeId,
+	RoadJobId,
+	ReservationId,
+	SettlerId,
+	StorageReservationId,
+	WorkAssignmentId
+} from '../../ids'
 
 export type WorkProviderId = string
 export enum WorkProviderType {
@@ -10,6 +22,13 @@ export enum WorkProviderType {
 	Logistics = 'logistics',
 	Construction = 'construction',
 	Road = 'road'
+}
+
+export enum WorkAssignmentStatus {
+	Assigned = 'assigned',
+	Waiting = 'waiting',
+	Active = 'active',
+	Paused = 'paused'
 }
 
 export enum WorkStepType {
@@ -75,52 +94,58 @@ export enum TransportTargetType {
 	Construction = 'construction'
 }
 
+export enum LogisticsRequestType {
+	Input = 'input',
+	Output = 'output',
+	Construction = 'construction'
+}
+
 export interface WorkAssignment {
-	assignmentId: string
+	assignmentId: WorkAssignmentId
 	settlerId: SettlerId
 	providerId: WorkProviderId
 	providerType: WorkProviderType
-	buildingInstanceId?: string
+	buildingInstanceId?: BuildingInstanceId
 	requiredProfession?: ProfessionType
 	assignedAt: number
-	status: 'assigned' | 'waiting' | 'active' | 'paused'
+	status: WorkAssignmentStatus
 }
 
 export type WorkStep =
-	| { type: WorkStepType.AcquireTool, profession: ProfessionType, toolItemId?: string, toolPosition?: Position }
-	| { type: WorkStepType.Construct, buildingInstanceId: string, durationMs: number }
-	| { type: WorkStepType.Harvest, buildingInstanceId: string, resourceNodeId: string, outputItemType: ItemType, quantity: number, durationMs: number }
-	| { type: WorkStepType.Produce, buildingInstanceId: string, recipe: ProductionRecipe, durationMs: number }
-	| { type: WorkStepType.Plant, buildingInstanceId: string, nodeType: string, position: Position, plantTimeMs: number, growTimeMs: number, spoilTimeMs?: number, despawnTimeMs?: number }
-	| { type: WorkStepType.BuildRoad, jobId: string, position: Position, roadType: RoadType, durationMs: number }
+	| { type: WorkStepType.AcquireTool, profession: ProfessionType, toolItemId?: LootItemId, toolPosition?: Position }
+	| { type: WorkStepType.Construct, buildingInstanceId: BuildingInstanceId, durationMs: number }
+	| { type: WorkStepType.Harvest, buildingInstanceId: BuildingInstanceId, resourceNodeId: ResourceNodeId, outputItemType: ItemType, quantity: number, durationMs: number }
+	| { type: WorkStepType.Produce, buildingInstanceId: BuildingInstanceId, recipe: ProductionRecipe, durationMs: number }
+	| { type: WorkStepType.Plant, buildingInstanceId: BuildingInstanceId, nodeType: string, position: Position, plantTimeMs: number, growTimeMs: number, spoilTimeMs?: number, despawnTimeMs?: number }
+	| { type: WorkStepType.BuildRoad, jobId: RoadJobId, position: Position, roadType: RoadType, durationMs: number }
 	| { type: WorkStepType.Transport, source: TransportSource, target: TransportTarget, itemType: ItemType, quantity: number }
-	| { type: WorkStepType.MarketRun, buildingInstanceId: string }
+	| { type: WorkStepType.MarketRun, buildingInstanceId: BuildingInstanceId }
 	| { type: WorkStepType.Wait, reason: WorkWaitReason, retryAtMs?: number }
 
 export type TransportSource =
-	| { type: TransportSourceType.Ground, itemId: string, position: Position }
-	| { type: TransportSourceType.Storage, buildingInstanceId: string, reservationId?: string }
+	| { type: TransportSourceType.Ground, itemId: LootItemId, position: Position }
+	| { type: TransportSourceType.Storage, buildingInstanceId: BuildingInstanceId, reservationId?: StorageReservationId }
 
 export type TransportTarget =
-	| { type: TransportTargetType.Storage, buildingInstanceId: string }
-	| { type: TransportTargetType.Construction, buildingInstanceId: string }
+	| { type: TransportTargetType.Storage, buildingInstanceId: BuildingInstanceId }
+	| { type: TransportTargetType.Construction, buildingInstanceId: BuildingInstanceId }
 
 export type WorkAction =
-	| { type: WorkActionType.Move, position: Position, targetType?: string, targetId?: string, setState?: import('../../Population/types').SettlerState }
-	| { type: WorkActionType.FollowPath, path: Position[], targetType?: string, targetId?: string, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.Move, position: Position, targetType?: MoveTargetType, targetId?: string, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.FollowPath, path: Position[], targetType?: MoveTargetType, targetId?: string, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Wait, durationMs: number, setState?: import('../../Population/types').SettlerState }
-	| { type: WorkActionType.Construct, buildingInstanceId: string, durationMs: number, setState?: import('../../Population/types').SettlerState }
-	| { type: WorkActionType.BuildRoad, jobId: string, durationMs: number, setState?: import('../../Population/types').SettlerState }
-	| { type: WorkActionType.PickupTool, itemId: string, setState?: import('../../Population/types').SettlerState }
-	| { type: WorkActionType.PickupLoot, itemId: string, setState?: import('../../Population/types').SettlerState }
-	| { type: WorkActionType.WithdrawStorage, buildingInstanceId: string, itemType: ItemType, quantity: number, reservationId?: string, setState?: import('../../Population/types').SettlerState }
-	| { type: WorkActionType.DeliverStorage, buildingInstanceId: string, itemType: ItemType, quantity: number, reservationId?: string, setState?: import('../../Population/types').SettlerState }
-	| { type: WorkActionType.DeliverConstruction, buildingInstanceId: string, itemType: ItemType, quantity: number, setState?: import('../../Population/types').SettlerState }
-	| { type: WorkActionType.HarvestNode, nodeId: string, quantity: number, setState?: import('../../Population/types').SettlerState }
-	| { type: WorkActionType.Produce, buildingInstanceId: string, recipe: ProductionRecipe, setState?: import('../../Population/types').SettlerState }
-	| { type: WorkActionType.Plant, buildingInstanceId: string, nodeType: string, position: Position, growTimeMs: number, spoilTimeMs?: number, despawnTimeMs?: number, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.Construct, buildingInstanceId: BuildingInstanceId, durationMs: number, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.BuildRoad, jobId: RoadJobId, durationMs: number, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.PickupTool, itemId: LootItemId, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.PickupLoot, itemId: LootItemId, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.WithdrawStorage, buildingInstanceId: BuildingInstanceId, itemType: ItemType, quantity: number, reservationId?: StorageReservationId, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.DeliverStorage, buildingInstanceId: BuildingInstanceId, itemType: ItemType, quantity: number, reservationId?: StorageReservationId, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.DeliverConstruction, buildingInstanceId: BuildingInstanceId, itemType: ItemType, quantity: number, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.HarvestNode, nodeId: ResourceNodeId, quantity: number, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.Produce, buildingInstanceId: BuildingInstanceId, recipe: ProductionRecipe, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.Plant, buildingInstanceId: BuildingInstanceId, nodeType: string, position: Position, growTimeMs: number, spoilTimeMs?: number, despawnTimeMs?: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.ChangeProfession, profession: ProfessionType, setState?: import('../../Population/types').SettlerState }
-	| { type: WorkActionType.ChangeHome, reservationId: string, houseId: string, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.ChangeHome, reservationId: ReservationId, houseId: BuildingInstanceId, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Consume, itemType?: ItemType, quantity?: number, durationMs: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Sleep, durationMs: number, setState?: import('../../Population/types').SettlerState }
 
@@ -135,6 +160,6 @@ export interface WorkProvider {
 }
 
 export type LogisticsRequest =
-	| { id: string, type: 'input', buildingInstanceId: string, itemType: ItemType, quantity: number, priority: number, createdAtMs: number }
-	| { id: string, type: 'output', buildingInstanceId: string, itemType: ItemType, quantity: number, priority: number, createdAtMs: number }
-	| { id: string, type: 'construction', buildingInstanceId: string, itemType: ItemType, quantity: number, priority: number, createdAtMs: number }
+	| { id: LogisticsRequestId, type: LogisticsRequestType.Input, buildingInstanceId: BuildingInstanceId, itemType: ItemType, quantity: number, priority: number, createdAtMs: number }
+	| { id: LogisticsRequestId, type: LogisticsRequestType.Output, buildingInstanceId: BuildingInstanceId, itemType: ItemType, quantity: number, priority: number, createdAtMs: number }
+	| { id: LogisticsRequestId, type: LogisticsRequestType.Construction, buildingInstanceId: BuildingInstanceId, itemType: ItemType, quantity: number, priority: number, createdAtMs: number }

@@ -3,6 +3,7 @@ import { AffinitySentimentType } from '../Affinity/types'
 import { FXType } from '../FX/types'
 import { Position } from '../types'
 import { NPCState } from '../NPC/types'
+import type { ItemType } from '../Items/types'
 
 export interface TimeRange {
 	before?: string // format: "HH:MM"
@@ -72,7 +73,7 @@ export interface NPCCondition {
 
 export interface InventoryCondition {
 	has?: {
-		itemType: string
+		itemType: ItemType
 		quantity?: number // Default to 1 if not provided
 		playerId?: string // Optional, defaults to the current player
 	}
@@ -160,12 +161,12 @@ export interface ScheduleEffect {
 
 export interface InventoryEffect {
 	add?: {
-		itemType: string
+		itemType: ItemType
 		quantity?: number // Default to 1 if not provided
 		playerId?: string // Optional, defaults to the current player
 	}
 	remove?: {
-		itemType: string
+		itemType: ItemType
 		quantity?: number // Default to 1 if not provided
 		playerId?: string // Optional, defaults to the current player
 	}

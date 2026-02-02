@@ -9,6 +9,7 @@ import type { RoadManager } from '../../Roads'
 import type { ReservationSystem } from '../../Reservation'
 import type { WorkAction } from './types'
 import { WorkActionType } from './types'
+import { MoveTargetType } from '../../Movement/types'
 import type { Logger } from '../../Logs'
 import { Receiver } from '../../Receiver'
 import { WorkProviderEvents } from './events'
@@ -272,7 +273,7 @@ export class ActionSystem {
 				continue
 			}
 
-			if (action.type === WorkActionType.Move && action.targetType === 'amenity_slot' && action.targetId) {
+			if (action.type === WorkActionType.Move && action.targetType === MoveTargetType.AmenitySlot && action.targetId) {
 				this.managers.reservations.releaseAmenitySlot(action.targetId)
 			}
 		}

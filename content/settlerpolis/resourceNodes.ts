@@ -33,10 +33,10 @@ export const resourceNodeDefinitions: ResourceNodeDefinition[] = [
 ]
 
 export const resourceNodes: ResourceNodeSpawn[] = [
-	{ nodeType: 'tree', mapName: 'map1', position: { x: 48, y: 31 }, tileBased: true },
-	{ nodeType: 'tree', mapName: 'map1', position: { x: 51, y: 30 }, tileBased: true },
-	{ nodeType: 'tree', mapName: 'map1', position: { x: 46, y: 33 }, tileBased: true },
-	{ nodeType: 'tree', mapName: 'map1', position: { x: 53, y: 32 }, tileBased: true },
-	{ nodeType: 'stone_deposit', mapName: 'map1', position: { x: 44, y: 29 }, tileBased: true },
-	{ nodeType: 'stone_deposit', mapName: 'map1', position: { x: 55, y: 34 }, tileBased: true }
+	{ nodeType: 'tree', mapId: 'map1', position: { x: 48, y: 31 }, tileBased: true },
+	{ nodeType: 'tree', mapId: 'map1', position: { x: 51, y: 30 }, tileBased: true },
+	{ nodeType: 'tree', mapId: 'map1', position: { x: 46, y: 33 }, tileBased: true },
+	{ nodeType: 'tree', mapId: 'map1', position: { x: 53, y: 32 }, tileBased: true },
+	{ nodeType: 'stone_deposit', mapId: 'map1', position: { x: 44, y: 29 }, tileBased: true },
+	{ nodeType: 'stone_deposit', mapId: 'map1', position: { x: 55, y: 34 }, tileBased: true }
 ]

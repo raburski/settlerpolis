@@ -52,9 +52,9 @@ export class NPCController {
 		}
 	}
 
-	private handleMoveToPosition = (data: { entityId: string, targetPosition: { x: number, y: number }, mapName: string, speed?: number }) => {
+	private handleMoveToPosition = (data: { entityId: string, targetPosition: { x: number, y: number }, mapId: string, speed?: number }) => {
 		// Only update if it's our NPC and on the same map
-		if (data.entityId === this.npc.id && data.mapName === this.npc.mapId) {
+		if (data.entityId === this.npc.id && data.mapId === this.npc.mapId) {
 			if (typeof data.speed === 'number') {
 				this.view.setSpeed(data.speed)
 			}
@@ -67,9 +67,9 @@ export class NPCController {
 		}
 	}
 
-	private handlePositionUpdated = (data: { entityId: string, position: { x: number, y: number }, mapName: string }) => {
+	private handlePositionUpdated = (data: { entityId: string, position: { x: number, y: number }, mapId: string }) => {
 		// Only update if it's our NPC and on the same map
-		if (data.entityId === this.npc.id && data.mapName === this.npc.mapId) {
+		if (data.entityId === this.npc.id && data.mapId === this.npc.mapId) {
 			// Immediate position update (teleport/sync, no interpolation)
 			this.view.updatePosition(data.position)
 			// Update text display service with new position

@@ -10,12 +10,12 @@ export class RoadProvider implements WorkProvider {
 	private assigned = new Set<string>()
 
 	constructor(
-		private mapName: string,
+		private mapId: string,
 		private playerId: string,
 		private managers: WorkProviderDeps,
 		private logger: Logger
 	) {
-		this.id = `road:${mapName}:${playerId}`
+		this.id = `road:${mapId}:${playerId}`
 	}
 
 	assign(settlerId: string): void {
@@ -44,7 +44,7 @@ export class RoadProvider implements WorkProvider {
 			return null
 		}
 
-		if (settler.mapName !== this.mapName || settler.playerId !== this.playerId) {
+		if (settler.mapId !== this.mapId || settler.playerId !== this.playerId) {
 			return { type: WorkStepType.Wait, reason: WorkWaitReason.NoWork }
 		}
 
@@ -53,7 +53,7 @@ export class RoadProvider implements WorkProvider {
 		}
 
 		const currentJob = this.managers.roads.getJobForSettler(settlerId)
-		const job = currentJob ?? this.managers.roads.claimJob(this.mapName, this.playerId, settlerId)
+		const job = currentJob ?? this.managers.roads.claimJob(this.mapId, this.playerId, settlerId)
 		if (!job) {
 			return { type: WorkStepType.Wait, reason: WorkWaitReason.NoWork }
 		}

@@ -1,4 +1,4 @@
-import { MapUrlService } from "@rugged/game"
+import { MapUrlService, MapId } from "@rugged/game"
 
 /**
  * Backend implementation of MapUrlService that returns full URLs for maps
@@ -19,8 +19,8 @@ export class BackendMapUrlService implements MapUrlService {
 		}
 	}
 
-	getMapUrl(mapName: string): string {
+	getMapUrl(mapId: MapId): string {
 		// Return the full URL that points to our API endpoint
-		return `${this.baseUrl}${this.apiBasePath}${mapName}.json`
+		return `${this.baseUrl}${this.apiBasePath}${mapId}.json`
 	}
 } 

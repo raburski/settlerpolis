@@ -2,6 +2,8 @@ import { SettlerState } from '../../../Population/types'
 import { WorkActionType, WorkStepType } from '../types'
 import type { WorkAction } from '../types'
 import type { StepHandler, StepHandlerResult } from './types'
+import { ReservationBag } from '../reservations'
+import { MoveTargetType } from '../../../Movement/types'
 
 export const ProduceHandler: StepHandler = {
 	type: WorkStepType.Produce,
@@ -15,14 +17,14 @@ export const ProduceHandler: StepHandler = {
 			return { actions: [] }
 		}
 
-		const releaseFns: Array<() => void> = []
+		const reservations = new ReservationBag()
 
 		const inputReservations = step.recipe.inputs.map(input => {
 			const reservation = reservationSystem.reserveStorageOutgoingInternal(building.id, input.itemType, input.quantity, assignment.assignmentId)
 			if (!reservation) {
 				return null
 			}
-			releaseFns.push(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
+			reservations.add(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
 			return {
 				itemType: input.itemType,
 				quantity: input.quantity,
@@ -32,7 +34,7 @@ export const ProduceHandler: StepHandler = {
 		})
 
 		if (inputReservations.some(res => !res)) {
-			releaseFns.forEach(fn => fn())
+			reservations.releaseAll()
 			return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
 		}
 
@@ -41,7 +43,7 @@ export const ProduceHandler: StepHandler = {
 			if (!reservation) {
 				return null
 			}
-			releaseFns.push(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
+			reservations.add(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
 			return {
 				itemType: output.itemType,
 				quantity: output.quantity,
@@ -51,7 +53,7 @@ export const ProduceHandler: StepHandler = {
 		})
 
 		if (outputReservations.some(res => !res)) {
-			releaseFns.forEach(fn => fn())
+			reservations.releaseAll()
 			return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
 		}
 
@@ -59,7 +61,7 @@ export const ProduceHandler: StepHandler = {
 
 		for (const input of inputReservations) {
 			actions.push(
-				{ type: WorkActionType.Move, position: input!.position, targetType: 'storage_slot', targetId: input!.reservationId, setState: SettlerState.MovingToBuilding },
+				{ type: WorkActionType.Move, position: input!.position, targetType: MoveTargetType.StorageSlot, targetId: input!.reservationId, setState: SettlerState.MovingToBuilding },
 				{
 					type: WorkActionType.WithdrawStorage,
 					buildingInstanceId: building.id,
@@ -71,12 +73,12 @@ export const ProduceHandler: StepHandler = {
 			)
 		}
 
-		actions.push({ type: WorkActionType.Move, position: building.position, targetType: 'building', targetId: building.id, setState: SettlerState.MovingToBuilding })
+		actions.push({ type: WorkActionType.Move, position: building.position, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding })
 		actions.push({ type: WorkActionType.Wait, durationMs: step.durationMs, setState: SettlerState.Working })
 
 		for (const output of outputReservations) {
 			actions.push(
-				{ type: WorkActionType.Move, position: output!.position, targetType: 'storage_slot', targetId: output!.reservationId, setState: SettlerState.CarryingItem },
+				{ type: WorkActionType.Move, position: output!.position, targetType: MoveTargetType.StorageSlot, targetId: output!.reservationId, setState: SettlerState.CarryingItem },
 				{
 					type: WorkActionType.DeliverStorage,
 					buildingInstanceId: building.id,
@@ -90,7 +92,7 @@ export const ProduceHandler: StepHandler = {
 
 		return {
 			actions,
-			releaseReservations: () => releaseFns.forEach(fn => fn())
+			releaseReservations: () => reservations.releaseAll()
 		}
 	}
 }

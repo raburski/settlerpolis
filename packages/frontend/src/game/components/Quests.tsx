@@ -3,74 +3,20 @@ import { EventBus } from '../EventBus'
 import { Event } from '@rugged/game'
 import { Quest, QuestProgress } from '@rugged/game'
 import styles from './Quests.module.css'
+import { useEventBus } from './hooks/useEventBus'
+import { useSlidingPanel } from './hooks/useSlidingPanel'
+import { UiEvents } from '../uiEvents'
 
 export function Quests() {
-	const [isVisible, setIsVisible] = useState(false)
-	const [isExiting, setIsExiting] = useState(false)
+	const { isVisible, isExiting, toggle, close } = useSlidingPanel()
 	const [quests, setQuests] = useState<Quest[]>([])
 	const [activeQuest, setActiveQuest] = useState<Quest | null>(null)
 	const [questDetails, setQuestDetails] = useState<Record<string, Quest>>({})
 
-	useEffect(() => {
-		const handleToggle = () => {
-			if (isVisible) {
-				// Start exit animation
-				setIsExiting(true)
-				// Wait for animation to complete before hiding
-				setTimeout(() => {
-					setIsVisible(false)
-					setIsExiting(false)
-				}, 300) // Match animation duration
-			} else {
-				setIsVisible(true)
-			}
-		}
-
-		const handleInventoryToggle = () => {
-			// Close quests when inventory is opened
-			if (isVisible) {
-				setIsExiting(true)
-				setTimeout(() => {
-					setIsVisible(false)
-					setIsExiting(false)
-				}, 300)
-			}
-		}
-
-		const handleRelationshipsToggle = () => {
-			// Close quests when relationships is opened
-			if (isVisible) {
-				setIsExiting(true)
-				setTimeout(() => {
-					setIsVisible(false)
-					setIsExiting(false)
-				}, 300)
-			}
-		}
-
-		const handleSettingsToggle = () => {
-			// Close quests when settings is opened
-			if (isVisible) {
-				setIsExiting(true)
-				setTimeout(() => {
-					setIsVisible(false)
-					setIsExiting(false)
-				}, 300)
-			}
-		}
-
-		EventBus.on('ui:quests:toggle', handleToggle)
-		EventBus.on('ui:inventory:toggle', handleInventoryToggle)
-		EventBus.on('ui:relationships:toggle', handleRelationshipsToggle)
-		EventBus.on('ui:settings:toggle', handleSettingsToggle)
-
-		return () => {
-			EventBus.off('ui:quests:toggle', handleToggle)
-			EventBus.off('ui:inventory:toggle', handleInventoryToggle)
-			EventBus.off('ui:relationships:toggle', handleRelationshipsToggle)
-			EventBus.off('ui:settings:toggle', handleSettingsToggle)
-		}
-	}, [isVisible])
+	useEventBus(UiEvents.Quests.Toggle, toggle)
+	useEventBus(UiEvents.Inventory.Toggle, close)
+	useEventBus(UiEvents.Relationships.Toggle, close)
+	useEventBus(UiEvents.Settings.Toggle, close)
 
 	useEffect(() => {
 		const handleQuestList = (data: { quests: QuestProgress[] }) => {
@@ -138,13 +84,7 @@ export function Quests() {
 		}
 	}, [])
 
-	const handleClose = () => {
-		setIsExiting(true)
-		setTimeout(() => {
-			setIsVisible(false)
-			setIsExiting(false)
-		}, 300)
-	}
+	const handleClose = () => close()
 
 	if (!isVisible && !isExiting) {
 		return null

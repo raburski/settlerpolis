@@ -1,5 +1,6 @@
 import { EventBus } from '../EventBus'
 import { Event, ProductionStatus } from '@rugged/game'
+import { UiEvents } from '../uiEvents'
 
 export interface BuildingProductionState {
 	buildingInstanceId: string
@@ -33,7 +34,7 @@ class ProductionServiceClass {
 				production.progress = 0
 			}
 
-			EventBus.emit('ui:production:updated', {
+			EventBus.emit(UiEvents.Production.Updated, {
 				buildingInstanceId: data.buildingInstanceId,
 				production: { ...production }
 			})
@@ -48,7 +49,7 @@ class ProductionServiceClass {
 				production.status = ProductionStatus.Idle
 				production.progress = 0
 
-				EventBus.emit('ui:production:updated', {
+				EventBus.emit(UiEvents.Production.Updated, {
 					buildingInstanceId: data.buildingInstanceId,
 					production: { ...production }
 				})
@@ -64,7 +65,7 @@ class ProductionServiceClass {
 			if (production) {
 				production.progress = data.progress
 
-				EventBus.emit('ui:production:updated', {
+				EventBus.emit(UiEvents.Production.Updated, {
 					buildingInstanceId: data.buildingInstanceId,
 					production: { ...production }
 				})
@@ -81,7 +82,7 @@ class ProductionServiceClass {
 				production.progress = 100
 				// Status will be updated by status changed event
 
-				EventBus.emit('ui:production:updated', {
+				EventBus.emit(UiEvents.Production.Updated, {
 					buildingInstanceId: data.buildingInstanceId,
 					production: { ...production }
 				})
@@ -105,7 +106,7 @@ class ProductionServiceClass {
 				production.status = data.status
 			}
 
-			EventBus.emit('ui:production:updated', {
+			EventBus.emit(UiEvents.Production.Updated, {
 				buildingInstanceId: data.buildingInstanceId,
 				production: { ...production }
 			})

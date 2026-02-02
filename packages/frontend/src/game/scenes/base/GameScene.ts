@@ -1,4 +1,5 @@
 import { EventBus } from "../../EventBus";
+import { UiEvents } from "../../uiEvents";
 import { MapScene } from "./MapScene";
 import { Event } from "@rugged/game"
 import { createLocalPlayer, LocalPlayer } from '../../entities/LocalPlayer'
@@ -103,7 +104,7 @@ export abstract class GameScene extends MapScene {
 		// Set up collision for the player
 		this.initializeCollision([this.player.view])
 
-		EventBus.emit('ui:scene:ready', { mapId: this.mapKey })
+		EventBus.emit(UiEvents.Scene.Ready, { mapId: this.mapKey })
 
 		// Only emit join event if this is not a scene transition
 		if (!isTransition && !suppressAutoJoin) {
@@ -198,9 +199,9 @@ export abstract class GameScene extends MapScene {
 		// Set up population event listeners
 		EventBus.on(Event.Population.SC.List, this.handlePopulationList, this)
 		EventBus.on(Event.Population.SC.SettlerSpawned, this.handleSettlerSpawned, this)
-		EventBus.on('ui:population:settler-spawned', this.handleUISettlerSpawned, this)
+		EventBus.on(UiEvents.Population.SettlerSpawned, this.handleUISettlerSpawned, this)
 		// Note: Position updates are now handled directly by SettlerController via MovementEvents
-		EventBus.on('ui:population:profession-changed', this.handleSettlerProfessionChanged, this)
+		EventBus.on(UiEvents.Population.ProfessionChanged, this.handleSettlerProfessionChanged, this)
 
 		// Set up road event listeners
 		EventBus.on(Event.Roads.SC.Sync, this.handleRoadSync, this)
@@ -279,29 +280,29 @@ export abstract class GameScene extends MapScene {
 		}
 	}
 
-	private handleRoadSync = (data: { mapName: string, tiles: RoadTile[] }) => {
-		if (!this.roadOverlay || data.mapName !== this.mapKey) {
+	private handleRoadSync = (data: { mapId: string, tiles: RoadTile[] }) => {
+		if (!this.roadOverlay || data.mapId !== this.mapKey) {
 			return
 		}
 		this.roadOverlay.setTiles(data.tiles)
 	}
 
-	private handleRoadUpdated = (data: { mapName: string, tiles: RoadTile[] }) => {
-		if (!this.roadOverlay || data.mapName !== this.mapKey) {
+	private handleRoadUpdated = (data: { mapId: string, tiles: RoadTile[] }) => {
+		if (!this.roadOverlay || data.mapId !== this.mapKey) {
 			return
 		}
 		this.roadOverlay.applyUpdates(data.tiles)
 	}
 
-	private handleRoadPendingSync = (data: { mapName: string, tiles: RoadTile[] }) => {
-		if (!this.roadOverlay || data.mapName !== this.mapKey) {
+	private handleRoadPendingSync = (data: { mapId: string, tiles: RoadTile[] }) => {
+		if (!this.roadOverlay || data.mapId !== this.mapKey) {
 			return
 		}
 		this.roadOverlay.setPendingTiles(data.tiles)
 	}
 
-	private handleRoadPendingUpdated = (data: { mapName: string, tiles: RoadTile[] }) => {
-		if (!this.roadOverlay || data.mapName !== this.mapKey) {
+	private handleRoadPendingUpdated = (data: { mapId: string, tiles: RoadTile[] }) => {
+		if (!this.roadOverlay || data.mapId !== this.mapKey) {
 			return
 		}
 		this.roadOverlay.applyPendingUpdates(data.tiles)
@@ -334,7 +335,7 @@ export abstract class GameScene extends MapScene {
 
 	private handleMapObjectSpawn = (data: { object: any }) => {
 		// Only add objects for the current map
-		if (data.object.mapName === this.mapKey) {
+		if (data.object.mapId === this.mapKey) {
 			const existing = this.mapObjects.get(data.object.id)
 			if (existing) {
 				existing.controller.destroy()
@@ -388,7 +389,7 @@ export abstract class GameScene extends MapScene {
 		// Create new settlers
 		data.settlers.forEach(settlerData => {
 			// Only create settlers for the current map
-			if (settlerData.mapName === this.mapKey) {
+			if (settlerData.mapId === this.mapKey) {
 				const settler = createSettler(this, settlerData)
 				this.settlers.set(settlerData.id, settler)
 
@@ -402,7 +403,7 @@ export abstract class GameScene extends MapScene {
 
 	private handleSettlerSpawned = (data: { settler: Settler }) => {
 		// Only create settler if it's for the current map
-		if (data.settler.mapName === this.mapKey) {
+		if (data.settler.mapId === this.mapKey) {
 			const settler = createSettler(this, data.settler)
 			this.settlers.set(data.settler.id, settler)
 
@@ -415,7 +416,7 @@ export abstract class GameScene extends MapScene {
 
 	private handleUISettlerSpawned = (settlerData: Settler) => {
 		// Handle UI-triggered settler spawn (from PopulationService)
-		if (settlerData.mapName === this.mapKey) {
+		if (settlerData.mapId === this.mapKey) {
 			// Check if settler already exists
 			if (!this.settlers.has(settlerData.id)) {
 				const settler = createSettler(this, settlerData)

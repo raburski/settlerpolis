@@ -10,6 +10,7 @@ import { DraggablePanel } from './DraggablePanel'
 import { useResourceList } from './hooks/useResourceList'
 import sharedStyles from './PanelShared.module.css'
 import confirmStyles from './ConfirmDialog.module.css'
+import { UiEvents } from '../uiEvents'
 
 // Component to display item emoji that reactively updates when metadata loads
 const ItemEmoji: React.FC<{ itemType: string }> = ({ itemType }) => {
@@ -53,7 +54,7 @@ export const BuildingInfoPanel: React.FC = () => {
 		// Listen for building selection
 		const handleBuildingSelect = (data: BuildingInfoData) => {
 			if (buildingInstance && buildingInstance.id !== data.buildingInstance.id) {
-				EventBus.emit('ui:building:highlight', { buildingInstanceId: buildingInstance.id, highlighted: false })
+				EventBus.emit(UiEvents.Building.Highlight, { buildingInstanceId: buildingInstance.id, highlighted: false })
 			}
 			setBuildingInstance(data.buildingInstance)
 			setBuildingDefinition(data.buildingDefinition)
@@ -61,9 +62,9 @@ export const BuildingInfoPanel: React.FC = () => {
 			setWorkerStatus(null) // Clear any previous status
 			setShowDemolishConfirm(false)
 			setIsVisible(true)
-			EventBus.emit('ui:building:highlight', { buildingInstanceId: data.buildingInstance.id, highlighted: true })
+			EventBus.emit(UiEvents.Building.Highlight, { buildingInstanceId: data.buildingInstance.id, highlighted: true })
 			// Close settler panel if open
-			EventBus.emit('ui:settler:close')
+			EventBus.emit(UiEvents.Settler.Close)
 		}
 
 		// Listen for building updates (progress, completion, cancellation)
@@ -87,7 +88,7 @@ export const BuildingInfoPanel: React.FC = () => {
 			if (buildingInstance && buildingInstance.id === data.buildingInstanceId) {
 				setIsVisible(false)
 				setShowDemolishConfirm(false)
-				EventBus.emit('ui:building:highlight', { buildingInstanceId: buildingInstance.id, highlighted: false })
+				EventBus.emit(UiEvents.Building.Highlight, { buildingInstanceId: buildingInstance.id, highlighted: false })
 				setBuildingInstance(null)
 				setBuildingDefinition(null)
 			}
@@ -98,7 +99,7 @@ export const BuildingInfoPanel: React.FC = () => {
 			setIsVisible(false)
 			setShowDemolishConfirm(false)
 			if (buildingInstance) {
-				EventBus.emit('ui:building:highlight', { buildingInstanceId: buildingInstance.id, highlighted: false })
+				EventBus.emit(UiEvents.Building.Highlight, { buildingInstanceId: buildingInstance.id, highlighted: false })
 			}
 			setBuildingInstance(null)
 			setBuildingDefinition(null)
@@ -228,39 +229,39 @@ export const BuildingInfoPanel: React.FC = () => {
 			}
 		}
 
-		EventBus.on('ui:building:select', handleBuildingSelect)
+		EventBus.on(UiEvents.Building.Select, handleBuildingSelect)
 		EventBus.on(Event.Buildings.SC.Progress, handleBuildingProgress)
 		EventBus.on(Event.Buildings.SC.Completed, handleBuildingCompleted)
 		EventBus.on(Event.Buildings.SC.Cancelled, handleBuildingCancelled)
 		EventBus.on(Event.Buildings.SC.ResourcesChanged, handleResourcesChanged)
 		EventBus.on(Event.Buildings.SC.StageChanged, handleStageChanged)
-		EventBus.on('ui:building:updated', handleBuildingUpdated)
-		EventBus.on('ui:building:close', handleClosePanel)
-		EventBus.on('ui:population:worker-request-failed', handleWorkerRequestFailed)
-		EventBus.on('ui:population:settler-updated', checkWorkerMovingToBuilding)
-		EventBus.on('ui:population:worker-assigned', handleWorkerAssigned)
-		EventBus.on('ui:population:worker-unassigned', handleWorkerUnassigned)
-		EventBus.on('ui:storage:updated', handleStorageUpdated)
-		EventBus.on('ui:production:updated', handleProductionUpdated)
+		EventBus.on(UiEvents.Building.Updated, handleBuildingUpdated)
+		EventBus.on(UiEvents.Building.Close, handleClosePanel)
+		EventBus.on(UiEvents.Population.WorkerRequestFailed, handleWorkerRequestFailed)
+		EventBus.on(UiEvents.Population.SettlerUpdated, checkWorkerMovingToBuilding)
+		EventBus.on(UiEvents.Population.WorkerAssigned, handleWorkerAssigned)
+		EventBus.on(UiEvents.Population.WorkerUnassigned, handleWorkerUnassigned)
+		EventBus.on(UiEvents.Storage.Updated, handleStorageUpdated)
+		EventBus.on(UiEvents.Production.Updated, handleProductionUpdated)
 
 		// Check immediately when building is selected
 		checkWorkerMovingToBuilding()
 
 		return () => {
-			EventBus.off('ui:building:select', handleBuildingSelect)
+			EventBus.off(UiEvents.Building.Select, handleBuildingSelect)
 			EventBus.off(Event.Buildings.SC.Progress, handleBuildingProgress)
 			EventBus.off(Event.Buildings.SC.Completed, handleBuildingCompleted)
 			EventBus.off(Event.Buildings.SC.Cancelled, handleBuildingCancelled)
 			EventBus.off(Event.Buildings.SC.ResourcesChanged, handleResourcesChanged)
 			EventBus.off(Event.Buildings.SC.StageChanged, handleStageChanged)
-			EventBus.off('ui:building:updated', handleBuildingUpdated)
-			EventBus.off('ui:building:close', handleClosePanel)
-			EventBus.off('ui:population:worker-request-failed', handleWorkerRequestFailed)
-			EventBus.off('ui:population:settler-updated', checkWorkerMovingToBuilding)
-			EventBus.off('ui:population:worker-assigned', handleWorkerAssigned)
-			EventBus.off('ui:population:worker-unassigned', handleWorkerUnassigned)
-			EventBus.off('ui:storage:updated', handleStorageUpdated)
-			EventBus.off('ui:production:updated', handleProductionUpdated)
+			EventBus.off(UiEvents.Building.Updated, handleBuildingUpdated)
+			EventBus.off(UiEvents.Building.Close, handleClosePanel)
+			EventBus.off(UiEvents.Population.WorkerRequestFailed, handleWorkerRequestFailed)
+			EventBus.off(UiEvents.Population.SettlerUpdated, checkWorkerMovingToBuilding)
+			EventBus.off(UiEvents.Population.WorkerAssigned, handleWorkerAssigned)
+			EventBus.off(UiEvents.Population.WorkerUnassigned, handleWorkerUnassigned)
+			EventBus.off(UiEvents.Storage.Updated, handleStorageUpdated)
+			EventBus.off(UiEvents.Production.Updated, handleProductionUpdated)
 		}
 	}, [buildingInstance])
 
@@ -293,13 +294,13 @@ export const BuildingInfoPanel: React.FC = () => {
 
 	const handleClose = () => {
 		if (buildingInstance) {
-			EventBus.emit('ui:building:highlight', { buildingInstanceId: buildingInstance.id, highlighted: false })
+			EventBus.emit(UiEvents.Building.Highlight, { buildingInstanceId: buildingInstance.id, highlighted: false })
 		}
 		setIsVisible(false)
 		setShowDemolishConfirm(false)
 		setBuildingInstance(null)
 		setBuildingDefinition(null)
-		EventBus.emit('ui:building:close')
+		EventBus.emit(UiEvents.Building.Close)
 	}
 
 	if (!isVisible || !buildingInstance || !buildingDefinition) {
@@ -348,7 +349,7 @@ export const BuildingInfoPanel: React.FC = () => {
 
 	const handleSelectWorkArea = () => {
 		if (buildingInstance) {
-			EventBus.emit('ui:building:work-area:select', { buildingInstanceId: buildingInstance.id })
+			EventBus.emit(UiEvents.Building.WorkAreaSelect, { buildingInstanceId: buildingInstance.id })
 		}
 	}
 
@@ -432,7 +433,7 @@ export const BuildingInfoPanel: React.FC = () => {
 	}
 
 	const handleWorkerClick = (settlerId: string) => {
-		EventBus.emit('ui:settler:click', { settlerId })
+		EventBus.emit(UiEvents.Settler.Click, { settlerId })
 	}
 
 	const handleUnassignWorker = (settlerId: string) => {

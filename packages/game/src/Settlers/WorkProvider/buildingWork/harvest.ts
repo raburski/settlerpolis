@@ -26,13 +26,13 @@ export const HarvestWorkHandler: BuildingWorkHandler = {
 			return { type: WorkStepType.Wait, reason: WorkWaitReason.NoStorage }
 		}
 
-		const map = managers.map.getMap(building.mapName)
+		const map = managers.map.getMap(building.mapId)
 		const tileSize = map?.tiledMap.tilewidth || 32
 		const workCenter = building.workAreaCenter ?? building.position
 		const radiusTiles = harvestDefinition.radiusTiles
 		const maxDistance = radiusTiles ? radiusTiles * tileSize : null
 
-		let node = managers.resourceNodes.findClosestAvailableNode(building.mapName, harvestDefinition.nodeType, workCenter)
+		let node = managers.resourceNodes.findClosestAvailableNode(building.mapId, harvestDefinition.nodeType, workCenter)
 		if (node && maxDistance !== null) {
 			const distance = calculateDistance(workCenter, node.position)
 			if (distance > maxDistance) {
@@ -40,7 +40,7 @@ export const HarvestWorkHandler: BuildingWorkHandler = {
 			}
 		}
 		if (!node && maxDistance !== null) {
-			const availableNodes = managers.resourceNodes.getAvailableNodes(building.mapName, harvestDefinition.nodeType)
+			const availableNodes = managers.resourceNodes.getAvailableNodes(building.mapId, harvestDefinition.nodeType)
 			let best: ResourceNodeInstance | undefined
 			for (const candidate of availableNodes) {
 				const candidateDistance = calculateDistance(workCenter, candidate.position)

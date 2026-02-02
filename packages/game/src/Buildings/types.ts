@@ -1,7 +1,10 @@
 import { Position } from '../types'
 import { ItemType } from '../Items/types'
+import type { ProfessionType } from '../Population/types'
+import type { ResourceNodeType } from '../ResourceNodes/types'
+import type { BuildingId, BuildingInstanceId, MapId, PlayerId } from '../ids'
 
-export type BuildingId = string
+export type { BuildingId, BuildingInstanceId } from '../ids'
 
 export enum ConstructionStage {
 	CollectingResources = 'collecting_resources', // Building placed, resources being collected by carriers
@@ -16,11 +19,11 @@ export interface BuildingCost {
 
 export interface ProductionRecipe {
 	inputs: Array<{
-		itemType: string
+		itemType: ItemType
 		quantity: number
 	}>
 	outputs: Array<{
-		itemType: string
+		itemType: ItemType
 		quantity: number
 	}>
 	productionTime: number // Time in seconds to produce one batch
@@ -35,7 +38,7 @@ export enum ProductionStatus {
 }
 
 export interface BuildingProduction {
-	buildingInstanceId: string
+	buildingInstanceId: BuildingInstanceId
 	status: ProductionStatus
 	progress: number // 0-100
 	currentBatchStartTime?: number
@@ -70,17 +73,17 @@ export interface BuildingDefinition {
 	unlockFlags?: string[] // Optional flags that must be set to unlock this building
 	spawnsSettlers?: boolean // If true, this building spawns settlers (house)
 	maxOccupants?: number // Maximum number of settlers that can spawn from this house
-	requiredProfession?: string // ProfessionType required to work in this building (e.g., 'builder', 'woodcutter')
+	requiredProfession?: ProfessionType // ProfessionType required to work in this building (e.g., 'builder', 'woodcutter')
 	spawnRate?: number // Seconds between settler spawns (default: 60)
 	workerSlots?: number // Maximum number of workers that can be assigned to this building (for production/work)
 	priority?: number // Optional priority for logistics and job assignment (higher = more urgent)
 	isWarehouse?: boolean // Marks building as storage hub for overflow
 	harvest?: {
-		nodeType: string
+		nodeType: ResourceNodeType
 		radiusTiles?: number
 	} // Optional resource node harvesting config
 	farm?: {
-		cropNodeType: string
+		cropNodeType: ResourceNodeType
 		plotRadiusTiles: number
 		plantTimeMs: number
 		growTimeMs: number
@@ -92,11 +95,11 @@ export interface BuildingDefinition {
 		despawnTimeMs?: number
 	}
 	consumes?: Array<{
-		itemType: string
+		itemType: ItemType
 		desiredQuantity: number
 	}>
 	marketDistribution?: {
-		itemTypes?: string[]
+		itemTypes?: ItemType[]
 		maxDistanceTiles?: number
 		maxStops?: number
 		roadSearchRadiusTiles?: number
@@ -120,17 +123,17 @@ export interface BuildingDefinition {
 }
 
 export interface BuildingInstance {
-	id: string
+	id: BuildingInstanceId
 	buildingId: BuildingId
-	playerId: string
-	mapName: string
+	playerId: PlayerId
+	mapId: MapId
 	position: Position
 	workAreaCenter?: Position
 	stage: ConstructionStage
 	progress: number // 0-100 (construction progress, only advances during Constructing stage)
 	startedAt: number // timestamp when construction started (when resources were collected)
 	createdAt: number // timestamp when building was placed
-	collectedResources: Map<string, number> // itemType -> quantity collected (server-side only, client tracks via events)
+	collectedResources: Map<ItemType, number> // itemType -> quantity collected (server-side only, client tracks via events)
 	requiredResources: BuildingCost[] // Required resources (derived from definition.costs, server-side only)
 	productionPaused?: boolean
 }
@@ -141,16 +144,16 @@ export interface PlaceBuildingData {
 }
 
 export interface CancelBuildingData {
-	buildingInstanceId: string
+	buildingInstanceId: BuildingInstanceId
 }
 
 export interface SetProductionPausedData {
-	buildingInstanceId: string
+	buildingInstanceId: BuildingInstanceId
 	paused: boolean
 }
 
 export interface SetWorkAreaData {
-	buildingInstanceId: string
+	buildingInstanceId: BuildingInstanceId
 	center: Position
 }
 
@@ -159,7 +162,7 @@ export interface BuildingPlacedData {
 }
 
 export interface BuildingProgressData {
-	buildingInstanceId: string
+	buildingInstanceId: BuildingInstanceId
 	progress: number
 	stage: ConstructionStage
 }
@@ -169,7 +172,7 @@ export interface BuildingCompletedData {
 }
 
 export interface BuildingCancelledData {
-	buildingInstanceId: string
+	buildingInstanceId: BuildingInstanceId
 	refundedItems: Array<{
 		itemType: ItemType
 		quantity: number
@@ -177,7 +180,7 @@ export interface BuildingCancelledData {
 }
 
 export interface BuildingWorkAreaUpdatedData {
-	buildingInstanceId: string
+	buildingInstanceId: BuildingInstanceId
 	center: Position
 }
 

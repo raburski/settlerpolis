@@ -5,6 +5,8 @@ import type { Position } from '../../../types'
 import { calculateDistance } from '../../../utils'
 import { WorkAction, WorkActionType, WorkStepType } from '../types'
 import type { StepHandler } from './types'
+import { ReservationBag } from '../reservations'
+import { MoveTargetType } from '../../../Movement/types'
 
 type TilePosition = { x: number, y: number }
 
@@ -207,7 +209,7 @@ export const MarketRunHandler: StepHandler = {
 			return { actions: [] }
 		}
 
-		const map = managers.map.getMap(market.mapName)
+		const map = managers.map.getMap(market.mapId)
 		if (!map) {
 			return { actions: [] }
 		}
@@ -255,20 +257,20 @@ export const MarketRunHandler: StepHandler = {
 		const resolvedItemType = itemType
 
 		const houses = managers.buildings.getAllBuildings()
-			.filter(building => building.mapName === market.mapName && building.playerId === market.playerId)
+			.filter(building => building.mapId === market.mapId && building.playerId === market.playerId)
 			.filter(building => building.stage === ConstructionStage.Completed)
 			.filter(building => managers.buildings.getBuildingDefinition(building.buildingId)?.spawnsSettlers)
 			.map(building => ({ building, tile: toTile(building.position, tileSize) }))
 			.filter(entry => managers.storage.acceptsItemType(entry.building.id, resolvedItemType))
 			.filter(entry => managers.storage.hasAvailableStorage(entry.building.id, resolvedItemType, deliveryQuantity))
 
-		const roadData = managers.roads.getRoadData(market.mapName)
+		const roadData = managers.roads.getRoadData(market.mapId)
 		const marketTile = toTile(market.position, tileSize)
 		const startRoad = findClosestRoadTile(roadData, marketTile, roadSearchRadius)
 		const roadRoute = buildGreedyRoadWalk(roadData, startRoad, Math.max(1, maxDistanceTiles))
 
 		const actions: WorkAction[] = []
-		const releaseFns: Array<() => void> = []
+		const reservations = new ReservationBag()
 
 		let remaining = carriedQuantity
 		if (!carriedType || carriedQuantity <= 0) {
@@ -284,11 +286,11 @@ export const MarketRunHandler: StepHandler = {
 				if (reservation) {
 					const reservationId = reservation.reservationId
 					const reservedQuantity = reservation.quantity
-					releaseFns.push(() => reservationSystem.releaseStorageReservation(reservationId))
+					reservations.add(() => reservationSystem.releaseStorageReservation(reservationId))
 					remaining = reservedQuantity
 					const withdrawPosition = resolveWalkablePosition(collision, market.position, tileSize) ?? market.position
 					actions.push(
-						{ type: WorkActionType.Move, position: withdrawPosition, targetType: 'building', targetId: market.id, setState: SettlerState.MovingToBuilding },
+						{ type: WorkActionType.Move, position: withdrawPosition, targetType: MoveTargetType.Building, targetId: market.id, setState: SettlerState.MovingToBuilding },
 						{ type: WorkActionType.WithdrawStorage, buildingInstanceId: market.id, itemType: resolvedItemType, quantity: reservedQuantity, reservationId, setState: SettlerState.CarryingItem }
 					)
 				} else {
@@ -305,7 +307,7 @@ export const MarketRunHandler: StepHandler = {
 			actions.push({
 				type: WorkActionType.Move,
 				position: toWorld(startRoad, tileSize),
-				targetType: 'road',
+				targetType: MoveTargetType.Road,
 				targetId: `${startRoad.x},${startRoad.y}`,
 				setState: SettlerState.Moving
 			})
@@ -325,7 +327,7 @@ export const MarketRunHandler: StepHandler = {
 				actions.push({
 					type: WorkActionType.FollowPath,
 					path: segmentTiles.map(tile => toWorld(tile, tileSize)),
-					targetType: 'road',
+					targetType: MoveTargetType.Road,
 					targetId: `${endTile.x},${endTile.y}`,
 					setState: SettlerState.Moving
 				})
@@ -366,7 +368,7 @@ export const MarketRunHandler: StepHandler = {
 				continue
 			}
 
-			releaseFns.push(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
+			reservations.add(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
 
 			const deliverPosition = resolveWalkablePosition(collision, houseCandidate.building.position, tileSize)
 			if (!deliverPosition) {
@@ -376,7 +378,7 @@ export const MarketRunHandler: StepHandler = {
 			flushSegment()
 
 			actions.push(
-				{ type: WorkActionType.Move, position: deliverPosition, targetType: 'building', targetId: houseCandidate.building.id, setState: SettlerState.CarryingItem },
+				{ type: WorkActionType.Move, position: deliverPosition, targetType: MoveTargetType.Building, targetId: houseCandidate.building.id, setState: SettlerState.CarryingItem },
 				{ type: WorkActionType.DeliverStorage, buildingInstanceId: houseCandidate.building.id, itemType: resolvedItemType, quantity: deliverQty, reservationId: reservation.reservationId, setState: SettlerState.Working }
 			)
 
@@ -384,7 +386,7 @@ export const MarketRunHandler: StepHandler = {
 				actions.push({
 					type: WorkActionType.Move,
 					position: toWorld(roadTile, tileSize),
-					targetType: 'road',
+					targetType: MoveTargetType.Road,
 					targetId: `${roadTile.x},${roadTile.y}`,
 					setState: SettlerState.Moving
 				})
@@ -409,7 +411,7 @@ export const MarketRunHandler: StepHandler = {
 			actions.push({
 				type: WorkActionType.Move,
 				position: approachPosition,
-				targetType: 'building',
+				targetType: MoveTargetType.Building,
 				targetId: market.id,
 				setState: SettlerState.MovingToBuilding
 			})
@@ -418,17 +420,17 @@ export const MarketRunHandler: StepHandler = {
 		if (remaining > 0) {
 			const returnReservation = reservationSystem.reserveStorageIncoming(market.id, resolvedItemType, remaining, assignment.assignmentId)
 			if (returnReservation) {
-				releaseFns.push(() => reservationSystem.releaseStorageReservation(returnReservation.reservationId))
+				reservations.add(() => reservationSystem.releaseStorageReservation(returnReservation.reservationId))
 				const deliverPosition = resolveWalkablePosition(collision, market.position, tileSize) ?? market.position
 				actions.push(
-					{ type: WorkActionType.Move, position: deliverPosition, targetType: 'building', targetId: market.id, setState: SettlerState.CarryingItem },
+					{ type: WorkActionType.Move, position: deliverPosition, targetType: MoveTargetType.Building, targetId: market.id, setState: SettlerState.CarryingItem },
 					{ type: WorkActionType.DeliverStorage, buildingInstanceId: market.id, itemType: resolvedItemType, quantity: remaining, reservationId: returnReservation.reservationId, setState: SettlerState.Working }
 				)
 			} else {
 				actions.push({
 					type: WorkActionType.Move,
 					position: market.position,
-					targetType: 'building',
+					targetType: MoveTargetType.Building,
 					targetId: market.id,
 					setState: SettlerState.MovingToBuilding
 				})
@@ -441,7 +443,7 @@ export const MarketRunHandler: StepHandler = {
 
 		return {
 			actions,
-			releaseReservations: () => releaseFns.forEach(fn => fn())
+			releaseReservations: () => reservations.releaseAll()
 		}
 	}
 }

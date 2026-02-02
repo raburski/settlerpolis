@@ -1,6 +1,7 @@
 import { SettlerState } from '../../../Population/types'
 import { WorkActionType, WorkProviderType, WorkStepType, WorkWaitReason } from '../types'
 import type { StepHandler, StepHandlerResult } from './types'
+import { MoveTargetType } from '../../../Movement/types'
 
 export const WaitHandler: StepHandler = {
 	type: WorkStepType.Wait,
@@ -17,7 +18,7 @@ export const WaitHandler: StepHandler = {
 				const durationMs = step.retryAtMs ? Math.max(0, step.retryAtMs - simulationTimeMs) : 1500
 				return {
 					actions: [
-						{ type: WorkActionType.Move, position: building.position, targetType: 'building', targetId: building.id, setState: SettlerState.MovingToBuilding },
+						{ type: WorkActionType.Move, position: building.position, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding },
 						{ type: WorkActionType.Wait, durationMs, setState: SettlerState.WaitingForWork }
 					]
 				}

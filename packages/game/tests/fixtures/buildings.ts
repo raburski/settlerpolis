@@ -1,4 +1,5 @@
 import { BuildingCategory, BuildingDefinition } from '../../src/Buildings/types'
+import { ProfessionType } from '../../src/Population/types'
 
 /**
  * Common building definitions for testing
@@ -57,7 +58,7 @@ export const woodcutterHut: BuildingDefinition = {
 		{ itemType: 'logs', quantity: 1 },
 		{ itemType: 'stone', quantity: 1 }
 	],
-	requiredProfession: 'woodcutter',
+	requiredProfession: ProfessionType.Woodcutter,
 	workerSlots: 1,
 	productionRecipe: {
 		inputs: [],

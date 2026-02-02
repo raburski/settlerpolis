@@ -206,7 +206,7 @@ export const buildings: BuildingDefinition[] = [
 			nodeType: 'tree',
 			radiusTiles: 8
 		},
-		requiredProfession: 'woodcutter',
+		requiredProfession: ProfessionType.Woodcutter,
 		workerSlots: 1, // Woodcutter hut can have 1 worker
 		storage: {
 			capacities: {
