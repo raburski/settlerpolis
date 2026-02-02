@@ -13,8 +13,8 @@ export const buildResourceList = (definitions: BuildingDefinition[]): string[] =
 	definitions.forEach((definition) => {
 		definition.costs?.forEach((cost) => addItemType(items, cost.itemType))
 
-		if (definition.storage?.capacities) {
-			Object.keys(definition.storage.capacities).forEach((itemType) => addItemType(items, itemType))
+		if (definition.storageSlots) {
+			definition.storageSlots.forEach((slot) => addItemType(items, slot.itemType))
 		}
 
 		definition.productionRecipe?.inputs?.forEach((input) => addItemType(items, input.itemType))

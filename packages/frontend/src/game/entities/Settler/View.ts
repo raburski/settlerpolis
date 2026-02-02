@@ -1,49 +1,24 @@
-import { GameObjects, Physics, Geom } from 'phaser'
-import { GameScene } from '../../scenes/base/GameScene'
-import { SettlerState, ProfessionType, Direction } from '@rugged/game'
+import { BaseMovementView } from '../Movement/BaseMovementView'
+import type { GameScene } from '../../scenes/base/GameScene'
+import type { AbstractMesh } from '@babylonjs/core'
+import { Color3, MeshBuilder, StandardMaterial } from '@babylonjs/core'
+import { ProfessionType, SettlerState, Direction } from '@rugged/game'
 import { EventBus } from '../../EventBus'
 import { UiEvents } from '../../uiEvents'
-import { BaseMovementView } from '../Movement/BaseMovementView'
 import { itemService } from '../../services/ItemService'
+import { NEED_URGENT_THRESHOLD } from '@rugged/game'
 
 export class SettlerView extends BaseMovementView {
-	protected graphics: GameObjects.Graphics | null = null
-	protected emojiText: GameObjects.Text | null = null
-	protected carryText: GameObjects.Text | null = null
-	protected dangerCircle: GameObjects.Graphics | null = null
-	protected dangerText: GameObjects.Text | null = null
-	protected needActivityCircle: GameObjects.Graphics | null = null
-	protected needActivityText: GameObjects.Text | null = null
-	protected healthBarBg: GameObjects.Graphics | null = null
-	protected healthBarFill: GameObjects.Graphics | null = null
-	protected highlightCircle: GameObjects.Graphics | null = null
 	protected profession: ProfessionType
 	protected state: SettlerState
 	protected settlerId: string
-	private carryItemType: string | null = null
-	private carryItemUnsubscribe: (() => void) | null = null
-	private dangerKind: 'hunger' | 'fatigue' | null = null
-	private activeNeedKind: 'hunger' | 'fatigue' | null = null
 	private isHighlighted: boolean = false
-	private healthValue: number | null = null
-	private readonly CRITICAL_NEED_THRESHOLD = 0.15
-	private readonly HEALTH_BAR_WIDTH = 26
-	private readonly HEALTH_BAR_HEIGHT = 4
-	private readonly HEALTH_BAR_Y = -38
-	private readonly dangerEmojis: Record<'hunger' | 'fatigue', string> = {
-		hunger: '🍞',
-		fatigue: '💤'
-	}
-	private professionColors: Record<ProfessionType, number> = {
-		[ProfessionType.Carrier]: 0xffffff, // White
-		[ProfessionType.Builder]: 0xffaa00, // Orange
-		[ProfessionType.Woodcutter]: 0x8b4513, // Brown
-		[ProfessionType.Miner]: 0x808080, // Gray
-		[ProfessionType.Farmer]: 0x7fbf3f, // Green
-		[ProfessionType.Miller]: 0x6aa0ff, // Light blue
-		[ProfessionType.Baker]: 0xd2a679, // Wheat
-		[ProfessionType.Vendor]: 0xff4d6d // Pink
-	}
+	private highlightMesh: AbstractMesh | null = null
+	private carryingItemType: string | null = null
+	private carryingMesh: AbstractMesh | null = null
+	private activeNeedKind: 'hunger' | 'fatigue' | null = null
+	private needsMesh: AbstractMesh | null = null
+	private needsValues: { hunger: number; fatigue: number } | null = null
 	private professionEmojis: Record<ProfessionType, string> = {
 		[ProfessionType.Carrier]: '👤',
 		[ProfessionType.Builder]: '🔨',
@@ -55,395 +30,169 @@ export class SettlerView extends BaseMovementView {
 		[ProfessionType.Vendor]: '🛍️'
 	}
 
-	constructor(scene: GameScene, x: number = 0, y: number = 0, settlerId: string, profession: ProfessionType, speed: number = 64) {
-		super(scene, x, y, speed)
-		
-		this.baseDepth = 10000 // Ensure settlers render above buildings and map objects
+	constructor(scene: GameScene, x: number, y: number, settlerId: string, profession: ProfessionType, speed: number = 64) {
+		const size = { width: 20, length: 20, height: 40 }
+		const mesh = scene.runtime.renderer.createBox(`settler-${settlerId}`, size) as AbstractMesh
+		super(scene, mesh, size, x, y, speed)
 		this.settlerId = settlerId
 		this.profession = profession
 		this.state = SettlerState.Idle
-
-		// Enable physics on the container
-		scene.physics.add.existing(this)
-		
-		// Setup visuals AFTER all properties are initialized
-		this.setupVisuals()
+		this.applyProfessionEmoji()
+		this.createHighlightMesh()
+		this.setPickable(() => {
+			EventBus.emit(UiEvents.Settler.Click, { settlerId: this.settlerId })
+		})
 	}
 
-	protected setupVisuals(): void {
-		// Create a simple colored circle for the settler using graphics
-		const size = 20
-		const color = this.professionColors[this.profession]
+	protected updateVisuals(_direction: Direction, _state: 'idle' | 'moving'): void {
+		void _direction
+		void _state
+		// No-op placeholder visuals
+	}
 
-		// Add highlight ring (hidden by default)
-		this.highlightCircle = this.scene.add.graphics()
-		this.highlightCircle.clear()
-		this.highlightCircle.lineStyle(3, 0xffd54f, 0.9)
-		this.highlightCircle.strokeCircle(0, 0, size / 2 + 6)
-		this.highlightCircle.setVisible(false)
-		this.add(this.highlightCircle)
-		
-		// Create graphics circle - Phaser will add it to scene, then we add it to container
-		this.graphics = this.scene.add.graphics()
-		this.graphics.clear() // Clear any existing drawing
-		this.graphics.fillStyle(color, 1)
-		this.graphics.fillCircle(0, 0, size / 2)
-		this.graphics.lineStyle(2, 0x000000, 1)
-		this.graphics.strokeCircle(0, 0, size / 2)
-		// Add to container (Phaser automatically handles removing from scene display list)
-		this.add(this.graphics)
-
-		// Add emoji text on top
-		this.emojiText = this.scene.add.text(0, 0, this.professionEmojis[this.profession], {
-			fontSize: '14px',
-			align: 'center',
-			color: '#000000'
-		})
-		this.emojiText.setOrigin(0.5, 0.5)
-		// Add to container
-		this.add(this.emojiText)
-
-		// Add carried item emoji (hidden by default)
-		this.carryText = this.scene.add.text(0, -14, '📦', {
-			fontSize: '12px',
-			align: 'center',
-			color: '#000000'
-		})
-		this.carryText.setOrigin(0.5, 1)
-		this.carryText.setVisible(false)
-		this.add(this.carryText)
-
-		// Add danger indicator (hidden by default)
-		this.dangerCircle = this.scene.add.graphics()
-		this.dangerCircle.clear()
-		this.dangerCircle.fillStyle(0xff2d2d, 0.95)
-		this.dangerCircle.fillCircle(0, -26, 9)
-		this.dangerCircle.lineStyle(2, 0x7a0000, 1)
-		this.dangerCircle.strokeCircle(0, -26, 9)
-		this.dangerCircle.setVisible(false)
-		this.add(this.dangerCircle)
-
-		this.dangerText = this.scene.add.text(0, -26, '', {
-			fontSize: '12px',
-			align: 'center',
-			color: '#ffffff'
-		})
-		this.dangerText.setOrigin(0.5, 0.5)
-		this.dangerText.setVisible(false)
-		this.add(this.dangerText)
-
-		// Add need-activity indicator (hidden by default)
-		this.needActivityCircle = this.scene.add.graphics()
-		this.needActivityCircle.clear()
-		this.needActivityCircle.fillStyle(0x2d6cff, 0.9)
-		this.needActivityCircle.fillCircle(0, -26, 9)
-		this.needActivityCircle.lineStyle(2, 0x0b2a6f, 1)
-		this.needActivityCircle.strokeCircle(0, -26, 9)
-		this.needActivityCircle.setVisible(false)
-		this.add(this.needActivityCircle)
-
-		this.needActivityText = this.scene.add.text(0, -26, '', {
-			fontSize: '12px',
-			align: 'center',
-			color: '#ffffff'
-		})
-		this.needActivityText.setOrigin(0.5, 0.5)
-		this.needActivityText.setVisible(false)
-		this.add(this.needActivityText)
-
-		// Add health bar (hidden by default)
-		const barX = -this.HEALTH_BAR_WIDTH / 2
-		this.healthBarBg = this.scene.add.graphics()
-		this.healthBarBg.clear()
-		this.healthBarBg.fillStyle(0x000000, 0.6)
-		this.healthBarBg.fillRect(barX, this.HEALTH_BAR_Y, this.HEALTH_BAR_WIDTH, this.HEALTH_BAR_HEIGHT)
-		this.healthBarBg.lineStyle(1, 0x000000, 0.8)
-		this.healthBarBg.strokeRect(barX, this.HEALTH_BAR_Y, this.HEALTH_BAR_WIDTH, this.HEALTH_BAR_HEIGHT)
-		this.healthBarBg.setVisible(false)
-		this.add(this.healthBarBg)
-
-		this.healthBarFill = this.scene.add.graphics()
-		this.healthBarFill.clear()
-		this.healthBarFill.setVisible(false)
-		this.add(this.healthBarFill)
-
-		// Make settler clickable with a circular hit area
-		const hitArea = new Geom.Circle(0, 0, size / 2)
-		this.setInteractive(hitArea, Geom.Circle.Contains)
-		this.input.cursor = 'pointer'
-		this.on('pointerdown', this.handleSettlerClick, this)
-
-		// Set up physics body (physics should already be enabled by this point)
-		const physicsBody = this.body as Physics.Arcade.Body
-		if (physicsBody) {
-			physicsBody.setSize(size, size)
-			physicsBody.setOffset(-size / 2, -size / 2)
-			physicsBody.setCollideWorldBounds(true)
-			physicsBody.setImmovable(true)
+	private applyProfessionEmoji(): void {
+		const emoji = this.professionEmojis[this.profession]
+		if (emoji) {
+			this.scene.runtime.renderer.applyEmoji(this.getMesh(), emoji)
+		} else {
+			this.scene.runtime.renderer.applyTint(this.getMesh(), '#cccccc')
 		}
-		
-		// Ensure container is visible and active
-		this.setVisible(true)
-		this.setActive(true)
-		
-		// Update depth to ensure proper rendering
-		this.updateDepth()
-		
-		console.log(`[SettlerView] Created settler ${this.settlerId} at (${this.x}, ${this.y}) with profession ${this.profession}, color=${color.toString(16)}, visible=${this.visible}, active=${this.active}`)
+	}
+
+	public updateProfession(profession: ProfessionType): void {
+		this.profession = profession
+		this.applyProfessionEmoji()
+	}
+
+	public updateState(state: SettlerState): void {
+		this.state = state
+	}
+
+	public updateCarriedItem(_itemType?: string): void {
+		const itemType = _itemType || null
+		if (this.carryingItemType === itemType) return
+		this.carryingItemType = itemType
+
+		if (!itemType) {
+			if (this.carryingMesh) {
+				this.carryingMesh.dispose()
+				this.carryingMesh = null
+			}
+			return
+		}
+
+		if (!this.carryingMesh) {
+			const size = 10
+			const mesh = MeshBuilder.CreateBox(
+				`settler-carry-${this.settlerId}`,
+				{ width: size, height: size, depth: size },
+				this.scene.runtime.renderer.scene
+			)
+			mesh.isPickable = false
+			mesh.parent = this.getMesh()
+			mesh.position.y = this.height / 2 + 20
+			this.carryingMesh = mesh
+		}
+
+		const metadata = itemService.getItemType(itemType)
+		if (metadata?.emoji) {
+			this.scene.runtime.renderer.applyEmoji(this.carryingMesh, metadata.emoji)
+		} else {
+			this.scene.runtime.renderer.applyTint(this.carryingMesh, '#ffffff')
+		}
+	}
+
+	public updateNeeds(_needs: any): void {
+		if (_needs && typeof _needs.hunger === 'number' && typeof _needs.fatigue === 'number') {
+			this.needsValues = { hunger: _needs.hunger, fatigue: _needs.fatigue }
+		} else {
+			this.needsValues = null
+		}
+		this.updateNeedsIndicator()
+	}
+
+	public updateHealth(_health: any): void {
+		// no-op
+	}
+
+	public updateNeedActivity(_kind: 'hunger' | 'fatigue' | null): void {
+		this.activeNeedKind = _kind
+		this.updateNeedsIndicator()
 	}
 
 	public setHighlighted(highlighted: boolean): void {
-		if (this.isHighlighted === highlighted) {
-			return
-		}
+		if (this.isHighlighted === highlighted) return
 		this.isHighlighted = highlighted
-		this.highlightCircle?.setVisible(highlighted)
+		if (this.highlightMesh) {
+			this.highlightMesh.setEnabled(highlighted)
+		}
 	}
 
-	protected updateVisuals(direction: Direction, state: 'idle' | 'moving'): void {
-		// Map movement state to settler state for visual updates
-		// Note: BaseMovementView handles 'idle' | 'moving', but SettlerView also has 'working' and 'assigned'
-		// We only update visuals for movement-related states here
-		if (state === 'moving') {
-			// Visual feedback for movement (if needed)
-			this.setAlpha(1.0)
-			this.setScale(1.0)
-		} else if (state === 'idle') {
-			// Visual feedback for idle (if needed)
-			// But don't override if settler is in 'working' or 'assigned' state
-			if (this.state === SettlerState.Idle || this.state === SettlerState.Moving) {
-				this.setAlpha(1.0)
-				this.setScale(1.0)
+	private createHighlightMesh(): void {
+		if (this.highlightMesh) return
+		const radius = 6
+		const sphere = MeshBuilder.CreateSphere(`settler-highlight-${this.settlerId}`, { diameter: radius * 2 }, this.scene.runtime.renderer.scene)
+		const material = new StandardMaterial(`settler-highlight-mat-${this.settlerId}`, this.scene.runtime.renderer.scene)
+		material.diffuseColor = Color3.FromHexString('#ffeb3b')
+		material.emissiveColor = Color3.FromHexString('#ffeb3b')
+		material.specularColor = Color3.Black()
+		sphere.material = material
+		sphere.isPickable = false
+		sphere.setEnabled(false)
+		sphere.parent = this.getMesh()
+		sphere.position.y = this.height / 2 + radius + 4
+		this.highlightMesh = sphere
+	}
+
+	private updateNeedsIndicator(): void {
+		let kind: 'hunger' | 'fatigue' | null = this.activeNeedKind
+		if (!kind && this.needsValues) {
+			const hunger = this.needsValues.hunger
+			const fatigue = this.needsValues.fatigue
+			const isHungerUrgent = hunger <= NEED_URGENT_THRESHOLD
+			const isFatigueUrgent = fatigue <= NEED_URGENT_THRESHOLD
+			if (isHungerUrgent || isFatigueUrgent) {
+				kind = hunger <= fatigue ? 'hunger' : 'fatigue'
 			}
 		}
-		// Direction changes don't affect settler visuals (they're circular)
-	}
 
-	private handleSettlerClick = (pointer: Phaser.Input.Pointer) => {
-		// Only handle left clicks
-		if (!pointer.leftButtonDown()) return
-		
-		// Emit click event for UI
-		EventBus.emit(UiEvents.Settler.Click, {
-			settlerId: this.settlerId
-		})
-	}
-
-	/**
-	 * Override updatePosition to also update depth
-	 */
-	public updatePosition(x: number, y: number): void {
-		super.updatePosition(x, y)
-		// Depth is already updated by BaseMovementView, but we can add additional logic here if needed
-	}
-
-	/**
-	 * Updates the settler profession (changes appearance)
-	 */
-	public updateProfession(profession: ProfessionType): void {
-		if (this.profession === profession) return
-		this.profession = profession
-
-		// Update graphics circle color
-		if (this.graphics) {
-			const size = 20
-			const color = this.professionColors[profession]
-			this.graphics.clear()
-			this.graphics.fillStyle(color, 1)
-			this.graphics.fillCircle(0, 0, size / 2)
-			this.graphics.lineStyle(2, 0x000000, 1)
-			this.graphics.strokeCircle(0, 0, size / 2)
-		}
-
-		// Update emoji text
-		if (this.emojiText) {
-			this.emojiText.setText(this.professionEmojis[profession])
-		}
-	}
-
-	/**
-	 * Updates the settler state (SettlerState, not movement state)
-	 */
-	public updateState(state: SettlerState): void {
-		if (this.state !== state) {
-			this.state = state
-			// Update visual based on state
-			if (state === SettlerState.Working) {
-				this.setAlpha(0.9) // Slightly transparent when working
-				this.setScale(1.1) // Slightly larger when working
-			} else if (state === SettlerState.Moving) {
-				this.setAlpha(1.0) // Full opacity when moving
-				this.setScale(1.0) // Normal size when moving
-			} else {
-				this.setAlpha(1.0) // Full opacity when idle
-				this.setScale(1.0) // Normal size when idle
-			}
-		}
-	}
-
-	public updateCarriedItem(itemType?: string): void {
-		const nextType = itemType || null
-		if (this.carryItemType === nextType) {
-			return
-		}
-
-		this.carryItemType = nextType
-
-		if (this.carryItemUnsubscribe) {
-			this.carryItemUnsubscribe()
-			this.carryItemUnsubscribe = null
-		}
-
-		if (!nextType) {
-			if (this.carryText) {
-				this.carryText.setVisible(false)
-				this.carryText.setText('')
+		if (!kind) {
+			if (this.needsMesh) {
+				this.needsMesh.dispose()
+				this.needsMesh = null
 			}
 			return
 		}
 
-		if (this.carryText) {
-			this.carryText.setText('📦')
-			this.carryText.setVisible(true)
+		if (!this.needsMesh) {
+			const size = 9
+			const mesh = MeshBuilder.CreateBox(
+				`settler-need-${this.settlerId}`,
+				{ width: size, height: size, depth: size },
+				this.scene.runtime.renderer.scene
+			)
+			mesh.isPickable = false
+			mesh.parent = this.getMesh()
+			mesh.position.y = this.height / 2 + 34
+			this.needsMesh = mesh
 		}
 
-		this.carryItemUnsubscribe = itemService.subscribeToItemMetadata(nextType, (metadata) => {
-			if (!this.carryText || this.carryItemType !== nextType) {
-				return
-			}
-			this.carryText.setText(metadata?.emoji || '📦')
-			this.carryText.setVisible(true)
-		})
-	}
-
-	public updateNeeds(needs?: { hunger: number, fatigue: number }): void {
-		const hungerCritical = needs ? needs.hunger <= this.CRITICAL_NEED_THRESHOLD : false
-		const fatigueCritical = needs ? needs.fatigue <= this.CRITICAL_NEED_THRESHOLD : false
-
-		let nextKind: 'hunger' | 'fatigue' | null = null
-		if (hungerCritical && fatigueCritical && needs) {
-			nextKind = needs.hunger <= needs.fatigue ? 'hunger' : 'fatigue'
-		} else if (hungerCritical) {
-			nextKind = 'hunger'
-		} else if (fatigueCritical) {
-			nextKind = 'fatigue'
-		}
-
-		this.dangerKind = nextKind
-		this.refreshNeedIndicators()
-	}
-
-	public updateHealth(health?: number): void {
-		const normalized = typeof health === 'number' ? Math.max(0, Math.min(1, health)) : 1
-		if (this.healthValue === normalized) {
-			const shouldShow = normalized < 1
-			this.healthBarBg?.setVisible(shouldShow)
-			this.healthBarFill?.setVisible(shouldShow)
-			return
-		}
-
-		this.healthValue = normalized
-		const shouldShow = normalized < 1
-		this.healthBarBg?.setVisible(shouldShow)
-		this.healthBarFill?.setVisible(shouldShow)
-
-		if (!shouldShow || !this.healthBarFill) {
-			return
-		}
-
-		const color = normalized > 0.66 ? 0x2ecc71 : normalized > 0.33 ? 0xf1c40f : 0xe74c3c
-		const width = Math.max(0.5, this.HEALTH_BAR_WIDTH * normalized)
-		this.healthBarFill.clear()
-		this.healthBarFill.fillStyle(color, 1)
-		this.healthBarFill.fillRect(-this.HEALTH_BAR_WIDTH / 2, this.HEALTH_BAR_Y, width, this.HEALTH_BAR_HEIGHT)
-	}
-
-	public updateNeedActivity(kind: 'hunger' | 'fatigue' | null): void {
-		this.activeNeedKind = kind
-		this.refreshNeedIndicators()
-	}
-
-	private refreshNeedIndicators(): void {
-		if (this.dangerKind) {
-			if (this.dangerText) {
-				this.dangerText.setText(this.dangerEmojis[this.dangerKind])
-			}
-			this.dangerCircle?.setVisible(true)
-			this.dangerText?.setVisible(true)
-		} else {
-			this.dangerCircle?.setVisible(false)
-			this.dangerText?.setVisible(false)
-		}
-
-		if (!this.dangerKind && this.activeNeedKind) {
-			if (this.needActivityText) {
-				this.needActivityText.setText(this.dangerEmojis[this.activeNeedKind])
-			}
-			this.needActivityCircle?.setVisible(true)
-			this.needActivityText?.setVisible(true)
-		} else {
-			this.needActivityCircle?.setVisible(false)
-			this.needActivityText?.setVisible(false)
-		}
-	}
-
-	/**
-	 * Override onStateChange to sync SettlerState with movement state
-	 */
-	protected onStateChange(state: 'idle' | 'moving'): void {
-		// Sync SettlerState with movement state when movement starts/completes
-		if (state === 'moving' && this.state !== SettlerState.Working && this.state !== SettlerState.Assigned) {
-			this.state = SettlerState.Moving
-		} else if (state === 'idle' && this.state === SettlerState.Moving) {
-			// Only set to Idle if we're currently Moving (don't override Working or Assigned)
-			this.state = SettlerState.Idle
-		}
+		const emoji = kind === 'hunger' ? '🍗' : '😴'
+		this.scene.runtime.renderer.applyEmoji(this.needsMesh, emoji)
 	}
 
 	public destroy(): void {
-		if (this.carryItemUnsubscribe) {
-			this.carryItemUnsubscribe()
-			this.carryItemUnsubscribe = null
+		if (this.highlightMesh) {
+			this.highlightMesh.dispose()
+			this.highlightMesh = null
 		}
-		if (this.highlightCircle) {
-			this.highlightCircle.destroy()
-			this.highlightCircle = null
+		if (this.carryingMesh) {
+			this.carryingMesh.dispose()
+			this.carryingMesh = null
 		}
-		if (this.graphics) {
-			this.graphics.destroy()
-			this.graphics = null
-		}
-		if (this.emojiText) {
-			this.emojiText.destroy()
-			this.emojiText = null
-		}
-		if (this.carryText) {
-			this.carryText.destroy()
-			this.carryText = null
-		}
-		if (this.dangerCircle) {
-			this.dangerCircle.destroy()
-			this.dangerCircle = null
-		}
-		if (this.dangerText) {
-			this.dangerText.destroy()
-			this.dangerText = null
-		}
-		if (this.needActivityCircle) {
-			this.needActivityCircle.destroy()
-			this.needActivityCircle = null
-		}
-		if (this.needActivityText) {
-			this.needActivityText.destroy()
-			this.needActivityText = null
-		}
-		if (this.healthBarBg) {
-			this.healthBarBg.destroy()
-			this.healthBarBg = null
-		}
-		if (this.healthBarFill) {
-			this.healthBarFill.destroy()
-			this.healthBarFill = null
+		if (this.needsMesh) {
+			this.needsMesh.dispose()
+			this.needsMesh = null
 		}
 		super.destroy()
 	}

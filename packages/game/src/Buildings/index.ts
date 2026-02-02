@@ -175,6 +175,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	private placeBuilding(data: PlaceBuildingData, client: EventClient) {
 		const { buildingId, position } = data
+		const rotation = typeof data.rotation === 'number' ? data.rotation : 0
 		const definition = this.definitions.get(buildingId)
 
 		if (!definition) {
@@ -187,7 +188,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		// Resources don't need to be in inventory to place a building
 
 		// Check for collisions using building footprint
-		if (this.checkBuildingCollision(client.currentGroup, position, definition)) {
+		if (this.checkBuildingCollision(client.currentGroup, position, definition, rotation)) {
 			this.logger.error(`Cannot place building at position due to collision:`, position)
 			// TODO: Emit error event to client
 			return
@@ -206,8 +207,10 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 		// Place the building object on the map
 		// Store building footprint in metadata so MapObjectsManager can use it for collision
+		const rotatedFootprint = this.getRotatedFootprint(definition, rotation)
 		const placeObjectData: PlaceObjectData = {
 			position,
+			rotation,
 			item: buildingItem,
 			metadata: {
 				buildingId,
@@ -215,8 +218,8 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 				stage: ConstructionStage.CollectingResources,
 				progress: 0,
 				footprint: {
-					width: definition.footprint.width,
-					height: definition.footprint.height
+					width: rotatedFootprint.width,
+					height: rotatedFootprint.height
 				}
 			}
 		}
@@ -228,6 +231,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			playerId: client.id,
 			mapId: client.currentGroup,
 			position,
+			rotation,
 			stage: ConstructionStage.CollectingResources,
 			progress: 0,
 			startedAt: 0, // Will be set when construction starts (resources collected)
@@ -738,7 +742,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}, building.mapId)
 	}
 
-	private checkBuildingCollision(mapId: string, position: { x: number, y: number }, definition: BuildingDefinition): boolean {
+	private checkBuildingCollision(mapId: string, position: { x: number, y: number }, definition: BuildingDefinition, rotation: number): boolean {
 		// Get all existing buildings and map objects in this map
 		const existingBuildings = this.getBuildingsForMap(mapId)
 		const existingObjects = this.managers.mapObjects.getAllObjectsForMap(mapId)
@@ -746,13 +750,14 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		// Get tile size from map (default to 32 if map not loaded)
 		const map = this.managers.map.getMap(mapId)
 		const TILE_SIZE = map?.tiledMap?.tilewidth || 32
-		const buildingWidth = definition.footprint.width * TILE_SIZE
-		const buildingHeight = definition.footprint.height * TILE_SIZE
+		const placementFootprint = this.getRotatedFootprint(definition, rotation)
+		const buildingWidth = placementFootprint.width * TILE_SIZE
+		const buildingHeight = placementFootprint.height * TILE_SIZE
 
 		this.logger.debug(`Checking collision for building ${definition.id} at position (${position.x}, ${position.y}) with footprint ${definition.footprint.width}x${definition.footprint.height} (${buildingWidth}x${buildingHeight} pixels)`)
 
 		// Check collision with map tiles (non-passable tiles)
-		if (this.checkMapTileCollision(mapId, position, definition, TILE_SIZE)) {
+		if (this.checkMapTileCollision(mapId, position, definition, rotation, TILE_SIZE)) {
 			this.logger.debug(`❌ Collision with map tiles at position:`, position)
 			return true
 		}
@@ -762,9 +767,9 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			const def = this.definitions.get(building.buildingId)
 			if (!def) continue
 
-			// Convert existing building footprint to pixels
-			const existingWidth = def.footprint.width * TILE_SIZE
-			const existingHeight = def.footprint.height * TILE_SIZE
+			const existingFootprint = this.getRotatedFootprint(def, typeof building.rotation === 'number' ? building.rotation : 0)
+			const existingWidth = existingFootprint.width * TILE_SIZE
+			const existingHeight = existingFootprint.height * TILE_SIZE
 
 			this.logger.debug(`Checking against existing building at (${building.position.x}, ${building.position.y}) with footprint ${def.footprint.width}x${def.footprint.height} (${existingWidth}x${existingHeight} pixels)`)
 
@@ -827,6 +832,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		mapId: string,
 		position: { x: number, y: number },
 		definition: BuildingDefinition,
+		rotation: number,
 		tileSize: number
 	): boolean {
 		// Get map data
@@ -840,9 +846,10 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		const startTileX = Math.floor(position.x / tileSize)
 		const startTileY = Math.floor(position.y / tileSize)
 
+		const footprint = this.getRotatedFootprint(definition, rotation)
 		// Check all tiles within the building's footprint
-		for (let tileY = 0; tileY < definition.footprint.height; tileY++) {
-			for (let tileX = 0; tileX < definition.footprint.width; tileX++) {
+		for (let tileY = 0; tileY < footprint.height; tileY++) {
+			for (let tileX = 0; tileX < footprint.width; tileX++) {
 				const checkTileX = startTileX + tileX
 				const checkTileY = startTileY + tileY
 
@@ -855,6 +862,14 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 
 		return false // No collision with map tiles
+	}
+
+	private getRotatedFootprint(definition: BuildingDefinition, rotation: number): { width: number; height: number } {
+		const turns = normalizeQuarterTurns(rotation)
+		if (turns % 2 === 0) {
+			return { width: definition.footprint.width, height: definition.footprint.height }
+		}
+		return { width: definition.footprint.height, height: definition.footprint.width }
 	}
 
 	private doRectanglesOverlap(
@@ -1037,6 +1052,43 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			return undefined
 		}
 		return this.getBuildingDefinition(building.buildingId)
+	}
+
+	public getBuildingAccessPoints(buildingInstanceId: string): { entry?: Position; center?: Position } | null {
+		const building = this.getBuildingInstance(buildingInstanceId)
+		if (!building) {
+			return null
+		}
+		const definition = this.getBuildingDefinition(building.buildingId)
+		if (!definition) {
+			return null
+		}
+		const entry = definition.entryPoint
+		const center = definition.centerPoint
+		if (!entry && !center) {
+			return null
+		}
+		const map = this.managers.map.getMap(building.mapId)
+		const tileSize = map?.tiledMap?.tilewidth || 32
+		const rotation = typeof building.rotation === 'number' ? building.rotation : 0
+		const width = definition.footprint.width
+		const height = definition.footprint.height
+		const result: { entry?: Position; center?: Position } = {}
+		if (entry) {
+			const rotated = rotatePointOffset(entry, width, height, rotation)
+			result.entry = {
+				x: building.position.x + rotated.x * tileSize,
+				y: building.position.y + rotated.y * tileSize
+			}
+		}
+		if (center) {
+			const rotated = rotatePointOffset(center, width, height, rotation)
+			result.center = {
+				x: building.position.x + rotated.x * tileSize,
+				y: building.position.y + rotated.y * tileSize
+			}
+		}
+		return result
 	}
 
 	// Check if building needs workers
@@ -1241,7 +1293,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 				continue
 			}
 			const definition = this.definitions.get(building.buildingId)
-			if (!definition?.storage) {
+			if (!definition?.storageSlots || definition.storageSlots.length === 0) {
 				continue
 			}
 			if (this.managers.storage.getBuildingStorage(building.id)) {
@@ -1261,4 +1313,32 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.simulationTimeMs = 0
 		this.tickAccumulatorMs = 0
 	}
+}
+
+const HALF_PI = Math.PI / 2
+
+function normalizeQuarterTurns(rotation: number): number {
+	if (!Number.isFinite(rotation)) return 0
+	const turns = Math.round(rotation / HALF_PI)
+	const normalized = ((turns % 4) + 4) % 4
+	return normalized
+}
+
+function rotatePointOffset(
+	offset: { x: number; y: number },
+	width: number,
+	height: number,
+	rotation: number
+): { x: number; y: number } {
+	const turns = normalizeQuarterTurns(rotation)
+	if (turns === 0) {
+		return { x: offset.x, y: offset.y }
+	}
+	if (turns === 1) {
+		return { x: offset.y, y: width - offset.x }
+	}
+	if (turns === 2) {
+		return { x: width - offset.x, y: height - offset.y }
+	}
+	return { x: height - offset.y, y: offset.x }
 }

@@ -1,64 +1,43 @@
-import { Scene } from 'phaser'
-import { PlayerView } from '../Player/View'
-import { Event } from "@rugged/game"
+import { PlayerView2 } from '../Player/View2'
+import { Event } from '@rugged/game'
 import { EventBus } from '../../EventBus'
-import { Direction } from '../Player/View2'
+import { Direction } from '../Player/View'
 import { BasePlayerController } from '../Player/BaseController'
+import type { GameScene } from '../../scenes/base/GameScene'
 
 export class RemotePlayerController extends BasePlayerController {
-	constructor(
-		view: PlayerView,
-		scene: Scene,
-		playerId: string
-	) {
+	constructor(view: PlayerView2, scene: GameScene, playerId: string) {
 		super(view, scene, playerId)
-		// Subscribe to remote player movement events
 		EventBus.on(Event.Players.SC.Move, this.handlePlayerMoved, this)
 	}
 
-	/**
-	 * Remote player should handle events where the source player ID matches this player's ID
-	 */
 	protected shouldHandleEvent(data: { sourcePlayerId: string }): boolean {
 		return data.sourcePlayerId === this.playerId
 	}
 
-	private handlePlayerMoved = (data: { sourcePlayerId: string, x: number, y: number }) => {
-		// Only update if this is our player
+	public handlePlayerMoved = (data: { sourcePlayerId: string; x: number; y: number }) => {
 		if (!this.shouldHandleEvent(data)) return
-		
-		// Calculate direction based on position difference
+
 		const dx = data.x - this.view.x
 		const dy = data.y - this.view.y
-		
-		// Determine direction based on which axis has the larger change
-		// If the change is very small, don't update direction
-		const threshold = 5 // Minimum change to consider direction change
-		
+		const threshold = 5
+
 		if (Math.abs(dx) > threshold || Math.abs(dy) > threshold) {
 			let direction: Direction
-			
 			if (Math.abs(dx) > Math.abs(dy)) {
-				// Horizontal movement is dominant
 				direction = dx > 0 ? Direction.Right : Direction.Left
 			} else {
-				// Vertical movement is dominant
 				direction = dy > 0 ? Direction.Down : Direction.Up
 			}
-			
-			// Update the direction
 			this.view.updateDirection(direction)
 		}
-		
-		// Update position
+
 		this.view.updatePosition(data.x, data.y)
 	}
 
-	update(): void {
-		// Update view
+	update(_deltaMs: number): void {
+		void _deltaMs
 		this.view.preUpdate()
-
-		// Update text display service with current position
 		if (this.scene.textDisplayService) {
 			this.scene.textDisplayService.updateEntityPosition(this.playerId, { x: this.view.x, y: this.view.y })
 		}
@@ -66,9 +45,7 @@ export class RemotePlayerController extends BasePlayerController {
 
 	public destroy(): void {
 		super.destroy()
-		// Clean up event listeners
-		EventBus.off(Event.Players.CS.Move, this.handlePlayerMoved, this)
-		// Destroy the view
+		EventBus.off(Event.Players.SC.Move, this.handlePlayerMoved, this)
 		this.view.destroy()
 	}
-} 
+}

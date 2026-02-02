@@ -15,6 +15,8 @@ type TopBarProps = {
 	onTogglePopulation: () => void
 	isLogisticsOpen: boolean
 	onToggleLogistics: () => void
+	showDebugBounds: boolean
+	onToggleDebugBounds: () => void
 	onOpenSave: () => void
 	onOpenLoad: () => void
 	resourceButtonRef?: React.Ref<HTMLButtonElement>
@@ -50,6 +52,8 @@ export const TopBar: React.FC<TopBarProps> = ({
 	onTogglePopulation,
 	isLogisticsOpen,
 	onToggleLogistics,
+	showDebugBounds,
+	onToggleDebugBounds,
 	onOpenSave,
 	onOpenLoad,
 	resourceButtonRef,
@@ -131,6 +135,15 @@ export const TopBar: React.FC<TopBarProps> = ({
 			</div>
 			<div className={styles.right}>
 				<div className={styles.snapshotButtons}>
+					<label className={styles.debugToggle}>
+						<input
+							type="checkbox"
+							className={styles.debugCheckbox}
+							checked={showDebugBounds}
+							onChange={onToggleDebugBounds}
+						/>
+						<span className={styles.debugText}>Bounds</span>
+					</label>
 					<button type="button" className={styles.snapshotButton} onClick={onOpenSave}>
 						Save
 					</button>

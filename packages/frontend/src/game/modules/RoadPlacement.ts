@@ -1,44 +1,53 @@
-import { Scene, GameObjects, Input } from 'phaser'
 import { EventBus } from '../EventBus'
 import { Event, RoadType } from '@rugged/game'
 import { UiEvents } from '../uiEvents'
+import type { AbstractMesh } from '@babylonjs/core'
+import type { GameScene } from '../scenes/base/GameScene'
+import type { PointerState } from '../input/InputManager'
 
 interface RoadPlacementState {
 	selectedRoadType: RoadType | null
-	startTile: { x: number, y: number } | null
-	currentTile: { x: number, y: number } | null
-	ghostSprite: GameObjects.Graphics | null
-	selectionText: GameObjects.Text | null
+	startTile: { x: number; y: number } | null
+	currentTile: { x: number; y: number } | null
+	ghostMeshes: AbstractMesh[]
+	selectionText: HTMLDivElement | null
 	isValidPosition: boolean
 }
 
-const ROAD_PREVIEW_COLORS: Record<RoadType, number> = {
-	[RoadType.None]: 0x000000,
-	[RoadType.Dirt]: 0xb58a58,
-	[RoadType.Stone]: 0x8a8a8a
+const ROAD_PREVIEW_COLORS: Record<RoadType, string> = {
+	[RoadType.None]: '#000000',
+	[RoadType.Dirt]: '#b58a58',
+	[RoadType.Stone]: '#8a8a8a'
 }
 
 export class RoadPlacementManager {
-	private scene: Scene
+	private scene: GameScene
 	private handlersActive = false
 	private state: RoadPlacementState = {
 		selectedRoadType: null,
 		startTile: null,
 		currentTile: null,
-		ghostSprite: null,
+		ghostMeshes: [],
 		selectionText: null,
 		isValidPosition: false
 	}
 	private selectHandler: ((data: { roadType: RoadType }) => void) | null = null
 	private cancelHandler: (() => void) | null = null
+	private boundContextMenu: (event: MouseEvent) => void
 
-	constructor(scene: Scene) {
+	constructor(scene: GameScene) {
 		this.scene = scene
+		this.boundContextMenu = (event) => {
+			if (this.state.selectedRoadType) {
+				event.preventDefault()
+				this.cancelSelection(false)
+			}
+		}
 		this.setupEventListeners()
 	}
 
 	public update(): void {
-		// no-op for now
+		// no-op
 	}
 
 	public destroy(): void {
@@ -53,6 +62,7 @@ export class RoadPlacementManager {
 			EventBus.off(UiEvents.Building.WorkAreaSelect, this.cancelHandler)
 			EventBus.off(UiEvents.Building.WorkAreaCancel, this.cancelHandler)
 		}
+		window.removeEventListener('contextmenu', this.boundContextMenu)
 	}
 
 	private setupEventListeners(): void {
@@ -81,14 +91,14 @@ export class RoadPlacementManager {
 		EventBus.emit(UiEvents.Building.WorkAreaCancel, {})
 
 		if (this.state.selectedRoadType) {
-			this.destroyGhostSprite()
+			this.destroyGhostMeshes()
 			this.removeMouseHandlers()
 		}
 
 		this.state.selectedRoadType = roadType
 		this.state.startTile = null
 		this.state.currentTile = null
-		this.createGhostSprite()
+		this.createGhostMeshes()
 		this.setupMouseHandlers()
 		this.updateSelectionText()
 	}
@@ -107,81 +117,69 @@ export class RoadPlacementManager {
 		this.state.startTile = null
 		this.state.currentTile = null
 		this.state.isValidPosition = false
-		this.destroyGhostSprite()
+		this.destroyGhostMeshes()
 		this.removeMouseHandlers()
 		EventBus.emit(UiEvents.Road.Cancelled, {})
 	}
 
-	private createGhostSprite(): void {
-		this.destroyGhostSprite()
-		const ghost = this.scene.add.graphics()
-		ghost.setDepth(200)
-		ghost.setAlpha(0.6)
-		this.state.ghostSprite = ghost
-
-		const text = this.scene.add.text(16, 16, '', {
-			fontSize: '16px',
-			color: '#ffffff',
-			backgroundColor: '#000000',
-			padding: { x: 8, y: 4 }
-		})
-		text.setScrollFactor(0)
-		text.setDepth(1000)
+	private createGhostMeshes(): void {
+		this.destroyGhostMeshes()
+		const text = document.createElement('div')
+		text.style.position = 'absolute'
+		text.style.top = '16px'
+		text.style.left = '16px'
+		text.style.padding = '4px 8px'
+		text.style.background = 'rgba(0,0,0,0.7)'
+		text.style.color = '#ffffff'
+		text.style.fontSize = '14px'
+		text.style.borderRadius = '4px'
+		this.scene.runtime.overlayRoot.appendChild(text)
 		this.state.selectionText = text
+		window.addEventListener('contextmenu', this.boundContextMenu)
 	}
 
-	private destroyGhostSprite(): void {
-		if (this.state.ghostSprite) {
-			this.state.ghostSprite.destroy()
-			this.state.ghostSprite = null
-		}
+	private destroyGhostMeshes(): void {
+		this.state.ghostMeshes.forEach((mesh) => mesh.dispose())
+		this.state.ghostMeshes = []
 		if (this.state.selectionText) {
-			this.state.selectionText.destroy()
+			this.state.selectionText.remove()
 			this.state.selectionText = null
 		}
+		window.removeEventListener('contextmenu', this.boundContextMenu)
 	}
 
 	private setupMouseHandlers(): void {
-		if (this.handlersActive) {
-			return
-		}
-		this.scene.input.on('pointermove', this.handleMouseMove, this)
-		this.scene.input.on('pointerdown', this.handleMouseClick, this)
-		this.scene.input.keyboard.on('keydown-ESC', this.handleEscape, this)
+		if (this.handlersActive) return
+		this.scene.runtime.input.on('pointermove', this.handleMouseMove)
+		this.scene.runtime.input.on('pointerup', this.handleMouseClick)
+		window.addEventListener('keydown', this.handleEscape)
 		this.handlersActive = true
 	}
 
 	private removeMouseHandlers(): void {
-		if (!this.handlersActive) {
-			return
-		}
-		this.scene.input.off('pointermove', this.handleMouseMove, this)
-		this.scene.input.off('pointerdown', this.handleMouseClick, this)
-		this.scene.input.keyboard.off('keydown-ESC', this.handleEscape, this)
+		if (!this.handlersActive) return
+		this.scene.runtime.input.off('pointermove', this.handleMouseMove)
+		this.scene.runtime.input.off('pointerup', this.handleMouseClick)
+		window.removeEventListener('keydown', this.handleEscape)
 		this.handlersActive = false
 	}
 
-	private handleMouseMove = (pointer: Input.Pointer) => {
+	private handleMouseMove = (pointer: PointerState) => {
 		if (!this.state.selectedRoadType) return
-
-		const camera = this.scene.cameras.main
-		const worldX = camera.scrollX + pointer.x
-		const worldY = camera.scrollY + pointer.y
-
-		this.updateGhostPosition(worldX, worldY)
+		const world = pointer.world ?? this.scene.runtime.input.getWorldPoint()
+		if (!world) return
+		this.updateGhostPosition(world.x, world.z)
 	}
 
-	private handleMouseClick = (pointer: Input.Pointer) => {
+	private handleMouseClick = (pointer: PointerState) => {
+		if (pointer.wasDrag || pointer.button !== 0) return
 		if (!this.state.selectedRoadType) return
-
-		if (pointer.rightButtonDown()) {
-			this.cancelSelection(false)
-			return
+		if (!this.state.currentTile) {
+			const world = pointer.world ?? this.scene.runtime.input.getWorldPoint()
+			if (!world) return
+			this.updateGhostPosition(world.x, world.z)
 		}
-
-		if (!pointer.leftButtonDown() || !this.state.currentTile) {
-			return
-		}
+		if (!this.state.currentTile) return
 
 		if (!this.state.startTile) {
 			this.state.startTile = { ...this.state.currentTile }
@@ -203,8 +201,10 @@ export class RoadPlacementManager {
 		this.redrawGhost()
 	}
 
-	private handleEscape = () => {
-		this.cancelSelection(false)
+	private handleEscape = (event: KeyboardEvent) => {
+		if (event.code === 'Escape') {
+			this.cancelSelection(false)
+		}
 	}
 
 	private updateGhostPosition(worldX: number, worldY: number): void {
@@ -212,10 +212,10 @@ export class RoadPlacementManager {
 		const tileX = Math.floor(worldX / tileSize)
 		const tileY = Math.floor(worldY / tileSize)
 
-		const map = (this.scene as any).map
+		const map = this.scene.map
 		let valid = true
 		if (map) {
-			valid = tileX >= 0 && tileY >= 0 && tileX < map.width && tileY < map.height
+			valid = tileX >= 0 && tileY >= 0 && tileX < map.widthInPixels / tileSize && tileY < map.heightInPixels / tileSize
 		}
 
 		this.state.isValidPosition = valid
@@ -224,51 +224,47 @@ export class RoadPlacementManager {
 	}
 
 	private redrawGhost(): void {
-		if (!this.state.ghostSprite) return
-		const ghost = this.state.ghostSprite
-		ghost.clear()
+		this.state.ghostMeshes.forEach((mesh) => mesh.dispose())
+		this.state.ghostMeshes = []
 
 		if (!this.state.currentTile || this.state.selectedRoadType === null) {
 			return
 		}
 
 		const tileSize = this.getTileSize()
-		const color = ROAD_PREVIEW_COLORS[this.state.selectedRoadType] || 0xb58a58
+		const color = this.state.isValidPosition ? ROAD_PREVIEW_COLORS[this.state.selectedRoadType] : '#ff0000'
 		const tiles = this.state.startTile
 			? this.getLineTiles(this.state.startTile, this.state.currentTile)
 			: [this.state.currentTile]
 
-		ghost.fillStyle(this.state.isValidPosition ? color : 0xff0000, 0.45)
-		ghost.lineStyle(2, this.state.isValidPosition ? 0xffffff : 0xff0000, 0.6)
-
 		for (const tile of tiles) {
-			const x = tile.x * tileSize
-			const y = tile.y * tileSize
-			ghost.fillRect(x, y, tileSize, tileSize)
-			ghost.strokeRect(x + 0.5, y + 0.5, tileSize - 1, tileSize - 1)
+			const size = { width: tileSize, length: tileSize, height: 1 }
+			const mesh = this.scene.runtime.renderer.createBox(`road-preview-${tile.x}-${tile.y}`, size)
+			this.scene.runtime.renderer.applyTint(mesh, color)
+			const centerX = tile.x * tileSize + tileSize / 2
+			const centerY = tile.y * tileSize + tileSize / 2
+			this.scene.runtime.renderer.setMeshPosition(mesh, centerX, 0.5, centerY)
+			this.state.ghostMeshes.push(mesh)
 		}
 	}
 
 	private updateSelectionText(): void {
-		if (!this.state.selectionText) {
-			return
-		}
+		if (!this.state.selectionText) return
 		if (!this.state.selectedRoadType) {
-			this.state.selectionText.setText('')
+			this.state.selectionText.textContent = ''
 			return
 		}
-		this.state.selectionText.setText(this.state.startTile
+		this.state.selectionText.textContent = this.state.startTile
 			? 'Click to finish road (Esc to cancel)'
-			: 'Click to start road (Esc to cancel)')
+			: 'Click to start road (Esc to cancel)'
 	}
 
 	private getTileSize(): number {
-		const map = (this.scene as any).map
-		return map?.tileWidth || map?.tilewidth || 32
+		return this.scene.map?.tileWidth || 32
 	}
 
-	private getLineTiles(start: { x: number, y: number }, end: { x: number, y: number }): Array<{ x: number, y: number }> {
-		const tiles: Array<{ x: number, y: number }> = []
+	private getLineTiles(start: { x: number; y: number }, end: { x: number; y: number }): Array<{ x: number; y: number }> {
+		const tiles: Array<{ x: number; y: number }> = []
 		let x0 = start.x
 		let y0 = start.y
 		const x1 = end.x

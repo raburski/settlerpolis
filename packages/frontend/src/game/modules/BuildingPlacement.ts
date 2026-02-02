@@ -1,76 +1,82 @@
-import { Scene, GameObjects, Input } from 'phaser'
 import { EventBus } from '../EventBus'
 import { Event, BuildingDefinition } from '@rugged/game'
 import { UiEvents } from '../uiEvents'
+import { AbstractMesh, Color3, SceneLoader, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core'
+import '@babylonjs/loaders'
+import type { GameScene } from '../scenes/base/GameScene'
+import type { PointerState } from '../input/InputManager'
 
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'
 const contentModules = import.meta.glob('../../../../../content/*/index.ts', { eager: true })
 const content = contentModules[`../../../../../content/${CONTENT_FOLDER}/index.ts`]
+const HALF_PI = Math.PI / 2
+const GHOST_VISIBILITY = 1
 
 interface BuildingPlacementState {
 	selectedBuildingId: string | null
-	ghostSprite: GameObjects.Graphics | null
 	isValidPosition: boolean
-	lastMousePosition: { x: number, y: number } | null
+	lastMousePosition: { x: number; y: number } | null
+	rotationStep: number
 }
 
 export class BuildingPlacementManager {
-	private scene: Scene
+	private scene: GameScene
 	private state: BuildingPlacementState = {
 		selectedBuildingId: null,
-		ghostSprite: null,
 		isValidPosition: true,
-		lastMousePosition: null
+		lastMousePosition: null,
+		rotationStep: 0
 	}
 	private buildings: Map<string, BuildingDefinition> = new Map()
-	private tileSize: number = 32 // Default tile size
+	private tileSize: number = 32
+	private ghostRoot: TransformNode | null = null
+	private ghostBaseMesh: AbstractMesh | null = null
+	private ghostBaseMaterial: StandardMaterial | null = null
+	private ghostModelRoot: TransformNode | null = null
+	private ghostModelPivot: TransformNode | null = null
+	private ghostMeshes: AbstractMesh[] = []
+	private ghostRender: BuildingDefinition['render'] | null = null
+	private ghostLoadToken = 0
 	private selectHandler: ((data: { buildingId: string }) => void) | null = null
 	private cancelHandler: (() => void) | null = null
 	private placedHandler: (() => void) | null = null
+	private handlersActive = false
 
-	constructor(scene: Scene) {
+	constructor(scene: GameScene) {
 		this.scene = scene
 		this.loadBuildings()
 		this.setupEventListeners()
 	}
 
 	private loadBuildings() {
-		// Try to load from content (fallback)
 		if (content?.buildings) {
 			content.buildings.forEach((building: BuildingDefinition) => {
 				this.buildings.set(building.id, building)
 			})
-			console.log('[BuildingPlacementManager] Loaded buildings from content:', this.buildings.size)
 		}
 	}
 
 	private setupEventListeners() {
-		// Listen for building catalog from server (primary source)
 		const catalogHandler = (data: { buildings: BuildingDefinition[] }) => {
-			console.log('[BuildingPlacementManager] Received building catalog:', data.buildings)
 			if (data.buildings) {
 				this.buildings.clear()
 				data.buildings.forEach((building: BuildingDefinition) => {
 					this.buildings.set(building.id, building)
 				})
-				console.log('[BuildingPlacementManager] Updated buildings map:', this.buildings.size)
 			}
 		}
 		EventBus.on(Event.Buildings.SC.Catalog, catalogHandler)
 
-		// Listen for building selection from ConstructionPanel
 		this.selectHandler = (data: { buildingId: string }) => {
 			this.selectBuilding(data.buildingId)
 		}
 		EventBus.on(UiEvents.Construction.Select, this.selectHandler)
 
-		// Listen for building selection cancel
 		this.cancelHandler = () => {
 			this.cancelSelection()
 		}
 		EventBus.on(UiEvents.Construction.Cancel, this.cancelHandler)
 
-		// Listen for building placement events to clear selection
 		this.placedHandler = () => {
 			this.cancelSelection()
 		}
@@ -79,160 +85,356 @@ export class BuildingPlacementManager {
 
 	private selectBuilding(buildingId: string) {
 		this.state.selectedBuildingId = buildingId
-		this.createGhostSprite()
+		this.state.rotationStep = 0
+		this.createGhostMesh()
 		this.setupMouseHandlers()
 	}
 
 	private cancelSelection() {
 		this.state.selectedBuildingId = null
-		this.destroyGhostSprite()
+		this.destroyGhostMesh()
 		this.removeMouseHandlers()
 	}
 
-	private createGhostSprite() {
+	private createGhostMesh() {
 		if (!this.state.selectedBuildingId) return
-
 		const building = this.buildings.get(this.state.selectedBuildingId)
 		if (!building) return
 
-		// Destroy existing ghost if any
-		this.destroyGhostSprite()
+		this.destroyGhostMesh()
 
-		// Create a graphics object for the ghost preview
-		const ghost = this.scene.add.graphics()
-		ghost.setDepth(200) // Render above most things
-		ghost.setAlpha(0.5) // Semi-transparent
+		this.ghostRoot = new TransformNode('building-ghost-root', this.scene.runtime.renderer.scene)
+		this.ghostRoot.setEnabled(true)
+		this.ghostRender = building.render || null
 
-		this.state.ghostSprite = ghost
-		this.updateGhostPosition(0, 0) // Initial position
+		this.rebuildGhostBaseMesh(building)
+		if (building.render?.modelSrc) {
+			void this.loadGhostModel(building)
+		}
+
+		this.setInitialGhostPosition()
 	}
 
-	private destroyGhostSprite() {
-		if (this.state.ghostSprite) {
-			this.state.ghostSprite.destroy()
-			this.state.ghostSprite = null
+	private destroyGhostMesh() {
+		this.ghostLoadToken += 1
+		this.ghostRender = null
+		if (this.ghostRoot) {
+			this.ghostRoot.dispose()
 		}
+		this.ghostRoot = null
+		this.ghostBaseMesh = null
+		if (this.ghostBaseMaterial) {
+			this.ghostBaseMaterial.dispose()
+		}
+		this.ghostBaseMaterial = null
+		this.ghostModelRoot = null
+		this.ghostModelPivot = null
+		this.ghostMeshes = []
 	}
 
 	private updateGhostPosition(worldX: number, worldY: number) {
-		if (!this.state.ghostSprite || !this.state.selectedBuildingId) return
-
+		if (!this.ghostRoot || !this.state.selectedBuildingId) return
 		const building = this.buildings.get(this.state.selectedBuildingId)
 		if (!building) return
 
-		// Snap to grid (assuming tile size)
-		const snappedX = Math.floor(worldX / this.tileSize) * this.tileSize
-		const snappedY = Math.floor(worldY / this.tileSize) * this.tileSize
-
+		const tileSize = this.scene.map?.tileWidth || this.tileSize
+		const snappedX = Math.floor(worldX / tileSize) * tileSize
+		const snappedY = Math.floor(worldY / tileSize) * tileSize
 		this.state.lastMousePosition = { x: snappedX, y: snappedY }
+		this.state.isValidPosition = true
 
-		// Check if position is valid (simplified for Phase A - can check collisions later)
-		this.state.isValidPosition = true // TODO: Add collision checking
-
-		// Clear and redraw ghost
-		const ghost = this.state.ghostSprite
-		ghost.clear()
-
-		// Draw building footprint
-		const width = building.footprint.width * this.tileSize
-		const height = building.footprint.height * this.tileSize
-		const color = this.state.isValidPosition ? 0x00ff00 : 0xff0000
-
-		// Draw filled rectangle with border
-		ghost.fillStyle(color, 0.3)
-		ghost.fillRect(snappedX, snappedY, width, height)
-		
-		ghost.lineStyle(2, color, 0.8)
-		ghost.strokeRect(snappedX, snappedY, width, height)
-
-		// Draw building icon/name in center
-		const centerX = snappedX + width / 2
-		const centerY = snappedY + height / 2
-		
-		// Draw building icon if available
-		if (building.icon) {
-			ghost.fillStyle(0xffffff, 0.8)
-			ghost.fillCircle(centerX, centerY, 10)
+		const footprint = this.getRotatedFootprint(building)
+		const centerX = snappedX + (footprint.width * tileSize) / 2
+		const centerY = snappedY + (footprint.height * tileSize) / 2
+		this.ghostRoot.position = new Vector3(centerX, tileSize * 0.5, centerY)
+		if (this.ghostBaseMesh) {
+			if (this.ghostBaseMaterial) {
+				const color = this.state.isValidPosition ? Color3.FromHexString('#ff00ff') : Color3.FromHexString('#ff0000')
+				this.ghostBaseMaterial.diffuseColor = color
+				this.ghostBaseMaterial.emissiveColor = this.state.isValidPosition ? new Color3(1, 0, 1) : new Color3(0.9, 0.1, 0.1)
+			} else {
+				this.scene.runtime.renderer.applyTint(this.ghostBaseMesh, this.state.isValidPosition ? '#ff00ff' : '#ff0000')
+			}
 		}
+	}
+
+	private setInitialGhostPosition(): void {
+		const world = this.scene.runtime.input.getWorldPoint()
+		if (world) {
+			this.updateGhostPosition(world.x, world.z)
+			return
+		}
+		const player = this.scene.player?.view
+		if (player) {
+			this.updateGhostPosition(player.x, player.y)
+			return
+		}
+		this.updateGhostPosition(0, 0)
+	}
+
+	private getPlacementRotation(): number {
+		return this.state.rotationStep * HALF_PI
+	}
+
+	private getRotatedFootprint(building: BuildingDefinition): { width: number; height: number } {
+		if (this.state.rotationStep % 2 === 0) {
+			return { width: building.footprint.width, height: building.footprint.height }
+		}
+		return { width: building.footprint.height, height: building.footprint.width }
+	}
+
+	private rotatePlacement(): void {
+		if (!this.state.selectedBuildingId) return
+		const building = this.buildings.get(this.state.selectedBuildingId)
+		if (!building) return
+		this.state.rotationStep = (this.state.rotationStep + 1) % 4
+		if (!building.render?.modelSrc) {
+			this.rebuildGhostBaseMesh(building)
+		}
+		this.applyGhostTransform()
+		if (this.state.lastMousePosition) {
+			this.updateGhostPosition(this.state.lastMousePosition.x, this.state.lastMousePosition.y)
+		}
+	}
+
+	private rebuildGhostBaseMesh(building: BuildingDefinition): void {
+		if (!this.ghostRoot) return
+		if (this.ghostBaseMesh) {
+			this.ghostBaseMesh.dispose()
+		}
+		const tileSize = this.scene.map?.tileWidth || this.tileSize
+		const footprint = this.getRotatedFootprint(building)
+		const width = footprint.width * tileSize
+		const length = footprint.height * tileSize
+		const size = { width, length, height: tileSize }
+		const mesh = this.scene.runtime.renderer.createBox('building-ghost', size)
+		mesh.parent = this.ghostRoot
+		mesh.visibility = GHOST_VISIBILITY
+		mesh.isPickable = false
+		mesh.isVisible = true
+		mesh.setEnabled(true)
+		mesh.alwaysSelectAsActiveMesh = true
+		mesh.renderOutline = true
+		mesh.outlineWidth = 0.08
+		mesh.outlineColor = Color3.White()
+		if (!this.ghostBaseMaterial) {
+			this.ghostBaseMaterial = new StandardMaterial('building-ghost-base', this.scene.runtime.renderer.scene)
+			this.ghostBaseMaterial.diffuseColor = Color3.FromHexString('#ff00ff')
+			this.ghostBaseMaterial.emissiveColor = new Color3(1, 0, 1)
+			this.ghostBaseMaterial.specularColor = Color3.Black()
+			this.ghostBaseMaterial.alpha = 0.25
+			this.ghostBaseMaterial.disableDepthWrite = true
+		}
+		mesh.material = this.ghostBaseMaterial
+		this.ghostBaseMesh = mesh
+	}
+
+	private async loadGhostModel(building: BuildingDefinition): Promise<void> {
+		if (!this.ghostRoot || !building.render?.modelSrc) return
+		const token = ++this.ghostLoadToken
+		this.ghostRender = building.render
+		const { rootUrl, fileName } = splitAssetUrl(building.render.modelSrc)
+		try {
+			await (async () => {
+				const scene = this.scene.runtime.renderer.scene
+				if (isSceneDisposed(scene)) {
+					return
+				}
+				const result = await SceneLoader.ImportMeshAsync('', rootUrl, fileName, scene)
+				if (!this.ghostRoot || token !== this.ghostLoadToken || isSceneDisposed(scene)) {
+					result.meshes.forEach((mesh) => mesh.dispose(false, true))
+					result.transformNodes?.forEach((node) => node.dispose())
+					return
+				}
+				this.ghostModelRoot = new TransformNode(`building-ghost-model-${building.id}`, scene)
+				this.ghostModelPivot = new TransformNode(`building-ghost-pivot-${building.id}`, scene)
+				this.ghostModelPivot.parent = this.ghostModelRoot
+				this.ghostMeshes = result.meshes
+				this.ghostMeshes.forEach((mesh) => {
+					this.applyGhostMeshAppearance(mesh)
+					mesh.setEnabled(true)
+					mesh.refreshBoundingInfo()
+					mesh.computeWorldMatrix(true)
+				})
+				result.meshes.forEach((mesh) => {
+					if (mesh.parent === null) {
+						mesh.parent = this.ghostModelPivot
+					}
+				})
+				result.transformNodes?.forEach((node) => {
+					if (node.parent === null) {
+						node.parent = this.ghostModelPivot
+					}
+					node.setEnabled(true)
+				})
+				this.centerGhostModel()
+				this.ghostModelRoot.parent = this.ghostRoot
+				this.applyGhostTransform()
+				if (this.ghostBaseMesh && this.ghostMeshes.length > 0) {
+					this.ghostBaseMesh.visibility = 0
+				}
+			})()
+		} catch (error) {
+			if (this.ghostRoot) {
+				this.rebuildGhostBaseMesh(building)
+			}
+		}
+	}
+
+	private applyGhostTransform(): void {
+		if (!this.ghostModelRoot || !this.ghostRender) return
+		const transform = this.ghostRender.transform || {}
+		const rotation = transform.rotation ?? { x: 0, y: 0, z: 0 }
+		const placementRotation = this.getPlacementRotation()
+		const scale = transform.scale ?? { x: 1, y: 1, z: 1 }
+		const elevation = transform.elevation ?? 0
+		const tileSize = this.scene.map?.tileWidth || this.tileSize
+		this.ghostModelRoot.position = new Vector3(0, -tileSize * 0.5 + elevation * tileSize, 0)
+		this.ghostModelRoot.rotation = new Vector3(rotation.x ?? 0, (rotation.y ?? 0) + placementRotation, rotation.z ?? 0)
+		this.ghostModelRoot.scaling = new Vector3(
+			(scale.x ?? 1) * tileSize,
+			(scale.y ?? 1) * tileSize,
+			(scale.z ?? 1) * tileSize
+		)
+	}
+
+	private centerGhostModel(): void {
+		if (!this.ghostModelPivot || this.ghostMeshes.length === 0) return
+		const bounds = getBounds(this.ghostMeshes)
+		if (!bounds) return
+		const center = bounds.min.add(bounds.max).scale(0.5)
+		this.ghostModelPivot.position = new Vector3(-center.x, -bounds.min.y, -center.z)
+	}
+
+	private applyGhostMeshAppearance(mesh: AbstractMesh): void {
+		mesh.isPickable = false
+		mesh.isVisible = true
+		mesh.visibility = GHOST_VISIBILITY
+		mesh.alwaysSelectAsActiveMesh = true
 	}
 
 	private setupMouseHandlers() {
-		// Update ghost position on mouse move
-		this.scene.input.on('pointermove', this.handleMouseMove, this)
-		
-		// Place building on click
-		this.scene.input.on('pointerdown', this.handleMouseClick, this)
-		
-		// Cancel on right click or Escape
-		this.scene.input.keyboard.on('keydown-ESC', this.handleEscape, this)
+		if (this.handlersActive) return
+		this.scene.runtime.input.on('pointermove', this.handleMouseMove)
+		this.scene.runtime.input.on('pointerdown', this.handleMouseClick)
+		window.addEventListener('keydown', this.handleKeyDown)
+		this.handlersActive = true
 	}
 
 	private removeMouseHandlers() {
-		this.scene.input.off('pointermove', this.handleMouseMove, this)
-		this.scene.input.off('pointerdown', this.handleMouseClick, this)
-		this.scene.input.keyboard.off('keydown-ESC', this.handleEscape, this)
+		if (!this.handlersActive) return
+		this.scene.runtime.input.off('pointermove', this.handleMouseMove)
+		this.scene.runtime.input.off('pointerdown', this.handleMouseClick)
+		window.removeEventListener('keydown', this.handleKeyDown)
+		this.handlersActive = false
 	}
 
-	private handleMouseMove = (pointer: Input.Pointer) => {
+	private handleMouseMove = (pointer: PointerState) => {
 		if (!this.state.selectedBuildingId) return
-
-		// Convert screen coordinates to world coordinates
-		const camera = this.scene.cameras.main
-		const worldX = camera.scrollX + pointer.x
-		const worldY = camera.scrollY + pointer.y
-
-		this.updateGhostPosition(worldX, worldY)
-	}
-
-	private handleMouseClick = (pointer: Input.Pointer) => {
-		if (!this.state.selectedBuildingId || !this.state.isValidPosition || !this.state.lastMousePosition) return
-
-		// Only place on left click
-		if (pointer.leftButtonDown()) {
-			this.placeBuilding(this.state.lastMousePosition.x, this.state.lastMousePosition.y)
+		const world = pointer.world ?? this.scene.runtime.input.getWorldPoint()
+		if (!world) {
+			return
 		}
+		this.updateGhostPosition(world.x, world.z)
 	}
 
-	private handleEscape = () => {
-		this.cancelSelection()
-		EventBus.emit(UiEvents.Construction.Cancel, {})
+	private handleMouseClick = (pointer: PointerState) => {
+		if (pointer.button !== 0) return
+		if (!this.state.selectedBuildingId || !this.state.isValidPosition) return
+		if (!this.state.lastMousePosition) {
+			const world = pointer.world ?? this.scene.runtime.input.getWorldPoint()
+			if (!world) {
+				return
+			}
+			this.updateGhostPosition(world.x, world.z)
+		}
+		if (!this.state.lastMousePosition) return
+		this.placeBuilding(this.state.lastMousePosition.x, this.state.lastMousePosition.y)
+	}
+
+	private handleKeyDown = (event: KeyboardEvent) => {
+		if (event.code === 'Escape') {
+			this.cancelSelection()
+			EventBus.emit(UiEvents.Construction.Cancel, {})
+			return
+		}
+		if (event.code === 'KeyR') {
+			this.rotatePlacement()
+		}
 	}
 
 	private placeBuilding(x: number, y: number) {
 		if (!this.state.selectedBuildingId) return
 
-		// Convert pixel coordinates to tile coordinates (or use pixel coordinates directly)
-		// For Phase A, we'll use pixel coordinates directly
 		const position = {
 			x: Math.floor(x),
 			y: Math.floor(y)
 		}
 
-		// Emit building placement event
 		EventBus.emit(Event.Buildings.CS.Place, {
 			buildingId: this.state.selectedBuildingId,
-			position
+			position,
+			rotation: this.getPlacementRotation()
 		})
 	}
 
 	public update() {
-		// Update logic if needed
+		// no-op
 	}
 
-	public destroy() {
+	public destroy(): void {
 		this.cancelSelection()
-		
 		if (this.selectHandler) {
 			EventBus.off(UiEvents.Construction.Select, this.selectHandler)
-			this.selectHandler = null
 		}
 		if (this.cancelHandler) {
 			EventBus.off(UiEvents.Construction.Cancel, this.cancelHandler)
-			this.cancelHandler = null
 		}
 		if (this.placedHandler) {
 			EventBus.off(Event.Buildings.SC.Placed, this.placedHandler)
-			this.placedHandler = null
 		}
 	}
+}
+
+function splitAssetUrl(url: string): { rootUrl: string; fileName: string } {
+	const trimmed = url.trim()
+	if (!trimmed) return { rootUrl: '', fileName: '' }
+	const lastSlash = trimmed.lastIndexOf('/')
+	if (lastSlash === -1) {
+		return { rootUrl: '/', fileName: trimmed }
+	}
+	return {
+		rootUrl: trimmed.slice(0, lastSlash + 1),
+		fileName: trimmed.slice(lastSlash + 1)
+	}
+}
+
+function getBounds(meshes: AbstractMesh[]): { min: Vector3; max: Vector3 } | null {
+	let min = new Vector3(Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY)
+	let max = new Vector3(Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY)
+	let found = false
+	meshes.forEach((mesh) => {
+		if (mesh.getTotalVertices() === 0) return
+		mesh.computeWorldMatrix(true)
+		const bounds = mesh.getBoundingInfo().boundingBox
+		min = Vector3.Minimize(min, bounds.minimumWorld)
+		max = Vector3.Maximize(max, bounds.maximumWorld)
+		found = true
+	})
+	return found ? { min, max } : null
+}
+
+function isSceneDisposed(scene: { isDisposed?: (() => boolean) | boolean } | null): boolean {
+	if (!scene) return true
+	if (typeof scene.isDisposed === 'function') {
+		try {
+			return scene.isDisposed()
+		} catch {
+			return false
+		}
+	}
+	if (typeof scene.isDisposed === 'boolean') {
+		return scene.isDisposed
+	}
+	return false
 }

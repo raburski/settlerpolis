@@ -48,24 +48,17 @@ export const buildings: BuildingDefinition[] = [
 		isWarehouse: true,
 		workerSlots: 2, // Storehouse can have 2 workers managing inventory
 		// Phase C: Storage capacity
-		storage: {
-			capacities: {
-				[ItemType.Logs]: 100,
-				[ItemType.Stone]: 16,
-				[ItemType.Planks]: 100
-			},
-			preservation: {
-				spoilageMultiplier: 1
-			},
-			slots: [
-				{ itemType: ItemType.Logs, offset: { x: 3, y: 0 } },
-				{ itemType: ItemType.Logs, offset: { x: 3, y: 1 } },
-				{ itemType: ItemType.Stone, offset: { x: 4, y: 0 } },
-				{ itemType: ItemType.Stone, offset: { x: 4, y: 1 } },
-				{ itemType: ItemType.Planks, offset: { x: 3, y: 2 } },
-				{ itemType: ItemType.Planks, offset: { x: 4, y: 2 } }
-			]
-		}
+		storagePreservation: {
+			spoilageMultiplier: 1
+		},
+		storageSlots: [
+			{ itemType: ItemType.Logs, offset: { x: 3, y: 0 } },
+			{ itemType: ItemType.Logs, offset: { x: 3, y: 1 } },
+			{ itemType: ItemType.Stone, offset: { x: 4, y: 0 } },
+			{ itemType: ItemType.Stone, offset: { x: 4, y: 1 } },
+			{ itemType: ItemType.Planks, offset: { x: 3, y: 2 } },
+			{ itemType: ItemType.Planks, offset: { x: 4, y: 2 } }
+		]
 	},
 	{
 		id: 'granary',
@@ -98,21 +91,15 @@ export const buildings: BuildingDefinition[] = [
 		],
 		isWarehouse: true,
 		workerSlots: 1,
-		storage: {
-			capacities: {
-				[ItemType.Wheat]: 100,
-				[ItemType.Grain]: 100
-			},
-			preservation: {
-				spoilageMultiplier: 0.4
-			},
-			slots: [
-				{ itemType: ItemType.Wheat, offset: { x: 3, y: 0 } },
-				{ itemType: ItemType.Wheat, offset: { x: 3, y: 1 } },
-				{ itemType: ItemType.Grain, offset: { x: 4, y: 0 } },
-				{ itemType: ItemType.Grain, offset: { x: 4, y: 1 } }
-			]
-		}
+		storagePreservation: {
+			spoilageMultiplier: 0.4
+		},
+		storageSlots: [
+			{ itemType: ItemType.Wheat, offset: { x: 3, y: 0 } },
+			{ itemType: ItemType.Wheat, offset: { x: 3, y: 1 } },
+			{ itemType: ItemType.Grain, offset: { x: 4, y: 0 } },
+			{ itemType: ItemType.Grain, offset: { x: 4, y: 1 } }
+		]
 	},
 	{
 		id: 'food_cellar',
@@ -145,20 +132,14 @@ export const buildings: BuildingDefinition[] = [
 		],
 		isWarehouse: true,
 		workerSlots: 1,
-		storage: {
-			capacities: {
-				[ItemType.Bread]: 100,
-				[ItemType.Carrot]: 16
-			},
-			preservation: {
-				spoilageMultiplier: 0.2
-			},
-			slots: [
-				{ itemType: ItemType.Bread, offset: { x: 3, y: 0 } },
-				{ itemType: ItemType.Bread, offset: { x: 3, y: 1 } },
-				{ itemType: ItemType.Carrot, offset: { x: 4, y: 0 } }
-			]
-		}
+		storagePreservation: {
+			spoilageMultiplier: 0.2
+		},
+		storageSlots: [
+			{ itemType: ItemType.Bread, offset: { x: 3, y: 0 } },
+			{ itemType: ItemType.Bread, offset: { x: 3, y: 1 } },
+			{ itemType: ItemType.Carrot, offset: { x: 4, y: 0 } }
+		]
 	},
 	{
 		id: 'house',
@@ -185,19 +166,24 @@ export const buildings: BuildingDefinition[] = [
 				quantity: 1
 			}
 		],
+		render: {
+			modelSrc: "/assets/library/cottage.glb"
+		},
 		spawnsSettlers: true,
 		maxOccupants: 5,
 		spawnRate: 30, // Spawn a settler every 30 seconds
-		storage: {
-			capacities: {
-				[ItemType.Bread]: 3,
-				[ItemType.Carrot]: 3
-			},
-			slots: [
-				{ itemType: ItemType.Bread, offset: { x: 1, y: 1 }, hidden: true, maxQuantity: 3 },
-				{ itemType: ItemType.Carrot, offset: { x: 1, y: 0 }, hidden: true, maxQuantity: 3 }
-			]
-		}
+		storageSlots: [
+			{ itemType: ItemType.Bread, offset: { x: 1, y: 1 }, hidden: true, maxQuantity: 3 },
+			{ itemType: ItemType.Carrot, offset: { x: 1, y: 0 }, hidden: true, maxQuantity: 3 }
+		],
+		entryPoint: {
+			x: 0.9,
+			y: 1.3
+		  },
+		  centerPoint: {
+			x: 1,
+			y: 1
+		  }
 	},
 	{
 		id: 'graveyard',
@@ -227,12 +213,7 @@ export const buildings: BuildingDefinition[] = [
 				desiredQuantity: graveyardCapacity
 			}
 		],
-		storage: {
-			capacities: {
-				[ItemType.Tombstone]: graveyardCapacity
-			},
-			slots: graveyardSlots
-		}
+		storageSlots: graveyardSlots
 	},
 	{
 		id: 'woodcutter_hut',
@@ -261,14 +242,9 @@ export const buildings: BuildingDefinition[] = [
 		},
 		requiredProfession: ProfessionType.Woodcutter,
 		workerSlots: 1, // Woodcutter hut can have 1 worker
-		storage: {
-			capacities: {
-				[ItemType.Logs]: 50 // 1 pile slot
-			},
-			slots: [
-				{ itemType: ItemType.Logs, offset: { x: 2, y: 0 } }
-			]
-		}
+		storageSlots: [
+			{ itemType: ItemType.Logs, offset: { x: 2, y: 0 } }
+		]
 	},
 	{
 		id: 'forester_hut',
@@ -335,14 +311,9 @@ export const buildings: BuildingDefinition[] = [
 		},
 		requiredProfession: ProfessionType.Miner,
 		workerSlots: 1,
-		storage: {
-			capacities: {
-				[ItemType.Stone]: 8 // 1 pile slot
-			},
-			slots: [
-				{ itemType: ItemType.Stone, offset: { x: 2, y: 0 } }
-			]
-		}
+		storageSlots: [
+			{ itemType: ItemType.Stone, offset: { x: 2, y: 0 } }
+		]
 	},
 	{
 		id: 'sawmill',
@@ -381,16 +352,10 @@ export const buildings: BuildingDefinition[] = [
 			],
 			productionTime: 10 // 10 seconds to produce 1 plank from 2 logs
 		},
-		storage: {
-			capacities: {
-				[ItemType.Logs]: 50, // 1 pile slot
-				[ItemType.Planks]: 50 // 1 pile slot
-			},
-			slots: [
-				{ itemType: ItemType.Logs, offset: { x: 3, y: 0 } },
-				{ itemType: ItemType.Planks, offset: { x: 3, y: 1 } }
-			]
-		}
+		storageSlots: [
+			{ itemType: ItemType.Logs, offset: { x: 3, y: 0 } },
+			{ itemType: ItemType.Planks, offset: { x: 3, y: 1 } }
+		]
 	},
 	{
 		id: 'well',
@@ -424,14 +389,9 @@ export const buildings: BuildingDefinition[] = [
 			],
 			productionTime: 5
 		},
-		storage: {
-			capacities: {
-				[ItemType.Water]: 50
-			},
-			slots: [
-				{ itemType: ItemType.Water, offset: { x: 2, y: 0 } }
-			]
-		}
+		storageSlots: [
+			{ itemType: ItemType.Water, offset: { x: 2, y: 0 } }
+		]
 	},
 	{
 		id: 'windmill',
@@ -473,16 +433,29 @@ export const buildings: BuildingDefinition[] = [
 			],
 			productionTime: 10
 		},
-		storage: {
-			capacities: {
-				[ItemType.Grain]: 50,
-				[ItemType.Flour]: 50
-			},
-			slots: [
-				{ itemType: ItemType.Grain, offset: { x: 3, y: 0 } },
-				{ itemType: ItemType.Flour, offset: { x: 3, y: 1 } }
-			]
-		}
+		render: {
+			modelSrc: "/assets/library/windmill.glb",
+			transform: {
+			  scale: {
+				x: 2,
+				y: 2,
+				z: 2
+			  },
+			  elevation: -0.23
+			}
+		  },
+		storageSlots: [
+			{ itemType: ItemType.Grain, offset: { x: 3, y: 0 } },
+			{ itemType: ItemType.Flour, offset: { x: 3, y: 1 } }
+		],
+		entryPoint: {
+			x: 2.5,
+			y: 1.5
+		  },
+		  centerPoint: {
+			x: 1.5,
+			y: 1.5
+		  }
 	},
 	{
 		id: 'bakery',
@@ -525,18 +498,11 @@ export const buildings: BuildingDefinition[] = [
 			],
 			productionTime: 12
 		},
-		storage: {
-			capacities: {
-				[ItemType.Flour]: 50,
-				[ItemType.Water]: 50,
-				[ItemType.Bread]: 50
-			},
-			slots: [
-				{ itemType: ItemType.Flour, offset: { x: 3, y: 0 } },
-				{ itemType: ItemType.Water, offset: { x: 3, y: 1 } },
-				{ itemType: ItemType.Bread, offset: { x: 3, y: 2 } }
-			]
-		}
+		storageSlots: [
+			{ itemType: ItemType.Flour, offset: { x: 3, y: 0 } },
+			{ itemType: ItemType.Water, offset: { x: 3, y: 1 } },
+			{ itemType: ItemType.Bread, offset: { x: 3, y: 2 } }
+		]
 	},
 	{
 		id: 'farm',
@@ -574,14 +540,24 @@ export const buildings: BuildingDefinition[] = [
 			spoilTimeMs: 20000,
 			despawnTimeMs: 20000
 		},
-		storage: {
-			capacities: {
-				[ItemType.Grain]: 50
-			},
-			slots: [
-				{ itemType: ItemType.Grain, offset: { x: 3, y: 0 } }
-			]
-		}
+		render: {
+			modelSrc: "/assets/library/farmhouse.glb",
+			transform: {
+			  rotation: {
+				x: 0,
+				y: 1.5707963267948966,
+				z: 0
+			  },
+			  scale: {
+				x: 1.8,
+				y: 1.8,
+				z: 1.8
+			  }
+			}
+		  },
+		storageSlots: [
+			{ itemType: ItemType.Grain, offset: { x: 3, y: 0 } }
+		]
 	},
 	{
 		id: 'market',
@@ -592,6 +568,22 @@ export const buildings: BuildingDefinition[] = [
 		sprite: {
 			foundation: 'building_foundation',
 			completed: 'storehouse'
+		},
+		render: {
+			modelSrc: '/assets/library/agora.glb',
+			transform: {
+				rotation: {
+					x: 0,
+					y: 0,
+					z: 0
+				},
+				scale: {
+					x: 1.7,
+					y: 1.7,
+					z: 1.7
+				},
+				elevation: 0
+			}
 		},
 		footprint: {
 			width: 3,
@@ -631,16 +623,10 @@ export const buildings: BuildingDefinition[] = [
 		amenitySlots: {
 			count: 3
 		},
-		storage: {
-			capacities: {
-				[ItemType.Bread]: 50,
-				[ItemType.Carrot]: 16
-			},
-			slots: [
-				{ itemType: ItemType.Bread, offset: { x: 3, y: 0 } },
-				{ itemType: ItemType.Carrot, offset: { x: 3, y: 1 } }
-			]
-		}
+		storageSlots: [
+			{ itemType: ItemType.Bread, offset: { x: 3, y: 0 } },
+			{ itemType: ItemType.Carrot, offset: { x: 3, y: 1 } }
+		]
 	},
 	{
 		id: 'inn',
@@ -684,13 +670,8 @@ export const buildings: BuildingDefinition[] = [
 				desiredQuantity: 10
 			}
 		],
-		storage: {
-			capacities: {
-				[ItemType.Bread]: 20
-			},
-			slots: [
-				{ itemType: ItemType.Bread, offset: { x: 3, y: 0 } }
-			]
-		}
+		storageSlots: [
+			{ itemType: ItemType.Bread, offset: { x: 3, y: 0 } }
+		]
 	}
 ]

@@ -1,20 +1,11 @@
-import { Scene } from 'phaser'
+import type { GameScene } from '../../scenes/base/GameScene'
+import type { Settler } from '@rugged/game'
 import { SettlerView } from './View'
 import { SettlerController } from './Controller'
-import { Settler } from '@rugged/game'
 
-export const createSettler = (scene: Scene, settlerData: Settler): SettlerController => {
-	const view = new SettlerView(
-		scene,
-		settlerData.position.x,
-		settlerData.position.y,
-		settlerData.id,
-		settlerData.profession,
-		settlerData.speed
-	)
-	return new SettlerController(view, scene, settlerData)
+export const createSettler = (scene: GameScene, settler: Settler): SettlerController => {
+	const view = new SettlerView(scene, settler.position.x, settler.position.y, settler.id, settler.profession)
+	return new SettlerController(view, scene, settler)
 }
 
-export type { SettlerController }
-export type { SettlerView }
-
+export { SettlerController, SettlerView }

@@ -1,47 +1,35 @@
-import { PreloadScene } from './scenes/PreloadScene'
-import { AUTO, Game, Types, Scale, Physics } from 'phaser'
 import { MultiplayerService } from './services/MultiplayerService'
 import networkManager from './network'
+import { GameRuntime } from './runtime/GameRuntime'
+import { EventBus } from './EventBus'
+import { Event } from '@rugged/game'
+import { playerService } from './services/PlayerService'
+import { sceneManager } from './services/SceneManager'
 
 let multiplayerService = new MultiplayerService(networkManager)
 
-//  Find out more information about the Game Config at:
-//  https://newdocs.phaser.io/docs/3.70.0/Phaser.Types.Core.GameConfig
-const config: Types.Core.GameConfig = {
-	type: AUTO,
-	scale: {
-		mode: Scale.CENTER_BOTH,
-		parent: 'game-container',
-		width: '100%',
-		height: '100%',
-		autoCenter: Scale.CENTER_BOTH,
-		zoom: 1, // Set zoom to 2 for 2x pixel density
-		// width: 800, // Base width
-		// height: 600, // Base height
-	},
-	backgroundColor: '#000000',
-	physics: {
-		default: 'arcade',
-		arcade: {
-			gravity: { y: 0 },
-			debug: false
-		}
-	},
-	// Keep pixelArt true for crisp sprites, we'll handle text antialiasing per-text-object
-	pixelArt: true,
-	roundPixels: true,
-	scene: [
-		PreloadScene
-	]
-}
+const StartGame = (canvas: HTMLCanvasElement) => {
+	const runtime = new GameRuntime(canvas)
 
-const StartGame = (parent: string) => {
-	const game = new Game({ ...config, parent })
-	
 	// Make multiplayerService available globally
 	window.multiplayerService = multiplayerService
-	
-	return game
+
+	// Initialize scene manager with runtime
+	sceneManager.init(runtime)
+
+	// Connect to the game server
+	networkManager.connect(() => {
+		EventBus.emit(Event.Players.CS.Connect)
+	})
+
+	EventBus.once(Event.Players.SC.Connected, (data: { playerId: string }) => {
+		playerService.playerId = data.playerId
+		console.log('[Runtime] Player connected with ID:', data.playerId)
+	})
+
+	runtime.start()
+
+	return runtime
 }
 
 export default StartGame
@@ -52,4 +40,3 @@ declare global {
 		multiplayerService: MultiplayerService
 	}
 }
-

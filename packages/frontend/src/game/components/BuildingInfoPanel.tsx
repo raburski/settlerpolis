@@ -7,7 +7,6 @@ import { itemService } from '../services/ItemService'
 import { storageService } from '../services/StorageService'
 import { productionService } from '../services/ProductionService'
 import { DraggablePanel } from './DraggablePanel'
-import { useResourceList } from './hooks/useResourceList'
 import sharedStyles from './PanelShared.module.css'
 import confirmStyles from './ConfirmDialog.module.css'
 import { UiEvents } from '../uiEvents'
@@ -48,7 +47,6 @@ export const BuildingInfoPanel: React.FC = () => {
 	const [errorMessage, setErrorMessage] = useState<string | null>(null)
 	const [workerStatus, setWorkerStatus] = useState<string | null>(null)
 	const [showDemolishConfirm, setShowDemolishConfirm] = useState(false)
-	const resourceTypes = useResourceList()
 
 	useEffect(() => {
 		// Listen for building selection
@@ -640,16 +638,16 @@ export const BuildingInfoPanel: React.FC = () => {
 				</div>
 			)}
 
-			{isCompleted && buildingDefinition.storage && (
+			{isCompleted && buildingDefinition.storageSlots?.length && (
 				<div className={sharedStyles.info}>
 					<div className={sharedStyles.infoRow}>
 						<span className={sharedStyles.label}>Buffer:</span>
 						<span className={sharedStyles.value}>
 							<div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
-								{(resourceTypes.length > 0 ? resourceTypes : Object.keys(buildingDefinition.storage.capacities))
-									.filter((itemType) => (buildingDefinition.storage?.capacities[itemType] || 0) > 0)
+								{Array.from(new Set(buildingDefinition.storageSlots.map((slot) => slot.itemType)))
+									.filter((itemType) => Boolean(itemType))
 									.map((itemType) => {
-										const capacity = buildingDefinition.storage!.capacities[itemType]
+										const capacity = storageService.getStorageCapacity(buildingInstance.id, itemType)
 										const quantity = storageService.getItemQuantity(buildingInstance.id, itemType)
 										const percentage = capacity > 0 ? Math.round((quantity / capacity) * 100) : 0
 										return (
@@ -790,7 +788,7 @@ export const BuildingInfoPanel: React.FC = () => {
 				</div>
 			)}
 
-			{isCompleted && !buildingDefinition.storage && !buildingDefinition.productionRecipe && !buildingDefinition.harvest && !buildingDefinition.farm && (
+			{isCompleted && !buildingDefinition.storageSlots?.length && !buildingDefinition.productionRecipe && !buildingDefinition.harvest && !buildingDefinition.farm && (
 				<div className={sharedStyles.actions}>
 					<div className={sharedStyles.completedMessage}>
 						Building is ready for use

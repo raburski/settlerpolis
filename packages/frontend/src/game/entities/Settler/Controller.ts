@@ -1,21 +1,14 @@
-import { Scene } from 'phaser'
 import { SettlerView } from './View'
 import { Event, Settler, ProfessionType, SettlerState, NeedType } from '@rugged/game'
 import { EventBus } from '../../EventBus'
 import { UiEvents } from '../../uiEvents'
-import { GameScene } from '../../scenes/base/GameScene'
+import type { GameScene } from '../../scenes/base/GameScene'
 
 export class SettlerController {
-	constructor(
-		private view: SettlerView,
-		private scene: GameScene,
-		public settler: Settler
-	) {
-		// Subscribe to movement events (unified movement system)
+	constructor(public view: SettlerView, private scene: GameScene, public settler: Settler) {
 		EventBus.on(Event.Movement.SC.MoveToPosition, this.handleMoveToPosition, this)
 		EventBus.on(Event.Movement.SC.PositionUpdated, this.handlePositionUpdated, this)
-		
-		// Subscribe to settler-specific events
+
 		EventBus.on(Event.Population.SC.ProfessionChanged, this.handleProfessionChanged, this)
 		EventBus.on(Event.Population.SC.SettlerUpdated, this.handleSettlerUpdated, this)
 		EventBus.on(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
@@ -30,55 +23,43 @@ export class SettlerController {
 		this.view.updateHealth(this.settler.health)
 	}
 
-	private handleMoveToPosition = (data: { entityId: string, targetPosition: { x: number, y: number }, mapId: string, speed?: number }) => {
-		// Only update if it's our settler and on the same map
+	private handleMoveToPosition = (data: { entityId: string; targetPosition: { x: number; y: number }; mapId: string; speed?: number }) => {
 		if (data.entityId === this.settler.id) {
 			if (data.mapId === this.settler.mapId) {
 				if (typeof data.speed === 'number') {
 					this.view.setSpeed(data.speed)
 				}
-				// Update settler position for interpolation
 				this.view.setTargetPosition(data.targetPosition.x, data.targetPosition.y)
-				// Note: We don't update settler.position here - the view will interpolate
 			} else {
 				console.warn(`[SettlerController] Map name mismatch for settler ${data.entityId}: event mapId=${data.mapId}, settler mapId=${this.settler.mapId}`)
 			}
 		}
 	}
 
-	private handlePositionUpdated = (data: { entityId: string, position: { x: number, y: number }, mapId: string }) => {
-		// Only update if it's our settler and on the same map
+	private handlePositionUpdated = (data: { entityId: string; position: { x: number; y: number }; mapId: string }) => {
 		if (data.entityId === this.settler.id && data.mapId === this.settler.mapId) {
-			// Immediate position update (teleport/sync, no interpolation)
 			this.view.updatePosition(data.position.x, data.position.y)
 			this.settler.position = data.position
 		}
 	}
 
-	private handleProfessionChanged = (data: { settlerId: string, oldProfession: ProfessionType, newProfession: ProfessionType }) => {
-		// Only update if it's our settler
+	private handleProfessionChanged = (data: { settlerId: string; oldProfession: ProfessionType; newProfession: ProfessionType }) => {
 		if (data.settlerId === this.settler.id) {
 			this.view.updateProfession(data.newProfession)
 			this.settler.profession = data.newProfession
 		}
 	}
 
-private handleWorkerAssigned = (data: { assignment: any, settlerId: string, buildingInstanceId: string }) => {
+	private handleWorkerAssigned = (data: { assignment: any; settlerId: string; buildingInstanceId: string }) => {
 		if (data.settlerId === this.settler.id) {
-			this.settler.stateContext = {
-				...this.settler.stateContext,
-				assignmentId: data.assignment.assignmentId
-			}
+			this.settler.stateContext = { ...this.settler.stateContext, assignmentId: data.assignment.assignmentId }
 			this.settler.buildingId = data.buildingInstanceId
 		}
 	}
 
-private handleWorkerUnassigned = (data: { settlerId: string, assignmentId: string }) => {
-	if (data.settlerId === this.settler.id) {
-		this.settler.stateContext = {
-			...this.settler.stateContext,
-			assignmentId: undefined
-		}
+	private handleWorkerUnassigned = (data: { settlerId: string; assignmentId: string }) => {
+		if (data.settlerId === this.settler.id) {
+			this.settler.stateContext = { ...this.settler.stateContext, assignmentId: undefined }
 			this.settler.buildingId = undefined
 			this.settler.state = SettlerState.Idle
 			this.view.updateState(SettlerState.Idle)
@@ -86,23 +67,19 @@ private handleWorkerUnassigned = (data: { settlerId: string, assignmentId: strin
 	}
 
 	private handleSettlerUpdated = (data: { settler: Settler }) => {
-		// Only update if it's our settler
 		if (data.settler.id === this.settler.id) {
-			// Update settler data (but don't update position if moving - let MoveToPosition events handle that)
 			this.updateSettler(data.settler)
 		}
 	}
 
-	private handleHighlight = (data: { settlerId: string, highlighted: boolean }) => {
+	private handleHighlight = (data: { settlerId: string; highlighted: boolean }) => {
 		if (data.settlerId === this.settler.id) {
 			this.view.setHighlighted(data.highlighted)
 		}
 	}
 
-	private handleNeedInterruptStarted = (data: { settlerId: string, needType: NeedType }) => {
-		if (data.settlerId !== this.settler.id) {
-			return
-		}
+	private handleNeedInterruptStarted = (data: { settlerId: string; needType: NeedType }) => {
+		if (data.settlerId !== this.settler.id) return
 		const kind = data.needType === NeedType.Hunger ? 'hunger' : data.needType === NeedType.Fatigue ? 'fatigue' : null
 		this.view.updateNeedActivity(kind)
 	}
@@ -113,44 +90,34 @@ private handleWorkerUnassigned = (data: { settlerId: string, assignmentId: strin
 		}
 	}
 
-	public update(): void {
+	public update(_deltaMs: number): void {
+		void _deltaMs
 		this.view.preUpdate()
 	}
 
 	public updateSettler(settlerData: Settler): void {
-		// Update settler object reference
 		this.settler = settlerData
-		
-		// Only update position if settler is not in a moving state
-		// During movement, position updates should come from MoveToPosition events to allow smooth interpolation
-		const isMoving = settlerData.state === SettlerState.MovingToItem || 
-		                 settlerData.state === SettlerState.CarryingItem ||
-		                 settlerData.state === SettlerState.MovingToBuilding ||
-		                 settlerData.state === SettlerState.MovingToTool ||
-		                 settlerData.state === SettlerState.MovingToResource
-		
+
+		const isMoving =
+			settlerData.state === SettlerState.MovingToItem ||
+			settlerData.state === SettlerState.CarryingItem ||
+			settlerData.state === SettlerState.MovingToBuilding ||
+			settlerData.state === SettlerState.MovingToTool ||
+			settlerData.state === SettlerState.MovingToResource
+
 		if (!isMoving) {
-			// Not moving - check if position has changed significantly before updating
-			// This prevents micro-jumps from floating point precision issues or event ordering
 			const positionDiff = Math.abs(this.view.x - settlerData.position.x) + Math.abs(this.view.y - settlerData.position.y)
-			const POSITION_THRESHOLD = 2 // Only update if position difference is more than 2 pixels
-			
+			const POSITION_THRESHOLD = 2
 			if (positionDiff > POSITION_THRESHOLD) {
-				// Position has changed significantly - update it
 				this.view.updatePosition(settlerData.position.x, settlerData.position.y)
 				this.settler.position = settlerData.position
 			} else {
-				// Position is very close - just sync the settler object's position without updating view
-				// This prevents visual jumps from PositionUpdated -> SettlerUpdated event ordering
 				this.settler.position = settlerData.position
 			}
 		} else {
-			// Moving - don't update position, let MoveToPosition events handle interpolation
-			// But sync the settler object's position for state tracking
 			this.settler.position = settlerData.position
 		}
-		
-		// Always update state and profession
+
 		this.view.updateState(settlerData.state)
 		this.view.updateProfession(settlerData.profession)
 		this.view.updateCarriedItem(settlerData.state === SettlerState.CarryingItem ? settlerData.stateContext.carryingItemType : undefined)
@@ -159,7 +126,6 @@ private handleWorkerUnassigned = (data: { settlerId: string, assignmentId: strin
 	}
 
 	public destroy(): void {
-		// Clean up event listeners
 		EventBus.off(Event.Movement.SC.MoveToPosition, this.handleMoveToPosition, this)
 		EventBus.off(Event.Movement.SC.PositionUpdated, this.handlePositionUpdated, this)
 		EventBus.off(Event.Population.SC.ProfessionChanged, this.handleProfessionChanged, this)
@@ -169,7 +135,6 @@ private handleWorkerUnassigned = (data: { settlerId: string, assignmentId: strin
 		EventBus.off(UiEvents.Settler.Highlight, this.handleHighlight, this)
 		EventBus.off(Event.Needs.SS.NeedInterruptStarted, this.handleNeedInterruptStarted, this)
 		EventBus.off(Event.Needs.SS.NeedInterruptEnded, this.handleNeedInterruptEnded, this)
-		// Destroy the view
 		this.view.destroy()
 	}
 }

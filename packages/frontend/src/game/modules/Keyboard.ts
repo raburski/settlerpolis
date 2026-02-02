@@ -1,75 +1,55 @@
-import { Scene, Input } from 'phaser'
-import { EventBus } from "../EventBus"
+import { EventBus } from '../EventBus'
 import { Event } from '@rugged/game'
 import { FXType } from '@rugged/game'
 import { UiEvents } from '../uiEvents'
 
+const KEY_CODES = {
+	W: 'KeyW',
+	A: 'KeyA',
+	S: 'KeyS',
+	D: 'KeyD',
+	UP: 'ArrowUp',
+	DOWN: 'ArrowDown',
+	LEFT: 'ArrowLeft',
+	RIGHT: 'ArrowRight',
+	I: 'KeyI',
+	Q: 'KeyQ',
+	ENTER: 'Enter',
+	SPACE: 'Space',
+	ESC: 'Escape',
+	E: 'KeyE'
+}
+
 export class Keyboard {
-	private cursors: Phaser.Types.Input.Keyboard.CursorKeys
-	private wasdKeys: {
-		W: Phaser.Input.Keyboard.Key
-		A: Phaser.Input.Keyboard.Key
-		S: Phaser.Input.Keyboard.Key
-		D: Phaser.Input.Keyboard.Key
-	}
-	private inventoryKey: Phaser.Input.Keyboard.Key
-	private questKey: Phaser.Input.Keyboard.Key
-	private chatKey: Phaser.Input.Keyboard.Key
-	private spaceKey: Phaser.Input.Keyboard.Key
-	private upKey: Phaser.Input.Keyboard.Key
-	private downKey: Phaser.Input.Keyboard.Key
-	private enterKey: Phaser.Input.Keyboard.Key
-	private escapeKey: Phaser.Input.Keyboard.Key
 	private enabled: boolean = true
-	private wasInventoryPressed: boolean = false
-	private wasQuestPressed: boolean = false
-	private wasChatPressed: boolean = false
-	private wasEnterPressed: boolean = false
-	private wasSpacePressed: boolean = false
-	private wasUpPressed: boolean = false
-	private wasDownPressed: boolean = false
 	private isInDialogue: boolean = false
+	private pressed = new Set<string>()
+	private prevPressed = new Set<string>()
+	private boundKeyDown: (event: KeyboardEvent) => void
+	private boundKeyUp: (event: KeyboardEvent) => void
 
-	constructor(private scene: Scene) {
-		this.cursors = scene.input.keyboard.createCursorKeys()
-		
-		// Add WASD keys
-		this.wasdKeys = scene.input.keyboard.addKeys({
-			W: Input.Keyboard.KeyCodes.W,
-			A: Input.Keyboard.KeyCodes.A,
-			S: Input.Keyboard.KeyCodes.S,
-			D: Input.Keyboard.KeyCodes.D
-		}) as {
-			W: Phaser.Input.Keyboard.Key
-			A: Phaser.Input.Keyboard.Key
-			S: Phaser.Input.Keyboard.Key
-			D: Phaser.Input.Keyboard.Key
-		}
+	constructor() {
+		this.boundKeyDown = (event) => this.onKeyDown(event)
+		this.boundKeyUp = (event) => this.onKeyUp(event)
+		window.addEventListener('keydown', this.boundKeyDown)
+		window.addEventListener('keyup', this.boundKeyUp)
 
-		// Add inventory, quest and chat keys
-		this.inventoryKey = scene.input.keyboard.addKey(Input.Keyboard.KeyCodes.I)
-		this.questKey = scene.input.keyboard.addKey(Input.Keyboard.KeyCodes.Q)
-		this.chatKey = scene.input.keyboard.addKey(Input.Keyboard.KeyCodes.ENTER)
-
-		// Add dialogue-related keys
-		this.spaceKey = scene.input.keyboard.addKey(Input.Keyboard.KeyCodes.SPACE)
-		this.upKey = scene.input.keyboard.addKey(Input.Keyboard.KeyCodes.UP)
-		this.downKey = scene.input.keyboard.addKey(Input.Keyboard.KeyCodes.DOWN)
-		this.enterKey = scene.input.keyboard.addKey(Input.Keyboard.KeyCodes.ENTER)
-		this.escapeKey = scene.input.keyboard.addKey(Input.Keyboard.KeyCodes.ESC)
-
-		// Listen for chat input visibility changes
 		EventBus.on(UiEvents.Chat.Toggle, this.handleChatInputVisible, this)
-
-		// Listen for EnableControls event
 		EventBus.on(Event.FX.SC.Play, this.handleFXEvent, this)
-
-		// Listen for dialogue events
 		EventBus.on(Event.Dialogue.SC.Trigger, this.handleDialogueTrigger, this)
 		EventBus.on(Event.Dialogue.SC.End, this.handleDialogueEnd, this)
 	}
 
-	private handleFXEvent = (data: { type: FXType, enabled?: boolean }) => {
+	private onKeyDown(event: KeyboardEvent) {
+		if (!this.enabled) return
+		this.pressed.add(event.code)
+	}
+
+	private onKeyUp(event: KeyboardEvent) {
+		this.pressed.delete(event.code)
+	}
+
+	private handleFXEvent = (data: { type: FXType; enabled?: boolean }) => {
 		if (data.type === FXType.EnableControls) {
 			this.toggleKeys(data.enabled ?? true)
 		}
@@ -86,55 +66,46 @@ export class Keyboard {
 	public update() {
 		if (!this.enabled) return
 
-		// Handle dialogue keyboard input
 		if (this.isInDialogue) {
-			// Handle space to skip animation
-			if (this.spaceKey.isDown && !this.wasSpacePressed) {
+			if (this.isJustDown(KEY_CODES.SPACE)) {
 				EventBus.emit(UiEvents.Dialogue.SkipAnimation)
 			}
-
-			// Handle arrow keys for option selection
-			if (this.upKey.isDown && !this.wasUpPressed) {
+			if (this.isJustDown(KEY_CODES.UP)) {
 				EventBus.emit(UiEvents.Dialogue.OptionUp)
 			}
-			if (this.downKey.isDown && !this.wasDownPressed) {
+			if (this.isJustDown(KEY_CODES.DOWN)) {
 				EventBus.emit(UiEvents.Dialogue.OptionDown)
 			}
-			if (this.enterKey.isDown && !this.wasEnterPressed) {
+			if (this.isJustDown(KEY_CODES.ENTER)) {
 				EventBus.emit(UiEvents.Dialogue.OptionConfirm)
 			}
-			if (this.escapeKey.isDown) {
+			if (this.isDown(KEY_CODES.ESC)) {
 				EventBus.emit(UiEvents.Dialogue.Close)
 			}
-
-			// Update was pressed states
-			this.wasSpacePressed = this.spaceKey.isDown
-			this.wasUpPressed = this.upKey.isDown
-			this.wasDownPressed = this.downKey.isDown
-			this.wasEnterPressed = this.enterKey.isDown
-			this.wasChatPressed = this.chatKey.isDown // Track chat key state even in dialogue
-			return // Skip other keyboard handling during dialogue
+			this.syncPrev()
+			return
 		}
 
-		// Handle regular keyboard input
-		if (this.inventoryKey.isDown && !this.wasInventoryPressed) {
+		if (this.isJustDown(KEY_CODES.I)) {
 			EventBus.emit(UiEvents.Inventory.Toggle)
 		}
-		if (this.questKey.isDown && !this.wasQuestPressed) {
-			EventBus.emit(UiEvents.Quests.Toggle)
-		}
-		if (this.chatKey.isDown && !this.wasChatPressed) {
-			EventBus.emit(UiEvents.Chat.Toggle, this.chatKey.isDown)
+		if (this.isJustDown(KEY_CODES.ENTER)) {
+			EventBus.emit(UiEvents.Chat.Toggle, true)
 		}
 
-		// Update was pressed states
-		this.wasInventoryPressed = this.inventoryKey.isDown
-		this.wasQuestPressed = this.questKey.isDown
-		this.wasChatPressed = this.chatKey.isDown
-		this.wasEnterPressed = this.enterKey.isDown
-		this.wasSpacePressed = this.spaceKey.isDown
-		this.wasUpPressed = this.upKey.isDown
-		this.wasDownPressed = this.downKey.isDown
+		this.syncPrev()
+	}
+
+	private syncPrev(): void {
+		this.prevPressed = new Set(this.pressed)
+	}
+
+	private isDown(code: string): boolean {
+		return this.enabled && this.pressed.has(code)
+	}
+
+	private isJustDown(code: string): boolean {
+		return this.enabled && this.pressed.has(code) && !this.prevPressed.has(code)
 	}
 
 	private handleChatInputVisible = (isVisible: boolean) => {
@@ -143,46 +114,46 @@ export class Keyboard {
 
 	public toggleKeys(enable: boolean) {
 		this.enabled = enable
-		this.scene.input.keyboard.enabled = enable
-		if (enable) {
-			this.scene.input.keyboard.enableGlobalCapture()
-		} else {
-			this.scene.input.keyboard.disableGlobalCapture()
+		if (!enable) {
+			this.pressed.clear()
+			this.prevPressed.clear()
 		}
 	}
 
 	public isMovingLeft(): boolean {
-		return this.enabled && !this.isInDialogue && (this.cursors.left.isDown || this.wasdKeys.A.isDown)
+		return this.enabled && !this.isInDialogue && (this.isDown(KEY_CODES.LEFT) || this.isDown(KEY_CODES.A))
 	}
 
 	public isMovingRight(): boolean {
-		return this.enabled && !this.isInDialogue && (this.cursors.right.isDown || this.wasdKeys.D.isDown)
+		return this.enabled && !this.isInDialogue && (this.isDown(KEY_CODES.RIGHT) || this.isDown(KEY_CODES.D))
 	}
 
 	public isMovingUp(): boolean {
-		return this.enabled && !this.isInDialogue && (this.cursors.up.isDown || this.wasdKeys.W.isDown)
+		return this.enabled && !this.isInDialogue && (this.isDown(KEY_CODES.UP) || this.isDown(KEY_CODES.W))
 	}
 
 	public isMovingDown(): boolean {
-		return this.enabled && !this.isInDialogue && (this.cursors.down.isDown || this.wasdKeys.S.isDown)
-	}
-
-	public isInventoryPressed(): boolean {
-		return this.enabled && !this.isInDialogue && Phaser.Input.Keyboard.JustDown(this.inventoryKey)
-	}
-
-	public isQuestPressed(): boolean {
-		return this.enabled && !this.isInDialogue && Phaser.Input.Keyboard.JustDown(this.questKey)
+		return this.enabled && !this.isInDialogue && (this.isDown(KEY_CODES.DOWN) || this.isDown(KEY_CODES.S))
 	}
 
 	public isAnyMovementKeyPressed(): boolean {
 		return this.isMovingLeft() || this.isMovingRight() || this.isMovingUp() || this.isMovingDown()
 	}
 
+	public isRotateLeft(): boolean {
+		return this.enabled && !this.isInDialogue && this.isJustDown(KEY_CODES.Q)
+	}
+
+	public isRotateRight(): boolean {
+		return this.enabled && !this.isInDialogue && this.isJustDown(KEY_CODES.E)
+	}
+
 	public destroy(): void {
+		window.removeEventListener('keydown', this.boundKeyDown)
+		window.removeEventListener('keyup', this.boundKeyUp)
 		EventBus.off(UiEvents.Chat.Toggle, this.handleChatInputVisible, this)
 		EventBus.off(Event.FX.SC.Play, this.handleFXEvent, this)
 		EventBus.off(Event.Dialogue.SC.Trigger, this.handleDialogueTrigger, this)
 		EventBus.off(Event.Dialogue.SC.End, this.handleDialogueEnd, this)
 	}
-} 
+}

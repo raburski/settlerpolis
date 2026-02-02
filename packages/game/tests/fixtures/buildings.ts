@@ -35,13 +35,11 @@ export const storehouse: BuildingDefinition = {
 		{ itemType: 'stone', quantity: 2 }
 	],
 	workerSlots: 2,
-	storage: {
-		capacities: {
-			logs: 50,
-			stone: 50,
-			planks: 50
-		}
-	}
+	storageSlots: [
+		{ itemType: 'logs', offset: { x: 0, y: 0 } },
+		{ itemType: 'stone', offset: { x: 1, y: 0 } },
+		{ itemType: 'planks', offset: { x: 2, y: 0 } }
+	]
 }
 
 export const woodcutterHut: BuildingDefinition = {

@@ -143,6 +143,15 @@
 	border-color: var(--dialog-speaker);
 }
 
+.checkbox {
+	width: 20px;
+	height: 20px;
+	accent-color: var(--dialog-item-name);
+	cursor: pointer;
+	border: var(--dialog-border-width) solid var(--dialog-border);
+	background: var(--dialog-bg);
+}
+
 @keyframes slideIn {
 	from {
 		transform: translateX(100%);

@@ -25,3 +25,4 @@ dist-ssr
 
 # Generated assets
 /packages/frontend/public/assets/
+/content/settlerpolis/assets/

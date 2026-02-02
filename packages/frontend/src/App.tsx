@@ -1,22 +1,10 @@
-import { useRef } from 'react';
-import { IRefPhaserGame, PhaserGame } from './game/PhaserGame';
-import { DisconnectModal } from './game/components/DisconnectModal';
-import { FullscreenMessage } from './game/components/FullscreenMessage';
-import { UIContainer } from './game/components/UIContainer';
+import { EditorApp } from './editor/EditorApp'
+import { GameApp } from './GameApp'
 
-function App()
-{
-    //  References to the PhaserGame component (game and scene are exposed)
-    const phaserRef = useRef<IRefPhaserGame | null>(null);
+const isEditorRoute = typeof window !== 'undefined' && window.location.pathname.startsWith('/editor')
 
-    return (
-        <div id="app">
-            <PhaserGame ref={phaserRef} />
-            <UIContainer />
-            <DisconnectModal />
-            <FullscreenMessage />
-        </div>
-    )
+function App() {
+	return isEditorRoute ? <EditorApp /> : <GameApp />
 }
 
 export default App

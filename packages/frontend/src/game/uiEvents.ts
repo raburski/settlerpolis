@@ -3,7 +3,8 @@ export const UiEvents = {
 		Ready: 'ui:scene:ready'
 	},
 	Settings: {
-		Toggle: 'ui:settings:toggle'
+		Toggle: 'ui:settings:toggle',
+		HighFidelity: 'ui:settings:high-fidelity'
 	},
 	Inventory: {
 		Toggle: 'ui:inventory:toggle',
@@ -78,5 +79,8 @@ export const UiEvents = {
 	Notifications: {
 		UiNotification: 'ui:notification',
 		SystemMessage: 'ui:message:system'
+	},
+	Debug: {
+		BoundsToggle: 'ui:debug:bounds-toggle'
 	}
 } as const
