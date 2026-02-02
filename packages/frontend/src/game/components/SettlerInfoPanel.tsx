@@ -37,6 +37,14 @@ export const SettlerInfoPanel: React.FC = () => {
 			}
 		}
 
+		const handleSettlerDied = (data: { settlerId: string }) => {
+			if (settler && settler.id === data.settlerId) {
+				EventBus.emit(UiEvents.Settler.Highlight, { settlerId: settler.id, highlighted: false })
+				setIsVisible(false)
+				setSettler(null)
+			}
+		}
+
 		// Listen for close panel event
 		const handleClosePanel = () => {
 			setIsVisible(false)
@@ -48,11 +56,13 @@ export const SettlerInfoPanel: React.FC = () => {
 
 		EventBus.on(UiEvents.Settler.Click, handleSettlerClick)
 		EventBus.on(UiEvents.Population.SettlerUpdated, handleSettlerUpdate)
+		EventBus.on(UiEvents.Population.SettlerDied, handleSettlerDied)
 		EventBus.on(UiEvents.Settler.Close, handleClosePanel)
 
 		return () => {
 			EventBus.off(UiEvents.Settler.Click, handleSettlerClick)
 			EventBus.off(UiEvents.Population.SettlerUpdated, handleSettlerUpdate)
+			EventBus.off(UiEvents.Population.SettlerDied, handleSettlerDied)
 			EventBus.off(UiEvents.Settler.Close, handleClosePanel)
 		}
 	}, [settler])
@@ -159,6 +169,11 @@ export const SettlerInfoPanel: React.FC = () => {
 				<div className={sharedStyles.infoRow}>
 					<span className={sharedStyles.label}>Status:</span>
 					<span className={sharedStyles.value}>{getStateLabel(settler.state)}</span>
+				</div>
+
+				<div className={sharedStyles.infoRow}>
+					<span className={sharedStyles.label}>Health:</span>
+					<span className={sharedStyles.value}>{Math.round((typeof settler.health === 'number' ? settler.health : 1) * 100)}%</span>
 				</div>
 
 				{needs && (

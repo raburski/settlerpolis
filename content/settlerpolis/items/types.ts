@@ -13,5 +13,6 @@ export enum ItemType {
 	BuildingFoundation = 'building_foundation',
 	Hammer = 'hammer',
 	Axe = 'axe',
-	Pickaxe = 'pickaxe'
+	Pickaxe = 'pickaxe',
+	Tombstone = 'tombstone'
 }

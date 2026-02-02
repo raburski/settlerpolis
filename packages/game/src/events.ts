@@ -198,6 +198,7 @@ export type EventPayloads = Record<string, unknown> & {
 	[PopulationEvents.CS.RequestList]: RequestListData
 	[PopulationEvents.SC.SettlerSpawned]: { settler: Settler }
 	[PopulationEvents.SC.SettlerUpdated]: { settler: Settler }
+	[PopulationEvents.SC.SettlerDied]: { settlerId: SettlerId }
 	[PopulationEvents.SC.WorkerAssigned]: { assignment: WorkAssignment, settlerId: SettlerId, buildingInstanceId: BuildingInstanceId }
 	[PopulationEvents.SC.WorkerUnassigned]: { settlerId: SettlerId, buildingInstanceId: BuildingInstanceId, assignmentId: WorkAssignmentId }
 	[PopulationEvents.SC.WorkerRequestFailed]: { reason: WorkerRequestFailureReason, buildingInstanceId: BuildingInstanceId }
@@ -205,6 +206,7 @@ export type EventPayloads = Record<string, unknown> & {
 	[PopulationEvents.SC.StatsUpdated]: PopulationStatsData
 	[PopulationEvents.SC.ProfessionChanged]: { settlerId: SettlerId, oldProfession: ProfessionType, newProfession: ProfessionType }
 	[PopulationEvents.SS.SpawnTick]: { houseId: BuildingInstanceId }
+	[PopulationEvents.SS.SettlerDied]: { settlerId: SettlerId }
 
 	[MovementEvents.SS.MoveToPosition]: { entityId: string, position: Position, mapId?: MapId, targetType?: MoveTargetType, targetId?: string }
 	[MovementEvents.SS.CancelMovement]: { entityId: string }

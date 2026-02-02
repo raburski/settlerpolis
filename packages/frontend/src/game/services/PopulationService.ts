@@ -103,6 +103,20 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 			this.updateStatsFromSettlers()
 		})
 
+		// Handle settler death/removal
+		EventBus.on(Event.Population.SC.SettlerDied, (data: { settlerId: string }) => {
+			if (this.settlers.has(data.settlerId)) {
+				this.settlers.delete(data.settlerId)
+				for (const [assignmentId, assignment] of this.assignments.entries()) {
+					if (assignment.settlerId === data.settlerId) {
+						this.assignments.delete(assignmentId)
+					}
+				}
+			}
+			EventBus.emit(UiEvents.Population.SettlerDied, data)
+			this.updateStatsFromSettlers()
+		})
+
 		// Handle worker unassigned
 		EventBus.on(Event.Population.SC.WorkerUnassigned, (data: { settlerId: string, assignmentId: string }) => {
 			const settler = this.settlers.get(data.settlerId)

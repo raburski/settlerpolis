@@ -123,7 +123,8 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			metadata: {
 				storagePile: true,
 				storageSlotId: slot.slotId,
-				itemType: slot.itemType
+				itemType: slot.itemType,
+				buildingInstanceId: slot.buildingInstanceId
 			}
 		}, fakeClient)
 

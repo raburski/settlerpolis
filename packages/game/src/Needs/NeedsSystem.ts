@@ -4,6 +4,7 @@ import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
 import type { PopulationManager } from '../Population'
 import { SettlerState } from '../Population/types'
+import { PopulationEvents } from '../Population/events'
 import { MovementEvents } from '../Movement/events'
 import { NeedType, NeedLevel } from './NeedTypes'
 import { createDefaultNeedsState, getNeedMeter, type NeedsState } from './NeedsState'
@@ -21,6 +22,7 @@ const clamp = (value: number, min: number, max: number): number => {
 const TILE_SIZE_PX = 32
 const FATIGUE_CARRY_BASE_PER_TILE = 0.0006
 const FATIGUE_CARRY_DISTANCE_EXPONENT = 1.3
+const HEALTH_DECAY_PER_MS = 0.0000007
 
 const createDefaultLevels = (): Record<NeedType, NeedLevel> => ({
 	[NeedType.Hunger]: NeedLevel.None,
@@ -50,6 +52,9 @@ export class NeedsSystem {
 		this.event.on(MovementEvents.SS.SegmentComplete, (data: { entityId: string, segmentDistance: number, totalDistance: number }) => {
 			this.handleMovementSegment(data)
 		})
+		this.event.on(PopulationEvents.SS.SettlerDied, (data: { settlerId: string }) => {
+			this.clearSettlerNeeds(data.settlerId)
+		})
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {
@@ -58,6 +63,21 @@ export class NeedsSystem {
 			const state = this.ensureNeedsState(settler.id)
 			this.updateNeed(settler.id, NeedType.Hunger, state, data.deltaMs)
 			this.updateNeed(settler.id, NeedType.Fatigue, state, data.deltaMs)
+			const hungerCritical = state.hunger.value <= state.hunger.criticalThreshold
+			const fatigueCritical = state.fatigue.value <= state.fatigue.criticalThreshold
+			const hungerEmpty = state.hunger.value <= 0
+			const fatigueEmpty = state.fatigue.value <= 0
+			const unmetCount = (hungerCritical ? 1 : 0) + (fatigueCritical ? 1 : 0)
+			const emptyCount = (hungerEmpty ? 1 : 0) + (fatigueEmpty ? 1 : 0)
+			const healthWeight = unmetCount + emptyCount
+			if (healthWeight > 0) {
+				const healthDelta = -HEALTH_DECAY_PER_MS * data.deltaMs * healthWeight
+				const alive = this.managers.population.addSettlerHealthDelta(settler.id, healthDelta)
+				if (!alive) {
+					this.clearSettlerNeeds(settler.id)
+					continue
+				}
+			}
 			this.maybeBroadcastNeeds(settler.id, state, data.nowMs)
 		}
 	}
@@ -116,6 +136,13 @@ export class NeedsSystem {
 			this.lastLevels.set(settlerId, createDefaultLevels())
 		}
 		return state
+	}
+
+	private clearSettlerNeeds(settlerId: string): void {
+		this.needsBySettler.delete(settlerId)
+		this.lastLevels.delete(settlerId)
+		this.lastBroadcastAt.delete(settlerId)
+		this.lastBroadcastValues.delete(settlerId)
 	}
 
 	private updateNeed(settlerId: string, needType: NeedType, state: NeedsState, deltaMs: number): void {

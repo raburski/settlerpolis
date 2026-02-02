@@ -199,7 +199,9 @@ export abstract class GameScene extends MapScene {
 		// Set up population event listeners
 		EventBus.on(Event.Population.SC.List, this.handlePopulationList, this)
 		EventBus.on(Event.Population.SC.SettlerSpawned, this.handleSettlerSpawned, this)
+		EventBus.on(Event.Population.SC.SettlerDied, this.handleSettlerDied, this)
 		EventBus.on(UiEvents.Population.SettlerSpawned, this.handleUISettlerSpawned, this)
+		EventBus.on(UiEvents.Population.SettlerDied, this.handleSettlerDied, this)
 		// Note: Position updates are now handled directly by SettlerController via MovementEvents
 		EventBus.on(UiEvents.Population.ProfessionChanged, this.handleSettlerProfessionChanged, this)
 
@@ -411,6 +413,14 @@ export abstract class GameScene extends MapScene {
 			if (this.player) {
 				this.physics.add.collider(this.player.view, settler.view)
 			}
+		}
+	}
+
+	private handleSettlerDied = (data: { settlerId: string }) => {
+		const settler = this.settlers.get(data.settlerId)
+		if (settler) {
+			settler.destroy()
+			this.settlers.delete(data.settlerId)
 		}
 	}
 

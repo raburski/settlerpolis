@@ -35,6 +35,7 @@ import type { SimulationTickData } from '../Simulation/types'
 import type { PopulationSnapshot } from '../state/types'
 
 const SETTLER_SPEED = 80 // pixels per second (slower baseline)
+const TOMBSTONE_ITEM_TYPE = 'tombstone'
 
 export interface PopulationDeps {
 	buildings: BuildingManager
@@ -392,6 +393,33 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		})
 	}
 
+	public setSettlerHealth(settlerId: string, health: number): boolean {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return false
+		}
+
+		const clamped = Math.max(0, Math.min(1, health))
+		settler.health = clamped
+
+		if (clamped <= 0) {
+			this.handleSettlerDeath(settler)
+			return false
+		}
+
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapId)
+		return true
+	}
+
+	public addSettlerHealthDelta(settlerId: string, delta: number): boolean {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return false
+		}
+		const current = typeof settler.health === 'number' ? settler.health : 1
+		return this.setSettlerHealth(settlerId, current + delta)
+	}
+
 	public setSettlerProfession(settlerId: string, profession: ProfessionType): void {
 		const settler = this.settlers.get(settlerId)
 		if (!settler) {
@@ -447,6 +475,55 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		}
 	}
 
+	private handleSettlerDeath(settler: Settler): void {
+		this.event.emit(Receiver.All, PopulationEvents.SS.SettlerDied, { settlerId: settler.id })
+
+		if (settler.houseId) {
+			const occupants = this.houseOccupants.get(settler.houseId)
+			occupants?.delete(settler.id)
+		}
+
+		this.managers.movement.unregisterEntity(settler.id)
+
+		const serverClient = this.getServerClient(settler.mapId)
+		const dropPosition = { ...settler.position }
+		const carriedType = settler.stateContext.carryingItemType
+		const carriedQuantity = typeof settler.stateContext.carryingQuantity === 'number'
+			? settler.stateContext.carryingQuantity
+			: 1
+		if (carriedType && carriedQuantity > 0) {
+			this.managers.loot.dropItem(
+				{ id: uuidv4(), itemType: carriedType },
+				dropPosition,
+				serverClient,
+				carriedQuantity
+			)
+		}
+		const equippedType = settler.stateContext.equippedItemType
+		const equippedQuantity = typeof settler.stateContext.equippedQuantity === 'number'
+			? settler.stateContext.equippedQuantity
+			: 1
+		if (equippedType && equippedQuantity > 0) {
+			this.managers.loot.dropItem(
+				{ id: uuidv4(), itemType: equippedType },
+				dropPosition,
+				serverClient,
+				equippedQuantity
+			)
+		}
+		this.managers.loot.dropItem(
+			{ id: uuidv4(), itemType: TOMBSTONE_ITEM_TYPE },
+			dropPosition,
+			serverClient,
+			1,
+			{ settlerId: settler.id }
+		)
+
+		this.settlers.delete(settler.id)
+
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerDied, { settlerId: settler.id }, settler.mapId)
+	}
+
 	private onHouseCompleted(buildingInstanceId: string, buildingId: string): void {
 		const buildingDef = this.managers.buildings.getBuildingDefinition(buildingId)
 		if (!buildingDef || !buildingDef.spawnRate) {
@@ -485,6 +562,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			profession: ProfessionType.Carrier,
 			state: SettlerState.Idle,
 			stateContext: {},
+			health: 1,
 			houseId: house.id,
 			speed: SETTLER_SPEED,
 			createdAt: this.simulationTimeMs
@@ -527,6 +605,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 					profession: popEntry.profession,
 					state: SettlerState.Idle,
 					stateContext: {},
+					health: 1,
 					speed: SETTLER_SPEED,
 					createdAt: now
 				}
@@ -603,7 +682,10 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 				...settler,
 				position: { ...settler.position },
 				stateContext: { ...settler.stateContext },
-				needs: settler.needs ? { ...settler.needs } : undefined
+				needs: settler.needs ? { ...settler.needs } : undefined,
+				health: typeof settler.health === 'number'
+					? Math.max(0, Math.min(1, settler.health))
+					: 1
 			}
 			this.settlers.set(restored.id, restored)
 			this.managers.movement.registerEntity({

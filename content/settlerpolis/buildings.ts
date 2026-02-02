@@ -1,6 +1,24 @@
 import { BuildingCategory, BuildingDefinition, ProfessionType } from '@rugged/game'
 import { ItemType } from './items'
 
+const createGraveyardSlots = (width: number, height: number) => {
+	const slots = []
+	for (let y = 1; y < height - 1; y += 1) {
+		for (let x = 1; x < width - 1; x += 1) {
+			slots.push({
+				itemType: ItemType.Tombstone,
+				offset: { x, y },
+				maxQuantity: 1
+			})
+		}
+	}
+	return slots
+}
+
+const graveyardFootprint = { width: 5, height: 5 }
+const graveyardSlots = createGraveyardSlots(graveyardFootprint.width, graveyardFootprint.height)
+const graveyardCapacity = graveyardSlots.length
+
 export const buildings: BuildingDefinition[] = [
 	{
 		id: 'storehouse',
@@ -179,6 +197,41 @@ export const buildings: BuildingDefinition[] = [
 				{ itemType: ItemType.Bread, offset: { x: 1, y: 1 }, hidden: true, maxQuantity: 3 },
 				{ itemType: ItemType.Carrot, offset: { x: 1, y: 0 }, hidden: true, maxQuantity: 3 }
 			]
+		}
+	},
+	{
+		id: 'graveyard',
+		name: 'Graveyard',
+		description: 'A fenced field for honoring the fallen',
+		category: BuildingCategory.Civil,
+		icon: '🪦',
+		sprite: {
+			foundation: 'building_foundation',
+			completed: 'storehouse'
+		},
+		footprint: graveyardFootprint,
+		constructionTime: 12,
+		costs: [
+			{
+				itemType: ItemType.Logs,
+				quantity: 2
+			},
+			{
+				itemType: ItemType.Stone,
+				quantity: 2
+			}
+		],
+		consumes: [
+			{
+				itemType: ItemType.Tombstone,
+				desiredQuantity: graveyardCapacity
+			}
+		],
+		storage: {
+			capacities: {
+				[ItemType.Tombstone]: graveyardCapacity
+			},
+			slots: graveyardSlots
 		}
 	},
 	{

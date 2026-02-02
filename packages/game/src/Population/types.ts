@@ -100,6 +100,7 @@ export interface Settler {
 		hunger: number
 		fatigue: number
 	}
+	health: number
 	houseId?: BuildingInstanceId // House that spawned this settler
 	buildingId?: BuildingInstanceId  // Can be derived from stateContext
 	speed: number

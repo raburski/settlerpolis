@@ -158,6 +158,10 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			this.unassignWorker(data)
 		})
 
+		this.event.on(PopulationEvents.SS.SettlerDied, (data: { settlerId: string }) => {
+			this.handleSettlerDied(data)
+		})
+
 		this.event.on<SetProductionPausedData>(BuildingsEvents.CS.SetProductionPaused, (data) => {
 			this.productionTracker.handleProductionPaused(data)
 		})
@@ -217,6 +221,10 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		if (assignment) {
 			this.dispatcher.dispatchNextStep(data.settlerId)
 		}
+	}
+
+	private handleSettlerDied(data: { settlerId: string }): void {
+		this.unassignWorker({ settlerId: data.settlerId })
 	}
 
 	private applyPause(settlerId: string): void {

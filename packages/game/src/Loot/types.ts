@@ -6,6 +6,7 @@ export interface DroppedItem extends Item {
 	position: Position
 	droppedAt: number
 	quantity: number
+	metadata?: Record<string, any>
 }
 
 export type Range = {
