@@ -3,6 +3,7 @@ import type { ProfessionType, SettlerId } from '../../Population/types'
 import type { ItemType } from '../../Items/types'
 import type { ProductionRecipe } from '../../Buildings/types'
 import type { RoadType } from '../../Roads'
+import type { MoveTargetType } from '../../Movement/types'
 
 export type WorkProviderId = string
 export enum WorkProviderType {
@@ -10,6 +11,13 @@ export enum WorkProviderType {
 	Logistics = 'logistics',
 	Construction = 'construction',
 	Road = 'road'
+}
+
+export enum WorkAssignmentStatus {
+	Assigned = 'assigned',
+	Waiting = 'waiting',
+	Active = 'active',
+	Paused = 'paused'
 }
 
 export enum WorkStepType {
@@ -75,6 +83,12 @@ export enum TransportTargetType {
 	Construction = 'construction'
 }
 
+export enum LogisticsRequestType {
+	Input = 'input',
+	Output = 'output',
+	Construction = 'construction'
+}
+
 export interface WorkAssignment {
 	assignmentId: string
 	settlerId: SettlerId
@@ -83,7 +97,7 @@ export interface WorkAssignment {
 	buildingInstanceId?: string
 	requiredProfession?: ProfessionType
 	assignedAt: number
-	status: 'assigned' | 'waiting' | 'active' | 'paused'
+	status: WorkAssignmentStatus
 }
 
 export type WorkStep =
@@ -106,8 +120,8 @@ export type TransportTarget =
 	| { type: TransportTargetType.Construction, buildingInstanceId: string }
 
 export type WorkAction =
-	| { type: WorkActionType.Move, position: Position, targetType?: string, targetId?: string, setState?: import('../../Population/types').SettlerState }
-	| { type: WorkActionType.FollowPath, path: Position[], targetType?: string, targetId?: string, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.Move, position: Position, targetType?: MoveTargetType, targetId?: string, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.FollowPath, path: Position[], targetType?: MoveTargetType, targetId?: string, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Wait, durationMs: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Construct, buildingInstanceId: string, durationMs: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.BuildRoad, jobId: string, durationMs: number, setState?: import('../../Population/types').SettlerState }
@@ -135,6 +149,6 @@ export interface WorkProvider {
 }
 
 export type LogisticsRequest =
-	| { id: string, type: 'input', buildingInstanceId: string, itemType: ItemType, quantity: number, priority: number, createdAtMs: number }
-	| { id: string, type: 'output', buildingInstanceId: string, itemType: ItemType, quantity: number, priority: number, createdAtMs: number }
-	| { id: string, type: 'construction', buildingInstanceId: string, itemType: ItemType, quantity: number, priority: number, createdAtMs: number }
+	| { id: string, type: LogisticsRequestType.Input, buildingInstanceId: string, itemType: ItemType, quantity: number, priority: number, createdAtMs: number }
+	| { id: string, type: LogisticsRequestType.Output, buildingInstanceId: string, itemType: ItemType, quantity: number, priority: number, createdAtMs: number }
+	| { id: string, type: LogisticsRequestType.Construction, buildingInstanceId: string, itemType: ItemType, quantity: number, priority: number, createdAtMs: number }

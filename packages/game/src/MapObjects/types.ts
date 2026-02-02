@@ -1,4 +1,4 @@
-import { Position } from '../types'
+import { Position, MapId } from '../types'
 import { Item } from '../Items/types'
 
 export interface MapObject {
@@ -7,7 +7,7 @@ export interface MapObject {
 	position: Position
 	rotation: number
 	playerId: string
-	mapName: string
+	mapName: MapId
 	metadata?: Record<string, any>
 }
 

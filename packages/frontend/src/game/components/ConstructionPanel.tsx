@@ -3,6 +3,7 @@ import { EventBus } from '../EventBus'
 import { Event, BuildingCategory, BuildingDefinition, RoadType } from '@rugged/game'
 import { itemService } from '../services/ItemService'
 import styles from './ConstructionPanel.module.css'
+import { UiEvents } from '../uiEvents'
 
 // Try to load content - this is a fallback, server catalog is primary source
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'
@@ -89,9 +90,9 @@ export const ConstructionPanel: React.FC = () => {
 		}
 
 		EventBus.on(Event.Buildings.SC.Catalog, handleBuildingCatalog)
-		EventBus.on('ui:construction:toggle', handleToggle)
+		EventBus.on(UiEvents.Construction.Toggle, handleToggle)
 		EventBus.on(Event.Buildings.SC.Placed, handleBuildingPlaced)
-		EventBus.on('ui:road:cancelled', handleRoadCancelled)
+		EventBus.on(UiEvents.Road.Cancelled, handleRoadCancelled)
 		
 		// Request catalog after a short delay to ensure server is ready
 		// This is a fallback in case the catalog wasn't sent on join
@@ -103,23 +104,23 @@ export const ConstructionPanel: React.FC = () => {
 		return () => {
 			clearTimeout(requestTimeout)
 			EventBus.off(Event.Buildings.SC.Catalog, handleBuildingCatalog)
-			EventBus.off('ui:construction:toggle', handleToggle)
+			EventBus.off(UiEvents.Construction.Toggle, handleToggle)
 			EventBus.off(Event.Buildings.SC.Placed, handleBuildingPlaced)
-			EventBus.off('ui:road:cancelled', handleRoadCancelled)
+			EventBus.off(UiEvents.Road.Cancelled, handleRoadCancelled)
 		}
 	}, []) // Run once on mount
 
 	const handleBuildingSelect = (buildingId: string) => {
 		if (selectedRoadType) {
-			EventBus.emit('ui:road:cancel', {})
+			EventBus.emit(UiEvents.Road.Cancel, {})
 			setSelectedRoadType(null)
 		}
 		setSelectedBuilding((prev) => {
 			if (prev === buildingId) {
-				EventBus.emit('ui:construction:cancel', {})
+				EventBus.emit(UiEvents.Construction.Cancel, {})
 				return null
 			}
-			EventBus.emit('ui:construction:select', { buildingId })
+			EventBus.emit(UiEvents.Construction.Select, { buildingId })
 			return buildingId
 		})
 	}
@@ -127,12 +128,12 @@ export const ConstructionPanel: React.FC = () => {
 	const handleRoadSelect = (roadType: RoadType) => {
 		setSelectedRoadType((prev) => {
 			if (prev === roadType) {
-				EventBus.emit('ui:road:cancel', {})
+				EventBus.emit(UiEvents.Road.Cancel, {})
 				return null
 			}
-			EventBus.emit('ui:construction:cancel', {})
+			EventBus.emit(UiEvents.Construction.Cancel, {})
 			setSelectedBuilding(null)
-			EventBus.emit('ui:road:select', { roadType })
+			EventBus.emit(UiEvents.Road.Select, { roadType })
 			return roadType
 		})
 	}
@@ -146,14 +147,14 @@ export const ConstructionPanel: React.FC = () => {
 	useEffect(() => {
 		if (selectedBuilding && !filteredBuildings.some(building => building.id === selectedBuilding)) {
 			setSelectedBuilding(null)
-			EventBus.emit('ui:construction:cancel', {})
+			EventBus.emit(UiEvents.Construction.Cancel, {})
 		}
 	}, [selectedBuilding, filteredBuildings])
 
 	useEffect(() => {
 		if (selectedRoadType && selectedCategory !== BuildingCategory.Infrastructure) {
 			setSelectedRoadType(null)
-			EventBus.emit('ui:road:cancel', {})
+			EventBus.emit(UiEvents.Road.Cancel, {})
 		}
 	}, [selectedCategory, selectedRoadType])
 

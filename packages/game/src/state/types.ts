@@ -21,7 +21,8 @@ import type { RoadData, RoadType } from '../Roads/types'
 import type { PausedContext } from '../Needs/types'
 import type { Trigger } from '../Triggers/types'
 import type { ScheduledEvent } from '../Scheduler/types'
-import type { Position } from '../types'
+import type { Position, MapId } from '../types'
+import type { MoveTargetType } from '../Movement/types'
 
 export type MapEntries<V> = Array<[string, V]>
 
@@ -130,7 +131,7 @@ export interface MovementSnapshot {
 export interface MovementTaskSnapshot {
 	entityId: string
 	targetPosition: Position
-	targetType?: string
+	targetType?: MoveTargetType
 	targetId?: string
 }
 
@@ -185,9 +186,14 @@ export interface ActionSystemQueueSnapshot {
 	context?: ActionQueueContext
 }
 
+export enum ActionQueueContextKind {
+	Work = 'work',
+	Need = 'need'
+}
+
 export type ActionQueueContext =
-	| { kind: 'work', step?: WorkStep, reservationOwnerId?: string }
-	| { kind: 'need', needType: NeedType, satisfyValue?: number, reservationOwnerId?: string }
+	| { kind: ActionQueueContextKind.Work, step?: WorkStep, reservationOwnerId?: string }
+	| { kind: ActionQueueContextKind.Need, needType: NeedType, satisfyValue?: number, reservationOwnerId?: string }
 
 export interface NPCSnapshot {
 	npcs: NPC[]
@@ -228,7 +234,7 @@ export interface RoadsSnapshot {
 
 export interface RoadJobSnapshot {
 	jobId: string
-	mapName: string
+	mapName: MapId
 	playerId: string
 	tileX: number
 	tileY: number

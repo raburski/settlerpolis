@@ -1,6 +1,7 @@
 import { SettlerState } from '../../../Population/types'
 import { WorkActionType, WorkStepType, type WorkAction } from '../types'
 import type { StepHandler, StepHandlerResult } from './types'
+import { MoveTargetType } from '../../../Movement/types'
 
 export const PlantHandler: StepHandler = {
 	type: WorkStepType.Plant,
@@ -14,14 +15,14 @@ export const PlantHandler: StepHandler = {
 		const postPlantReturnWaitMs = definition?.farm?.postPlantReturnWaitMs ?? 0
 
 		const actions: WorkAction[] = [
-			{ type: WorkActionType.Move, position: step.position, targetType: 'plot', targetId: `${step.position.x},${step.position.y}`, setState: SettlerState.MovingToResource },
+			{ type: WorkActionType.Move, position: step.position, targetType: MoveTargetType.Plot, targetId: `${step.position.x},${step.position.y}`, setState: SettlerState.MovingToResource },
 			{ type: WorkActionType.Wait, durationMs: step.plantTimeMs, setState: SettlerState.Working },
 			{ type: WorkActionType.Plant, buildingInstanceId: step.buildingInstanceId, nodeType: step.nodeType, position: step.position, growTimeMs: step.growTimeMs, spoilTimeMs: step.spoilTimeMs, despawnTimeMs: step.despawnTimeMs, setState: SettlerState.Working }
 		]
 
 		if (building && postPlantReturnWaitMs > 0) {
 			actions.push(
-				{ type: WorkActionType.Move, position: building.position, targetType: 'building', targetId: building.id, setState: SettlerState.MovingToBuilding },
+				{ type: WorkActionType.Move, position: building.position, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding },
 				{ type: WorkActionType.Wait, durationMs: postPlantReturnWaitMs, setState: SettlerState.WaitingForWork }
 			)
 		}

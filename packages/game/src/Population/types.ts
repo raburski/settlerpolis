@@ -1,4 +1,7 @@
-import { Position } from '../types'
+import { Position, MapId } from '../types'
+import type { ItemType } from '../Items/types'
+import type { BuildingId } from '../Buildings/types'
+import type { MoveTargetType } from '../Movement/types'
 
 export type SettlerId = string
 
@@ -53,14 +56,14 @@ export interface ProfessionDefinition {
 	icon?: string
 	canBuild: boolean
 	canCarry: boolean
-	canWorkBuildings: string[] // Building IDs this profession can work in
+	canWorkBuildings: BuildingId[] // Building IDs this profession can work in
 }
 
 // Note: Houses are just buildings with spawnsSettlers: true
 // No separate HouseDefinition needed - use BuildingDefinition with house properties
 
 export interface ProfessionToolDefinition {
-	itemType: string // Item type that changes profession (e.g., 'hammer', 'axe')
+	itemType: ItemType // Item type that changes profession (e.g., 'hammer', 'axe')
 	targetProfession: ProfessionType // Profession this tool grants
 	name: string
 	description: string
@@ -71,10 +74,10 @@ export interface SettlerStateContext {
 	providerId?: string            // Current provider ID (building or logistics)
 	targetId?: string              // ID of tool, building, or item being moved to
 	targetPosition?: Position      // Target position for movement
-	targetType?: string            // Optional target type for debugging/recovery
-	equippedItemType?: string      // Item type equipped (e.g., profession tool)
+	targetType?: MoveTargetType     // Optional target type for debugging/recovery
+	equippedItemType?: ItemType     // Item type equipped (e.g., profession tool)
 	equippedQuantity?: number      // Quantity equipped (usually 1)
-	carryingItemType?: string      // Item type being carried (used for visual indicators)
+	carryingItemType?: ItemType    // Item type being carried (used for visual indicators)
 	carryingQuantity?: number      // Quantity being carried
 	waitReason?: string            // WorkWaitReason (set by WorkProvider when waiting)
 	lastStepType?: string          // WorkStepType (debug)
@@ -87,7 +90,7 @@ export interface SettlerStateContext {
 export interface Settler {
 	id: SettlerId
 	playerId: string
-	mapName: string
+	mapName: MapId
 	position: Position
 	profession: ProfessionType
 	state: SettlerState
@@ -149,7 +152,7 @@ export interface PopulationStatsData {
 }
 
 export interface ProfessionTool {
-	itemType: string // Item type that changes profession
+	itemType: ItemType // Item type that changes profession
 	targetProfession: ProfessionType // Profession this tool grants
 }
 

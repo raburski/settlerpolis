@@ -1,4 +1,5 @@
 import { Effect, Condition } from '../ConditionEffect/types'
+import type { ItemType } from '../Items/types'
 
 export enum QuestScope {
 	Player = 'player',
@@ -27,7 +28,7 @@ export interface QuestStep {
 export interface QuestReward {
 	exp?: number
 	items?: Array<{
-		id: string
+		id: ItemType
 		qty: number
 	}>
 }

@@ -40,16 +40,18 @@ import type { FXPlayEventData } from './FX/types'
 import type { CutsceneTriggerEventData } from './Cutscene/types'
 import type { MapLoadData, MapLoadResponseData, MapTransitionData, MapTransitionResponseData } from './Map/types'
 import type { TimeUpdateEventData, TimeSpeedUpdateEventData, TimePauseEventData, TimeSyncEventData } from './Time/types'
-import type { PlaceBuildingData, CancelBuildingData, SetProductionPausedData, SetWorkAreaData, BuildingPlacedData, BuildingProgressData, BuildingCompletedData, BuildingCancelledData, BuildingCatalogData, BuildingWorkAreaUpdatedData } from './Buildings/types'
+import type { PlaceBuildingData, CancelBuildingData, SetProductionPausedData, SetWorkAreaData, BuildingPlacedData, BuildingProgressData, BuildingCompletedData, BuildingCancelledData, BuildingCatalogData, BuildingWorkAreaUpdatedData, ConstructionStage } from './Buildings/types'
 import type { RequestWorkerData, UnassignWorkerData, RequestListData, PopulationListData, PopulationStatsData, Settler, ProfessionType, WorkerRequestFailureReason } from './Population/types'
 import type { WorkAssignment, WorkStep, WorkAction, LogisticsRequest } from './Settlers/WorkProvider/types'
 import type { ProductionRecipe, ProductionStatus } from './Buildings/types'
 import type { ScheduleOptions } from './Scheduler/types'
 import type { SimulationTickData } from './Simulation/types'
-import type { Position } from './types'
+import type { Position, MapId } from './types'
 import type { ContextPauseRequestedEventData, ContextPausedEventData, ContextResumeRequestedEventData, ContextResumedEventData, NeedInterruptEventData, NeedPlanCreatedEventData, NeedPlanFailedEventData, NeedSatisfiedEventData, NeedThresholdEventData } from './Needs/types'
 import type { NeedType } from './Needs/NeedTypes'
 import type { RoadBuildRequestData, RoadTilesSyncData, RoadTilesUpdatedData, RoadPendingSyncData, RoadPendingUpdatedData } from './Roads/types'
+import type { ItemType } from './Items/types'
+import type { MoveTargetType } from './Movement/types'
 
 // Interface for client operations
 export interface EventClient {
@@ -174,12 +176,12 @@ export type EventPayloads = Record<string, unknown> & {
 	[BuildingsEvents.SC.Completed]: BuildingCompletedData
 	[BuildingsEvents.SC.Cancelled]: BuildingCancelledData
 	[BuildingsEvents.SC.Catalog]: BuildingCatalogData
-	[BuildingsEvents.SC.ResourcesChanged]: { buildingInstanceId: string, itemType: string, quantity: number, requiredQuantity: number }
-	[BuildingsEvents.SC.StageChanged]: { buildingInstanceId: string, stage: string }
+	[BuildingsEvents.SC.ResourcesChanged]: { buildingInstanceId: string, itemType: ItemType, quantity: number, requiredQuantity: number }
+	[BuildingsEvents.SC.StageChanged]: { buildingInstanceId: string, stage: ConstructionStage }
 	[BuildingsEvents.SC.WorkAreaUpdated]: BuildingWorkAreaUpdatedData
 	[BuildingsEvents.SS.Tick]: {}
 	[BuildingsEvents.SS.HouseCompleted]: { buildingInstanceId: string, buildingId: string }
-	[BuildingsEvents.SS.ConstructionCompleted]: { buildingInstanceId: string, buildingId: string, mapName: string, playerId: string }
+	[BuildingsEvents.SS.ConstructionCompleted]: { buildingInstanceId: string, buildingId: string, mapName: MapId, playerId: string }
 
 	[PopulationEvents.CS.RequestWorker]: RequestWorkerData
 	[PopulationEvents.CS.UnassignWorker]: UnassignWorkerData
@@ -194,13 +196,13 @@ export type EventPayloads = Record<string, unknown> & {
 	[PopulationEvents.SC.ProfessionChanged]: { settlerId: string, oldProfession: ProfessionType, newProfession: ProfessionType }
 	[PopulationEvents.SS.SpawnTick]: { houseId: string }
 
-	[MovementEvents.SS.MoveToPosition]: { entityId: string, position: Position, mapName?: string, targetType?: string, targetId?: string }
+	[MovementEvents.SS.MoveToPosition]: { entityId: string, position: Position, mapName?: MapId, targetType?: MoveTargetType, targetId?: string }
 	[MovementEvents.SS.CancelMovement]: { entityId: string }
 	[MovementEvents.SS.StepComplete]: { entityId: string, position: Position }
 	[MovementEvents.SS.SegmentComplete]: { entityId: string, position: Position, segmentDistance: number, totalDistance: number }
-	[MovementEvents.SS.PathComplete]: { entityId: string, targetType?: string, targetId?: string }
-	[MovementEvents.SC.MoveToPosition]: { entityId: string, targetPosition: Position, mapName: string, speed?: number }
-	[MovementEvents.SC.PositionUpdated]: { entityId: string, position: Position, mapName: string }
+	[MovementEvents.SS.PathComplete]: { entityId: string, targetType?: MoveTargetType, targetId?: string }
+	[MovementEvents.SC.MoveToPosition]: { entityId: string, targetPosition: Position, mapName: MapId, speed?: number }
+	[MovementEvents.SC.PositionUpdated]: { entityId: string, position: Position, mapName: MapId }
 
 	[StorageEvents.SC.StorageUpdated]: { buildingInstanceId: string, itemType: string, quantity: number, capacity: number }
 	[StorageEvents.SC.StorageSlotUpdated]: { slotId: string, buildingInstanceId: string, itemType: string, quantity: number, position: Position }

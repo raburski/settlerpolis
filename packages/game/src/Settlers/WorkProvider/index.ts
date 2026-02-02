@@ -21,7 +21,7 @@ import { ProviderRegistry } from './ProviderRegistry'
 import { ActionSystem, type ActionQueueContextResolver } from './ActionSystem'
 import { WorkProviderEvents } from './events'
 import type { WorkAssignment, WorkStep, WorkAction, LogisticsRequest } from './types'
-import { TransportTargetType, WorkProviderType, WorkStepType, WorkWaitReason } from './types'
+import { TransportTargetType, WorkProviderType, WorkStepType, WorkWaitReason, WorkAssignmentStatus } from './types'
 import { StepHandlers } from './stepHandlers'
 import { BuildingProvider } from './providers/BuildingProvider'
 import { LogisticsProvider } from './providers/LogisticsProvider'
@@ -32,6 +32,7 @@ import type { WorkPolicy, WorkPolicyContext, WorkPolicyResult } from './policies
 import { CriticalNeedsPolicy } from './policies/CriticalNeedsPolicy'
 import { HomeRelocationPolicy } from './policies/HomeRelocationPolicy'
 import type { ActionQueueContext, WorkProviderSnapshot } from '../../state/types'
+import { ActionQueueContextKind } from '../../state/types'
 
 const MOVEMENT_RECOVERY_COOLDOWN_MS = 8000
 const MOVEMENT_FAILURE_MAX_RETRIES = 3
@@ -70,8 +71,8 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			event,
 			this.logger
 		)
-		this.actionSystem.registerContextResolver('work', (settlerId, context) => {
-			if (context.kind !== 'work') {
+		this.actionSystem.registerContextResolver(ActionQueueContextKind.Work, (settlerId, context) => {
+			if (context.kind !== ActionQueueContextKind.Work) {
 				return {}
 			}
 			return this.buildWorkQueueCallbacks(settlerId, context.step)
@@ -173,7 +174,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 
 		const assignment = this.assignments.get(data.settlerId)
 		if (assignment) {
-			assignment.status = 'assigned'
+			assignment.status = WorkAssignmentStatus.Assigned
 			const provider = this.registry.get(assignment.providerId)
 			provider?.resume(data.settlerId)
 		}
@@ -194,7 +195,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		let context: PausedContext | null = null
 
 		if (assignment) {
-			assignment.status = 'paused'
+			assignment.status = WorkAssignmentStatus.Paused
 			const provider = this.registry.get(assignment.providerId)
 			provider?.pause(settlerId, this.pauseRequests.get(settlerId)?.reason)
 			context = {
@@ -321,7 +322,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		}
 
 		const workerSlots = buildingDef.workerSlots || 0
-		if (building.stage !== 'constructing' && workerSlots > 0) {
+		if (building.stage !== ConstructionStage.Constructing && workerSlots > 0) {
 			const assigned = this.assignmentsByBuilding.get(building.id)?.size || 0
 			if (assigned >= workerSlots) {
 				client.emit(Receiver.Sender, PopulationEvents.SC.WorkerRequestFailed, {
@@ -332,10 +333,8 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			}
 		}
 
-		let requiredProfession = buildingDef.requiredProfession
-			? (buildingDef.requiredProfession as ProfessionType)
-			: undefined
-		const isConstruction = building.stage === 'constructing'
+		let requiredProfession = buildingDef.requiredProfession ?? undefined
+		const isConstruction = building.stage === ConstructionStage.Constructing
 		if (isConstruction) {
 			requiredProfession = ProfessionType.Builder
 		}
@@ -363,7 +362,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 				buildingInstanceId: building.id,
 				requiredProfession: requiredProfession,
 				assignedAt: this.simulationTimeMs,
-				status: 'assigned'
+				status: WorkAssignmentStatus.Assigned
 			}
 
 		this.assignments.set(candidate.id, assignment)
@@ -495,7 +494,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 				providerId: this.logisticsProvider.id,
 				providerType: WorkProviderType.Logistics,
 				assignedAt: this.simulationTimeMs,
-				status: 'assigned'
+				status: WorkAssignmentStatus.Assigned
 			}
 			this.assignments.set(carrier.id, assignment)
 			this.logisticsProvider.assign(carrier.id)
@@ -524,7 +523,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 					providerId: provider.id,
 					providerType: WorkProviderType.Road,
 					assignedAt: this.simulationTimeMs,
-					status: 'assigned'
+					status: WorkAssignmentStatus.Assigned
 				}
 				this.assignments.set(settler.id, assignment)
 				provider.assign(settler.id)
@@ -700,7 +699,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 
 		const callbacks = this.buildWorkQueueCallbacks(settlerId, step, releaseReservations)
 		const context: ActionQueueContext = {
-			kind: 'work',
+			kind: ActionQueueContextKind.Work,
 			step,
 			reservationOwnerId: assignment.assignmentId
 		}
@@ -853,7 +852,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			}, (reason) => {
 				result.onFail?.(reason)
 				this.dispatchNextStep(settlerId)
-			}, { kind: 'work', reservationOwnerId })
+			}, { kind: ActionQueueContextKind.Work, reservationOwnerId })
 			return true
 		}
 

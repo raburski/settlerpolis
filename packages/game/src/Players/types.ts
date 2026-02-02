@@ -1,4 +1,4 @@
-import { Position as WorldPosition } from '../types'
+import { Position as WorldPosition, MapId } from '../types'
 import { Position as InventoryPosition } from '../Inventory/types'
 import { Item } from '../Items/types'
 
@@ -28,21 +28,21 @@ export interface UnequipItemData extends PlayerSourcedData {
 export interface Player {
 	playerId: string
 	position: WorldPosition
-	mapId: string        // Changed from scene to mapId
+	mapId: MapId        // Changed from scene to mapId
 	appearance?: any // TODO: Define appearance type
 	equipment?: Record<EquipmentSlotType, Item | null> // Full item object or null for each slot
 }
 
 export interface PlayerJoinData extends PlayerSourcedData {
 	position: WorldPosition
-	mapId: string        // This is the primary property now
+	mapId: MapId        // This is the primary property now
 	appearance?: any
 	skipStartingItems?: boolean
 }
 
 export interface PlayerTransitionData extends PlayerSourcedData {
 	position: WorldPosition
-	mapId: string        // Changed from scene to mapId
+	mapId: MapId        // Changed from scene to mapId
 }
 
 export interface PlayerMoveData extends PlayerSourcedData {

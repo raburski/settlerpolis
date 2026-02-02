@@ -1,5 +1,5 @@
-import { Position } from '../types'
-import { Item } from '../Items/types'
+import { Position, MapId } from '../types'
+import { Item, ItemType } from '../Items/types'
 
 export interface DroppedItem extends Item {
 	position: Position
@@ -18,9 +18,9 @@ export type SpawnPosition = {
 }
 
 export type LootSpawnPayload = {
-	itemType: string
+	itemType: ItemType
 	position: SpawnPosition
-	mapId: string
+	mapId: MapId
 	quantity?: number
 }
 

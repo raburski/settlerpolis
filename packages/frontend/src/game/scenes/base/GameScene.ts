@@ -1,4 +1,5 @@
 import { EventBus } from "../../EventBus";
+import { UiEvents } from "../../uiEvents";
 import { MapScene } from "./MapScene";
 import { Event } from "@rugged/game"
 import { createLocalPlayer, LocalPlayer } from '../../entities/LocalPlayer'
@@ -103,7 +104,7 @@ export abstract class GameScene extends MapScene {
 		// Set up collision for the player
 		this.initializeCollision([this.player.view])
 
-		EventBus.emit('ui:scene:ready', { mapId: this.mapKey })
+		EventBus.emit(UiEvents.Scene.Ready, { mapId: this.mapKey })
 
 		// Only emit join event if this is not a scene transition
 		if (!isTransition && !suppressAutoJoin) {
@@ -198,9 +199,9 @@ export abstract class GameScene extends MapScene {
 		// Set up population event listeners
 		EventBus.on(Event.Population.SC.List, this.handlePopulationList, this)
 		EventBus.on(Event.Population.SC.SettlerSpawned, this.handleSettlerSpawned, this)
-		EventBus.on('ui:population:settler-spawned', this.handleUISettlerSpawned, this)
+		EventBus.on(UiEvents.Population.SettlerSpawned, this.handleUISettlerSpawned, this)
 		// Note: Position updates are now handled directly by SettlerController via MovementEvents
-		EventBus.on('ui:population:profession-changed', this.handleSettlerProfessionChanged, this)
+		EventBus.on(UiEvents.Population.ProfessionChanged, this.handleSettlerProfessionChanged, this)
 
 		// Set up road event listeners
 		EventBus.on(Event.Roads.SC.Sync, this.handleRoadSync, this)

@@ -1,79 +1,18 @@
-import React, { useEffect, useState } from 'react'
-import { EventBus } from '../EventBus'
+import React from 'react'
 import styles from './Settings.module.css'
+import { useEventBus } from './hooks/useEventBus'
+import { useSlidingPanel } from './hooks/useSlidingPanel'
+import { UiEvents } from '../uiEvents'
 
 export function Settings() {
-	const [isVisible, setIsVisible] = useState(false)
-	const [isExiting, setIsExiting] = useState(false)
+	const { isVisible, isExiting, toggle, close } = useSlidingPanel()
 
-	useEffect(() => {
-		const handleToggle = () => {
-			if (isVisible) {
-				// Start exit animation
-				setIsExiting(true)
-				// Wait for animation to complete before hiding
-				setTimeout(() => {
-					setIsVisible(false)
-					setIsExiting(false)
-				}, 300) // Match animation duration
-			} else {
-				setIsVisible(true)
-			}
-		}
+	useEventBus(UiEvents.Settings.Toggle, toggle)
+	useEventBus(UiEvents.Inventory.Toggle, close)
+	useEventBus(UiEvents.Quests.Toggle, close)
+	useEventBus(UiEvents.Relationships.Toggle, close)
 
-		const handleInventoryToggle = () => {
-			// Close settings when inventory is opened
-			if (isVisible) {
-				setIsExiting(true)
-				setTimeout(() => {
-					setIsVisible(false)
-					setIsExiting(false)
-				}, 300)
-			}
-		}
-
-		const handleQuestsToggle = () => {
-			// Close settings when quests is opened
-			if (isVisible) {
-				setIsExiting(true)
-				setTimeout(() => {
-					setIsVisible(false)
-					setIsExiting(false)
-				}, 300)
-			}
-		}
-
-		const handleRelationshipsToggle = () => {
-			// Close settings when relationships is opened
-			if (isVisible) {
-				setIsExiting(true)
-				setTimeout(() => {
-					setIsVisible(false)
-					setIsExiting(false)
-				}, 300)
-			}
-		}
-
-		EventBus.on('ui:settings:toggle', handleToggle)
-		EventBus.on('ui:inventory:toggle', handleInventoryToggle)
-		EventBus.on('ui:quests:toggle', handleQuestsToggle)
-		EventBus.on('ui:relationships:toggle', handleRelationshipsToggle)
-
-		return () => {
-			EventBus.off('ui:settings:toggle', handleToggle)
-			EventBus.off('ui:inventory:toggle', handleInventoryToggle)
-			EventBus.off('ui:quests:toggle', handleQuestsToggle)
-			EventBus.off('ui:relationships:toggle', handleRelationshipsToggle)
-		}
-	}, [isVisible])
-
-	const handleClose = () => {
-		setIsExiting(true)
-		setTimeout(() => {
-			setIsVisible(false)
-			setIsExiting(false)
-		}, 300)
-	}
+	const handleClose = () => close()
 
 	if (!isVisible && !isExiting) {
 		return null

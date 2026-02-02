@@ -4,6 +4,7 @@ import { Event } from '@rugged/game'
 import { itemService } from '../services/ItemService'
 import { buildingService } from '../services/BuildingService'
 import styles from './Notifications.module.css'
+import { UiEvents } from '../uiEvents'
 
 type NotificationType = 'info' | 'warning' | 'success' | 'error'
 
@@ -52,11 +53,11 @@ export function Notifications() {
 		}
 
 		EventBus.on(Event.Storage.SC.Spoilage, handleSpoilage)
-		EventBus.on('ui:notification', handleUiNotification)
+		EventBus.on(UiEvents.Notifications.UiNotification, handleUiNotification)
 
 		return () => {
 			EventBus.off(Event.Storage.SC.Spoilage, handleSpoilage)
-			EventBus.off('ui:notification', handleUiNotification)
+			EventBus.off(UiEvents.Notifications.UiNotification, handleUiNotification)
 		}
 	}, [])
 

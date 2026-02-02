@@ -1,4 +1,5 @@
 import { ItemMetadata, ItemCategory } from '../../src/Items/types'
+import { ProfessionType } from '../../src/Population/types'
 
 /**
  * Common item definitions for testing
@@ -46,7 +47,7 @@ export const hammer: ItemMetadata = {
 	description: 'A builder\'s hammer',
 	category: ItemCategory.Tool,
 	stackable: false,
-	changesProfession: 'builder'
+	changesProfession: ProfessionType.Builder
 }
 
 export const axe: ItemMetadata = {
@@ -56,7 +57,7 @@ export const axe: ItemMetadata = {
 	description: 'A woodcutter\'s axe',
 	category: ItemCategory.Tool,
 	stackable: false,
-	changesProfession: 'woodcutter'
+	changesProfession: ProfessionType.Woodcutter
 }
 
 export const buildingFoundation: ItemMetadata = {
@@ -67,4 +68,3 @@ export const buildingFoundation: ItemMetadata = {
 	category: ItemCategory.Placeable,
 	stackable: false
 }
-

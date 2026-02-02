@@ -1,6 +1,7 @@
 import { Scene } from 'phaser'
 import { LootView } from './View'
 import { EventBus } from '../../EventBus'
+import { UiEvents } from '../../uiEvents'
 import { Event } from "@rugged/game"
 
 const PICKUP_RANGE = 100 // Define pickup range in pixels
@@ -29,7 +30,7 @@ export class LootController {
 				EventBus.emit(Event.Players.CS.PickupItem, { itemId: this.itemId })
 			} else {
 				// Show "too far" message through event system
-				EventBus.emit('ui:message:system', "Too far to pick up")
+				EventBus.emit(UiEvents.Notifications.SystemMessage, "Too far to pick up")
 			}
 		})
 	}

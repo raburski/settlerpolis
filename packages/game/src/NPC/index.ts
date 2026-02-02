@@ -2,6 +2,7 @@ import { EventManager, Event, EventClient } from '../events'
 import { NPC, NPCInteractData, NPCGoData, NPCRoutine, NPCRoutineStep } from './types'
 import { NPCEvents } from './events'
 import { MovementEvents } from '../Movement/events'
+import type { MoveTargetType } from '../Movement/types'
 import { Receiver } from '../Receiver'
 import type { DialogueManager } from '../Dialogue'
 import { PlayerJoinData, PlayerTransitionData, Position } from '../types'
@@ -120,7 +121,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 		})
 
 		// Listen for movement path completion to update NPC state
-		this.event.on(MovementEvents.SS.PathComplete, (data: { entityId: string, targetType?: string, targetId?: string }) => {
+		this.event.on(MovementEvents.SS.PathComplete, (data: { entityId: string, targetType?: MoveTargetType, targetId?: string }) => {
 			const npc = this.npcs.get(data.entityId)
 			if (npc && npc.state === NPCState.Moving) {
 				npc.state = NPCState.Idle

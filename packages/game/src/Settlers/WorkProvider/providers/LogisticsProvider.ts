@@ -1,9 +1,10 @@
 import type { WorkProvider, WorkStep, LogisticsRequest, TransportSource, TransportTarget } from '../types'
-import { TransportSourceType, TransportTargetType, WorkProviderType, WorkStepType, WorkWaitReason } from '../types'
+import { TransportSourceType, TransportTargetType, WorkProviderType, WorkStepType, WorkWaitReason, LogisticsRequestType } from '../types'
 import type { WorkProviderDeps } from '..'
 import type { Logger } from '../../../Logs'
 import { calculateDistance } from '../../../utils'
 import type { LogisticsSnapshot } from '../../../state/types'
+import type { ItemType } from '../../../Items/types'
 
 export class LogisticsProvider implements WorkProvider {
 	public readonly id = 'logistics'
@@ -77,43 +78,29 @@ export class LogisticsProvider implements WorkProvider {
 		this.requests.push(request)
 	}
 
-	public requestInput(buildingInstanceId: string, itemType: string, quantity: number, priority: number): void {
+	private buildRequest(type: LogisticsRequestType, buildingInstanceId: string, itemType: ItemType, quantity: number, priority: number): LogisticsRequest {
 		const now = this.getNowMs()
-		this.enqueue({
+		return {
 			id: `${now}-${Math.random().toString(36).slice(2)}`,
-			type: 'input',
+			type,
 			buildingInstanceId,
 			itemType,
 			quantity,
 			priority,
 			createdAtMs: now
-		})
+		}
 	}
 
-	public requestOutput(buildingInstanceId: string, itemType: string, quantity: number, priority: number): void {
-		const now = this.getNowMs()
-		this.enqueue({
-			id: `${now}-${Math.random().toString(36).slice(2)}`,
-			type: 'output',
-			buildingInstanceId,
-			itemType,
-			quantity,
-			priority,
-			createdAtMs: now
-		})
+	public requestInput(buildingInstanceId: string, itemType: ItemType, quantity: number, priority: number): void {
+		this.enqueue(this.buildRequest(LogisticsRequestType.Input, buildingInstanceId, itemType, quantity, priority))
 	}
 
-	public requestConstructionInput(buildingInstanceId: string, itemType: string, quantity: number, priority: number): void {
-		const now = this.getNowMs()
-		this.enqueue({
-			id: `${now}-${Math.random().toString(36).slice(2)}`,
-			type: 'construction',
-			buildingInstanceId,
-			itemType,
-			quantity,
-			priority,
-			createdAtMs: now
-		})
+	public requestOutput(buildingInstanceId: string, itemType: ItemType, quantity: number, priority: number): void {
+		this.enqueue(this.buildRequest(LogisticsRequestType.Output, buildingInstanceId, itemType, quantity, priority))
+	}
+
+	public requestConstructionInput(buildingInstanceId: string, itemType: ItemType, quantity: number, priority: number): void {
+		this.enqueue(this.buildRequest(LogisticsRequestType.Construction, buildingInstanceId, itemType, quantity, priority))
 	}
 
 	public refreshConstructionRequests(): void {
@@ -131,7 +118,7 @@ export class LogisticsProvider implements WorkProvider {
 				const inFlight = this.getInFlightConstruction(buildingId, need.itemType)
 				const remaining = Math.max(0, need.remaining - inFlight)
 				if (remaining <= 0) {
-					this.removeRequest('construction', buildingId, need.itemType)
+					this.removeRequest(LogisticsRequestType.Construction, buildingId, need.itemType)
 					continue
 				}
 				this.requestConstructionInput(buildingId, need.itemType, remaining, priority)
@@ -169,7 +156,7 @@ export class LogisticsProvider implements WorkProvider {
 		}
 		const maxStackSize = this.managers.items.getItemMetadata(request.itemType)?.maxStackSize || request.quantity
 
-		if (request.type === 'input' || request.type === 'construction') {
+		if (request.type === LogisticsRequestType.Input || request.type === LogisticsRequestType.Construction) {
 			const sourceResult = this.findSourceForItem(
 				building.mapName,
 				building.playerId,
@@ -184,11 +171,11 @@ export class LogisticsProvider implements WorkProvider {
 			const { source, quantity } = sourceResult
 			const transferQuantity = Math.min(request.quantity, quantity, maxStackSize)
 
-			const target: TransportTarget = request.type === 'construction'
+			const target: TransportTarget = request.type === LogisticsRequestType.Construction
 				? { type: TransportTargetType.Construction, buildingInstanceId: building.id }
 				: { type: TransportTargetType.Storage, buildingInstanceId: building.id }
 
-			if (request.type === 'construction') {
+			if (request.type === LogisticsRequestType.Construction) {
 				this.addInFlightConstruction(building.id, request.itemType, transferQuantity)
 			}
 
@@ -201,7 +188,7 @@ export class LogisticsProvider implements WorkProvider {
 			}
 		}
 
-		if (request.type === 'output') {
+		if (request.type === LogisticsRequestType.Output) {
 			const targetBuildingId = this.findClosestTargetBuilding(building.id, request.itemType, request.quantity, building.mapName, building.playerId, building.position)
 			if (!targetBuildingId) {
 				return null
@@ -233,7 +220,7 @@ export class LogisticsProvider implements WorkProvider {
 		return byItem.get(itemType) || 0
 	}
 
-	private addInFlightConstruction(buildingInstanceId: string, itemType: string, quantity: number): void {
+	private addInFlightConstruction(buildingInstanceId: string, itemType: ItemType, quantity: number): void {
 		if (!this.inFlightConstruction.has(buildingInstanceId)) {
 			this.inFlightConstruction.set(buildingInstanceId, new Map())
 		}
@@ -242,7 +229,7 @@ export class LogisticsProvider implements WorkProvider {
 		byItem.set(itemType, current + quantity)
 	}
 
-	private removeInFlightConstruction(buildingInstanceId: string, itemType: string, quantity: number): void {
+	private removeInFlightConstruction(buildingInstanceId: string, itemType: ItemType, quantity: number): void {
 		const byItem = this.inFlightConstruction.get(buildingInstanceId)
 		if (!byItem) {
 			return
@@ -259,14 +246,14 @@ export class LogisticsProvider implements WorkProvider {
 		byItem.set(itemType, next)
 	}
 
-	private removeRequest(type: LogisticsRequest['type'], buildingInstanceId: string, itemType: string): void {
+	private removeRequest(type: LogisticsRequestType, buildingInstanceId: string, itemType: ItemType): void {
 		this.requests = this.requests.filter(r => !(r.type === type && r.buildingInstanceId === buildingInstanceId && r.itemType === itemType))
 	}
 
 	private findSourceForItem(
 		mapName: string,
 		playerId: string,
-		itemType: string,
+		itemType: ItemType,
 		quantity: number,
 		position: { x: number, y: number },
 		excludeBuildingId?: string

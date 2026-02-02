@@ -2,6 +2,7 @@ import { calculateDistance } from '../../../utils'
 import { ConstructionStage } from '../../../Buildings/types'
 import { SettlerState } from '../../../Population/types'
 import { WorkActionType, WorkProviderType } from '../types'
+import { MoveTargetType } from '../../../Movement/types'
 import type { WorkAction, WorkStep } from '../types'
 import { WorkPolicyResultType } from './constants'
 import type { WorkPolicy, WorkPolicyContext, WorkPolicyResult } from './types'
@@ -149,12 +150,12 @@ export class HomeRelocationPolicy implements WorkPolicy {
 
 		const releaseReservation = () => ctx.managers.reservations.releaseHouseReservation(reservationId)
 		const actions: WorkAction[] = [
-			{ type: WorkActionType.Move, position: currentHouse.position, targetType: 'house', targetId: currentHouse.id, setState: SettlerState.MovingHome },
+			{ type: WorkActionType.Move, position: currentHouse.position, targetType: MoveTargetType.House, targetId: currentHouse.id, setState: SettlerState.MovingHome },
 			{ type: WorkActionType.Wait, durationMs: HOME_MOVE_PACK_MS, setState: SettlerState.Packing },
-			{ type: WorkActionType.Move, position: bestHouse.position, targetType: 'house', targetId: bestHouse.id, setState: SettlerState.MovingHome },
+			{ type: WorkActionType.Move, position: bestHouse.position, targetType: MoveTargetType.House, targetId: bestHouse.id, setState: SettlerState.MovingHome },
 			{ type: WorkActionType.ChangeHome, reservationId, houseId: bestHouse.id },
 			{ type: WorkActionType.Wait, durationMs: HOME_MOVE_UNPACK_MS, setState: SettlerState.Unpacking },
-			{ type: WorkActionType.Move, position: workplace.position, targetType: 'building', targetId: workplace.id, setState: SettlerState.MovingToBuilding }
+			{ type: WorkActionType.Move, position: workplace.position, targetType: MoveTargetType.Building, targetId: workplace.id, setState: SettlerState.MovingToBuilding }
 		]
 
 		return { actions, releaseReservation }

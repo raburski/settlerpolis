@@ -1,4 +1,4 @@
-import { Position } from '../types'
+import { Position, MapId } from '../types'
 import { PlayerSourcedData } from '../Players/types'
 import { AffinityData, AffinitySentiments, AffinitySentimentType } from '../Affinity/types'
 
@@ -61,7 +61,7 @@ export interface NPC {
 	id: string
 	name: string
 	position: Position
-	mapId: string
+	mapId: MapId
 	initialSpot?: string
 	currentSpot?: string
 	messages?: NPCMessages

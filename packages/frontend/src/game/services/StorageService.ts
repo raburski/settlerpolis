@@ -1,5 +1,6 @@
 import { EventBus } from '../EventBus'
 import { Event } from '@rugged/game'
+import { UiEvents } from '../uiEvents'
 
 interface BuildingStorage {
 	buildingInstanceId: string
@@ -46,7 +47,7 @@ class StorageServiceClass {
 			storage.capacities[data.itemType] = data.capacity
 
 			// Emit UI event for reactive updates
-			EventBus.emit('ui:storage:updated', {
+			EventBus.emit(UiEvents.Storage.Updated, {
 				buildingInstanceId: data.buildingInstanceId,
 				storage: { ...storage }
 			})
@@ -76,7 +77,7 @@ class StorageServiceClass {
 
 		EventBus.on(Event.Storage.SC.StorageSlotUpdated, (data: StorageSlotState) => {
 			this.slotStates.set(data.slotId, { ...data })
-			EventBus.emit('ui:storage:slot-updated', { ...data })
+			EventBus.emit(UiEvents.Storage.SlotUpdated, { ...data })
 		})
 	}
 

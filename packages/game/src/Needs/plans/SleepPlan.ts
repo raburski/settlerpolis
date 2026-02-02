@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { SettlerState } from '../../Population/types'
 import type { WorkAction } from '../../Settlers/WorkProvider/types'
 import { WorkActionType } from '../../Settlers/WorkProvider/types'
+import { MoveTargetType } from '../../Movement/types'
 import type { BedLocation } from '../policies/BedPolicy'
 import { NeedType } from '../NeedTypes'
 import type { NeedPlanResult } from '../types'
@@ -37,7 +38,7 @@ export const buildSleepPlan = (settlerId: string, bed: BedLocation, deps: SleepP
 
 	const moveTargetPosition = amenityReservation?.position ?? bed.position
 	const moveTargetId = amenityReservation?.reservationId ?? bed.buildingInstanceId
-	const moveTargetType = amenityReservation ? 'amenity_slot' : 'building'
+	const moveTargetType = amenityReservation ? MoveTargetType.AmenitySlot : MoveTargetType.Building
 
 	actions.push({
 		type: WorkActionType.Move,

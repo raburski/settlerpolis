@@ -3,6 +3,9 @@ import { EventBus } from '../EventBus'
 import { Event } from '@rugged/game'
 import { OverallNPCApproach } from '@rugged/game'
 import styles from './Relationships.module.css'
+import { useEventBus } from './hooks/useEventBus'
+import { useSlidingPanel } from './hooks/useSlidingPanel'
+import { UiEvents } from '../uiEvents'
 
 interface NPCRelationship {
 	npcId: string
@@ -10,70 +13,13 @@ interface NPCRelationship {
 }
 
 export function Relationships() {
-	const [isVisible, setIsVisible] = useState(false)
-	const [isExiting, setIsExiting] = useState(false)
+	const { isVisible, isExiting, toggle, close } = useSlidingPanel()
 	const [relationships, setRelationships] = useState<NPCRelationship[]>([])
 
-	useEffect(() => {
-		const handleToggle = () => {
-			if (isVisible) {
-				// Start exit animation
-				setIsExiting(true)
-				// Wait for animation to complete before hiding
-				setTimeout(() => {
-					setIsVisible(false)
-					setIsExiting(false)
-				}, 300) // Match animation duration
-			} else {
-				setIsVisible(true)
-			}
-		}
-
-		const handleInventoryToggle = () => {
-			// Close relationships when inventory is opened
-			if (isVisible) {
-				setIsExiting(true)
-				setTimeout(() => {
-					setIsVisible(false)
-					setIsExiting(false)
-				}, 300)
-			}
-		}
-
-		const handleQuestsToggle = () => {
-			// Close relationships when quests is opened
-			if (isVisible) {
-				setIsExiting(true)
-				setTimeout(() => {
-					setIsVisible(false)
-					setIsExiting(false)
-				}, 300)
-			}
-		}
-
-		const handleSettingsToggle = () => {
-			// Close relationships when settings is opened
-			if (isVisible) {
-				setIsExiting(true)
-				setTimeout(() => {
-					setIsVisible(false)
-					setIsExiting(false)
-				}, 300)
-			}
-		}
-
-		EventBus.on('ui:relationships:toggle', handleToggle)
-		EventBus.on('ui:inventory:toggle', handleInventoryToggle)
-		EventBus.on('ui:quests:toggle', handleQuestsToggle)
-		EventBus.on('ui:settings:toggle', handleSettingsToggle)
-
-		return () => {
-			EventBus.off('ui:relationships:toggle', handleToggle)
-			EventBus.off('ui:inventory:toggle', handleInventoryToggle)
-			EventBus.off('ui:quests:toggle', handleQuestsToggle)
-			EventBus.off('ui:settings:toggle', handleSettingsToggle)
-		}
-	}, [isVisible])
+	useEventBus(UiEvents.Relationships.Toggle, toggle)
+	useEventBus(UiEvents.Inventory.Toggle, close)
+	useEventBus(UiEvents.Quests.Toggle, close)
+	useEventBus(UiEvents.Settings.Toggle, close)
 
 	useEffect(() => {
 		const handleRelationshipList = (data: { affinities: NPCRelationship[] }) => {
@@ -108,13 +54,7 @@ export function Relationships() {
 		}
 	}, [])
 
-	const handleClose = () => {
-		setIsExiting(true)
-		setTimeout(() => {
-			setIsVisible(false)
-			setIsExiting(false)
-		}, 300)
-	}
+	const handleClose = () => close()
 
 	if (!isVisible && !isExiting) {
 		return null

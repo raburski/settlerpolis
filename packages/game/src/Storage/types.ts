@@ -1,15 +1,24 @@
+import type { ItemType } from '../Items/types'
+
+export enum StorageReservationStatus {
+	Pending = 'pending',
+	InTransit = 'in_transit',
+	Delivered = 'delivered',
+	Cancelled = 'cancelled'
+}
+
 export interface StorageCapacity {
 	// Record of itemType -> maximum capacity for that item type
 	// If itemType is not in the record, that item type cannot be stored
 	// Empty record = no storage capacity
-	capacities: Record<string, number> // itemType -> max capacity
+	capacities: Record<ItemType, number> // itemType -> max capacity
 	// Optional storage preservation modifiers (lower = slows spoilage)
 	preservation?: {
 		spoilageMultiplier: number
 	}
 	// Fixed storage slots (tile offsets relative to building origin)
 	slots?: Array<{
-		itemType: string
+		itemType: ItemType
 		offset: { x: number, y: number }
 		hidden?: boolean
 		maxQuantity?: number
@@ -19,7 +28,7 @@ export interface StorageCapacity {
 export interface StorageSlot {
 	slotId: string
 	buildingInstanceId: string
-	itemType: string
+	itemType: ItemType
 	position: import('../types').Position
 	pileSize: number
 	quantity: number
@@ -33,16 +42,16 @@ export interface StorageSlot {
 export interface BuildingStorage {
 	buildingInstanceId: string
 	slots: Map<string, StorageSlot>
-	slotsByItem: Map<string, string[]>
+	slotsByItem: Map<ItemType, string[]>
 }
 
 export interface StorageReservation {
 	reservationId: string
 	buildingInstanceId: string
-	itemType: string
+	itemType: ItemType
 	quantity: number
 	reservedBy: string // carrierId or buildingInstanceId
-	status: 'pending' | 'in_transit' | 'delivered' | 'cancelled'
+	status: StorageReservationStatus
 	createdAt: number
 	isOutgoing?: boolean // true for outgoing reservations (items being transported away), false for incoming (space reserved for delivery)
 	slotId?: string

@@ -2,6 +2,7 @@ import { GameObjects, Physics, Geom } from 'phaser'
 import { GameScene } from '../../scenes/base/GameScene'
 import { SettlerState, ProfessionType, Direction } from '@rugged/game'
 import { EventBus } from '../../EventBus'
+import { UiEvents } from '../../uiEvents'
 import { BaseMovementView } from '../Movement/BaseMovementView'
 import { itemService } from '../../services/ItemService'
 
@@ -201,7 +202,7 @@ export class SettlerView extends BaseMovementView {
 		if (!pointer.leftButtonDown()) return
 		
 		// Emit click event for UI
-		EventBus.emit('ui:settler:click', {
+		EventBus.emit(UiEvents.Settler.Click, {
 			settlerId: this.settlerId
 		})
 	}

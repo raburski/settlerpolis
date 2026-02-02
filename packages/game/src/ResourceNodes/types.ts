@@ -1,4 +1,4 @@
-import { Position } from '../types'
+import { Position, MapId } from '../types'
 import { ItemType } from '../Items/types'
 
 export type ResourceNodeType = string
@@ -16,7 +16,7 @@ export interface ResourceNodeDefinition {
 
 export interface ResourceNodeSpawn {
 	nodeType: ResourceNodeType
-	mapName: string
+	mapName: MapId
 	position: Position
 	quantity?: number // Overrides definition.maxHarvests if provided
 	tileBased?: boolean // If true, position is in tiles (default: true)
@@ -25,7 +25,7 @@ export interface ResourceNodeSpawn {
 export interface ResourceNodeInstance {
 	id: string
 	nodeType: ResourceNodeType
-	mapName: string
+	mapName: MapId
 	position: Position
 	remainingHarvests: number
 	reservedBy?: string

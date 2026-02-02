@@ -1,4 +1,4 @@
-import type { Position } from '../types'
+import type { Position, MapId } from '../types'
 
 export enum RoadType {
 	None = 0,
@@ -32,28 +32,28 @@ export interface RoadBuildRequestData {
 }
 
 export interface RoadTilesSyncData {
-	mapName: string
+	mapName: MapId
 	tiles: RoadTile[]
 }
 
 export interface RoadTilesUpdatedData {
-	mapName: string
+	mapName: MapId
 	tiles: RoadTile[]
 }
 
 export interface RoadPendingSyncData {
-	mapName: string
+	mapName: MapId
 	tiles: RoadTile[]
 }
 
 export interface RoadPendingUpdatedData {
-	mapName: string
+	mapName: MapId
 	tiles: RoadTile[]
 }
 
 export interface RoadJobData {
 	jobId: string
-	mapName: string
+	mapName: MapId
 	playerId: string
 	position: Position
 	tile: { x: number, y: number }

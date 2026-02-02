@@ -5,7 +5,7 @@ import type { MapObjectsManager } from '../MapObjects'
 import type { MapManager } from '../Map'
 import { Logger } from '../Logs'
 import { StorageEvents } from './events'
-import { BuildingStorage, StorageReservation, StorageReservationResult, StorageSlot } from './types'
+import { BuildingStorage, StorageReservation, StorageReservationResult, StorageSlot, StorageReservationStatus } from './types'
 import { v4 as uuidv4 } from 'uuid'
 import { Receiver } from '../Receiver'
 import { SimulationEvents } from '../Simulation/events'
@@ -332,7 +332,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			itemType,
 			quantity,
 			reservedBy,
-			status: 'pending',
+			status: StorageReservationStatus.Pending,
 			createdAt: this.simulationTimeMs,
 			isOutgoing,
 			slotId: slot.slotId
@@ -735,7 +735,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			this.logger.warn(`[StorageManager] Cannot release reservation: Reservation ${reservationId} not found`)
 			return
 		}
-		if (reservation.status === 'cancelled' || reservation.status === 'delivered') {
+		if (reservation.status === StorageReservationStatus.Cancelled || reservation.status === StorageReservationStatus.Delivered) {
 			return
 		}
 		const storage = this.buildingStorages.get(reservation.buildingInstanceId)
@@ -750,7 +750,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			}
 		}
 
-		reservation.status = 'cancelled'
+		reservation.status = StorageReservationStatus.Cancelled
 		this.reservations.delete(reservationId)
 
 		this.logger.log(`[StorageManager] Released reservation ${reservationId}`)
@@ -772,7 +772,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		if (!reservation) {
 			return
 		}
-		if (reservation.status === 'cancelled' || reservation.status === 'delivered') {
+		if (reservation.status === StorageReservationStatus.Cancelled || reservation.status === StorageReservationStatus.Delivered) {
 			return
 		}
 		const storage = this.buildingStorages.get(reservation.buildingInstanceId)
@@ -787,7 +787,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			}
 		}
 
-		reservation.status = 'delivered'
+		reservation.status = StorageReservationStatus.Delivered
 		this.logger.log(`[StorageManager] Completed reservation ${reservationId}`)
 	}
 
@@ -825,7 +825,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		const RESERVATION_CLEANUP_AGE = 60000 // 1 minute
 
 		for (const [reservationId, reservation] of this.reservations.entries()) {
-			if ((reservation.status === 'cancelled' || reservation.status === 'delivered') &&
+			if ((reservation.status === StorageReservationStatus.Cancelled || reservation.status === StorageReservationStatus.Delivered) &&
 				(now - reservation.createdAt) > RESERVATION_CLEANUP_AGE) {
 				this.reservations.delete(reservationId)
 			}
@@ -916,7 +916,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	private releaseStalePendingReservations(): void {
 		const MAX_PENDING_AGE_MS = 2 * 60 * 1000
 		for (const reservation of this.reservations.values()) {
-			if (reservation.status !== 'pending') {
+			if (reservation.status !== StorageReservationStatus.Pending) {
 				continue
 			}
 			if (this.simulationTimeMs - reservation.createdAt < MAX_PENDING_AGE_MS) {

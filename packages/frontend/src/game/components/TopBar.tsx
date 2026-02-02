@@ -6,6 +6,7 @@ import { populationService } from '../services/PopulationService'
 import { PopulationStatsData } from '@rugged/game'
 import { useGlobalStockTotals } from './hooks/useGlobalStockTotals'
 import styles from './TopBar.module.css'
+import { UiEvents } from '../uiEvents'
 
 type TopBarProps = {
 	isStockOpen: boolean
@@ -69,10 +70,10 @@ export const TopBar: React.FC<TopBarProps> = ({
 			setHousingCapacity(data.housingCapacity || 0)
 		}
 
-		EventBus.on('ui:population:stats-updated', handleStatsUpdated)
+		EventBus.on(UiEvents.Population.StatsUpdated, handleStatsUpdated)
 
 		return () => {
-			EventBus.off('ui:population:stats-updated', handleStatsUpdated)
+			EventBus.off(UiEvents.Population.StatsUpdated, handleStatsUpdated)
 		}
 	}, [])
 

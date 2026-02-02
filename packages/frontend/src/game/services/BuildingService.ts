@@ -1,5 +1,6 @@
 import { EventBus } from '../EventBus'
 import { Event, BuildingInstance, BuildingDefinition } from '@rugged/game'
+import { UiEvents } from '../uiEvents'
 
 class BuildingServiceClass {
 	private buildingInstances = new Map<string, BuildingInstance>()
@@ -38,7 +39,7 @@ class BuildingServiceClass {
 				this.buildingInstances.set(data.buildingInstanceId, updatedBuilding)
 				
 				// Emit UI event to notify components that building was updated
-				EventBus.emit('ui:building:updated', {
+				EventBus.emit(UiEvents.Building.Updated, {
 					buildingInstanceId: data.buildingInstanceId,
 					building: updatedBuilding
 				})
@@ -59,7 +60,7 @@ class BuildingServiceClass {
 				this.buildingInstances.set(data.buildingInstanceId, updatedBuilding)
 				
 				// Emit UI event to notify components that building was updated
-				EventBus.emit('ui:building:updated', {
+				EventBus.emit(UiEvents.Building.Updated, {
 					buildingInstanceId: data.buildingInstanceId,
 					building: updatedBuilding
 				})
@@ -78,7 +79,7 @@ class BuildingServiceClass {
 				this.buildingInstances.set(data.buildingInstanceId, updatedBuilding)
 				
 				// Emit UI event to notify components that building was updated
-				EventBus.emit('ui:building:updated', {
+				EventBus.emit(UiEvents.Building.Updated, {
 					buildingInstanceId: data.buildingInstanceId,
 					building: updatedBuilding
 				})
@@ -108,7 +109,7 @@ class BuildingServiceClass {
 					workAreaCenter: { x: data.center.x, y: data.center.y }
 				}
 				this.buildingInstances.set(data.buildingInstanceId, updatedBuilding)
-				EventBus.emit('ui:building:updated', {
+				EventBus.emit(UiEvents.Building.Updated, {
 					buildingInstanceId: data.buildingInstanceId,
 					building: updatedBuilding
 				})
@@ -116,13 +117,13 @@ class BuildingServiceClass {
 		})
 
 		// Listen for building clicks
-		EventBus.on('ui:building:click', (data: { buildingInstanceId?: string, buildingId?: string }) => {
+		EventBus.on(UiEvents.Building.Click, (data: { buildingInstanceId?: string, buildingId?: string }) => {
 			if (data.buildingInstanceId) {
 				const instance = this.buildingInstances.get(data.buildingInstanceId)
 				const definition = instance ? this.buildingDefinitions.get(instance.buildingId) : null
 				
 				if (instance && definition) {
-					EventBus.emit('ui:building:select', {
+					EventBus.emit(UiEvents.Building.Select, {
 						buildingInstance: instance,
 						buildingDefinition: definition
 					})

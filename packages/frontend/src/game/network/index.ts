@@ -5,6 +5,7 @@ import { playerService } from '../services/PlayerService'
 import { LocalManager } from "./LocalManager"
 import { NetworkEventManager, NetworkManager } from "./NetworkManager"
 import { FrontendMapUrlService } from '../services/MapUrlService'
+import { UiEvents } from '../uiEvents'
 // Initialize BuildingService to start listening to events
 import '../services/BuildingService'
 // Initialize PopulationService to start listening to events
@@ -103,7 +104,7 @@ function getNetworkManager(): NetworkEventManager {
 						return
 					}
 					resolved = true
-					EventBus.off('ui:scene:ready', handleSceneReady)
+				EventBus.off(UiEvents.Scene.Ready, handleSceneReady)
 					if (fallbackTimer !== undefined) {
 						window.clearTimeout(fallbackTimer)
 					}
@@ -114,12 +115,12 @@ function getNetworkManager(): NetworkEventManager {
 						skipStartingItems: true
 					})
 				}
-				EventBus.on('ui:scene:ready', handleSceneReady)
+			EventBus.on(UiEvents.Scene.Ready, handleSceneReady)
 				fallbackTimer = window.setTimeout(() => {
 					if (resolved) {
 						return
 					}
-					EventBus.off('ui:scene:ready', handleSceneReady)
+					EventBus.off(UiEvents.Scene.Ready, handleSceneReady)
 					localManager.client.emit(Receiver.All, Event.Players.CS.Join, {
 						position: player.position,
 						mapId: player.mapId,

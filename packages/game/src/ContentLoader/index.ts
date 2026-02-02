@@ -202,7 +202,7 @@ export class ContentLoader {
 			.filter(item => item.changesProfession)
 			.map(item => ({
 				itemType: item.id,
-				targetProfession: item.changesProfession! as any, // Will be converted to ProfessionType enum
+				targetProfession: item.changesProfession!,
 				name: item.name,
 				description: item.description
 			}))

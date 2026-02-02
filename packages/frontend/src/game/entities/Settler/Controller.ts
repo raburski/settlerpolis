@@ -2,6 +2,7 @@ import { Scene } from 'phaser'
 import { SettlerView } from './View'
 import { Event, Settler, ProfessionType, SettlerState, NeedType } from '@rugged/game'
 import { EventBus } from '../../EventBus'
+import { UiEvents } from '../../uiEvents'
 import { GameScene } from '../../scenes/base/GameScene'
 
 export class SettlerController {
@@ -19,7 +20,7 @@ export class SettlerController {
 		EventBus.on(Event.Population.SC.SettlerUpdated, this.handleSettlerUpdated, this)
 		EventBus.on(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
 		EventBus.on(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
-		EventBus.on('ui:settler:highlight', this.handleHighlight, this)
+		EventBus.on(UiEvents.Settler.Highlight, this.handleHighlight, this)
 		EventBus.on(Event.Needs.SS.NeedInterruptStarted, this.handleNeedInterruptStarted, this)
 		EventBus.on(Event.Needs.SS.NeedInterruptEnded, this.handleNeedInterruptEnded, this)
 
@@ -163,7 +164,7 @@ private handleWorkerUnassigned = (data: { settlerId: string, assignmentId: strin
 		EventBus.off(Event.Population.SC.SettlerUpdated, this.handleSettlerUpdated, this)
 		EventBus.off(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
 		EventBus.off(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
-		EventBus.off('ui:settler:highlight', this.handleHighlight, this)
+		EventBus.off(UiEvents.Settler.Highlight, this.handleHighlight, this)
 		EventBus.off(Event.Needs.SS.NeedInterruptStarted, this.handleNeedInterruptStarted, this)
 		EventBus.off(Event.Needs.SS.NeedInterruptEnded, this.handleNeedInterruptEnded, this)
 		// Destroy the view

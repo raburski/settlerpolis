@@ -1,6 +1,7 @@
 import { Scene, GameObjects, Input } from 'phaser'
 import { EventBus } from '../EventBus'
 import { Event, BuildingDefinition } from '@rugged/game'
+import { UiEvents } from '../uiEvents'
 
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'
 const contentModules = import.meta.glob('../../../../../content/*/index.ts', { eager: true })
@@ -61,13 +62,13 @@ export class BuildingPlacementManager {
 		this.selectHandler = (data: { buildingId: string }) => {
 			this.selectBuilding(data.buildingId)
 		}
-		EventBus.on('ui:construction:select', this.selectHandler)
+		EventBus.on(UiEvents.Construction.Select, this.selectHandler)
 
 		// Listen for building selection cancel
 		this.cancelHandler = () => {
 			this.cancelSelection()
 		}
-		EventBus.on('ui:construction:cancel', this.cancelHandler)
+		EventBus.on(UiEvents.Construction.Cancel, this.cancelHandler)
 
 		// Listen for building placement events to clear selection
 		this.placedHandler = () => {
@@ -194,7 +195,7 @@ export class BuildingPlacementManager {
 
 	private handleEscape = () => {
 		this.cancelSelection()
-		EventBus.emit('ui:construction:cancel', {})
+		EventBus.emit(UiEvents.Construction.Cancel, {})
 	}
 
 	private placeBuilding(x: number, y: number) {
@@ -222,11 +223,11 @@ export class BuildingPlacementManager {
 		this.cancelSelection()
 		
 		if (this.selectHandler) {
-			EventBus.off('ui:construction:select', this.selectHandler)
+			EventBus.off(UiEvents.Construction.Select, this.selectHandler)
 			this.selectHandler = null
 		}
 		if (this.cancelHandler) {
-			EventBus.off('ui:construction:cancel', this.cancelHandler)
+			EventBus.off(UiEvents.Construction.Cancel, this.cancelHandler)
 			this.cancelHandler = null
 		}
 		if (this.placedHandler) {

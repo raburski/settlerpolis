@@ -1,6 +1,7 @@
 import { Scene, GameObjects, Input } from 'phaser'
 import { EventBus } from '../EventBus'
 import { Event, RoadType } from '@rugged/game'
+import { UiEvents } from '../uiEvents'
 
 interface RoadPlacementState {
 	selectedRoadType: RoadType | null
@@ -43,14 +44,14 @@ export class RoadPlacementManager {
 	public destroy(): void {
 		this.cancelSelection(false)
 		if (this.selectHandler) {
-			EventBus.off('ui:road:select', this.selectHandler)
+			EventBus.off(UiEvents.Road.Select, this.selectHandler)
 		}
 		if (this.cancelHandler) {
-			EventBus.off('ui:road:cancel', this.cancelHandler)
-			EventBus.off('ui:construction:select', this.cancelHandler)
-			EventBus.off('ui:construction:cancel', this.cancelHandler)
-			EventBus.off('ui:building:work-area:select', this.cancelHandler)
-			EventBus.off('ui:building:work-area:cancel', this.cancelHandler)
+			EventBus.off(UiEvents.Road.Cancel, this.cancelHandler)
+			EventBus.off(UiEvents.Construction.Select, this.cancelHandler)
+			EventBus.off(UiEvents.Construction.Cancel, this.cancelHandler)
+			EventBus.off(UiEvents.Building.WorkAreaSelect, this.cancelHandler)
+			EventBus.off(UiEvents.Building.WorkAreaCancel, this.cancelHandler)
 		}
 	}
 
@@ -58,16 +59,16 @@ export class RoadPlacementManager {
 		this.selectHandler = (data: { roadType: RoadType }) => {
 			this.selectRoad(data.roadType)
 		}
-		EventBus.on('ui:road:select', this.selectHandler)
+		EventBus.on(UiEvents.Road.Select, this.selectHandler)
 
 		this.cancelHandler = () => {
 			this.cancelSelection(false)
 		}
-		EventBus.on('ui:road:cancel', this.cancelHandler)
-		EventBus.on('ui:construction:select', this.cancelHandler)
-		EventBus.on('ui:construction:cancel', this.cancelHandler)
-		EventBus.on('ui:building:work-area:select', this.cancelHandler)
-		EventBus.on('ui:building:work-area:cancel', this.cancelHandler)
+		EventBus.on(UiEvents.Road.Cancel, this.cancelHandler)
+		EventBus.on(UiEvents.Construction.Select, this.cancelHandler)
+		EventBus.on(UiEvents.Construction.Cancel, this.cancelHandler)
+		EventBus.on(UiEvents.Building.WorkAreaSelect, this.cancelHandler)
+		EventBus.on(UiEvents.Building.WorkAreaCancel, this.cancelHandler)
 	}
 
 	private selectRoad(roadType: RoadType): void {
@@ -76,8 +77,8 @@ export class RoadPlacementManager {
 			return
 		}
 
-		EventBus.emit('ui:construction:cancel', {})
-		EventBus.emit('ui:building:work-area:cancel', {})
+		EventBus.emit(UiEvents.Construction.Cancel, {})
+		EventBus.emit(UiEvents.Building.WorkAreaCancel, {})
 
 		if (this.state.selectedRoadType) {
 			this.destroyGhostSprite()
@@ -94,7 +95,7 @@ export class RoadPlacementManager {
 
 	private cancelSelection(emitEvent: boolean): void {
 		if (emitEvent) {
-			EventBus.emit('ui:road:cancel', {})
+			EventBus.emit(UiEvents.Road.Cancel, {})
 			return
 		}
 
@@ -108,7 +109,7 @@ export class RoadPlacementManager {
 		this.state.isValidPosition = false
 		this.destroyGhostSprite()
 		this.removeMouseHandlers()
-		EventBus.emit('ui:road:cancelled', {})
+		EventBus.emit(UiEvents.Road.Cancelled, {})
 	}
 
 	private createGhostSprite(): void {

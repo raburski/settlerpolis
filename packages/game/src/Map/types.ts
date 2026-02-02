@@ -1,4 +1,4 @@
-import { Position } from '../types'
+import { Position, MapId } from '../types'
 import { Trigger } from '../Triggers/types'
 
 export interface TiledMap {
@@ -65,7 +65,7 @@ export interface MapTrigger {
 }
 
 export interface MapData {
-	id: string
+	id: MapId
 	name: string
 	tiledMap: TiledMap
 	spawnPoints: Position[]
@@ -90,11 +90,11 @@ export interface MapObjectLayer {
 }
 
 export interface MapLoadData {
-	mapId: string
+	mapId: MapId
 }
 
 export interface MapLoadResponseData {
-	mapId: string
+	mapId: MapId
 	name: string
 	tileLayers: MapLayer[]
 	objectLayers: MapObjectLayer[]
@@ -109,12 +109,12 @@ export interface MapLoadResponseData {
 }
 
 export interface MapTransitionData {
-	toMapId: string
+	toMapId: MapId
 	position: Position
 }
 
 export interface MapTransitionResponseData {
-	toMapId: string
+	toMapId: MapId
 	position: Position
 	tileLayers: MapLayer[]
 	objectLayers: MapObjectLayer[]
@@ -141,5 +141,5 @@ export interface MapUrlService {
 	 * @param mapName The name of the map
 	 * @returns The complete URL to the map
 	 */
-	getMapUrl(mapName: string): string
+	getMapUrl(mapName: MapId): string
 } 

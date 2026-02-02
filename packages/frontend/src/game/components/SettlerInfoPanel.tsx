@@ -5,6 +5,7 @@ import { populationService } from '../services/PopulationService'
 import { buildingService } from '../services/BuildingService'
 import { DraggablePanel } from './DraggablePanel'
 import sharedStyles from './PanelShared.module.css'
+import { UiEvents } from '../uiEvents'
 
 export const SettlerInfoPanel: React.FC = () => {
 	const [isVisible, setIsVisible] = useState(false)
@@ -14,15 +15,15 @@ export const SettlerInfoPanel: React.FC = () => {
 		// Listen for settler selection
 		const handleSettlerClick = (data: { settlerId: string }) => {
 			if (settler && settler.id !== data.settlerId) {
-				EventBus.emit('ui:settler:highlight', { settlerId: settler.id, highlighted: false })
+				EventBus.emit(UiEvents.Settler.Highlight, { settlerId: settler.id, highlighted: false })
 			}
 			const settlerData = populationService.getSettler(data.settlerId)
 			if (settlerData) {
 				setSettler(settlerData)
 				setIsVisible(true)
-				EventBus.emit('ui:settler:highlight', { settlerId: settlerData.id, highlighted: true })
+				EventBus.emit(UiEvents.Settler.Highlight, { settlerId: settlerData.id, highlighted: true })
 				// Close building panel if open
-				EventBus.emit('ui:building:close')
+				EventBus.emit(UiEvents.Building.Close)
 			}
 		}
 
@@ -40,29 +41,29 @@ export const SettlerInfoPanel: React.FC = () => {
 		const handleClosePanel = () => {
 			setIsVisible(false)
 			if (settler) {
-				EventBus.emit('ui:settler:highlight', { settlerId: settler.id, highlighted: false })
+				EventBus.emit(UiEvents.Settler.Highlight, { settlerId: settler.id, highlighted: false })
 			}
 			setSettler(null)
 		}
 
-		EventBus.on('ui:settler:click', handleSettlerClick)
-		EventBus.on('ui:population:settler-updated', handleSettlerUpdate)
-		EventBus.on('ui:settler:close', handleClosePanel)
+		EventBus.on(UiEvents.Settler.Click, handleSettlerClick)
+		EventBus.on(UiEvents.Population.SettlerUpdated, handleSettlerUpdate)
+		EventBus.on(UiEvents.Settler.Close, handleClosePanel)
 
 		return () => {
-			EventBus.off('ui:settler:click', handleSettlerClick)
-			EventBus.off('ui:population:settler-updated', handleSettlerUpdate)
-			EventBus.off('ui:settler:close', handleClosePanel)
+			EventBus.off(UiEvents.Settler.Click, handleSettlerClick)
+			EventBus.off(UiEvents.Population.SettlerUpdated, handleSettlerUpdate)
+			EventBus.off(UiEvents.Settler.Close, handleClosePanel)
 		}
 	}, [settler])
 
 	const handleClose = () => {
 		if (settler) {
-			EventBus.emit('ui:settler:highlight', { settlerId: settler.id, highlighted: false })
+			EventBus.emit(UiEvents.Settler.Highlight, { settlerId: settler.id, highlighted: false })
 		}
 		setIsVisible(false)
 		setSettler(null)
-		EventBus.emit('ui:settler:close')
+		EventBus.emit(UiEvents.Settler.Close)
 	}
 
 	if (!isVisible || !settler) {

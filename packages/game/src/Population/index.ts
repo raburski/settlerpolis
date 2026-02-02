@@ -26,6 +26,9 @@ import { Position } from '../types'
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
 import { PopulationStats } from './Stats'
+import type { ItemType } from '../Items/types'
+import type { MoveTargetType } from '../Movement/types'
+import type { SettlerStateContext } from './types'
 import type { PlayerJoinData } from '../Players/types'
 import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
@@ -46,7 +49,7 @@ export interface PopulationDeps {
 export class PopulationManager extends BaseManager<PopulationDeps> {
 	private settlers = new Map<string, Settler>() // settlerId -> Settler
 	private houseOccupants = new Map<string, Set<string>>() // houseId -> settlerIds
-	private professionTools = new Map<string, ProfessionType>() // itemType -> ProfessionType
+	private professionTools = new Map<ItemType, ProfessionType>() // itemType -> ProfessionType
 	private professions = new Map<ProfessionType, ProfessionDefinition>() // professionType -> ProfessionDefinition
 	private stats: PopulationStats
 	private startingPopulation: Array<{ profession: ProfessionType, count: number }> = []
@@ -312,104 +315,81 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		return settler.needs.hunger <= NEED_CRITICAL_THRESHOLD || settler.needs.fatigue <= NEED_CRITICAL_THRESHOLD
 	}
 
-	public setSettlerState(settlerId: string, state: SettlerState): void {
+	private updateSettler(settlerId: string, update: (settler: Settler) => void): void {
 		const settler = this.settlers.get(settlerId)
 		if (!settler) {
 			return
 		}
-		settler.state = state
+		update(settler)
 		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+	}
+
+	private updateSettlerContext(settlerId: string, patch: Partial<SettlerStateContext>): void {
+		this.updateSettler(settlerId, (settler) => {
+			settler.stateContext = {
+				...settler.stateContext,
+				...patch
+			}
+		})
+	}
+
+	public setSettlerState(settlerId: string, state: SettlerState): void {
+		this.updateSettler(settlerId, (settler) => {
+			settler.state = state
+		})
 	}
 
 	public setSettlerAssignment(settlerId: string, assignmentId?: string, providerId?: string, buildingId?: string): void {
-		const settler = this.settlers.get(settlerId)
-		if (!settler) {
-			return
-		}
-		settler.stateContext = {
-			...settler.stateContext,
-			assignmentId,
-			providerId
-		}
-		settler.buildingId = buildingId
-		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+		this.updateSettler(settlerId, (settler) => {
+			settler.stateContext = {
+				...settler.stateContext,
+				assignmentId,
+				providerId
+			}
+			settler.buildingId = buildingId
+		})
 	}
 
-	public setSettlerCarryingItem(settlerId: string, itemType?: string, quantity?: number): void {
-		const settler = this.settlers.get(settlerId)
-		if (!settler) {
-			return
-		}
-		settler.stateContext = {
-			...settler.stateContext,
+	public setSettlerCarryingItem(settlerId: string, itemType?: ItemType, quantity?: number): void {
+		this.updateSettlerContext(settlerId, {
 			carryingItemType: itemType,
 			carryingQuantity: itemType ? quantity : undefined
-		}
-		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+		})
 	}
 
 	public setSettlerWaitReason(settlerId: string, reason?: string): void {
-		const settler = this.settlers.get(settlerId)
-		if (!settler) {
-			return
-		}
-		settler.stateContext = {
-			...settler.stateContext,
-			waitReason: reason
-		}
-		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+		this.updateSettlerContext(settlerId, { waitReason: reason })
 	}
 
 	public setSettlerLastStep(settlerId: string, stepType?: string, reason?: string): void {
-		const settler = this.settlers.get(settlerId)
-		if (!settler) {
-			return
-		}
-		settler.stateContext = {
-			...settler.stateContext,
+		this.updateSettlerContext(settlerId, {
 			lastStepType: stepType,
 			lastStepReason: reason
-		}
-		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+		})
 	}
 
-	public setSettlerEquippedItem(settlerId: string, itemType?: string, quantity?: number): void {
-		const settler = this.settlers.get(settlerId)
-		if (!settler) {
-			return
-		}
-		settler.stateContext = {
-			...settler.stateContext,
+	public setSettlerEquippedItem(settlerId: string, itemType?: ItemType, quantity?: number): void {
+		this.updateSettlerContext(settlerId, {
 			equippedItemType: itemType,
 			equippedQuantity: itemType ? quantity : undefined
-		}
-		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+		})
 	}
 
-	public setSettlerTarget(settlerId: string, targetId?: string, targetPosition?: Position, targetType?: string): void {
-		const settler = this.settlers.get(settlerId)
-		if (!settler) {
-			return
-		}
-		settler.stateContext = {
-			...settler.stateContext,
+	public setSettlerTarget(settlerId: string, targetId?: string, targetPosition?: Position, targetType?: MoveTargetType): void {
+		this.updateSettlerContext(settlerId, {
 			targetId,
 			targetPosition,
 			targetType
-		}
-		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+		})
 	}
 
 	public setSettlerNeeds(settlerId: string, needs: { hunger: number, fatigue: number }): void {
-		const settler = this.settlers.get(settlerId)
-		if (!settler) {
-			return
-		}
-		settler.needs = {
-			hunger: Math.max(0, Math.min(1, needs.hunger)),
-			fatigue: Math.max(0, Math.min(1, needs.fatigue))
-		}
-		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+		this.updateSettler(settlerId, (settler) => {
+			settler.needs = {
+				hunger: Math.max(0, Math.min(1, needs.hunger)),
+				fatigue: Math.max(0, Math.min(1, needs.fatigue))
+			}
+		})
 	}
 
 	public setSettlerProfession(settlerId: string, profession: ProfessionType): void {
@@ -427,7 +407,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
 	}
 
-	public getToolItemType(profession: ProfessionType): string | null {
+	public getToolItemType(profession: ProfessionType): ItemType | null {
 		for (const [itemType, targetProfession] of this.professionTools.entries()) {
 			if (targetProfession === profession) {
 				return itemType
@@ -436,7 +416,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		return null
 	}
 
-	public findAvailableToolOnMap(mapName: string, itemType: string): { id: string, position: Position } | null {
+	public findAvailableToolOnMap(mapName: string, itemType: ItemType): { id: string, position: Position } | null {
 		const tool = this.findToolOnMap(mapName, itemType)
 		if (!tool) {
 			return null
@@ -447,7 +427,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		return tool
 	}
 
-	public findToolOnMap(mapName: string, itemType: string): { id: string, position: Position } | null {
+	public findToolOnMap(mapName: string, itemType: ItemType): { id: string, position: Position } | null {
 		const mapItems = this.managers.loot.getMapItems(mapName)
 		const tool = mapItems.find(item => item.itemType === itemType)
 		if (!tool) {
