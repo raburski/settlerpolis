@@ -43,7 +43,7 @@ export class LogisticsProvider implements WorkProvider {
 		return [...this.requests]
 	}
 
-	public getMapName(): string {
+	public getMapId(): string {
 		const first = this.requests[0]
 		if (!first) {
 			return 'GLOBAL'
