@@ -61,8 +61,8 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		this.event.emit(Receiver.All, StorageEvents.SS.StorageTick, {})
 	}
 
-	private getTileSize(mapName: string): number {
-		const map = this.managers.map.getMap(mapName)
+	private getTileSize(mapId: string): number {
+		const map = this.managers.map.getMap(mapId)
 		return map?.tiledMap.tilewidth || 32
 	}
 
@@ -110,7 +110,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 		const fakeClient = {
 			id: 'world',
-			currentGroup: building.mapName,
+			currentGroup: building.mapId,
 			emit: (receiver: Receiver, event: string, data: any, target?: string) => {
 				this.event.emit(receiver, event, data, target)
 			},
@@ -149,7 +149,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		if (!building) {
 			return
 		}
-		this.managers.mapObjects.removeObjectById(slot.mapObjectId, building.mapName)
+		this.managers.mapObjects.removeObjectById(slot.mapObjectId, building.mapId)
 		slot.mapObjectId = undefined
 	}
 
@@ -177,7 +177,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			itemType: slot.itemType,
 			quantity: slot.quantity,
 			position: slot.position
-		}, building.mapName)
+		}, building.mapId)
 	}
 
 	// Initialize storage for a building using fixed slots
@@ -209,7 +209,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			slotsByItem: new Map()
 		}
 
-		const tileSize = this.getTileSize(building.mapName)
+		const tileSize = this.getTileSize(building.mapId)
 		for (const slotDef of definition.storage.slots) {
 			const basePileSize = this.getPileSize(slotDef.itemType)
 			const pileSize = typeof slotDef.maxQuantity === 'number'
@@ -261,7 +261,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		if (building) {
 			for (const slot of storage.slots.values()) {
 				if (slot.mapObjectId) {
-					this.managers.mapObjects.removeObjectById(slot.mapObjectId, building.mapName)
+					this.managers.mapObjects.removeObjectById(slot.mapObjectId, building.mapId)
 					slot.mapObjectId = undefined
 				}
 			}
@@ -350,7 +350,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				itemType,
 				quantity,
 				reservedBy
-			}, building.mapName)
+			}, building.mapId)
 		}
 
 		return {
@@ -429,7 +429,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			itemType,
 			quantity: current,
 			capacity
-		}, building.mapName)
+		}, building.mapId)
 	}
 
 	private getSpoilageMultiplier(buildingInstanceId: string): number {
@@ -468,7 +468,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				itemType: slot.itemType,
 				spoiledQuantity: removed,
 				position: slot.position
-			}, building.mapName)
+			}, building.mapId)
 		}
 	}
 
@@ -689,10 +689,10 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	// Get total quantity across all storages for a map
-	public getTotalQuantity(mapName: string, itemType: string): number {
+	public getTotalQuantity(mapId: string, itemType: string): number {
 		let total = 0
 		for (const building of this.managers.buildings.getAllBuildings()) {
-			if (building.mapName !== mapName) {
+			if (building.mapId !== mapId) {
 				continue
 			}
 			total += this.getCurrentQuantity(building.id, itemType)
@@ -701,14 +701,14 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	// Remove items from any storage in a map
-	public consumeFromAnyStorage(mapName: string, itemType: string, quantity: number): boolean {
+	public consumeFromAnyStorage(mapId: string, itemType: string, quantity: number): boolean {
 		if (quantity <= 0) {
 			return true
 		}
 
 		let remaining = quantity
 		for (const building of this.managers.buildings.getAllBuildings()) {
-			if (building.mapName !== mapName) {
+			if (building.mapId !== mapId) {
 				continue
 			}
 			const current = this.getCurrentQuantity(building.id, itemType)
@@ -763,7 +763,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				buildingInstanceId: reservation.buildingInstanceId,
 				itemType: reservation.itemType,
 				quantity: reservation.quantity
-			}, building.mapName)
+			}, building.mapId)
 		}
 	}
 
@@ -796,12 +796,12 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	// Get all buildings with available items of a specific type
-	public getBuildingsWithAvailableItems(itemType: string, quantity: number, mapName: string, playerId: string): string[] {
+	public getBuildingsWithAvailableItems(itemType: string, quantity: number, mapId: string, playerId: string): string[] {
 		const buildings: string[] = []
 
 		for (const [buildingInstanceId, storage] of this.buildingStorages.entries()) {
 			const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
-			if (!building || building.mapName !== mapName || building.playerId !== playerId) {
+			if (!building || building.mapId !== mapId || building.playerId !== playerId) {
 				continue
 			}
 
@@ -936,7 +936,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			if (!definition?.storage?.slots || definition.storage.slots.length === 0) {
 				continue
 			}
-			const tileSize = this.getTileSize(building.mapName)
+			const tileSize = this.getTileSize(building.mapId)
 			for (const slotDef of definition.storage.slots) {
 				if (typeof slotDef.maxQuantity !== 'number') {
 					continue

@@ -1,5 +1,8 @@
 import { Effect, Condition } from '../ConditionEffect/types'
 import type { ItemType } from '../Items/types'
+import type { NPCId, PlayerId, QuestId } from '../ids'
+
+export type { QuestId } from '../ids'
 
 export enum QuestScope {
 	Player = 'player',
@@ -16,7 +19,7 @@ export interface QuestStep {
 	id: string
 	label: string
 	optional?: boolean
-	npcId?: string // The NPC that needs to be talked to
+	npcId?: NPCId // The NPC that needs to be talked to
 	dialogue?: {
 		id: string
 		nodeId: string
@@ -34,7 +37,7 @@ export interface QuestReward {
 }
 
 export interface Quest {
-	id: string
+	id: QuestId
 	chapter: number
 	title: string
 	description: string
@@ -46,7 +49,7 @@ export interface Quest {
 }
 
 export interface QuestProgress {
-	questId: string
+	questId: QuestId
 	currentStep: number
 	completed: boolean
 	completedSteps: string[]
@@ -54,16 +57,16 @@ export interface QuestProgress {
 
 export interface PlayerQuestState {
 	activeQuests: QuestProgress[]
-	completedQuests: string[]
+	completedQuests: QuestId[]
 }
 
 export interface QuestStartRequest {
-	questId: string
-	playerId: string
+	questId: QuestId
+	playerId: PlayerId
 }
 
 export interface QuestUpdateResponse {
-	questId: string
+	questId: QuestId
 	progress: QuestProgress
 }
 
@@ -72,7 +75,7 @@ export interface QuestListResponse {
 }
 
 export interface QuestCompleteResponse {
-	questId: string
+	questId: QuestId
 	reward?: QuestReward
 	summary?: string
 } 

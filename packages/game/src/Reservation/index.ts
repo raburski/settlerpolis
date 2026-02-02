@@ -53,19 +53,19 @@ export class ReservationSystem extends BaseManager<ReservationSystemDeps> {
 		super(managers)
 	}
 
-	public reserveToolForProfession(mapName: string, profession: ProfessionType, ownerId: string): { itemId: string, position: Position } | null {
+	public reserveToolForProfession(mapId: string, profession: ProfessionType, ownerId: string): { itemId: string, position: Position } | null {
 		const toolItemType = this.managers.population.getToolItemType(profession)
 		if (!toolItemType) {
 			return null
 		}
 
 		const settler = this.managers.population.getSettler(ownerId)
-		const mapItems = this.managers.loot.getMapItems(mapName)
+		const mapItems = this.managers.loot.getMapItems(mapId)
 			.filter(item => item.itemType === toolItemType && this.managers.loot.isItemAvailable(item.id))
 
 		for (const tool of mapItems) {
 			if (settler) {
-				const path = this.managers.map.findPath(mapName, settler.position, tool.position, {
+				const path = this.managers.map.findPath(mapId, settler.position, tool.position, {
 					allowDiagonal: true
 				})
 				if (!path || path.length === 0) {
@@ -264,7 +264,7 @@ export class ReservationSystem extends BaseManager<ReservationSystemDeps> {
 			return null
 		}
 
-		const tileSize = this.getTileSize(building.mapName)
+		const tileSize = this.getTileSize(building.mapId)
 		const maxSlots = definition.footprint.width * definition.footprint.height
 		const slotCount = Math.min(slotConfig.count, maxSlots)
 
@@ -285,8 +285,8 @@ export class ReservationSystem extends BaseManager<ReservationSystemDeps> {
 		}))
 	}
 
-	private getTileSize(mapName: string): number {
-		const map = this.managers.map.getMap(mapName)
+	private getTileSize(mapId: string): number {
+		const map = this.managers.map.getMap(mapId)
 		return map?.tiledMap.tilewidth || 32
 	}
 

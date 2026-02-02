@@ -1,5 +1,6 @@
 import { Position, MapId } from '../types'
 import { Item, ItemType } from '../Items/types'
+import type { LootItemId } from '../ids'
 
 export interface DroppedItem extends Item {
 	position: Position
@@ -29,7 +30,7 @@ export type LootSpawnEventPayload = {
 }
 
 export type LootDespawnEventPayload = {
-	itemId: string
+	itemId: LootItemId
 }
 
 export type LootUpdateEventPayload = {

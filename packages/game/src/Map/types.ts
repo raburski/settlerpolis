@@ -137,9 +137,9 @@ export interface PathData {
  */
 export interface MapUrlService {
 	/**
-	 * Generate a URL for a given map name
-	 * @param mapName The name of the map
+	 * Generate a URL for a given map id
+	 * @param mapId The id of the map
 	 * @returns The complete URL to the map
 	 */
-	getMapUrl(mapName: MapId): string
+	getMapUrl(mapId: MapId): string
 } 

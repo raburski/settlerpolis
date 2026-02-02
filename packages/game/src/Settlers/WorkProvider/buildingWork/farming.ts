@@ -21,7 +21,7 @@ export const FarmingWorkHandler: BuildingWorkHandler = {
 			return { type: WorkStepType.Wait, reason: WorkWaitReason.NoNodeDefinition }
 		}
 
-		const map = managers.map.getMap(building.mapName)
+		const map = managers.map.getMap(building.mapId)
 		if (!map) {
 			return { type: WorkStepType.Wait, reason: WorkWaitReason.NoWork }
 		}
@@ -39,7 +39,7 @@ export const FarmingWorkHandler: BuildingWorkHandler = {
 			return Math.hypot(dx, dy) <= farm.plotRadiusTiles
 		}
 
-		const availableNodes = managers.resourceNodes.getAvailableNodes(building.mapName, farm.cropNodeType)
+		const availableNodes = managers.resourceNodes.getAvailableNodes(building.mapId, farm.cropNodeType)
 			.filter(node => isWithinRadius(node.position))
 		const allowHarvest = farm.allowHarvest !== false
 
@@ -64,7 +64,7 @@ export const FarmingWorkHandler: BuildingWorkHandler = {
 			}
 		}
 
-		const existingNodes = managers.resourceNodes.getNodes(building.mapName, farm.cropNodeType)
+		const existingNodes = managers.resourceNodes.getNodes(building.mapId, farm.cropNodeType)
 			.filter(node => isWithinRadius(node.position))
 		const spacingTiles = Math.max(0, farm.minSpacingTiles ?? 0)
 		const spacingNodes = spacingTiles > 0
@@ -79,7 +79,7 @@ export const FarmingWorkHandler: BuildingWorkHandler = {
 		}
 
 		const occupiedTiles = new Set<string>()
-		const nodesForOccupancy = managers.resourceNodes.getNodes(building.mapName)
+		const nodesForOccupancy = managers.resourceNodes.getNodes(building.mapId)
 			.filter(node => isWithinRadius(node.position))
 		for (const node of nodesForOccupancy) {
 			const tileX = Math.floor(node.position.x / tileSize)
@@ -116,15 +116,15 @@ export const FarmingWorkHandler: BuildingWorkHandler = {
 						continue
 					}
 				}
-				if (managers.map.isCollision(building.mapName, tileX, tileY)) {
+				if (managers.map.isCollision(building.mapId, tileX, tileY)) {
 					continue
 				}
-				if (managers.roads.isRoadPlannedOrBuilt(building.mapName, tileX, tileY)) {
+				if (managers.roads.isRoadPlannedOrBuilt(building.mapId, tileX, tileY)) {
 					continue
 				}
 				const worldPosition = { x: tileX * tileSize, y: tileY * tileSize }
 				const previewItem = { id: 'plot-preview', itemType: cropDefinition.nodeItemType }
-				if (!managers.mapObjects.canPlaceAt(building.mapName, worldPosition, previewItem)) {
+				if (!managers.mapObjects.canPlaceAt(building.mapId, worldPosition, previewItem)) {
 					continue
 				}
 				candidates.push({ x: tileX, y: tileY, distance })

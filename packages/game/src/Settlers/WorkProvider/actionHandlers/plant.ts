@@ -16,7 +16,7 @@ export const PlantActionHandler: ActionHandler = {
 
 		const planted = managers.resourceNodes.plantNode({
 			nodeType: action.nodeType,
-			mapName: building.mapName,
+			mapId: building.mapId,
 			position: action.position,
 			growTimeMs: action.growTimeMs,
 			spoilTimeMs: action.spoilTimeMs,

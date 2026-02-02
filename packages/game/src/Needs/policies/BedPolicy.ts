@@ -42,7 +42,7 @@ export class BedPolicy {
 		}
 
 		const candidates = this.managers.buildings.getAllBuildings()
-			.filter(building => building.mapName === settler.mapName && building.stage === ConstructionStage.Completed)
+			.filter(building => building.mapId === settler.mapId && building.stage === ConstructionStage.Completed)
 			.map(building => {
 				const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
 				if (typeof definition?.amenityNeeds?.fatigue !== 'number') {

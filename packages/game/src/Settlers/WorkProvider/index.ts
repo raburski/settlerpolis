@@ -243,14 +243,14 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			if (!building) {
 				continue
 			}
-			if (!byMap.has(building.mapName)) {
-				byMap.set(building.mapName, [])
+			if (!byMap.has(building.mapId)) {
+				byMap.set(building.mapId, [])
 			}
-			byMap.get(building.mapName)!.push(request)
+			byMap.get(building.mapId)!.push(request)
 		}
 
-		for (const [mapName, mapRequests] of byMap.entries()) {
-			this.event.emit(Receiver.Group, WorkProviderEvents.SC.LogisticsUpdated, { requests: mapRequests }, mapName)
+		for (const [mapId, mapRequests] of byMap.entries()) {
+			this.event.emit(Receiver.Group, WorkProviderEvents.SC.LogisticsUpdated, { requests: mapRequests }, mapId)
 		}
 		// If there are no requests, still clear UI for current maps (best effort)
 		if (requests.length === 0) {
@@ -299,11 +299,11 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		return provider
 	}
 
-	private getRoadProvider(mapName: string, playerId: string): RoadProvider {
-		const key = `${mapName}:${playerId}`
+	private getRoadProvider(mapId: string, playerId: string): RoadProvider {
+		const key = `${mapId}:${playerId}`
 		let provider = this.roadProviders.get(key)
 		if (!provider) {
-			provider = new RoadProvider(mapName, playerId, this.managers, this.logger)
+			provider = new RoadProvider(mapId, playerId, this.managers, this.logger)
 			this.roadProviders.set(key, provider)
 			this.registry.register(provider)
 		}
@@ -338,7 +338,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		if (isConstruction) {
 			requiredProfession = ProfessionType.Builder
 		}
-		const candidate = this.findBestSettler(building.mapName, building.playerId, building.position, requiredProfession, {
+		const candidate = this.findBestSettler(building.mapId, building.playerId, building.position, requiredProfession, {
 			allowFallbackToCarrier: !isConstruction
 		})
 		if (!candidate) {
@@ -385,7 +385,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			assignment,
 			settlerId: candidate.id,
 			buildingInstanceId: building.id
-		}, building.mapName)
+		}, building.mapId)
 
 		this.dispatchNextStep(candidate.id)
 	}
@@ -461,7 +461,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 					settlerId: data.settlerId,
 					assignmentId: assignment.assignmentId,
 					buildingInstanceId: assignment.buildingInstanceId
-				}, building.mapName)
+				}, building.mapId)
 			}
 		}
 	}
@@ -507,8 +507,8 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 	private assignRoadWorkers(): void {
 		const groups = this.managers.roads.getPendingJobGroups()
 		for (const group of groups) {
-			const provider = this.getRoadProvider(group.mapName, group.playerId)
-			const available = this.managers.population.getAvailableSettlers(group.mapName, group.playerId)
+			const provider = this.getRoadProvider(group.mapId, group.playerId)
+			const available = this.managers.population.getAvailableSettlers(group.mapId, group.playerId)
 				.filter(settler => settler.profession === ProfessionType.Builder)
 				.filter(settler => !this.assignments.has(settler.id))
 
@@ -560,14 +560,14 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 				this.unassignWorker({ settlerId: assignment.settlerId })
 			}
 			this.lastConstructionAssignAt.set(building.id, now)
-			this.requestWorker({ buildingInstanceId: building.id }, this.getServerClient(building.mapName))
+			this.requestWorker({ buildingInstanceId: building.id }, this.getServerClient(building.mapId))
 		}
 	}
 
-	private getServerClient(mapName?: string): EventClient {
+	private getServerClient(mapId?: string): EventClient {
 		return {
 			id: 'server',
-			currentGroup: mapName || 'GLOBAL',
+			currentGroup: mapId || 'GLOBAL',
 			setGroup: () => {},
 			emit: (to, event, data, groupName) => {
 				this.event.emit(to, event, data, groupName)
@@ -875,13 +875,13 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 	}
 
 	private findBestSettler(
-		mapName: string,
+		mapId: string,
 		playerId: string,
 		position: { x: number, y: number },
 		requiredProfession?: ProfessionType | null,
 		options: { allowFallbackToCarrier?: boolean } = {}
 	) {
-		const idleSettlers = this.managers.population.getAvailableSettlers(mapName, playerId)
+		const idleSettlers = this.managers.population.getAvailableSettlers(mapId, playerId)
 		if (idleSettlers.length === 0) {
 			return null
 		}
@@ -963,11 +963,11 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionStarted, {
 			buildingInstanceId,
 			recipe
-		}, building.mapName)
+		}, building.mapId)
 		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionProgress, {
 			buildingInstanceId,
 			progress: 0
-		}, building.mapName)
+		}, building.mapId)
 	}
 
 	private emitProductionCompleted(buildingInstanceId: string, recipe: ProductionRecipe): void {
@@ -979,11 +979,11 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionCompleted, {
 			buildingInstanceId,
 			recipe
-		}, building.mapName)
+		}, building.mapId)
 		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionProgress, {
 			buildingInstanceId,
 			progress: 100
-		}, building.mapName)
+		}, building.mapId)
 	}
 
 	private emitProductionStatus(buildingInstanceId: string, status: ProductionStatus, progress?: number): void {
@@ -1000,12 +1000,12 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionStatusChanged, {
 			buildingInstanceId,
 			status
-		}, building.mapName)
+		}, building.mapId)
 		if (typeof progress === 'number') {
 			this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionProgress, {
 				buildingInstanceId,
 				progress
-			}, building.mapName)
+			}, building.mapId)
 		}
 	}
 
@@ -1074,9 +1074,9 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			}
 
 			if (assignment.providerType === WorkProviderType.Road) {
-				const [_, mapName, playerId] = assignment.providerId.split(':')
-				if (mapName && playerId) {
-					this.getRoadProvider(mapName, playerId).assign(assignment.settlerId)
+				const [_, mapId, playerId] = assignment.providerId.split(':')
+				if (mapId && playerId) {
+					this.getRoadProvider(mapId, playerId).assign(assignment.settlerId)
 				}
 				continue
 			}

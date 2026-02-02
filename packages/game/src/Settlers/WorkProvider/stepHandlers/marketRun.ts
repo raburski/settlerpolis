@@ -209,7 +209,7 @@ export const MarketRunHandler: StepHandler = {
 			return { actions: [] }
 		}
 
-		const map = managers.map.getMap(market.mapName)
+		const map = managers.map.getMap(market.mapId)
 		if (!map) {
 			return { actions: [] }
 		}
@@ -257,14 +257,14 @@ export const MarketRunHandler: StepHandler = {
 		const resolvedItemType = itemType
 
 		const houses = managers.buildings.getAllBuildings()
-			.filter(building => building.mapName === market.mapName && building.playerId === market.playerId)
+			.filter(building => building.mapId === market.mapId && building.playerId === market.playerId)
 			.filter(building => building.stage === ConstructionStage.Completed)
 			.filter(building => managers.buildings.getBuildingDefinition(building.buildingId)?.spawnsSettlers)
 			.map(building => ({ building, tile: toTile(building.position, tileSize) }))
 			.filter(entry => managers.storage.acceptsItemType(entry.building.id, resolvedItemType))
 			.filter(entry => managers.storage.hasAvailableStorage(entry.building.id, resolvedItemType, deliveryQuantity))
 
-		const roadData = managers.roads.getRoadData(market.mapName)
+		const roadData = managers.roads.getRoadData(market.mapId)
 		const marketTile = toTile(market.position, tileSize)
 		const startRoad = findClosestRoadTile(roadData, marketTile, roadSearchRadius)
 		const roadRoute = buildGreedyRoadWalk(roadData, startRoad, Math.max(1, maxDistanceTiles))

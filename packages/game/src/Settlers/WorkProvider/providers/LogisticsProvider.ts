@@ -49,7 +49,7 @@ export class LogisticsProvider implements WorkProvider {
 			return 'GLOBAL'
 		}
 		const building = this.managers.buildings.getBuildingInstance(first.buildingInstanceId)
-		return building?.mapName || 'GLOBAL'
+		return building?.mapId || 'GLOBAL'
 	}
 
 	public getPlayerId(): string {
@@ -158,7 +158,7 @@ export class LogisticsProvider implements WorkProvider {
 
 		if (request.type === LogisticsRequestType.Input || request.type === LogisticsRequestType.Construction) {
 			const sourceResult = this.findSourceForItem(
-				building.mapName,
+				building.mapId,
 				building.playerId,
 				request.itemType,
 				request.quantity,
@@ -189,7 +189,7 @@ export class LogisticsProvider implements WorkProvider {
 		}
 
 		if (request.type === LogisticsRequestType.Output) {
-			const targetBuildingId = this.findClosestTargetBuilding(building.id, request.itemType, request.quantity, building.mapName, building.playerId, building.position)
+			const targetBuildingId = this.findClosestTargetBuilding(building.id, request.itemType, request.quantity, building.mapId, building.playerId, building.position)
 			if (!targetBuildingId) {
 				return null
 			}
@@ -251,7 +251,7 @@ export class LogisticsProvider implements WorkProvider {
 	}
 
 	private findSourceForItem(
-		mapName: string,
+		mapId: string,
 		playerId: string,
 		itemType: ItemType,
 		quantity: number,
@@ -259,7 +259,7 @@ export class LogisticsProvider implements WorkProvider {
 		excludeBuildingId?: string
 	): { source: TransportSource, quantity: number } | null {
 		const sourceBuildings = this.managers.storage
-			.getBuildingsWithAvailableItems(itemType, 1, mapName, playerId)
+			.getBuildingsWithAvailableItems(itemType, 1, mapId, playerId)
 			.filter(buildingId => buildingId !== excludeBuildingId)
 		if (sourceBuildings.length > 0) {
 			const buildingId = this.findClosestBuilding(sourceBuildings, position)
@@ -274,7 +274,7 @@ export class LogisticsProvider implements WorkProvider {
 			}
 		}
 
-		const mapItems = this.managers.loot.getMapItems(mapName)
+		const mapItems = this.managers.loot.getMapItems(mapId)
 		const itemsOfType = mapItems.filter(item => item.itemType === itemType && this.managers.loot.isItemAvailable(item.id))
 		if (itemsOfType.length === 0) {
 			return null
@@ -321,8 +321,8 @@ export class LogisticsProvider implements WorkProvider {
 		return closest
 	}
 
-	private findClosestTargetBuilding(sourceBuildingInstanceId: string, itemType: string, quantity: number, mapName: string, playerId: string, position: { x: number, y: number }): string | null {
-		const targets = this.findTargetBuildings(itemType, quantity, mapName, playerId).filter(id => id !== sourceBuildingInstanceId)
+	private findClosestTargetBuilding(sourceBuildingInstanceId: string, itemType: string, quantity: number, mapId: string, playerId: string, position: { x: number, y: number }): string | null {
+		const targets = this.findTargetBuildings(itemType, quantity, mapId, playerId).filter(id => id !== sourceBuildingInstanceId)
 		if (targets.length === 0) {
 			return null
 		}
@@ -343,9 +343,9 @@ export class LogisticsProvider implements WorkProvider {
 		return closest
 	}
 
-	private findTargetBuildings(itemType: string, quantity: number, mapName: string, playerId: string): string[] {
+	private findTargetBuildings(itemType: string, quantity: number, mapId: string, playerId: string): string[] {
 		const buildings: string[] = []
-		const allBuildings = this.managers.buildings.getBuildingsForMap(mapName)
+		const allBuildings = this.managers.buildings.getBuildingsForMap(mapId)
 			.filter(building => building.playerId === playerId)
 
 		for (const building of allBuildings) {

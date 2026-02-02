@@ -1,4 +1,7 @@
 import type { ItemType } from '../Items/types'
+import type { BuildingInstanceId, MapObjectId, SettlerId, StorageReservationId, StorageSlotId } from '../ids'
+
+export type { StorageReservationId, StorageSlotId } from '../ids'
 
 export enum StorageReservationStatus {
 	Pending = 'pending',
@@ -26,8 +29,8 @@ export interface StorageCapacity {
 }
 
 export interface StorageSlot {
-	slotId: string
-	buildingInstanceId: string
+	slotId: StorageSlotId
+	buildingInstanceId: BuildingInstanceId
 	itemType: ItemType
 	position: import('../types').Position
 	pileSize: number
@@ -35,31 +38,31 @@ export interface StorageSlot {
 	batches: Array<{ quantity: number, storedAtMs: number }>
 	reservedIncoming: number
 	reservedOutgoing: number
-	mapObjectId?: string
+	mapObjectId?: MapObjectId
 	hidden?: boolean
 }
 
 export interface BuildingStorage {
-	buildingInstanceId: string
-	slots: Map<string, StorageSlot>
-	slotsByItem: Map<ItemType, string[]>
+	buildingInstanceId: BuildingInstanceId
+	slots: Map<StorageSlotId, StorageSlot>
+	slotsByItem: Map<ItemType, StorageSlotId[]>
 }
 
 export interface StorageReservation {
-	reservationId: string
-	buildingInstanceId: string
+	reservationId: StorageReservationId
+	buildingInstanceId: BuildingInstanceId
 	itemType: ItemType
 	quantity: number
-	reservedBy: string // carrierId or buildingInstanceId
+	reservedBy: SettlerId | BuildingInstanceId // carrierId or buildingInstanceId
 	status: StorageReservationStatus
 	createdAt: number
 	isOutgoing?: boolean // true for outgoing reservations (items being transported away), false for incoming (space reserved for delivery)
-	slotId?: string
+	slotId?: StorageSlotId
 }
 
 export interface StorageReservationResult {
-	reservationId: string
-	slotId: string
+	reservationId: StorageReservationId
+	slotId: StorageSlotId
 	position: import('../types').Position
 	quantity: number
 }

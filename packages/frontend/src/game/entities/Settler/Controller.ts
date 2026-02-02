@@ -29,10 +29,10 @@ export class SettlerController {
 		this.view.updateNeeds(this.settler.needs)
 	}
 
-	private handleMoveToPosition = (data: { entityId: string, targetPosition: { x: number, y: number }, mapName: string, speed?: number }) => {
+	private handleMoveToPosition = (data: { entityId: string, targetPosition: { x: number, y: number }, mapId: string, speed?: number }) => {
 		// Only update if it's our settler and on the same map
 		if (data.entityId === this.settler.id) {
-			if (data.mapName === this.settler.mapName) {
+			if (data.mapId === this.settler.mapId) {
 				if (typeof data.speed === 'number') {
 					this.view.setSpeed(data.speed)
 				}
@@ -40,14 +40,14 @@ export class SettlerController {
 				this.view.setTargetPosition(data.targetPosition.x, data.targetPosition.y)
 				// Note: We don't update settler.position here - the view will interpolate
 			} else {
-				console.warn(`[SettlerController] Map name mismatch for settler ${data.entityId}: event mapName=${data.mapName}, settler mapName=${this.settler.mapName}`)
+				console.warn(`[SettlerController] Map name mismatch for settler ${data.entityId}: event mapId=${data.mapId}, settler mapId=${this.settler.mapId}`)
 			}
 		}
 	}
 
-	private handlePositionUpdated = (data: { entityId: string, position: { x: number, y: number }, mapName: string }) => {
+	private handlePositionUpdated = (data: { entityId: string, position: { x: number, y: number }, mapId: string }) => {
 		// Only update if it's our settler and on the same map
-		if (data.entityId === this.settler.id && data.mapName === this.settler.mapName) {
+		if (data.entityId === this.settler.id && data.mapId === this.settler.mapId) {
 			// Immediate position update (teleport/sync, no interpolation)
 			this.view.updatePosition(data.position.x, data.position.y)
 			this.settler.position = data.position

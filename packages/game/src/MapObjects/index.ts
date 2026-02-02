@@ -18,7 +18,7 @@ export interface MapObjectsDeps {
 }
 
 export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
-	// Map of mapName to MapObject[]
+	// Map of mapId to MapObject[]
 	private mapObjectsByMap = new Map<string, Map<string, MapObject>>()
 
 	constructor(
@@ -49,7 +49,7 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 
 	private removeObject(data: RemoveObjectData, client: EventClient) {
 		const { objectId } = data
-		const mapName = client.currentGroup
+		const mapId = client.currentGroup
 
 		// Find the object in the map
 		const mapObject = this.getObjectById(objectId)
@@ -59,7 +59,7 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 		}
 
 		// Verify the object is on the current map
-		if (mapObject.mapName !== mapName) {
+		if (mapObject.mapId !== mapId) {
 			this.logger.debug('Object is not on the current map:', objectId)
 			return
 		}
@@ -68,16 +68,16 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 		this.managers.inventory.addItem(client, mapObject.item)
 
 		// Remove the object from the map
-		this.removeObjectFromMap(mapObject.id, mapName)
+		this.removeObjectFromMap(mapObject.id, mapId)
 
 		// Notify all clients in the same map about the removed object
-		this.event.emit(Receiver.Group, Event.MapObjects.SC.Despawn, { objectId }, mapName)
+		this.event.emit(Receiver.Group, Event.MapObjects.SC.Despawn, { objectId }, mapId)
 
 		this.logger.debug('Object removed:', mapObject)
 	}
 
-	private checkCollision(mapName: string, position: Position, item?: Item, metadata?: Record<string, any>): boolean {
-		const objects = this.mapObjectsByMap.get(mapName)
+	private checkCollision(mapId: string, position: Position, item?: Item, metadata?: Record<string, any>): boolean {
+		const objects = this.mapObjectsByMap.get(mapId)
 		if (!objects) return false
 
 		// Convert tile-based sizes to pixel-based sizes (assuming 32x32 tiles)
@@ -144,8 +144,8 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 	}
 
 	// Public helper to test if an item can be placed at a position without collisions
-	public canPlaceAt(mapName: string, position: Position, item?: Item, metadata?: Record<string, any>): boolean {
-		return !this.checkCollision(mapName, position, item, metadata)
+	public canPlaceAt(mapId: string, position: Position, item?: Item, metadata?: Record<string, any>): boolean {
+		return !this.checkCollision(mapId, position, item, metadata)
 	}
 
 	private doRectanglesOverlap(
@@ -166,59 +166,59 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 	}
 
 	private addObjectToMap(mapObject: MapObject) {
-		const { mapName, id } = mapObject
+		const { mapId, id } = mapObject
 		
 		// Get or create the map's object collection
-		let mapObjects = this.mapObjectsByMap.get(mapName)
+		let mapObjects = this.mapObjectsByMap.get(mapId)
 		if (!mapObjects) {
 			mapObjects = new Map<string, MapObject>()
-			this.mapObjectsByMap.set(mapName, mapObjects)
+			this.mapObjectsByMap.set(mapId, mapObjects)
 		}
 		
 		// Add the object to the map
 		mapObjects.set(id, mapObject)
 	}
 
-	private removeObjectFromMap(objectId: string, mapName: string) {
-		const mapObjects = this.mapObjectsByMap.get(mapName)
+	private removeObjectFromMap(objectId: string, mapId: string) {
+		const mapObjects = this.mapObjectsByMap.get(mapId)
 		if (mapObjects) {
 			mapObjects.delete(objectId)
 			
 			// Clean up empty map collections
 			if (mapObjects.size === 0) {
-				this.mapObjectsByMap.delete(mapName)
+				this.mapObjectsByMap.delete(mapId)
 			}
 		}
 	}
 
 	// Public method to remove an object without adding it to inventory
 	// Useful for building cancellation where refunds are handled separately
-	public removeObjectById(objectId: string, mapName: string): boolean {
+	public removeObjectById(objectId: string, mapId: string): boolean {
 		const mapObject = this.getObjectById(objectId)
 		if (!mapObject) {
 			return false
 		}
 
-		if (mapObject.mapName !== mapName) {
+		if (mapObject.mapId !== mapId) {
 			return false
 		}
 
 		// Remove the object from the map
-		this.removeObjectFromMap(objectId, mapName)
+		this.removeObjectFromMap(objectId, mapId)
 
 		// Notify all clients in the same map about the removed object
-		this.event.emit(Receiver.Group, Event.MapObjects.SC.Despawn, { objectId }, mapName)
+		this.event.emit(Receiver.Group, Event.MapObjects.SC.Despawn, { objectId }, mapId)
 
 		return true
 	}
 
-	private getMapObjects(mapName: string): Map<string, MapObject> | undefined {
-		return this.mapObjectsByMap.get(mapName)
+	private getMapObjects(mapId: string): Map<string, MapObject> | undefined {
+		return this.mapObjectsByMap.get(mapId)
 	}
 
 	public sendMapObjectsToClient(client: EventClient, map?: string) {
-		const mapName = map || client.currentGroup
-		const mapObjects = this.getMapObjects(mapName)
+		const mapId = map || client.currentGroup
+		const mapObjects = this.getMapObjects(mapId)
 		
 		if (mapObjects && mapObjects.size > 0) {
 			// Send each object to the client
@@ -229,8 +229,8 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 	}
 
 	// Get all map objects for a specific map
-	public getAllObjectsForMap(mapName: string): MapObject[] {
-		const mapObjects = this.getMapObjects(mapName)
+	public getAllObjectsForMap(mapId: string): MapObject[] {
+		const mapObjects = this.getMapObjects(mapId)
 		return mapObjects ? Array.from(mapObjects.values()) : []
 	}
 
@@ -276,7 +276,7 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 			position: data.position,
 			rotation: data.rotation || 0,
 			playerId,
-			mapName: client.currentGroup,
+			mapId: client.currentGroup,
 			metadata: data.metadata
 		}
 
@@ -291,8 +291,8 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 
 	serialize(): MapObjectsSnapshot {
 		return {
-			objectsByMap: Array.from(this.mapObjectsByMap.entries()).map(([mapName, mapObjects]) => ([
-				mapName,
+			objectsByMap: Array.from(this.mapObjectsByMap.entries()).map(([mapId, mapObjects]) => ([
+				mapId,
 				Array.from(mapObjects.values()).map(object => ({
 					...object,
 					position: { ...object.position },
@@ -305,7 +305,7 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 
 	deserialize(state: MapObjectsSnapshot): void {
 		this.mapObjectsByMap.clear()
-		for (const [mapName, objects] of state.objectsByMap) {
+		for (const [mapId, objects] of state.objectsByMap) {
 			const mapObjects = new Map<string, MapObject>()
 			for (const object of objects) {
 				mapObjects.set(object.id, {
@@ -315,7 +315,7 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 					metadata: object.metadata ? { ...object.metadata } : undefined
 				})
 			}
-			this.mapObjectsByMap.set(mapName, mapObjects)
+			this.mapObjectsByMap.set(mapId, mapObjects)
 		}
 	}
 

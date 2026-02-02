@@ -73,7 +73,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 			const movementEntity: MovementEntity = {
 				id: npc.id,
 				position: npc.position,
-				mapName: npc.mapId,
+				mapId: npc.mapId,
 				speed: npc.speed
 			}
 			this.managers.movement.registerEntity(movementEntity)
@@ -227,7 +227,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 		const movementEntity: MovementEntity = {
 			id: npc.id,
 			position: npc.position,
-			mapName: npc.mapId,
+			mapId: npc.mapId,
 			speed: npc.speed
 		}
 		this.managers.movement.registerEntity(movementEntity)
@@ -429,7 +429,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 			this.managers.movement.registerEntity({
 				id: restored.id,
 				position: restored.position,
-				mapName: restored.mapId,
+				mapId: restored.mapId,
 				speed: restored.speed
 			})
 		}

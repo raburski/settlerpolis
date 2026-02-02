@@ -85,15 +85,15 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		this.cancelMovement(entityId)
 
 		// Calculate path
-		const roadData = this.managers.roads.getRoadData(entity.mapName) || undefined
-		const path = this.managers.map.findPath(entity.mapName, entity.position, targetPosition, {
+		const roadData = this.managers.roads.getRoadData(entity.mapId) || undefined
+		const path = this.managers.map.findPath(entity.mapId, entity.position, targetPosition, {
 			roadData,
 			allowDiagonal: true
 		})
 		if (!path || path.length === 0) {
-			const fallback = this.managers.map.findNearestWalkablePosition(entity.mapName, targetPosition, 2)
+			const fallback = this.managers.map.findNearestWalkablePosition(entity.mapId, targetPosition, 2)
 			if (fallback) {
-				const fallbackPath = this.managers.map.findPath(entity.mapName, entity.position, fallback, {
+				const fallbackPath = this.managers.map.findPath(entity.mapId, entity.position, fallback, {
 					roadData,
 					allowDiagonal: true
 				})
@@ -284,7 +284,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		const currentPosition = task.path[task.currentStep] ?? entity.position
 
 		const segmentSpeed = entity.speed * this.managers.roads.getSpeedMultiplierForSegment(
-			entity.mapName,
+			entity.mapId,
 			currentPosition,
 			nextPosition
 		)
@@ -292,9 +292,9 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		this.event.emit(Receiver.Group, MovementEvents.SC.MoveToPosition, {
 			entityId: entity.id,
 			targetPosition: nextPosition,
-			mapName: entity.mapName,
+			mapId: entity.mapId,
 			speed: segmentSpeed
-		}, entity.mapName)
+		}, entity.mapId)
 
 		const distance = calculateDistance(currentPosition, nextPosition)
 		const timeToNextMove = (distance / segmentSpeed) * 1000
@@ -452,8 +452,8 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		this.event.emit(Receiver.Group, MovementEvents.SC.PositionUpdated, {
 			entityId: entity.id,
 			position: entity.position,
-			mapName: entity.mapName
-		}, entity.mapName)
+			mapId: entity.mapId
+		}, entity.mapId)
 	}
 }
 

@@ -1,6 +1,9 @@
-import { Position, MapId } from '../types'
+import { Position } from '../types'
 import { PlayerSourcedData } from '../Players/types'
 import { AffinityData, AffinitySentiments, AffinitySentimentType } from '../Affinity/types'
+import type { MapId, NPCId } from '../ids'
+
+export type { NPCId } from '../ids'
 
 export enum NPCState {
 	Idle = 'idle',
@@ -58,7 +61,7 @@ export interface NPCRoutine {
 }
 
 export interface NPC {
-	id: string
+	id: NPCId
 	name: string
 	position: Position
 	mapId: MapId
@@ -76,22 +79,22 @@ export interface NPC {
 }
 
 export interface NPCInteractData extends PlayerSourcedData {
-	npcId: string
+	npcId: NPCId
 }
 
 export interface NPCMessageData {
-	npcId: string
+	npcId: NPCId
 	message?: string
 	emoji?: string
 }
 
 export interface NPCGoData {
-	npcId: string
+	npcId: NPCId
 	position?: Position
 	spotName?: string
 }
 
 export interface NPCGoResponseData {
-	npcId: string
+	npcId: NPCId
 	position: Position
 }

@@ -93,20 +93,20 @@ export class HomeRelocationPolicy implements WorkPolicy {
 			return null
 		}
 
-		const mapName = workplace.mapName
-		const currentCost = this.estimateCommuteDistance(ctx, mapName, currentHouse.position, workplace.position)
+		const mapId = workplace.mapId
+		const currentCost = this.estimateCommuteDistance(ctx, mapId, currentHouse.position, workplace.position)
 		if (currentCost === null) {
 			return null
 		}
 
-		const tileSize = this.getTileSize(ctx, mapName)
+		const tileSize = this.getTileSize(ctx, mapId)
 		const minImprovement = HOME_MOVE_MIN_IMPROVEMENT_TILES * tileSize
 
 		let bestHouse: typeof currentHouse | null = null
 		let bestCost = currentCost
 
 		const houses = ctx.managers.buildings.getAllBuildings()
-			.filter(building => building.mapName === mapName && building.playerId === workplace.playerId)
+			.filter(building => building.mapId === mapId && building.playerId === workplace.playerId)
 			.filter(building => building.stage === ConstructionStage.Completed)
 			.filter(building => building.id !== currentHouse.id)
 			.filter(building => {
@@ -121,7 +121,7 @@ export class HomeRelocationPolicy implements WorkPolicy {
 			})
 
 		for (const house of houses) {
-			const cost = this.estimateCommuteDistance(ctx, mapName, house.position, workplace.position)
+			const cost = this.estimateCommuteDistance(ctx, mapId, house.position, workplace.position)
 			if (cost === null) {
 				continue
 			}
@@ -163,12 +163,12 @@ export class HomeRelocationPolicy implements WorkPolicy {
 
 	private estimateCommuteDistance(
 		ctx: WorkPolicyContext,
-		mapName: string,
+		mapId: string,
 		from: { x: number, y: number },
 		to: { x: number, y: number }
 	): number | null {
-		const roadData = ctx.managers.roads.getRoadData(mapName) || undefined
-		const path = ctx.managers.map.findPath(mapName, from, to, {
+		const roadData = ctx.managers.roads.getRoadData(mapId) || undefined
+		const path = ctx.managers.map.findPath(mapId, from, to, {
 			roadData,
 			allowDiagonal: true
 		})
@@ -189,7 +189,7 @@ export class HomeRelocationPolicy implements WorkPolicy {
 		return total
 	}
 
-	private getTileSize(ctx: WorkPolicyContext, mapName: string): number {
-		return ctx.managers.map.getMap(mapName)?.tiledMap.tilewidth || 32
+	private getTileSize(ctx: WorkPolicyContext, mapId: string): number {
+		return ctx.managers.map.getMap(mapId)?.tiledMap.tilewidth || 32
 	}
 }

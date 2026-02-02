@@ -1,3 +1,5 @@
+import type { NPCId, PlayerId } from '../ids'
+
 export enum AffinitySentimentType {
 	Empathy = 'empathy',
 	Curiosity = 'curiosity',
@@ -62,8 +64,8 @@ export enum OverallNPCApproach {
 export type AffinitySentiments = Record<AffinitySentimentType, number>
 // Define the structure for affinity data
 export interface AffinityData {
-	playerId: string
-	npcId: string
+	playerId: PlayerId
+	npcId: NPCId
 	sentiments: AffinitySentiments
 	lastUpdated: number
 	overallScore?: number
@@ -72,8 +74,8 @@ export interface AffinityData {
 
 // Define the structure for update event data
 export interface AffinityUpdateEventData {
-	playerId: string
-	npcId: string
+	playerId: PlayerId
+	npcId: NPCId
 	sentimentType: AffinitySentimentType
 	set?: number
 	add?: number
@@ -81,8 +83,8 @@ export interface AffinityUpdateEventData {
 
 // Define the structure for updated event data
 export interface AffinityUpdatedEventData {
-	playerId: string
-	npcId: string
+	playerId: PlayerId
+	npcId: NPCId
 	sentimentType: AffinitySentimentType
 	value: number
 	overallScore: number
@@ -91,13 +93,13 @@ export interface AffinityUpdatedEventData {
 // Define the structure for affinity list event data
 export interface AffinityListEventData {
 	affinities: Array<{
-		npcId: string
+		npcId: NPCId
 		approach: OverallNPCApproach
 	}>
 }
 
 // Define the structure for affinity update event data (SC)
 export interface AffinitySCUpdateEventData {
-	npcId: string
+	npcId: NPCId
 	approach: OverallNPCApproach
 }

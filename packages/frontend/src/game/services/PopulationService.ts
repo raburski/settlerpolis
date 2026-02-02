@@ -186,13 +186,13 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 		if (settlers.length === 0) {
 			return 0
 		}
-		const mapName = settlers[0].mapName
+		const mapId = settlers[0].mapId
 		const playerId = settlers[0].playerId
 		const buildings = buildingService.getAllBuildingInstances()
 		let capacity = 0
 
 		for (const building of buildings) {
-			if (building.mapName !== mapName || building.playerId !== playerId) {
+			if (building.mapId !== mapId || building.playerId !== playerId) {
 				continue
 			}
 			if (building.stage !== ConstructionStage.Completed) {

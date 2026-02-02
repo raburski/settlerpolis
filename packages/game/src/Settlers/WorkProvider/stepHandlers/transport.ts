@@ -23,10 +23,10 @@ export const TransportHandler: StepHandler = {
 		}
 
 		const reservations = new ReservationBag()
-		const roadData = managers.roads.getRoadData(settler.mapName) || undefined
+		const roadData = managers.roads.getRoadData(settler.mapId) || undefined
 
 		const canReach = (from: { x: number, y: number }, to: { x: number, y: number }) => {
-			const path = managers.map.findPath(settler.mapName, from, to, { roadData, allowDiagonal: true })
+			const path = managers.map.findPath(settler.mapId, from, to, { roadData, allowDiagonal: true })
 			return path && path.length > 0
 		}
 
@@ -57,7 +57,7 @@ export const TransportHandler: StepHandler = {
 			}
 
 			if (!canReach(source.position, targetPosition)) {
-				const fallback = managers.map.findNearestWalkablePosition(settler.mapName, targetPosition, 2)
+				const fallback = managers.map.findNearestWalkablePosition(settler.mapId, targetPosition, 2)
 				if (fallback && canReach(source.position, fallback)) {
 					targetPosition = fallback
 				} else {
@@ -112,7 +112,7 @@ export const TransportHandler: StepHandler = {
 			}
 
 			if (!canReach(reservation.position, targetPosition)) {
-				const fallback = managers.map.findNearestWalkablePosition(settler.mapName, targetPosition, 2)
+				const fallback = managers.map.findNearestWalkablePosition(settler.mapId, targetPosition, 2)
 				if (fallback && canReach(reservation.position, fallback)) {
 					targetPosition = fallback
 				} else {

@@ -1,4 +1,5 @@
-import { Position, MapId } from '../types'
+import { Position } from '../types'
+import type { MapId } from '../ids'
 
 export enum MoveTargetType {
 	AmenitySlot = 'amenity_slot',
@@ -17,7 +18,7 @@ export enum MoveTargetType {
 export interface MovementEntity {
 	id: string
 	position: Position
-	mapName: MapId
+	mapId: MapId
 	speed: number // pixels per second
 }
 

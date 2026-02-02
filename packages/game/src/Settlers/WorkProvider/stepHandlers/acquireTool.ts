@@ -44,7 +44,7 @@ export const AcquireToolHandler: StepHandler = {
 		let toolItemId = step.toolItemId
 		let toolPosition = step.toolPosition
 		if (!toolItemId || !toolPosition) {
-			const reservedTool = reservationSystem.reserveToolForProfession(settler.mapName, step.profession, settlerId)
+			const reservedTool = reservationSystem.reserveToolForProfession(settler.mapId, step.profession, settlerId)
 			if (!reservedTool) {
 				return {
 					actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }]
@@ -55,8 +55,8 @@ export const AcquireToolHandler: StepHandler = {
 			reservations.add(() => reservationSystem.releaseToolReservation(toolItemId!))
 		}
 
-		const roadData = managers.roads.getRoadData(settler.mapName) || undefined
-		const path = managers.map.findPath(settler.mapName, settler.position, toolPosition!, {
+		const roadData = managers.roads.getRoadData(settler.mapId) || undefined
+		const path = managers.map.findPath(settler.mapId, settler.position, toolPosition!, {
 			roadData,
 			allowDiagonal: true
 		})

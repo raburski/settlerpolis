@@ -13,6 +13,7 @@ import { ProfessionDefinition, ProfessionToolDefinition } from './Population/typ
 import { ResourceNodeDefinition, ResourceNodeSpawn } from './ResourceNodes/types'
 import type { ItemType } from './Items/types'
 import type { ProfessionType } from './Population/types'
+import type { MapId } from './ids'
 
 export interface NPCContent extends NPC {
 	sentiments?: AffinitySentiments
@@ -61,8 +62,6 @@ export interface Position {
 	y: number
 }
 
-export type MapId = string
-
 export { Receiver } from './Receiver'
 
 // Re-export types from modules
@@ -88,3 +87,4 @@ export * from './Population/types'
 export * from './Storage/types'
 export * from './Simulation/types'
 export * from './ResourceNodes/types'
+export * from './ids'

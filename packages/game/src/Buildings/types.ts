@@ -1,9 +1,10 @@
-import { Position, MapId } from '../types'
+import { Position } from '../types'
 import { ItemType } from '../Items/types'
 import type { ProfessionType } from '../Population/types'
 import type { ResourceNodeType } from '../ResourceNodes/types'
+import type { BuildingId, BuildingInstanceId, MapId, PlayerId } from '../ids'
 
-export type BuildingId = string
+export type { BuildingId, BuildingInstanceId } from '../ids'
 
 export enum ConstructionStage {
 	CollectingResources = 'collecting_resources', // Building placed, resources being collected by carriers
@@ -37,7 +38,7 @@ export enum ProductionStatus {
 }
 
 export interface BuildingProduction {
-	buildingInstanceId: string
+	buildingInstanceId: BuildingInstanceId
 	status: ProductionStatus
 	progress: number // 0-100
 	currentBatchStartTime?: number
@@ -122,10 +123,10 @@ export interface BuildingDefinition {
 }
 
 export interface BuildingInstance {
-	id: string
+	id: BuildingInstanceId
 	buildingId: BuildingId
-	playerId: string
-	mapName: MapId
+	playerId: PlayerId
+	mapId: MapId
 	position: Position
 	workAreaCenter?: Position
 	stage: ConstructionStage
@@ -143,16 +144,16 @@ export interface PlaceBuildingData {
 }
 
 export interface CancelBuildingData {
-	buildingInstanceId: string
+	buildingInstanceId: BuildingInstanceId
 }
 
 export interface SetProductionPausedData {
-	buildingInstanceId: string
+	buildingInstanceId: BuildingInstanceId
 	paused: boolean
 }
 
 export interface SetWorkAreaData {
-	buildingInstanceId: string
+	buildingInstanceId: BuildingInstanceId
 	center: Position
 }
 
@@ -161,7 +162,7 @@ export interface BuildingPlacedData {
 }
 
 export interface BuildingProgressData {
-	buildingInstanceId: string
+	buildingInstanceId: BuildingInstanceId
 	progress: number
 	stage: ConstructionStage
 }
@@ -171,7 +172,7 @@ export interface BuildingCompletedData {
 }
 
 export interface BuildingCancelledData {
-	buildingInstanceId: string
+	buildingInstanceId: BuildingInstanceId
 	refundedItems: Array<{
 		itemType: ItemType
 		quantity: number
@@ -179,7 +180,7 @@ export interface BuildingCancelledData {
 }
 
 export interface BuildingWorkAreaUpdatedData {
-	buildingInstanceId: string
+	buildingInstanceId: BuildingInstanceId
 	center: Position
 }
 

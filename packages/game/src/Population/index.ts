@@ -67,13 +67,13 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 
 		this.stats = new PopulationStats(
 			event,
-			(mapName: string, playerId: string) => {
+			(mapId: string, playerId: string) => {
 				return Array.from(this.settlers.values()).filter(
-					s => s.mapName === mapName && s.playerId === playerId
+					s => s.mapId === mapId && s.playerId === playerId
 				)
 			},
-			(mapName: string, playerId: string) => {
-				return this.getHousingCapacity(mapName, playerId)
+			(mapId: string, playerId: string) => {
+				return this.getHousingCapacity(mapId, playerId)
 			}
 		)
 
@@ -90,8 +90,8 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			if (this.hasAnySettlersForPlayer(client.id)) {
 				return
 			}
-			const mapName = data.mapId || this.managers.map.getDefaultMapId()
-			this.spawnInitialPopulation(mapName, client.id, data.position)
+			const mapId = data.mapId || this.managers.map.getDefaultMapId()
+			this.spawnInitialPopulation(mapId, client.id, data.position)
 		})
 
 		this.event.on(Event.Buildings.SS.HouseCompleted, (data: { buildingInstanceId: string, buildingId: string }) => {
@@ -177,22 +177,22 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		return false
 	}
 
-	public getAvailableSettlers(mapName: string, playerId: string): Settler[] {
+	public getAvailableSettlers(mapId: string, playerId: string): Settler[] {
 		return Array.from(this.settlers.values())
-			.filter(settler => settler.mapName === mapName && settler.playerId === playerId)
+			.filter(settler => settler.mapId === mapId && settler.playerId === playerId)
 			.filter(settler => settler.state === SettlerState.Idle)
 			.filter(settler => !this.isSettlerCritical(settler))
 	}
 
-	public getAvailableCarriers(mapName: string, playerId: string): Settler[] {
-		return this.getAvailableSettlers(mapName, playerId)
+	public getAvailableCarriers(mapId: string, playerId: string): Settler[] {
+		return this.getAvailableSettlers(mapId, playerId)
 			.filter(settler => settler.profession === ProfessionType.Carrier)
 	}
 
-	private getHousingCapacity(mapName: string, playerId: string): number {
+	private getHousingCapacity(mapId: string, playerId: string): number {
 		let capacity = 0
 		for (const building of this.managers.buildings.getAllBuildings()) {
-			if (building.mapName !== mapName || building.playerId !== playerId) {
+			if (building.mapId !== mapId || building.playerId !== playerId) {
 				continue
 			}
 			if (building.stage !== ConstructionStage.Completed) {
@@ -245,7 +245,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		const occupants = this.houseOccupants.get(settler.houseId)
 		occupants?.delete(settlerId)
 		settler.houseId = undefined
-		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapId)
 	}
 
 	private assignSettlerToHouse(settlerId: string, houseId: string): boolean {
@@ -266,7 +266,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		}
 		occupants.add(settlerId)
 		settler.houseId = houseId
-		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapId)
 		return true
 	}
 
@@ -285,7 +285,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			return
 		}
 		const homeless = Array.from(this.settlers.values())
-			.filter(settler => settler.mapName === building.mapName && settler.playerId === building.playerId)
+			.filter(settler => settler.mapId === building.mapId && settler.playerId === building.playerId)
 			.filter(settler => !settler.houseId)
 			.sort((a, b) => a.createdAt - b.createdAt)
 
@@ -321,7 +321,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			return
 		}
 		update(settler)
-		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapId)
 	}
 
 	private updateSettlerContext(settlerId: string, patch: Partial<SettlerStateContext>): void {
@@ -403,8 +403,8 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			settlerId,
 			oldProfession,
 			newProfession: profession
-		}, settler.mapName)
-		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+		}, settler.mapId)
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapId)
 	}
 
 	public getToolItemType(profession: ProfessionType): ItemType | null {
@@ -416,8 +416,8 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		return null
 	}
 
-	public findAvailableToolOnMap(mapName: string, itemType: ItemType): { id: string, position: Position } | null {
-		const tool = this.findToolOnMap(mapName, itemType)
+	public findAvailableToolOnMap(mapId: string, itemType: ItemType): { id: string, position: Position } | null {
+		const tool = this.findToolOnMap(mapId, itemType)
 		if (!tool) {
 			return null
 		}
@@ -427,8 +427,8 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		return tool
 	}
 
-	public findToolOnMap(mapName: string, itemType: ItemType): { id: string, position: Position } | null {
-		const mapItems = this.managers.loot.getMapItems(mapName)
+	public findToolOnMap(mapId: string, itemType: ItemType): { id: string, position: Position } | null {
+		const mapItems = this.managers.loot.getMapItems(mapId)
 		const tool = mapItems.find(item => item.itemType === itemType)
 		if (!tool) {
 			return null
@@ -436,10 +436,10 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		return { id: tool.id, position: tool.position }
 	}
 
-	public getServerClient(mapName?: string): EventClient {
+	public getServerClient(mapId?: string): EventClient {
 		return {
 			id: 'server',
-			currentGroup: mapName || 'GLOBAL',
+			currentGroup: mapId || 'GLOBAL',
 			setGroup: () => {},
 			emit: (to, event, data, groupName) => {
 				this.event.emit(to, event, data, groupName)
@@ -480,7 +480,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		const settler: Settler = {
 			id,
 			playerId: house.playerId,
-			mapName: house.mapName,
+			mapId: house.mapId,
 			position: { ...house.position },
 			profession: ProfessionType.Carrier,
 			state: SettlerState.Idle,
@@ -495,16 +495,16 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		this.managers.movement.registerEntity({
 			id: settler.id,
 			position: settler.position,
-			mapName: settler.mapName,
+			mapId: settler.mapId,
 			speed: settler.speed
 		})
 
-		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerSpawned, { settler }, settler.mapName)
-		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapName)
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerSpawned, { settler }, settler.mapId)
+		this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, settler.mapId)
 		return settler
 	}
 
-	public spawnInitialPopulation(mapName: string, playerId: string, spawnPosition: Position): void {
+	public spawnInitialPopulation(mapId: string, playerId: string, spawnPosition: Position): void {
 		const now = this.simulationTimeMs
 		for (const popEntry of this.startingPopulation) {
 			if (!this.professions.has(popEntry.profession)) {
@@ -522,7 +522,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 				const settler: Settler = {
 					id: settlerId,
 					playerId,
-					mapName,
+					mapId,
 					position,
 					profession: popEntry.profession,
 					state: SettlerState.Idle,
@@ -535,12 +535,12 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 				this.managers.movement.registerEntity({
 					id: settler.id,
 					position: settler.position,
-					mapName: settler.mapName,
+					mapId: settler.mapId,
 					speed: settler.speed
 				})
 
-				this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerSpawned, { settler }, mapName)
-				this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, mapName)
+				this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerSpawned, { settler }, mapId)
+				this.event.emit(Receiver.Group, PopulationEvents.SC.SettlerUpdated, { settler }, mapId)
 			}
 		}
 	}
@@ -609,7 +609,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			this.managers.movement.registerEntity({
 				id: restored.id,
 				position: restored.position,
-				mapName: restored.mapName,
+				mapId: restored.mapId,
 				speed: restored.speed
 			})
 		}

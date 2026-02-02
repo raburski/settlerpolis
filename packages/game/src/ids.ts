@@ -1,0 +1,16 @@
+export type MapId = string
+export type PlayerId = string
+export type SettlerId = string
+export type BuildingId = string
+export type BuildingInstanceId = string
+export type MapObjectId = string
+export type ResourceNodeId = string
+export type RoadJobId = string
+export type StorageSlotId = string
+export type StorageReservationId = string
+export type WorkAssignmentId = string
+export type LogisticsRequestId = string
+export type LootItemId = string
+export type ReservationId = string
+export type NPCId = string
+export type QuestId = string

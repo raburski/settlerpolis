@@ -6,7 +6,7 @@ import { MapUrlService, MapId } from "@rugged/game"
 export class FrontendMapUrlService implements MapUrlService {
 	constructor(private baseUrl: string = "/assets/maps/") {}
 
-	getMapUrl(mapName: MapId): string {
-		return `${this.baseUrl}${mapName}.json`
+	getMapUrl(mapId: MapId): string {
+		return `${this.baseUrl}${mapId}.json`
 	}
 }

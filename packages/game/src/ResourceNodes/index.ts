@@ -94,7 +94,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 
 			const fakeClient: EventClient = {
 				id: WORLD_PLAYER_ID,
-				currentGroup: spawn.mapName,
+				currentGroup: spawn.mapId,
 				emit: (receiver, event, data, target) => {
 					this.event.emit(receiver, event, data, target)
 				},
@@ -122,7 +122,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			const node: ResourceNodeInstance = {
 				id: nodeId,
 				nodeType: def.id,
-				mapName: spawn.mapName,
+				mapId: spawn.mapId,
 				position,
 				remainingHarvests,
 				mapObjectId: mapObject.id,
@@ -144,9 +144,9 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		return this.definitions.get(nodeType)
 	}
 
-	public getAvailableNodes(mapName: string, nodeType?: string): ResourceNodeInstance[] {
+	public getAvailableNodes(mapId: string, nodeType?: string): ResourceNodeInstance[] {
 		return Array.from(this.nodes.values()).filter(node => {
-			if (node.mapName !== mapName) return false
+			if (node.mapId !== mapId) return false
 			if (nodeType && node.nodeType !== nodeType) return false
 			if (node.remainingHarvests <= 0) return false
 			if (node.isSpoiled) return false
@@ -156,8 +156,8 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		})
 	}
 
-	public findClosestAvailableNode(mapName: string, nodeType: string, position: Position): ResourceNodeInstance | undefined {
-		const nodes = this.getAvailableNodes(mapName, nodeType)
+	public findClosestAvailableNode(mapId: string, nodeType: string, position: Position): ResourceNodeInstance | undefined {
+		const nodes = this.getAvailableNodes(mapId, nodeType)
 		if (nodes.length === 0) {
 			return undefined
 		}
@@ -211,7 +211,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 
 		if (node.remainingHarvests <= 0) {
 			if (node.mapObjectId) {
-				this.managers.mapObjects.removeObjectById(node.mapObjectId, node.mapName)
+				this.managers.mapObjects.removeObjectById(node.mapObjectId, node.mapId)
 			}
 			const def = this.definitions.get(node.nodeType)
 			if (def) {
@@ -226,7 +226,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		}
 	}
 
-	public plantNode(options: { nodeType: string, mapName: string, position: Position, growTimeMs?: number, spoilTimeMs?: number, despawnTimeMs?: number, tileBased?: boolean }): ResourceNodeInstance | null {
+	public plantNode(options: { nodeType: string, mapId: string, position: Position, growTimeMs?: number, spoilTimeMs?: number, despawnTimeMs?: number, tileBased?: boolean }): ResourceNodeInstance | null {
 		const def = this.definitions.get(options.nodeType)
 		if (!def) {
 			this.logger.warn(`[ResourceNodesManager] Missing definition for node type ${options.nodeType}`)
@@ -239,13 +239,13 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 
 		const position = options.tileBased ? this.resolvePosition({
 			nodeType: options.nodeType,
-			mapName: options.mapName,
+			mapId: options.mapId,
 			position: options.position,
 			tileBased: options.tileBased
 		}) : options.position
 
 		const existingAtPosition = Array.from(this.nodes.values()).find(node =>
-			node.mapName === options.mapName &&
+			node.mapId === options.mapId &&
 			node.position.x === position.x &&
 			node.position.y === position.y &&
 			node.remainingHarvests > 0
@@ -268,7 +268,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 
 		const fakeClient: EventClient = {
 			id: WORLD_PLAYER_ID,
-			currentGroup: options.mapName,
+			currentGroup: options.mapId,
 			emit: (receiver, event, data, target) => {
 				this.event.emit(receiver, event, data, target)
 			},
@@ -296,7 +296,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		const node: ResourceNodeInstance = {
 			id: nodeId,
 			nodeType: def.id,
-			mapName: options.mapName,
+			mapId: options.mapId,
 			position,
 			remainingHarvests,
 			mapObjectId: mapObject.id,
@@ -316,9 +316,9 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		return node
 	}
 
-	public getNodes(mapName?: string, nodeType?: string): ResourceNodeInstance[] {
+	public getNodes(mapId?: string, nodeType?: string): ResourceNodeInstance[] {
 		return Array.from(this.nodes.values()).filter(node => {
-			if (mapName && node.mapName !== mapName) return false
+			if (mapId && node.mapId !== mapId) return false
 			if (nodeType && node.nodeType !== nodeType) return false
 			if (node.remainingHarvests <= 0) return false
 			return true
@@ -353,7 +353,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			}
 
 			if (node.mapObjectId) {
-				this.managers.mapObjects.removeObjectById(node.mapObjectId, node.mapName)
+				this.managers.mapObjects.removeObjectById(node.mapObjectId, node.mapId)
 			}
 			const def = this.definitions.get(node.nodeType)
 			if (def) {
@@ -366,29 +366,29 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	private updateCollisionForNode(node: ResourceNodeInstance, def: ResourceNodeDefinition, blocked: boolean): void {
 		const shouldBlock = def.blocksMovement ?? def.id === 'tree'
 		if (!shouldBlock) return
-		const map = this.managers.map.getMap(node.mapName)
+		const map = this.managers.map.getMap(node.mapId)
 		if (!map) return
 
 		const tileX = Math.floor(node.position.x / map.tiledMap.tilewidth)
 		const tileY = Math.floor(node.position.y / map.tiledMap.tileheight)
-		this.managers.map.setDynamicCollision(node.mapName, tileX, tileY, blocked)
+		this.managers.map.setDynamicCollision(node.mapId, tileX, tileY, blocked)
 	}
 
-	public rebuildBlockingCollision(mapName?: string): void {
+	public rebuildBlockingCollision(mapId?: string): void {
 		const nodes = Array.from(this.nodes.values())
-		const mapNames = new Set<string>()
+		const mapIds = new Set<string>()
 
 		for (const node of nodes) {
-			if (mapName && node.mapName !== mapName) continue
-			mapNames.add(node.mapName)
+			if (mapId && node.mapId !== mapId) continue
+			mapIds.add(node.mapId)
 		}
 
-		for (const name of mapNames) {
+		for (const name of mapIds) {
 			this.managers.map.resetDynamicCollision(name)
 		}
 
 		for (const node of nodes) {
-			if (mapName && node.mapName !== mapName) continue
+			if (mapId && node.mapId !== mapId) continue
 			const def = this.definitions.get(node.nodeType)
 			if (!def) continue
 			this.updateCollisionForNode(node, def, true)
@@ -482,7 +482,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			position: { ...node.position },
 			rotation: 0,
 			playerId: WORLD_PLAYER_ID,
-			mapName: node.mapName,
+			mapId: node.mapId,
 			metadata: {
 				resourceNode: true,
 				resourceNodeId: node.id,
@@ -496,10 +496,10 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		return mapObject
 	}
 
-	private sendNodesToClient(client: EventClient, mapName?: string): void {
-		const targetMap = mapName || client.currentGroup
+	private sendNodesToClient(client: EventClient, mapId?: string): void {
+		const targetMap = mapId || client.currentGroup
 		for (const node of this.nodes.values()) {
-			if (node.mapName !== targetMap) {
+			if (node.mapId !== targetMap) {
 				continue
 			}
 			if (node.remainingHarvests <= 0) {
