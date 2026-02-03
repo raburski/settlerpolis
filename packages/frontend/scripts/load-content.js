@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from 'dotenv';
 import { spawn } from 'node:child_process';
+import { generateBuildingsModule } from './buildings-module.js';
 
 // Define paths for setting up environment
 const __filename = fileURLToPath(import.meta.url);
@@ -80,6 +81,11 @@ const assetIndexTarget = path.join(frontendDir, 'public/assets/asset-index.json'
 		console.log(`Created directory: ${dir}`);
 	}
 });
+
+const generation = generateBuildingsModule(contentDir);
+if (generation?.success) {
+  console.log(`Generated buildings module at ${generation.buildingsModulePath}`);
+}
 
 // Function to copy files from source to target
 function copyFiles(sourceDir, targetDir, extensions) {

@@ -170,6 +170,10 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			this.constructionCoordinator.unassignAllForBuilding(data.buildingInstanceId)
 		})
 
+		this.event.on(BuildingsEvents.SS.Removed, (data: { buildingInstanceId: string }) => {
+			this.constructionCoordinator.unassignAllForBuilding(data.buildingInstanceId)
+		})
+
 		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.handleSimulationTick(data)
 		})
@@ -180,6 +184,12 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 
 		this.event.on(NeedsEvents.SS.ContextResumeRequested, (data: ContextResumeRequestedEventData) => {
 			this.handleContextResumeRequested(data)
+		})
+
+		this.event.on(WorkProviderEvents.CS.SetLogisticsPriorities, (data: { itemPriorities: string[] }) => {
+			const priorities = Array.isArray(data?.itemPriorities) ? data.itemPriorities : []
+			this.logisticsProvider.setItemPriorities(priorities)
+			this.logisticsCoordinator.broadcast()
 		})
 	}
 

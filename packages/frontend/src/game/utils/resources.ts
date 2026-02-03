@@ -19,6 +19,9 @@ export const buildResourceList = (definitions: BuildingDefinition[]): string[] =
 
 		definition.productionRecipe?.inputs?.forEach((input) => addItemType(items, input.itemType))
 		definition.productionRecipe?.outputs?.forEach((output) => addItemType(items, output.itemType))
+		definition.autoProduction?.inputs?.forEach((input) => addItemType(items, input.itemType))
+		definition.autoProduction?.outputs?.forEach((output) => addItemType(items, output.itemType))
+		definition.consumes?.forEach((consume) => addItemType(items, consume.itemType))
 	})
 
 	return Array.from(items).sort()

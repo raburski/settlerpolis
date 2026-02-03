@@ -296,6 +296,12 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 		this.dropRefundItems(building, refundedItems)
 		this.removeBuildingInstance(building)
+		this.event.emit(Receiver.All, BuildingsEvents.SS.Removed, {
+			buildingInstanceId: building.id,
+			buildingId: building.buildingId,
+			mapId: building.mapId,
+			playerId: building.playerId
+		})
 
 		// Emit cancelled event
 		const cancelledData: BuildingCancelledData = {
@@ -364,6 +370,9 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	private removeBuildingInstance(building: BuildingInstance): void {
+		if (building.stage === ConstructionStage.Completed) {
+			this.updateBlockedTiles(building, false)
+		}
 		// Clean up resource requests and worker tracking
 		this.resourceRequests.delete(building.id)
 		this.assignedWorkers.delete(building.id)
@@ -576,6 +585,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		
 		// Update building stage
 		building.stage = ConstructionStage.Completed
+		this.updateBlockedTiles(building, true)
 
 		// Initialize storage for building if it has storage capacity
 		if (this.managers.storage) {
@@ -629,6 +639,51 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.logger.log(`Emitting building completed event to group: ${building.mapId}`)
 		this.event.emit(Receiver.Group, BuildingsEvents.SC.Completed, completedData, building.mapId)
 		this.logger.log(`✓ Building completed event emitted`)
+	}
+
+	private updateBlockedTiles(building: BuildingInstance, blocked: boolean): void {
+		const definition = this.definitions.get(building.buildingId)
+		if (!definition?.blockedTiles || definition.blockedTiles.length === 0) {
+			return
+		}
+
+		const map = this.managers.map.getMap(building.mapId)
+		if (!map) {
+			return
+		}
+
+		const tileSize = map.tiledMap?.tilewidth || 32
+		const originTileX = Math.floor(building.position.x / tileSize)
+		const originTileY = Math.floor(building.position.y / tileSize)
+		const rotation = typeof building.rotation === 'number' ? building.rotation : 0
+		const width = definition.footprint.width
+		const height = definition.footprint.height
+
+		const accessSet = new Set<string>()
+		if (definition.accessTiles && definition.accessTiles.length > 0) {
+			for (const access of definition.accessTiles) {
+				const normalized = { x: Math.round(access.x), y: Math.round(access.y) }
+				const rotated = rotatePointOffset(normalized, width, height, rotation)
+				accessSet.add(`${Math.round(rotated.x)},${Math.round(rotated.y)}`)
+			}
+		}
+
+		const blockedSet = new Set<string>()
+		for (const tile of definition.blockedTiles) {
+			const normalized = { x: Math.round(tile.x), y: Math.round(tile.y) }
+			const rotated = rotatePointOffset(normalized, width, height, rotation)
+			const tileX = originTileX + Math.round(rotated.x)
+			const tileY = originTileY + Math.round(rotated.y)
+			const key = `${Math.round(rotated.x)},${Math.round(rotated.y)}`
+			if (blockedSet.has(key)) {
+				continue
+			}
+			blockedSet.add(key)
+			if (accessSet.has(key)) {
+				continue
+			}
+			this.managers.map.setDynamicCollision(building.mapId, tileX, tileY, blocked)
+		}
 	}
 
 	private processAutoProduction(building: BuildingInstance, recipe: ProductionRecipe, deltaMs: number): void {
@@ -782,6 +837,12 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			}
 		}
 
+		// Check access tile collision (walkable + avoids existing buildings)
+		if (this.checkAccessTileCollision(mapId, position, definition, rotation, TILE_SIZE, existingBuildings)) {
+			this.logger.debug(`❌ Collision with access tile at position:`, position)
+			return true
+		}
+
 		// Check collision with existing map objects
 		for (const obj of existingObjects) {
 			// For buildings, use footprint from metadata
@@ -862,6 +923,72 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 
 		return false // No collision with map tiles
+	}
+
+	/**
+	 * Check if access tiles overlap collisions or existing buildings.
+	 */
+	private checkAccessTileCollision(
+		mapId: string,
+		position: { x: number, y: number },
+		definition: BuildingDefinition,
+		rotation: number,
+		tileSize: number,
+		existingBuildings: BuildingInstance[]
+	): boolean {
+		const accessTiles = definition.accessTiles
+		if (!accessTiles || accessTiles.length === 0) {
+			return false
+		}
+
+		const map = this.managers.map.getMap(mapId)
+		if (!map) {
+			return false
+		}
+
+		const startTileX = Math.floor(position.x / tileSize)
+		const startTileY = Math.floor(position.y / tileSize)
+		const width = definition.footprint.width
+		const height = definition.footprint.height
+		const normalized = accessTiles.map((tile) => ({
+			x: Math.round(tile.x),
+			y: Math.round(tile.y)
+		}))
+
+		for (const tile of normalized) {
+			const rotated = rotatePointOffset(tile, width, height, rotation)
+			const accessTileX = startTileX + Math.round(rotated.x)
+			const accessTileY = startTileY + Math.round(rotated.y)
+
+			if (this.managers.map.isCollision(mapId, accessTileX, accessTileY)) {
+				this.logger.debug(`Access tile collision at tile (${accessTileX}, ${accessTileY})`)
+				return true
+			}
+
+			const accessPosition = {
+				x: accessTileX * tileSize,
+				y: accessTileY * tileSize
+			}
+
+			for (const building of existingBuildings) {
+				const def = this.definitions.get(building.buildingId)
+				if (!def) continue
+
+				const existingFootprint = this.getRotatedFootprint(def, typeof building.rotation === 'number' ? building.rotation : 0)
+				const existingWidth = existingFootprint.width * tileSize
+				const existingHeight = existingFootprint.height * tileSize
+
+				if (this.doRectanglesOverlap(
+					accessPosition, tileSize, tileSize,
+					building.position, existingWidth, existingHeight
+				)) {
+					this.logger.debug(`Access tile overlaps existing building ${building.id}`)
+					return true
+				}
+			}
+		}
+
+		return false
 	}
 
 	private getRotatedFootprint(definition: BuildingDefinition, rotation: number): { width: number; height: number } {
@@ -1054,7 +1181,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		return this.getBuildingDefinition(building.buildingId)
 	}
 
-	public getBuildingAccessPoints(buildingInstanceId: string): { entry?: Position; center?: Position } | null {
+	public getBuildingAccessPoints(buildingInstanceId: string): { entry?: Position; center?: Position; accessTiles?: Position[] } | null {
 		const building = this.getBuildingInstance(buildingInstanceId)
 		if (!building) {
 			return null
@@ -1065,7 +1192,8 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 		const entry = definition.entryPoint
 		const center = definition.centerPoint
-		if (!entry && !center) {
+		const accessTiles = definition.accessTiles
+		if (!entry && !center && (!accessTiles || accessTiles.length === 0)) {
 			return null
 		}
 		const map = this.managers.map.getMap(building.mapId)
@@ -1073,7 +1201,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		const rotation = typeof building.rotation === 'number' ? building.rotation : 0
 		const width = definition.footprint.width
 		const height = definition.footprint.height
-		const result: { entry?: Position; center?: Position } = {}
+		const result: { entry?: Position; center?: Position; accessTiles?: Position[] } = {}
 		if (entry) {
 			const rotated = rotatePointOffset(entry, width, height, rotation)
 			result.entry = {
@@ -1086,6 +1214,26 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			result.center = {
 				x: building.position.x + rotated.x * tileSize,
 				y: building.position.y + rotated.y * tileSize
+			}
+		}
+		if (accessTiles && accessTiles.length > 0) {
+			const seen = new Set<string>()
+			const positions: Position[] = []
+			for (const tile of accessTiles) {
+				const normalized = { x: Math.round(tile.x), y: Math.round(tile.y) }
+				const rotated = rotatePointOffset(normalized, width, height, rotation)
+				const key = `${rotated.x},${rotated.y}`
+				if (seen.has(key)) {
+					continue
+				}
+				seen.add(key)
+				positions.push({
+					x: building.position.x + (rotated.x + 0.5) * tileSize,
+					y: building.position.y + (rotated.y + 0.5) * tileSize
+				})
+			}
+			if (positions.length > 0) {
+				result.accessTiles = positions
 			}
 		}
 		return result
@@ -1282,6 +1430,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.tickAccumulatorMs = state.tickAccumulatorMs
 
 		this.initializeStorageForExistingBuildings()
+		this.initializeCollisionForExistingBuildings()
 	}
 
 	private initializeStorageForExistingBuildings(): void {
@@ -1300,6 +1449,18 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 				continue
 			}
 			this.managers.storage.initializeBuildingStorage(building.id)
+		}
+	}
+
+	private initializeCollisionForExistingBuildings(): void {
+		if (this.definitions.size === 0) {
+			return
+		}
+		for (const building of this.buildings.values()) {
+			if (building.stage !== ConstructionStage.Completed) {
+				continue
+			}
+			this.updateBlockedTiles(building, true)
 		}
 	}
 

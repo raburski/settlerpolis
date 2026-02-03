@@ -12,7 +12,7 @@ export enum StorageReservationStatus {
 
 export interface StorageSlotDefinition {
 	itemType: ItemType
-	offset: { x: number, y: number }
+	offset?: { x: number, y: number }
 	hidden?: boolean
 	maxQuantity?: number
 }

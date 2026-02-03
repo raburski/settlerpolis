@@ -86,6 +86,14 @@ export interface BuildingDefinition {
 		x: number
 		y: number
 	}
+	accessTiles?: Array<{
+		x: number
+		y: number
+	}>
+	blockedTiles?: Array<{
+		x: number
+		y: number
+	}>
 	constructionTime: number // in seconds
 	costs: BuildingCost[]
 	unlockFlags?: string[] // Optional flags that must be set to unlock this building

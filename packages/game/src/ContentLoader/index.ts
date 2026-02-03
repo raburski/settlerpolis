@@ -173,7 +173,7 @@ export class ContentLoader {
 		this.logger.debug('Buildings array length:', this.content.buildings?.length || 0)
 		const buildingsToLoad = this.content.buildings || []
 		if (buildingsToLoad.length === 0) {
-			this.logger.warn('⚠️ No buildings found in content! Check content/settlerpolis/buildings.ts')
+			this.logger.warn('⚠️ No buildings found in content! Check content/settlerpolis/buildings.json')
 			this.logger.warn('Content object keys:', Object.keys(this.content))
 			this.logger.warn('Content.buildings type:', typeof this.content.buildings)
 		} else {

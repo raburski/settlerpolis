@@ -14,6 +14,7 @@ import { BaseManager } from '../Managers'
 import type { Position } from '../types'
 import type { Item } from '../Items/types'
 import { ConstructionStage } from '../Buildings/types'
+import type { BuildingDefinition } from '../Buildings/types'
 import type { StorageSnapshot, BuildingStorageSnapshot } from '../state/types'
 
 export interface StorageDeps {
@@ -93,6 +94,26 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			return { x: width - 1 - offset.x, y: height - 1 - offset.y }
 		}
 		return { x: height - 1 - offset.y, y: offset.x }
+	}
+
+	private resolveSlotOffset(definition: BuildingDefinition, slotDef: { offset?: { x: number; y: number } }): { x: number; y: number } {
+		if (slotDef.offset) {
+			return slotDef.offset
+		}
+		return {
+			x: Math.floor(definition.footprint.width / 2),
+			y: Math.floor(definition.footprint.height / 2)
+		}
+	}
+
+	private resolveSlotHidden(slotDef: { hidden?: boolean; offset?: { x: number; y: number } }): boolean | undefined {
+		if (typeof slotDef.hidden === 'boolean') {
+			return slotDef.hidden
+		}
+		if (!slotDef.offset) {
+			return true
+		}
+		return undefined
 	}
 
 	private getStorageSlotByReservation(reservationId?: string): StorageSlot | null {
@@ -237,8 +258,9 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				? Math.max(1, Math.min(basePileSize, slotDef.maxQuantity))
 				: basePileSize
 			const slotId = uuidv4()
+			const offset = this.resolveSlotOffset(definition, slotDef)
 			const rotatedOffset = this.rotateOffset(
-				slotDef.offset,
+				offset,
 				definition.footprint.width,
 				definition.footprint.height,
 				rotation
@@ -258,7 +280,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				batches: [],
 				reservedIncoming: 0,
 				reservedOutgoing: 0,
-				hidden: slotDef.hidden
+				hidden: this.resolveSlotHidden(slotDef)
 			}
 
 			storage.slots.set(slotId, slot)
@@ -977,8 +999,9 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				}
 				const basePileSize = this.getPileSize(slotDef.itemType)
 				const desiredPileSize = Math.max(1, Math.min(basePileSize, slotDef.maxQuantity))
+				const offset = this.resolveSlotOffset(definition, slotDef)
 				const rotatedOffset = this.rotateOffset(
-					slotDef.offset,
+					offset,
 					definition.footprint.width,
 					definition.footprint.height,
 					rotation

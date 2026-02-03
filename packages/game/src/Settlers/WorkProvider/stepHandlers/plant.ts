@@ -12,7 +12,7 @@ export const PlantHandler: StepHandler = {
 
 		const building = managers.buildings.getBuildingInstance(step.buildingInstanceId)
 		const definition = building ? managers.buildings.getBuildingDefinition(building.buildingId) : undefined
-		const postPlantReturnWaitMs = definition?.farm?.postPlantReturnWaitMs ?? 0
+		const postPlantReturnWaitMs = definition?.farm?.postPlantReturnWaitMs
 
 		const actions: WorkAction[] = [
 			{ type: WorkActionType.Move, position: step.position, targetType: MoveTargetType.Plot, targetId: `${step.position.x},${step.position.y}`, setState: SettlerState.MovingToResource },
@@ -20,10 +20,12 @@ export const PlantHandler: StepHandler = {
 			{ type: WorkActionType.Plant, buildingInstanceId: step.buildingInstanceId, nodeType: step.nodeType, position: step.position, growTimeMs: step.growTimeMs, spoilTimeMs: step.spoilTimeMs, despawnTimeMs: step.despawnTimeMs, setState: SettlerState.Working }
 		]
 
-		if (building && postPlantReturnWaitMs > 0) {
+		if (building && postPlantReturnWaitMs !== undefined) {
 			actions.push(
 				{ type: WorkActionType.Move, position: building.position, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding },
-				{ type: WorkActionType.Wait, durationMs: postPlantReturnWaitMs, setState: SettlerState.WaitingForWork }
+				...(postPlantReturnWaitMs > 0
+					? [{ type: WorkActionType.Wait, durationMs: postPlantReturnWaitMs, setState: SettlerState.WaitingForWork } as WorkAction]
+					: [])
 			)
 		}
 

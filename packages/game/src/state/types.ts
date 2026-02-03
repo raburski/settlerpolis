@@ -23,6 +23,7 @@ import type { Trigger } from '../Triggers/types'
 import type { ScheduledEvent } from '../Scheduler/types'
 import type { Position } from '../types'
 import type { MoveTargetType } from '../Movement/types'
+import type { ItemType } from '../Items/types'
 import type {
 	BuildingInstanceId,
 	MapId,
@@ -182,6 +183,7 @@ export interface WorkProviderSnapshot {
 export interface LogisticsSnapshot {
 	requests: LogisticsRequest[]
 	inFlightConstruction: MapEntries<MapEntries<number>>
+	itemPriorities?: ItemType[]
 }
 
 export interface ActionSystemSnapshot {

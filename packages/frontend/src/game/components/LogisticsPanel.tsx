@@ -66,10 +66,14 @@ const ItemLabel: React.FC<{ itemType: string }> = ({ itemType }) => {
 
 export const LogisticsPanel: React.FC<LogisticsPanelProps> = ({ isVisible, anchorRect, offsetX = 0 }) => {
 	const [requests, setRequests] = useState<LogisticsRequest[]>(logisticsService.getRequests())
+	const [itemPriorities, setItemPriorities] = useState<string[]>(logisticsService.getItemPriorities())
 
 	useEffect(() => {
-		const handleUpdated = (data: LogisticsRequest[]) => {
-			setRequests(data || [])
+		const handleUpdated = (data: { requests: LogisticsRequest[], itemPriorities?: string[] }) => {
+			setRequests(data?.requests || [])
+			if (Array.isArray(data?.itemPriorities)) {
+				setItemPriorities(data.itemPriorities)
+			}
 		}
 
 		EventBus.on(UiEvents.Logistics.Updated, handleUpdated)
@@ -80,13 +84,29 @@ export const LogisticsPanel: React.FC<LogisticsPanelProps> = ({ isVisible, ancho
 	}, [])
 
 	const sortedRequests = useMemo(() => {
+		const priorityIndex = new Map<string, number>()
+		itemPriorities.forEach((itemType, index) => {
+			priorityIndex.set(itemType, index)
+		})
+		const getItemIndex = (itemType: string) => {
+			const index = priorityIndex.get(itemType)
+			return index === undefined ? itemPriorities.length : index
+		}
 		return [...requests].sort((a, b) => {
 			if (b.priority !== a.priority) {
 				return b.priority - a.priority
 			}
+			const aIndex = getItemIndex(a.itemType)
+			const bIndex = getItemIndex(b.itemType)
+			if (aIndex !== bIndex) {
+				return aIndex - bIndex
+			}
+			if (a.itemType !== b.itemType) {
+				return a.itemType.localeCompare(b.itemType)
+			}
 			return a.createdAtMs - b.createdAtMs
 		})
-	}, [requests])
+	}, [requests, itemPriorities])
 
 	if (!isVisible) {
 		return null

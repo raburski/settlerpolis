@@ -11,6 +11,8 @@ import { WorkProviderEvents } from './events'
 import { v4 as uuidv4 } from 'uuid'
 
 export class LogisticsCoordinator {
+	private lastMapIdsWithRequests = new Set<string>()
+
 	constructor(
 		private managers: WorkProviderDeps,
 		private event: EventManager,
@@ -25,6 +27,10 @@ export class LogisticsCoordinator {
 		this.refreshConsumptionRequests()
 		this.emitLogisticsRequests()
 		this.assignIdleCarriersToLogistics()
+	}
+
+	public broadcast(): void {
+		this.emitLogisticsRequests()
 	}
 
 	private refreshConsumptionRequests(): void {
@@ -55,6 +61,7 @@ export class LogisticsCoordinator {
 	private emitLogisticsRequests(): void {
 		const requests = this.logisticsProvider.getRequests()
 		const byMap = new Map<string, typeof requests>()
+		const itemPriorities = this.logisticsProvider.getItemPriorities()
 
 		for (const request of requests) {
 			const building = this.managers.buildings.getBuildingInstance(request.buildingInstanceId)
@@ -67,12 +74,19 @@ export class LogisticsCoordinator {
 			byMap.get(building.mapId)!.push(request)
 		}
 
+		const currentMapIds = new Set(byMap.keys())
 		for (const [mapId, mapRequests] of byMap.entries()) {
-			this.event.emit(Receiver.Group, WorkProviderEvents.SC.LogisticsUpdated, { requests: mapRequests }, mapId)
+			this.event.emit(Receiver.Group, WorkProviderEvents.SC.LogisticsUpdated, { requests: mapRequests, itemPriorities }, mapId)
+		}
+		for (const mapId of this.lastMapIdsWithRequests) {
+			if (!currentMapIds.has(mapId)) {
+				this.event.emit(Receiver.Group, WorkProviderEvents.SC.LogisticsUpdated, { requests: [], itemPriorities }, mapId)
+			}
 		}
 		if (requests.length === 0) {
-			this.event.emit(Receiver.All, WorkProviderEvents.SC.LogisticsUpdated, { requests: [] })
+			this.event.emit(Receiver.All, WorkProviderEvents.SC.LogisticsUpdated, { requests: [], itemPriorities })
 		}
+		this.lastMapIdsWithRequests = currentMapIds
 	}
 
 	private assignIdleCarriersToLogistics(): void {

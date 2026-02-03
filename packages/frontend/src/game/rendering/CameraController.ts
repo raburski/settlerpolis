@@ -1,5 +1,6 @@
 import type { BabylonRenderer } from './BabylonRenderer'
 import type { InputManager, PointerState } from '../input/InputManager'
+import { IsometricRotation } from '../../shared/IsometricRotation'
 
 interface PanState {
 	startX: number
@@ -31,15 +32,14 @@ export class CameraController {
 	private dragStartWorld: { x: number; y: number } | null = null
 	private dragStartTarget: { x: number; y: number } | null = null
 	private dragStartFollowOffset: { x: number; y: number } | null = null
-	private rotateState: { start: number; end: number; startTime: number; duration: number } | null = null
 	private readonly rotationStorageKey = 'rugged:camera-rotation-step'
-	private rotationStep: number = 0
-	private readonly isoDirection = { x: 1, y: 1, z: 1 }
+	private readonly isoRotation: IsometricRotation
 
 	constructor(renderer: BabylonRenderer, overlayRoot: HTMLDivElement) {
 		this.renderer = renderer
-		this.restoreRotation()
-		this.renderer.camera.alpha = this.getAlphaForStep(this.rotationStep)
+		const initialStep = this.restoreRotation()
+		this.isoRotation = new IsometricRotation({ initialStep })
+		this.renderer.camera.alpha = this.isoRotation.getAlphaForStep()
 		this.createFadeOverlay(overlayRoot)
 		this.updateSize()
 		window.addEventListener('resize', this.updateSize)
@@ -71,31 +71,8 @@ export class CameraController {
 	}
 
 	rotateByDegrees(degrees: number): void {
-		const now = Date.now()
-		if (this.rotateState) {
-			this.applyRotation(now)
-		}
-		const startAlpha = this.renderer.camera.alpha
-		const duration = 250
-		if (degrees !== 0) {
-			const stepDelta = degrees > 0 ? 1 : -1
-			this.rotationStep = this.normalizeStep(this.rotationStep + stepDelta)
-		}
-		const targetAlpha = this.getAlphaForStep(this.rotationStep)
-		const delta = this.shortestAngleDelta(startAlpha, targetAlpha)
-		this.rotateState = {
-			start: startAlpha,
-			end: startAlpha + delta,
-			startTime: now,
-			duration
-		}
-	}
-
-	private normalizeAngle(value: number): number {
-		const twoPi = Math.PI * 2
-		let next = value % twoPi
-		if (next < 0) next += twoPi
-		return next
+		const stepDelta = degrees > 0 ? 1 : degrees < 0 ? -1 : 0
+		this.isoRotation.rotateBySteps(stepDelta, this.renderer.camera.alpha)
 	}
 
 	getWorldPoint(screenX: number, screenY: number): { x: number; y: number } {
@@ -255,71 +232,39 @@ export class CameraController {
 	}
 
 	private updateRotation(): void {
-		if (this.rotateState) {
-			this.applyRotation(Date.now())
+		const update = this.isoRotation.update(Date.now())
+		if (update) {
+			this.renderer.camera.alpha = update.alpha
+			if (update.done) {
+				this.persistRotation()
+			}
 			return
 		}
-		this.renderer.camera.alpha = this.getAlphaForStep(this.rotationStep)
-	}
-
-	private applyRotation(now: number): void {
-		if (!this.rotateState) return
-		const { start, end, startTime, duration } = this.rotateState
-		const elapsed = now - startTime
-		const t = Math.min(1, elapsed / duration)
-		const eased = t * t * (3 - 2 * t)
-		const alpha = start + (end - start) * eased
-		this.renderer.camera.alpha = this.normalizeAngle(alpha)
-		if (t >= 1) {
-			this.persistRotation()
-			this.rotateState = null
-		}
+		this.renderer.camera.alpha = this.isoRotation.getAlphaForStep()
 	}
 
 	private persistRotation(): void {
 		try {
-			window.localStorage.setItem(this.rotationStorageKey, String(this.rotationStep))
+			window.localStorage.setItem(this.rotationStorageKey, String(this.isoRotation.getStep()))
 		} catch {
 			// ignore storage failures
 		}
 	}
 
-	private restoreRotation(): void {
+	private restoreRotation(): number {
+		let rotationStep = 0
 		try {
 			const raw = window.localStorage.getItem(this.rotationStorageKey)
 			if (raw) {
 				const value = Number(raw)
 				if (Number.isFinite(value)) {
-					this.rotationStep = this.normalizeStep(Math.round(value))
+					rotationStep = Math.round(value)
 				}
 			}
-			this.renderer.camera.alpha = this.getAlphaForStep(this.rotationStep)
 		} catch {
 			// ignore storage failures
 		}
-	}
-
-	private normalizeStep(step: number): number {
-		const mod = step % 4
-		return mod < 0 ? mod + 4 : mod
-	}
-
-	private getAlphaForStep(step: number): number {
-		const radians = (step * Math.PI) / 2
-		const cos = Math.cos(radians)
-		const sin = Math.sin(radians)
-		const x = this.isoDirection.x * cos - this.isoDirection.z * sin
-		const z = this.isoDirection.x * sin + this.isoDirection.z * cos
-		return this.normalizeAngle(Math.atan2(z, x))
-	}
-
-	private shortestAngleDelta(from: number, to: number): number {
-		const fromNorm = this.normalizeAngle(from)
-		const toNorm = this.normalizeAngle(to)
-		let delta = toNorm - fromNorm
-		if (delta > Math.PI) delta -= Math.PI * 2
-		if (delta < -Math.PI) delta += Math.PI * 2
-		return delta
+		return rotationStep
 	}
 
 	private createFadeOverlay(overlayRoot: HTMLDivElement): void {
