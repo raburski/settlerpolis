@@ -119,7 +119,6 @@ export const UIContainer = () => {
 		EventBus.emit(UiEvents.Settler.Close, {})
 		EventBus.emit(UiEvents.Construction.Cancel, {})
 	}, [isWorldMapOpen])
-	}, [isWorldMapOpen])
 
 	useEffect(() => {
 		if (!isPrioritiesOpen) {
