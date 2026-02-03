@@ -15,7 +15,8 @@ import {
 	ProductionStatus,
 	ProductionRecipe,
 	SetWorkAreaData,
-	BuildingWorkAreaUpdatedData
+	BuildingWorkAreaUpdatedData,
+	SetStorageRequestsData
 } from './types'
 import { Receiver } from '../Receiver'
 import { v4 as uuidv4 } from 'uuid'
@@ -25,7 +26,7 @@ import type { ItemsManager } from '../Items'
 import type { MapManager } from '../Map'
 import { PlayerJoinData, PlayerTransitionData } from '../Players/types'
 import { PlaceObjectData } from '../MapObjects/types'
-import { Item } from '../Items/types'
+import { Item, ItemType } from '../Items/types'
 import { Position } from '../types'
 import type { LootManager } from '../Loot'
 import { Logger } from '../Logs'
@@ -93,6 +94,31 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		// Handle work area updates
 		this.event.on<SetWorkAreaData>(BuildingsEvents.CS.SetWorkArea, (data, client) => {
 			this.setWorkArea(data, client)
+		})
+
+		// Handle storage request updates
+		this.event.on<SetStorageRequestsData>(BuildingsEvents.CS.SetStorageRequests, (data, client) => {
+			const building = this.buildings.get(data.buildingInstanceId)
+			if (!building) {
+				return
+			}
+			if (building.playerId !== client.id) {
+				this.logger.error(`Player ${client.id} does not own building ${data.buildingInstanceId}`)
+				return
+			}
+			const definition = this.definitions.get(building.buildingId)
+			if (!definition) {
+				return
+			}
+			const normalized = this.normalizeStorageRequests(definition, data.itemTypes)
+			if (!normalized) {
+				return
+			}
+			building.storageRequests = normalized
+			this.event.emit(Receiver.Group, BuildingsEvents.SC.StorageRequestsUpdated, {
+				buildingInstanceId: building.id,
+				itemTypes: normalized
+			}, building.mapId)
 		})
 
 		// Handle player join to send existing buildings and building catalog
@@ -261,6 +287,10 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			collectedResources: new Map(),
 			requiredResources: [],
 			productionPaused: false
+		}
+		const storageRequests = this.normalizeStorageRequests(definition)
+		if (storageRequests) {
+			buildingInstance.storageRequests = storageRequests
 		}
 
 		// Initialize building resources
@@ -721,7 +751,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 
 		for (const input of recipe.inputs) {
-			const current = this.managers.storage.getCurrentQuantity(building.id, input.itemType)
+			const current = this.managers.storage.getCurrentQuantity(building.id, input.itemType, 'incoming')
 			if (current < input.quantity) {
 				state.progressMs = 0
 				this.emitAutoProductionStatus(building, ProductionStatus.NoInput, 0, state.progressMs)
@@ -751,7 +781,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 
 		for (const input of recipe.inputs) {
-			const ok = this.managers.storage.removeFromStorage(building.id, input.itemType, input.quantity)
+			const ok = this.managers.storage.removeFromStorage(building.id, input.itemType, input.quantity, undefined, 'incoming')
 			if (!ok) {
 				state.progressMs = 0
 				this.emitAutoProductionStatus(building, ProductionStatus.NoInput, 0, state.progressMs)
@@ -1157,6 +1187,53 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		return this.buildings.get(buildingInstanceId)
 	}
 
+	public hasConstructionNeedForItem(mapId: string, playerId: string, itemType: ItemType): boolean {
+		for (const building of this.buildings.values()) {
+			if (building.mapId !== mapId || building.playerId !== playerId) {
+				continue
+			}
+			if (building.stage !== ConstructionStage.CollectingResources) {
+				continue
+			}
+			const requiredCost = building.requiredResources.find(cost => cost.itemType === itemType)
+			if (!requiredCost) {
+				continue
+			}
+			const collected = building.collectedResources.get(itemType) || 0
+			if (collected < requiredCost.quantity) {
+				return true
+			}
+		}
+		return false
+	}
+
+	public getStorageRequestCandidates(buildingInstanceId: string): ItemType[] {
+		const building = this.buildings.get(buildingInstanceId)
+		if (!building) {
+			return []
+		}
+		const definition = this.definitions.get(building.buildingId)
+		return this.getWarehouseItemTypes(definition)
+	}
+
+	public getStorageRequestItems(buildingInstanceId: string): ItemType[] {
+		const building = this.buildings.get(buildingInstanceId)
+		if (!building) {
+			return []
+		}
+		const definition = this.definitions.get(building.buildingId)
+		if (!definition) {
+			return []
+		}
+		const normalized = this.normalizeStorageRequests(definition, building.storageRequests)
+		return normalized ?? []
+	}
+
+	public isStorageRequestEnabled(buildingInstanceId: string, itemType: ItemType): boolean {
+		const requested = this.getStorageRequestItems(buildingInstanceId)
+		return requested.includes(itemType)
+	}
+
 	public isProductionPaused(buildingInstanceId: string): boolean {
 		const building = this.buildings.get(buildingInstanceId)
 		return Boolean(building?.productionPaused)
@@ -1385,6 +1462,41 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		return progress
 	}
 
+	private getWarehouseItemTypes(definition?: BuildingDefinition): ItemType[] {
+		if (!definition?.isWarehouse || !definition.storageSlots || definition.storageSlots.length === 0) {
+			return []
+		}
+		const seen = new Set<ItemType>()
+		const items: ItemType[] = []
+		for (const slot of definition.storageSlots) {
+			if (!slot.itemType || seen.has(slot.itemType)) {
+				continue
+			}
+			seen.add(slot.itemType)
+			items.push(slot.itemType)
+		}
+		return items
+	}
+
+	private normalizeStorageRequests(definition: BuildingDefinition, itemTypes?: ItemType[]): ItemType[] | undefined {
+		const candidates = this.getWarehouseItemTypes(definition)
+		if (candidates.length === 0) {
+			return undefined
+		}
+		const allowed = new Set(candidates)
+		const requested = Array.isArray(itemTypes) ? itemTypes.filter(item => allowed.has(item)) : candidates
+		const unique: ItemType[] = []
+		const seen = new Set<ItemType>()
+		for (const item of requested) {
+			if (seen.has(item)) {
+				continue
+			}
+			seen.add(item)
+			unique.push(item)
+		}
+		return unique
+	}
+
 	public destroy() {
 		// no-op for now (tick-driven construction)
 	}
@@ -1460,10 +1572,16 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			return
 		}
 		for (const building of this.buildings.values()) {
+			const definition = this.definitions.get(building.buildingId)
+			if (definition) {
+				const normalized = this.normalizeStorageRequests(definition, building.storageRequests)
+				if (normalized) {
+					building.storageRequests = normalized
+				}
+			}
 			if (building.stage !== ConstructionStage.Completed) {
 				continue
 			}
-			const definition = this.definitions.get(building.buildingId)
 			if (!definition?.storageSlots || definition.storageSlots.length === 0) {
 				continue
 			}

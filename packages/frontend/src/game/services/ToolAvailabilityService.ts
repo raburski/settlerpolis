@@ -126,7 +126,7 @@ class ToolAvailabilityService {
 			[ProfessionType.Farmer]: true,
 			[ProfessionType.Miller]: true,
 			[ProfessionType.Baker]: true,
-			[ProfessionType.Vendor]: true
+			[ProfessionType.Vendor]: this.professionToolCounts[ProfessionType.Vendor] > 0
 		}
 	}
 

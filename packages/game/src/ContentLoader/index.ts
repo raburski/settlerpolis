@@ -13,6 +13,7 @@ import { PopulationManager } from "../Population"
 import { ResourceNodesManager } from "../ResourceNodes"
 import { WildlifeManager } from "../Wildlife"
 import { CityCharterManager } from "../CityCharter"
+import { TradeManager } from "../Trade"
 import { dialogueCompose } from "../Dialogue/utils"
 import { DialogueTree } from "../Dialogue/types"
 import { GameContent, ScheduleOptions, Trigger } from "../types"
@@ -32,10 +33,11 @@ export class ContentLoader {
 		private trigger: TriggerManager,
 		private affinity: AffinityManager,
 		private building: BuildingManager,
-		private population: PopulationManager,
-		private cityCharter: CityCharterManager,
-		private resourceNodes: ResourceNodesManager,
-		private wildlife: WildlifeManager,
+	private population: PopulationManager,
+	private cityCharter: CityCharterManager,
+	private trade: TradeManager,
+	private resourceNodes: ResourceNodesManager,
+	private wildlife: WildlifeManager,
 	private logger: Logger
 	) {
 		this.loadAllContent()
@@ -57,7 +59,8 @@ export class ContentLoader {
 			this.loadBuildings(),
 			this.loadProfessions(),
 			this.loadProfessionTools(),
-			this.loadCityCharters()
+			this.loadCityCharters(),
+			this.loadWorldMap()
 		])
 		await this.loadResourceNodes()
 		this.wildlife.initializeForestSpawns()
@@ -191,6 +194,15 @@ export class ContentLoader {
 			this.cityCharter.loadCharters(this.content.cityCharters)
 		} else {
 			this.logger.warn('No city charters found in content')
+		}
+	}
+
+	private async loadWorldMap() {
+		this.logger.debug('Loading world map from content:', this.content.worldMap)
+		if (this.content.worldMap) {
+			this.trade.loadWorldMap(this.content.worldMap)
+		} else {
+			this.logger.warn('No world map found in content')
 		}
 	}
 

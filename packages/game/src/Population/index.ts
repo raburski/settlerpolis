@@ -36,6 +36,9 @@ import type { PopulationSnapshot } from '../state/types'
 
 const SETTLER_SPEED = 80 // pixels per second (slower baseline)
 const TOMBSTONE_ITEM_TYPE = 'tombstone'
+const CART_ITEM_TYPE = 'cart'
+const BASE_CARRY_CAPACITY = 1
+const CART_CARRY_CAPACITY = 8
 
 export interface PopulationDeps {
 	buildings: BuildingManager
@@ -356,6 +359,21 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			carryingItemType: itemType,
 			carryingQuantity: itemType ? quantity : undefined
 		})
+	}
+
+	public getSettlerCarryCapacity(settlerId: string): number {
+		const settler = this.settlers.get(settlerId)
+		if (!settler) {
+			return BASE_CARRY_CAPACITY
+		}
+		return this.getCarryCapacityForSettler(settler)
+	}
+
+	private getCarryCapacityForSettler(settler: Settler): number {
+		if (settler.stateContext.equippedItemType === CART_ITEM_TYPE) {
+			return CART_CARRY_CAPACITY
+		}
+		return BASE_CARRY_CAPACITY
 	}
 
 	public setSettlerWaitReason(settlerId: string, reason?: string): void {

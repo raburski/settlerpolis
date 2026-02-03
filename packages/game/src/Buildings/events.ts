@@ -4,7 +4,8 @@ export const BuildingsEvents = {
 		Cancel: 'cs:buildings:cancel',
 		RequestPreview: 'cs:buildings:request-preview',
 		SetProductionPaused: 'cs:buildings:set-production-paused',
-		SetWorkArea: 'cs:buildings:set-work-area'
+		SetWorkArea: 'cs:buildings:set-work-area',
+		SetStorageRequests: 'cs:buildings:set-storage-requests'
 	},
 	SC: {
 		Placed: 'sc:buildings:placed',
@@ -15,6 +16,8 @@ export const BuildingsEvents = {
 		ResourcesChanged: 'sc:buildings:resources-changed',     // Resource collection progress changed
 		StageChanged: 'sc:buildings:stage-changed',             // Construction stage changed
 		WorkAreaUpdated: 'sc:buildings:work-area-updated',
+		StorageRequestsUpdated: 'sc:buildings:storage-requests-updated',
+		WorkerQueueUpdated: 'sc:buildings:worker-queue-updated',
 		ProductionStarted: 'sc:buildings:production-started',
 		ProductionStopped: 'sc:buildings:production-stopped',
 		ProductionProgress: 'sc:buildings:production-progress',

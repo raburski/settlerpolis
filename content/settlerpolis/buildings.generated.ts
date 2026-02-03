@@ -29,6 +29,7 @@ export const buildings: BuildingDefinition[] = [
     ],
     "isWarehouse": true,
     "workerSlots": 2,
+    "requiredProfession": "carrier",
     "storagePreservation": {
       "spoilageMultiplier": 1
     },
@@ -929,6 +930,76 @@ export const buildings: BuildingDefinition[] = [
         "offset": {
           "x": 3,
           "y": 0
+        }
+      }
+    ]
+  },
+  {
+    "id": "trading_post",
+    "name": "Trading Post",
+    "description": "A hub for land trade routes and caravan shipments",
+    "category": "infrastructure",
+    "icon": "\ud83c\udfea",
+    "sprite": {
+      "foundation": "building_foundation",
+      "completed": "storehouse"
+    },
+    "render": {
+      "modelSrc": "/assets/library/agora.glb",
+      "transform": {
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "scale": {
+          "x": 1.6,
+          "y": 1.6,
+          "z": 1.6
+        },
+        "elevation": 0
+      }
+    },
+    "footprint": {
+      "width": 3,
+      "height": 3
+    },
+    "constructionTime": 18,
+    "costs": [
+      {
+        "itemType": "logs",
+        "quantity": 2
+      },
+      {
+        "itemType": "planks",
+        "quantity": 2
+      },
+      {
+        "itemType": "stone",
+        "quantity": 2
+      }
+    ],
+    "unlockFlags": [
+      "charter:market-town"
+    ],
+    "isTradingPost": true,
+    "storageSlots": [
+      {
+        "itemType": "*",
+        "maxQuantity": 20,
+        "role": "incoming",
+        "offset": {
+          "x": 1,
+          "y": 1
+        }
+      },
+      {
+        "itemType": "*",
+        "maxQuantity": 20,
+        "role": "outgoing",
+        "offset": {
+          "x": 2,
+          "y": 1
         }
       }
     ]

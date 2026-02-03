@@ -83,6 +83,9 @@ export const UiEvents = {
 	CityCharter: {
 		Updated: 'ui:city-charter:updated'
 	},
+	Trade: {
+		Updated: 'ui:trade:updated'
+	},
 	Debug: {
 		BoundsToggle: 'ui:debug:bounds-toggle'
 	}

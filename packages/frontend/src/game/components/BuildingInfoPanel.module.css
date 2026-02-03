@@ -196,6 +196,73 @@
 	animation: fadeIn 0.3s ease-in;
 }
 
+.tradeControls {
+	margin-top: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.tradeLabel {
+	color: #aaa;
+	font-size: 12px;
+}
+
+.tradeSelect {
+	background: rgba(255, 255, 255, 0.08);
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	color: #fff;
+	padding: 6px 8px;
+	border-radius: 6px;
+	font-size: 13px;
+}
+
+.tradeButtons {
+	display: flex;
+	gap: 8px;
+}
+
+.tradeButton {
+	flex: 1;
+	padding: 8px;
+	background: #1976d2;
+	border: none;
+	border-radius: 6px;
+	color: #fff;
+	font-size: 13px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: background 0.2s ease;
+}
+
+.tradeButton:disabled {
+	background: rgba(25, 118, 210, 0.4);
+	cursor: not-allowed;
+}
+
+.tradeButton:hover:not(:disabled) {
+	background: #1565c0;
+}
+
+.tradeButtonSecondary {
+	padding: 8px 10px;
+	background: rgba(255, 255, 255, 0.08);
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	border-radius: 6px;
+	color: #eee;
+	font-size: 13px;
+	cursor: pointer;
+}
+
+.tradeButtonSecondary:hover {
+	background: rgba(255, 255, 255, 0.14);
+}
+
+.tradeHint {
+	color: #aaa;
+	font-size: 12px;
+}
+
 @keyframes fadeIn {
 	from {
 		opacity: 0;
@@ -206,4 +273,3 @@
 		transform: translateY(0);
 	}
 }
-

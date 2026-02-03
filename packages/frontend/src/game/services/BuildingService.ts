@@ -116,6 +116,38 @@ class BuildingServiceClass {
 			}
 		})
 
+		// Listen for storage request updates
+		EventBus.on(Event.Buildings.SC.StorageRequestsUpdated, (data: { buildingInstanceId: string, itemTypes: string[] }) => {
+			const building = this.buildingInstances.get(data.buildingInstanceId)
+			if (building) {
+				const updatedBuilding = {
+					...building,
+					storageRequests: data.itemTypes
+				}
+				this.buildingInstances.set(data.buildingInstanceId, updatedBuilding)
+				EventBus.emit(UiEvents.Building.Updated, {
+					buildingInstanceId: data.buildingInstanceId,
+					building: updatedBuilding
+				})
+			}
+		})
+
+		// Listen for worker queue updates
+		EventBus.on(Event.Buildings.SC.WorkerQueueUpdated, (data: { buildingInstanceId: string, queuedCount: number }) => {
+			const building = this.buildingInstances.get(data.buildingInstanceId)
+			if (building) {
+				const updatedBuilding = {
+					...building,
+					pendingWorkers: data.queuedCount
+				}
+				this.buildingInstances.set(data.buildingInstanceId, updatedBuilding)
+				EventBus.emit(UiEvents.Building.Updated, {
+					buildingInstanceId: data.buildingInstanceId,
+					building: updatedBuilding
+				})
+			}
+		})
+
 		// Listen for building clicks
 		EventBus.on(UiEvents.Building.Click, (data: { buildingInstanceId?: string, buildingId?: string }) => {
 			if (data.buildingInstanceId) {
@@ -152,6 +184,13 @@ class BuildingServiceClass {
 		EventBus.emit(Event.Buildings.CS.SetProductionPaused, {
 			buildingInstanceId,
 			paused
+		})
+	}
+
+	public setStorageRequests(buildingInstanceId: string, itemTypes: string[]): void {
+		EventBus.emit(Event.Buildings.CS.SetStorageRequests, {
+			buildingInstanceId,
+			itemTypes
 		})
 	}
 }

@@ -15,6 +15,7 @@ import type { CityCharterContent } from './CityCharter/types'
 import type { ItemType } from './Items/types'
 import type { ProfessionType } from './Population/types'
 import type { MapId } from './ids'
+import type { WorldMapData } from './WorldMap/types'
 
 export interface NPCContent extends NPC {
 	sentiments?: AffinitySentiments
@@ -46,6 +47,7 @@ export interface GameContent {
 	cutscenes: Cutscene[]
 	flags: Flag[]
 	cityCharters?: CityCharterContent
+	worldMap?: WorldMapData
 	schedules: ScheduleOptions[]
 	triggers: Trigger[]
 	maps: Record<MapId, TiledMap>,
@@ -90,4 +92,5 @@ export * from './Storage/types'
 export * from './Simulation/types'
 export * from './ResourceNodes/types'
 export * from './CityCharter/types'
+export * from './WorldMap/types'
 export * from './ids'

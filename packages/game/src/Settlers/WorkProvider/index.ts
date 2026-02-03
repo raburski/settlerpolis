@@ -14,7 +14,7 @@ import { NeedsEvents } from '../../Needs/events'
 import type { ContextPauseRequestedEventData, ContextResumeRequestedEventData, PausedContext } from '../../Needs/types'
 import type { RequestWorkerData, UnassignWorkerData } from '../../Population/types'
 import { WorkerRequestFailureReason } from '../../Population/types'
-import type { SetProductionPausedData } from '../../Buildings/types'
+import type { BuildingDefinition, BuildingInstance, SetProductionPausedData } from '../../Buildings/types'
 import { ConstructionStage } from '../../Buildings/types'
 import { ProviderRegistry } from './ProviderRegistry'
 import { ActionSystem, type ActionQueueContextResolver } from './ActionSystem'
@@ -51,6 +51,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 	private constructionAssignCooldownMs = 2000
 	private pauseRequests = new Map<string, { reason: string }>()
 	private pausedContexts = new Map<string, PausedContext | null>()
+	private pendingWorkerRequests: Array<{ buildingInstanceId: string, requestedAtMs: number }> = []
 
 	constructor(
 		managers: WorkProviderDeps,
@@ -197,10 +198,46 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		this.simulationTimeMs = data.nowMs
 		this.actionSystem.setTime(this.simulationTimeMs)
 
+		this.migrateWarehouseAssignments()
+		this.processPendingWorkerRequests()
 		this.logisticsCoordinator.tick()
 		this.constructionCoordinator.assignConstructionWorkers()
 		this.roadCoordinator.assignRoadWorkers()
 		this.dispatcher.processPendingDispatches()
+	}
+
+	private migrateWarehouseAssignments(): void {
+		for (const assignment of this.assignments.getAll()) {
+			if (assignment.providerType !== WorkProviderType.Building || !assignment.buildingInstanceId) {
+				continue
+			}
+			const building = this.managers.buildings.getBuildingInstance(assignment.buildingInstanceId)
+			if (!building) {
+				continue
+			}
+			const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
+			if (!definition?.isWarehouse) {
+				continue
+			}
+			const buildingProvider = this.providers.getBuilding(assignment.buildingInstanceId)
+			buildingProvider?.unassign(assignment.settlerId)
+
+			assignment.providerType = WorkProviderType.Logistics
+			assignment.providerId = this.logisticsProvider.id
+			this.logisticsProvider.assign(assignment.settlerId)
+			this.managers.population.setSettlerAssignment(
+				assignment.settlerId,
+				assignment.assignmentId,
+				assignment.providerId,
+				assignment.buildingInstanceId
+			)
+			this.event.emit(Receiver.Group, PopulationEvents.SC.WorkerAssigned, {
+				assignment,
+				settlerId: assignment.settlerId,
+				buildingInstanceId: assignment.buildingInstanceId
+			}, building.mapId)
+			this.dispatcher.dispatchNextStep(assignment.settlerId)
+		}
 	}
 
 	private handleContextPauseRequested(data: ContextPauseRequestedEventData): void {
@@ -271,44 +308,69 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			return
 		}
 
+		const isConstruction = building.stage === ConstructionStage.Constructing
 		const workerSlots = buildingDef.workerSlots || 0
-		if (building.stage !== ConstructionStage.Constructing && workerSlots > 0) {
+		if (!isConstruction && workerSlots > 0) {
 			const assigned = this.assignments.getByBuilding(building.id)?.size || 0
-			if (assigned >= workerSlots) {
-				client.emit(Receiver.Sender, PopulationEvents.SC.WorkerRequestFailed, {
-					buildingInstanceId: building.id,
-					reason: WorkerRequestFailureReason.BuildingDoesNotNeedWorkers
-				})
+			const pending = this.getPendingWorkerCount(building.id)
+			if (assigned + pending >= workerSlots) {
+				if (pending === 0) {
+					client.emit(Receiver.Sender, PopulationEvents.SC.WorkerRequestFailed, {
+						buildingInstanceId: building.id,
+						reason: WorkerRequestFailureReason.BuildingDoesNotNeedWorkers
+					})
+				}
 				return
 			}
 		}
 
+		const failure = this.tryAssignWorkerToBuilding(building, buildingDef)
+		if (!failure) {
+			return
+		}
+
+		if (!isConstruction && this.shouldQueueWorkerRequest(failure, isConstruction)) {
+			this.enqueueWorkerRequest(building.id)
+			return
+		}
+
+		client.emit(Receiver.Sender, PopulationEvents.SC.WorkerRequestFailed, {
+			buildingInstanceId: building.id,
+			reason: failure
+		})
+	}
+
+	private tryAssignWorkerToBuilding(building: BuildingInstance, buildingDef: BuildingDefinition): WorkerRequestFailureReason | null {
 		let requiredProfession = buildingDef.requiredProfession ?? undefined
 		const isConstruction = building.stage === ConstructionStage.Constructing
+		const isWarehouseAssignment = !isConstruction && Boolean(buildingDef.isWarehouse)
 		if (isConstruction) {
 			requiredProfession = ProfessionType.Builder
 		}
+
 		const candidate = this.findBestSettler(building.mapId, building.playerId, building.position, requiredProfession, {
 			allowFallbackToCarrier: !isConstruction
 		})
 		if (!candidate) {
-			const reason = isConstruction
+			return isConstruction
 				? WorkerRequestFailureReason.NoBuilderAvailable
 				: requiredProfession
 					? WorkerRequestFailureReason.NoSuitableProfession
 					: WorkerRequestFailureReason.NoAvailableWorker
-			client.emit(Receiver.Sender, PopulationEvents.SC.WorkerRequestFailed, {
-				buildingInstanceId: building.id,
-				reason
-			})
-			return
 		}
+
+		const providerId = isWarehouseAssignment
+			? this.logisticsProvider.id
+			: (isConstruction ? `construction:${building.id}` : building.id)
+		const providerType = isWarehouseAssignment
+			? WorkProviderType.Logistics
+			: (isConstruction ? WorkProviderType.Construction : WorkProviderType.Building)
 
 		const assignment: WorkAssignment = {
 			assignmentId: uuidv4(),
 			settlerId: candidate.id,
-			providerId: isConstruction ? `construction:${building.id}` : building.id,
-			providerType: isConstruction ? WorkProviderType.Construction : WorkProviderType.Building,
+			providerId,
+			providerType,
 			buildingInstanceId: building.id,
 			requiredProfession: requiredProfession,
 			assignedAt: this.simulationTimeMs,
@@ -318,9 +380,11 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		this.assignments.set(assignment)
 		this.managers.buildings.setAssignedWorker(building.id, candidate.id, true)
 
-		const provider = isConstruction
-			? this.providers.getConstruction(building.id)
-			: this.providers.getBuilding(building.id)
+		const provider = providerType === WorkProviderType.Logistics
+			? this.logisticsProvider
+			: (isConstruction
+				? this.providers.getConstruction(building.id)
+				: this.providers.getBuilding(building.id))
 		provider?.assign(candidate.id)
 
 		this.managers.population.setSettlerAssignment(candidate.id, assignment.assignmentId, assignment.providerId, building.id)
@@ -334,6 +398,100 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		}, building.mapId)
 
 		this.dispatcher.dispatchNextStep(candidate.id)
+		return null
+	}
+
+	private shouldQueueWorkerRequest(reason: WorkerRequestFailureReason, isConstruction: boolean): boolean {
+		if (isConstruction) {
+			return false
+		}
+		return reason === WorkerRequestFailureReason.NoAvailableWorker
+			|| reason === WorkerRequestFailureReason.NoSuitableProfession
+	}
+
+	private getPendingWorkerCount(buildingInstanceId: string): number {
+		return this.pendingWorkerRequests.filter(request => request.buildingInstanceId === buildingInstanceId).length
+	}
+
+	private getPendingWorkerCounts(): Map<string, number> {
+		const counts = new Map<string, number>()
+		for (const request of this.pendingWorkerRequests) {
+			counts.set(request.buildingInstanceId, (counts.get(request.buildingInstanceId) || 0) + 1)
+		}
+		return counts
+	}
+
+	private enqueueWorkerRequest(buildingInstanceId: string): void {
+		this.pendingWorkerRequests.push({
+			buildingInstanceId,
+			requestedAtMs: this.simulationTimeMs
+		})
+		this.emitWorkerQueueUpdated(buildingInstanceId)
+	}
+
+	private processPendingWorkerRequests(): void {
+		if (this.pendingWorkerRequests.length === 0) {
+			return
+		}
+		const previousCounts = this.getPendingWorkerCounts()
+		const nextQueue: Array<{ buildingInstanceId: string, requestedAtMs: number }> = []
+		const reservedCounts = new Map<string, number>()
+
+		for (const request of this.pendingWorkerRequests) {
+			const building = this.managers.buildings.getBuildingInstance(request.buildingInstanceId)
+			if (!building) {
+				continue
+			}
+			const buildingDef = this.managers.buildings.getBuildingDefinition(building.buildingId)
+			if (!buildingDef) {
+				continue
+			}
+			const isConstruction = building.stage === ConstructionStage.Constructing
+			if (isConstruction) {
+				continue
+			}
+			const workerSlots = buildingDef.workerSlots || 0
+			if (workerSlots <= 0) {
+				continue
+			}
+			const assigned = this.assignments.getByBuilding(building.id)?.size || 0
+			const reserved = reservedCounts.get(building.id) || 0
+			if (assigned + reserved >= workerSlots) {
+				continue
+			}
+
+			const failure = this.tryAssignWorkerToBuilding(building, buildingDef)
+			if (!failure) {
+				continue
+			}
+			if (!this.shouldQueueWorkerRequest(failure, isConstruction)) {
+				continue
+			}
+			nextQueue.push(request)
+			reservedCounts.set(building.id, reserved + 1)
+		}
+
+		this.pendingWorkerRequests = nextQueue
+		const nextCounts = this.getPendingWorkerCounts()
+		const buildingIds = new Set<string>([...previousCounts.keys(), ...nextCounts.keys()])
+		for (const buildingId of buildingIds) {
+			const previous = previousCounts.get(buildingId) || 0
+			const next = nextCounts.get(buildingId) || 0
+			if (previous !== next) {
+				this.emitWorkerQueueUpdated(buildingId)
+			}
+		}
+	}
+
+	private emitWorkerQueueUpdated(buildingInstanceId: string): void {
+		const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
+		if (!building) {
+			return
+		}
+		this.event.emit(Receiver.Group, BuildingsEvents.SC.WorkerQueueUpdated, {
+			buildingInstanceId,
+			queuedCount: this.getPendingWorkerCount(buildingInstanceId)
+		}, building.mapId)
 	}
 
 	private unassignWorker(data: UnassignWorkerData): void {
@@ -348,9 +506,11 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		this.assignments.remove(data.settlerId)
 		if (assignment.buildingInstanceId) {
 			this.managers.buildings.setAssignedWorker(assignment.buildingInstanceId, data.settlerId, false)
-			const provider = assignment.providerType === WorkProviderType.Construction
-				? this.providers.getConstruction(assignment.buildingInstanceId)
-				: this.providers.getBuilding(assignment.buildingInstanceId)
+			const provider = assignment.providerType === WorkProviderType.Logistics
+				? this.logisticsProvider
+				: (assignment.providerType === WorkProviderType.Construction
+					? this.providers.getConstruction(assignment.buildingInstanceId)
+					: this.providers.getBuilding(assignment.buildingInstanceId))
 			provider?.unassign(data.settlerId)
 		} else {
 			const provider = this.registry.get(assignment.providerId)
@@ -466,7 +626,8 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			movementFailureCounts: dispatchSnapshot.movementFailureCounts,
 			pendingDispatchAtMs: dispatchSnapshot.pendingDispatchAtMs,
 			actionSystem: this.actionSystem.serialize(),
-			logistics: this.logisticsProvider.serialize()
+			logistics: this.logisticsProvider.serialize(),
+			pendingWorkerRequests: this.pendingWorkerRequests.map(request => ({ ...request }))
 		}
 	}
 
@@ -487,6 +648,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		this.actionSystem.deserialize(state.actionSystem)
 
 		this.assignments.deserialize(state.assignments, state.assignmentsByBuilding)
+		this.pendingWorkerRequests = (state.pendingWorkerRequests || []).map(request => ({ ...request }))
 
 		for (const assignment of this.assignments.getAll()) {
 			if (assignment.providerType === WorkProviderType.Logistics) {
@@ -532,6 +694,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		this.constructionCoordinator.reset()
 		this.pauseRequests.clear()
 		this.pausedContexts.clear()
+		this.pendingWorkerRequests = []
 		this.dispatcher.reset()
 		this.simulationTimeMs = 0
 		this.logisticsProvider.reset()

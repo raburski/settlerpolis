@@ -10,6 +10,8 @@ import { SettlerState } from '../../Population/types'
 import { WorkProviderEvents } from './events'
 import { v4 as uuidv4 } from 'uuid'
 
+const WAREHOUSE_REQUEST_PRIORITY = 10
+
 export class LogisticsCoordinator {
 	private lastMapIdsWithRequests = new Set<string>()
 
@@ -25,6 +27,7 @@ export class LogisticsCoordinator {
 	tick(): void {
 		this.logisticsProvider.refreshConstructionRequests()
 		this.refreshConsumptionRequests()
+		this.refreshWarehouseRequests()
 		this.emitLogisticsRequests()
 		this.assignIdleCarriersToLogistics()
 	}
@@ -46,14 +49,61 @@ export class LogisticsCoordinator {
 			}
 
 			for (const request of definition.consumes) {
-				const capacity = this.managers.storage.getStorageCapacity(building.id, request.itemType)
+				const capacity = this.managers.storage.getStorageCapacity(building.id, request.itemType, 'incoming')
 				if (capacity <= 0) {
 					continue
 				}
 				const desired = Math.min(request.desiredQuantity, capacity)
-				const current = this.managers.storage.getCurrentQuantity(building.id, request.itemType)
+				const current = this.managers.storage.getCurrentQuantity(building.id, request.itemType, 'incoming')
 				const needed = desired - current
 				this.logisticsProvider.requestInput(building.id, request.itemType, needed, 40)
+			}
+		}
+	}
+
+	private refreshWarehouseRequests(): void {
+		const buildings = this.managers.buildings.getAllBuildings()
+		for (const building of buildings) {
+			if (building.stage !== ConstructionStage.Completed) {
+				continue
+			}
+
+			const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
+			if (!definition?.isWarehouse) {
+				continue
+			}
+
+			const candidates = this.managers.buildings.getStorageRequestCandidates(building.id)
+			if (candidates.length === 0) {
+				continue
+			}
+
+			const workerSlots = definition.workerSlots ?? 0
+			if (workerSlots > 0 && this.managers.buildings.getBuildingWorkers(building.id).length === 0) {
+				for (const itemType of candidates) {
+					this.logisticsProvider.requestInput(building.id, itemType, 0, WAREHOUSE_REQUEST_PRIORITY)
+				}
+				continue
+			}
+
+			const requested = new Set(this.managers.buildings.getStorageRequestItems(building.id))
+			for (const itemType of candidates) {
+				if (this.managers.buildings.hasConstructionNeedForItem(building.mapId, building.playerId, itemType)) {
+					this.logisticsProvider.requestInput(building.id, itemType, 0, WAREHOUSE_REQUEST_PRIORITY)
+					continue
+				}
+				if (!requested.has(itemType)) {
+					this.logisticsProvider.requestInput(building.id, itemType, 0, WAREHOUSE_REQUEST_PRIORITY)
+					continue
+				}
+				const capacity = this.managers.storage.getStorageCapacity(building.id, itemType, 'incoming')
+				if (capacity <= 0) {
+					this.logisticsProvider.requestInput(building.id, itemType, 0, WAREHOUSE_REQUEST_PRIORITY)
+					continue
+				}
+				const current = this.managers.storage.getCurrentQuantity(building.id, itemType, 'incoming')
+				const needed = Math.max(0, capacity - current)
+				this.logisticsProvider.requestInput(building.id, itemType, needed, WAREHOUSE_REQUEST_PRIORITY)
 			}
 		}
 	}

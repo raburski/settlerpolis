@@ -26,6 +26,7 @@ import { WorkProviderEvents } from './Settlers/WorkProvider/events'
 import { NeedsEvents } from './Needs/events'
 import { RoadEvents } from './Roads/events'
 import { CityCharterEvents } from './CityCharter/events'
+import { TradeEvents } from './Trade/events'
 import type { PlayerJoinData, PlayerTransitionData, PlayerMoveData, EquipItemData, UnequipItemData, PlayerPlaceData } from './Players/types'
 import type { ChatMessageData, ChatSystemMessageData } from './Chat/types'
 import type { InventoryData, DropItemData, PickUpItemData, ConsumeItemData, MoveItemData, AddItemData, RemoveByTypePayload } from './Inventory/types'
@@ -41,7 +42,7 @@ import type { FXPlayEventData } from './FX/types'
 import type { CutsceneTriggerEventData } from './Cutscene/types'
 import type { MapLoadData, MapLoadResponseData, MapTransitionData, MapTransitionResponseData } from './Map/types'
 import type { TimeUpdateEventData, TimeSpeedUpdateEventData, TimePauseEventData, TimeSyncEventData } from './Time/types'
-import type { PlaceBuildingData, CancelBuildingData, SetProductionPausedData, SetWorkAreaData, BuildingPlacedData, BuildingProgressData, BuildingCompletedData, BuildingCancelledData, BuildingCatalogData, BuildingWorkAreaUpdatedData, ConstructionStage } from './Buildings/types'
+import type { PlaceBuildingData, CancelBuildingData, SetProductionPausedData, SetWorkAreaData, SetStorageRequestsData, BuildingPlacedData, BuildingProgressData, BuildingCompletedData, BuildingCancelledData, BuildingCatalogData, BuildingWorkAreaUpdatedData, BuildingStorageRequestsUpdatedData, BuildingWorkerQueueUpdatedData, ConstructionStage } from './Buildings/types'
 import type { RequestWorkerData, UnassignWorkerData, RequestListData, PopulationListData, PopulationStatsData, Settler, ProfessionType, WorkerRequestFailureReason } from './Population/types'
 import type { WorkAssignment, WorkStep, WorkAction, LogisticsRequest } from './Settlers/WorkProvider/types'
 import type { ProductionRecipe, ProductionStatus } from './Buildings/types'
@@ -54,6 +55,7 @@ import type { RoadBuildRequestData, RoadTilesSyncData, RoadTilesUpdatedData, Roa
 import type { ItemType } from './Items/types'
 import type { MoveTargetType } from './Movement/types'
 import type { CityCharterClaimRequest, CityCharterStateRequest, CityCharterStateData, CityCharterUnlockFlagsUpdated } from './CityCharter/types'
+import type { TradeRouteSelection, TradeRouteCancelled, TradeRouteListData, TradeRouteUpdatedData, TradeShipmentStartedData, TradeShipmentArrivedData, TradeReputationUpdatedData } from './Trade/types'
 import type {
 	BuildingId,
 	BuildingInstanceId,
@@ -183,6 +185,7 @@ export type EventPayloads = Record<string, unknown> & {
 	[BuildingsEvents.CS.RequestPreview]: { buildingId: BuildingId }
 	[BuildingsEvents.CS.SetProductionPaused]: SetProductionPausedData
 	[BuildingsEvents.CS.SetWorkArea]: SetWorkAreaData
+	[BuildingsEvents.CS.SetStorageRequests]: SetStorageRequestsData
 	[BuildingsEvents.SC.Placed]: BuildingPlacedData
 	[BuildingsEvents.SC.Progress]: BuildingProgressData
 	[BuildingsEvents.SC.Completed]: BuildingCompletedData
@@ -191,6 +194,8 @@ export type EventPayloads = Record<string, unknown> & {
 	[BuildingsEvents.SC.ResourcesChanged]: { buildingInstanceId: BuildingInstanceId, itemType: ItemType, quantity: number, requiredQuantity: number }
 	[BuildingsEvents.SC.StageChanged]: { buildingInstanceId: BuildingInstanceId, stage: ConstructionStage }
 	[BuildingsEvents.SC.WorkAreaUpdated]: BuildingWorkAreaUpdatedData
+	[BuildingsEvents.SC.StorageRequestsUpdated]: BuildingStorageRequestsUpdatedData
+	[BuildingsEvents.SC.WorkerQueueUpdated]: BuildingWorkerQueueUpdatedData
 	[BuildingsEvents.SS.Tick]: {}
 	[BuildingsEvents.SS.HouseCompleted]: { buildingInstanceId: BuildingInstanceId, buildingId: BuildingId }
 	[BuildingsEvents.SS.ConstructionCompleted]: { buildingInstanceId: BuildingInstanceId, buildingId: BuildingId, mapId: MapId, playerId: PlayerId }
@@ -281,6 +286,15 @@ export type EventPayloads = Record<string, unknown> & {
 	[CityCharterEvents.SC.State]: CityCharterStateData
 	[CityCharterEvents.SC.Updated]: CityCharterStateData
 	[CityCharterEvents.SS.UnlockFlagsUpdated]: CityCharterUnlockFlagsUpdated
+
+	[TradeEvents.CS.CreateRoute]: TradeRouteSelection
+	[TradeEvents.CS.CancelRoute]: TradeRouteCancelled
+	[TradeEvents.CS.RequestRoutes]: {}
+	[TradeEvents.SC.RouteList]: TradeRouteListData
+	[TradeEvents.SC.RouteUpdated]: TradeRouteUpdatedData
+	[TradeEvents.SC.ShipmentStarted]: TradeShipmentStartedData
+	[TradeEvents.SC.ShipmentArrived]: TradeShipmentArrivedData
+	[TradeEvents.SC.ReputationUpdated]: TradeReputationUpdatedData
 }
 
 // Interface that NetworkManager implements
@@ -319,7 +333,8 @@ export const Event = {
 	Roads: RoadEvents,
 	Work: WorkProviderEvents,
 	Needs: NeedsEvents,
-	CityCharter: CityCharterEvents
+	CityCharter: CityCharterEvents,
+	Trade: TradeEvents
 } as const
 
 export default Event 

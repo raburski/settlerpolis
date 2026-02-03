@@ -31,6 +31,7 @@ import type { EventManager } from '../events'
 import type { Logger } from '../Logs'
 import type { WildlifeManager } from '../Wildlife'
 import type { CityCharterManager } from '../CityCharter'
+import type { TradeManager } from '../Trade'
 
 export interface Managers {
 	chat: ChatManager
@@ -64,6 +65,7 @@ export interface Managers {
 	needs: NeedsManager
 	wildlife: WildlifeManager
 	cityCharter: CityCharterManager
+	trade: TradeManager
 }
 
 export class ManagersHub implements Managers {
@@ -100,4 +102,5 @@ export class ManagersHub implements Managers {
 	needs!: NeedsManager
 	wildlife!: WildlifeManager
 	cityCharter!: CityCharterManager
+	trade!: TradeManager
 }

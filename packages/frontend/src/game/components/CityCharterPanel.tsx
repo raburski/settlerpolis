@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { EventBus } from '../EventBus'
+import { Event } from '@rugged/game'
 import { cityCharterService } from '../services/CityCharterService'
 import { buildingService } from '../services/BuildingService'
-import { itemService } from '../services/ItemService'
-import type { CityCharterRequirementStatus, CityCharterStateData } from '@rugged/game'
+import type { BuildingDefinition, CityCharterStateData, CityCharterTier } from '@rugged/game'
 import { UiEvents } from '../uiEvents'
 import styles from './CityCharterPanel.module.css'
 
@@ -13,75 +13,35 @@ type CityCharterPanelProps = {
 	anchorRect?: DOMRect | null
 }
 
-const formatRequirementLabel = (label: string, met: boolean) => {
-	return (
-		<span className={`${styles.requirementValue} ${met ? styles.requirementMet : styles.requirementUnmet}`}>
-			{label}
-		</span>
+const resolveTierUnlocks = (
+	tier: CityCharterTier | undefined,
+	buildings: BuildingDefinition[]
+) => {
+	if (!tier?.unlockFlags || tier.unlockFlags.length === 0) {
+		return []
+	}
+	return buildings.filter((building) =>
+		building.unlockFlags?.some((flag) => tier.unlockFlags?.includes(flag))
 	)
 }
 
-const renderRequirements = (requirements?: CityCharterRequirementStatus) => {
-	if (!requirements) {
-		return <div className={styles.emptyState}>No requirements.</div>
+const formatBuffValue = (value: number | undefined) => {
+	if (typeof value !== 'number' || Number.isNaN(value)) {
+		return null
 	}
-
-	const rows: JSX.Element[] = []
-
-	if (requirements.population) {
-		rows.push(
-			<div key="population" className={styles.requirementRow}>
-				<span className={styles.requirementLabel}>
-					Population
-				</span>
-				{formatRequirementLabel(
-					`${requirements.population.current}/${requirements.population.required}`,
-					requirements.population.met
-				)}
-			</div>
-		)
+	const sign = value > 0 ? '+' : value < 0 ? '' : ''
+	if (Math.abs(value) < 1) {
+		return `${sign}${Math.round(value * 100)}%`
 	}
-
-	if (requirements.buildings && requirements.buildings.length > 0) {
-		requirements.buildings.forEach((entry) => {
-			const buildingName =
-				buildingService.getBuildingDefinition(entry.buildingId)?.name || entry.buildingId
-			rows.push(
-				<div key={`building-${entry.buildingId}`} className={styles.requirementRow}>
-					<span className={styles.requirementLabel}>
-						{buildingName}
-					</span>
-					{formatRequirementLabel(`${entry.current}/${entry.required}`, entry.met)}
-				</div>
-			)
-		})
-	}
-
-	if (requirements.resources && requirements.resources.length > 0) {
-		requirements.resources.forEach((entry) => {
-			const metadata = itemService.getItemType(entry.itemType)
-			const label = metadata?.name || entry.itemType
-			rows.push(
-				<div key={`resource-${entry.itemType}`} className={styles.requirementRow}>
-					<span className={styles.requirementLabel}>
-						{metadata?.emoji ? `${metadata.emoji} ${label}` : label}
-					</span>
-					{formatRequirementLabel(`${entry.current}/${entry.required}`, entry.met)}
-				</div>
-			)
-		})
-	}
-
-	if (rows.length === 0) {
-		return <div className={styles.emptyState}>No requirements.</div>
-	}
-
-	return <div className={styles.requirements}>{rows}</div>
+	return `${sign}${value}%`
 }
 
 export const CityCharterPanel = ({ isVisible, onClose, anchorRect }: CityCharterPanelProps) => {
 	const [state, setState] = useState<CityCharterStateData | null>(
 		cityCharterService.getState()
+	)
+	const [buildingDefinitions, setBuildingDefinitions] = useState<BuildingDefinition[]>(
+		buildingService.getAllBuildingDefinitions()
 	)
 
 	useEffect(() => {
@@ -92,8 +52,17 @@ export const CityCharterPanel = ({ isVisible, onClose, anchorRect }: CityCharter
 		EventBus.on(UiEvents.CityCharter.Updated, handleUpdate)
 		cityCharterService.requestState()
 
+		const handleCatalog = (data: { buildings: BuildingDefinition[] }) => {
+			if (Array.isArray(data?.buildings) && data.buildings.length > 0) {
+				setBuildingDefinitions(data.buildings)
+			}
+		}
+
+		EventBus.on(Event.Buildings.SC.Catalog, handleCatalog)
+
 		return () => {
 			EventBus.off(UiEvents.CityCharter.Updated, handleUpdate)
+			EventBus.off(Event.Buildings.SC.Catalog, handleCatalog)
 		}
 	}, [])
 
@@ -105,9 +74,16 @@ export const CityCharterPanel = ({ isVisible, onClose, anchorRect }: CityCharter
 		}
 		: undefined
 
-	const hasNextTier = Boolean(state?.nextTier)
-	const unlockFlags = useMemo(() => state?.currentTier?.unlockFlags || [], [state])
-	const buffs = useMemo(() => state?.currentTier?.buffs || [], [state])
+	const currentUnlocks = useMemo(
+		() => resolveTierUnlocks(state?.currentTier, buildingDefinitions),
+		[state?.currentTier, buildingDefinitions]
+	)
+	const nextUnlocks = useMemo(
+		() => resolveTierUnlocks(state?.nextTier, buildingDefinitions),
+		[state?.nextTier, buildingDefinitions]
+	)
+	const currentBuffs = state?.currentTier?.buffs || []
+	const nextBuffs = state?.nextTier?.buffs || []
 
 	if (!isVisible) {
 		return null
@@ -127,82 +103,112 @@ export const CityCharterPanel = ({ isVisible, onClose, anchorRect }: CityCharter
 					<div className={styles.emptyState}>Loading charter...</div>
 				) : (
 					<>
-						<div className={styles.section}>
-							<div className={styles.sectionTitle}>Current Tier</div>
-							<div className={styles.tierName}>
-								{state.currentTier.name} (Level {state.currentTier.level ?? 0})
-							</div>
-							<div className={styles.statusRow}>
-								<span className={styles.statusLabel}>Buffs</span>
-								<span
-									className={styles.statusPill}
-									data-warning={!state.currentTierRequirementsMet}
-								>
-									{state.currentTierRequirementsMet ? 'Active' : 'Inactive'}
-								</span>
-							</div>
-							{renderRequirements(state.currentRequirements)}
-						</div>
-
-						<div className={styles.section}>
-							<div className={styles.sectionTitle}>Unlocks</div>
-							{unlockFlags.length === 0 ? (
-								<div className={styles.emptyState}>None yet.</div>
-							) : (
-								<div className={styles.badgeList}>
-									{unlockFlags.map(flag => (
-										<span key={flag} className={styles.badge}>
-											{flag}
-										</span>
-									))}
+						<div className={styles.panelGrid}>
+							<div className={`${styles.tierPanel} ${styles.currentPanel}`}>
+								<div className={styles.panelLabel}>Current Tier</div>
+								<div className={styles.panelName}>{state.currentTier.name}</div>
+								<div className={styles.panelSection}>
+									<div className={styles.sectionTitle}>Unlocks</div>
+									{currentUnlocks.length === 0 ? (
+										<div className={styles.emptyState}>None yet.</div>
+									) : (
+										<div className={styles.unlockGrid}>
+											{currentUnlocks.map((entry) => (
+												<div key={entry.id} className={styles.unlockTile} title={entry.name}>
+													<span className={styles.unlockIcon}>{entry.icon || '?'}</span>
+													<span className={styles.unlockName}>{entry.name}</span>
+												</div>
+											))}
+										</div>
+									)}
 								</div>
-							)}
-						</div>
-
-						<div className={styles.section}>
-							<div className={styles.sectionTitle}>Buffs</div>
-							{buffs.length === 0 ? (
-								<div className={styles.emptyState}>None yet.</div>
-							) : (
-								<div className={styles.badgeList}>
-									{buffs.map(buff => (
-										<span key={buff.id} className={styles.badge}>
-											{buff.id}
-										</span>
-									))}
+								<div className={styles.panelSection}>
+									<div className={styles.sectionTitle}>Buffs</div>
+									{currentBuffs.length === 0 ? (
+										<div className={styles.emptyState}>None yet.</div>
+									) : (
+										<ul className={styles.buffList}>
+											{currentBuffs.map((buff) => {
+												const label = buff.description || buff.id
+												const value = formatBuffValue(buff.value)
+												return (
+													<li key={buff.id} className={styles.buffItem}>
+														<span>{label}</span>
+														{value ? <span className={styles.buffValue}>{value}</span> : null}
+													</li>
+												)
+											})}
+										</ul>
+									)}
 								</div>
-							)}
-						</div>
+							</div>
 
-						<div className={styles.section}>
-							<div className={styles.sectionTitle}>Next Tier</div>
-							{!hasNextTier ? (
-								<div className={styles.emptyState}>No further tiers.</div>
-							) : (
-								<>
-									<div className={styles.tierName}>
-										{state.nextTier?.name} (Level {state.nextTier?.level ?? 0})
-									</div>
-									<div className={styles.statusRow}>
-										<span className={styles.statusLabel}>Status</span>
-										<span
-											className={styles.statusPill}
-											data-warning={!state.isEligibleForNext}
+							<div className={styles.panelArrow} aria-hidden="true">
+								<span>→</span>
+							</div>
+							<div
+								className={styles.tierPanel}
+								data-claimable={state.isEligibleForNext && Boolean(state.nextTier)}
+							>
+								<div className={styles.panelLabel}>Next Tier</div>
+								<div className={styles.panelName}>{state.nextTier?.name ?? '—'}</div>
+								<div className={styles.panelSection}>
+									<div className={styles.sectionTitle}>Unlocks</div>
+									{state.nextTier ? (
+										nextUnlocks.length === 0 ? (
+											<div className={styles.emptyState}>None yet.</div>
+										) : (
+											<div className={styles.unlockGrid}>
+												{nextUnlocks.map((entry) => (
+													<div key={entry.id} className={styles.unlockTile} title={entry.name}>
+														<span className={styles.unlockIcon}>{entry.icon || '?'}</span>
+														<span className={styles.unlockName}>{entry.name}</span>
+													</div>
+												))}
+											</div>
+										)
+									) : (
+										<div className={styles.emptyState}>No further tiers.</div>
+									)}
+								</div>
+								<div className={styles.panelSection}>
+									<div className={styles.sectionTitle}>Buffs</div>
+									{state.nextTier ? (
+										nextBuffs.length === 0 ? (
+											<div className={styles.emptyState}>None yet.</div>
+										) : (
+											<ul className={styles.buffList}>
+												{nextBuffs.map((buff) => {
+													const label = buff.description || buff.id
+													const value = formatBuffValue(buff.value)
+													return (
+														<li key={buff.id} className={styles.buffItem}>
+															<span>{label}</span>
+															{value ? (
+																<span className={styles.buffValue}>{value}</span>
+															) : null}
+														</li>
+													)
+												})}
+											</ul>
+										)
+									) : (
+										<div className={styles.emptyState}>No further tiers.</div>
+									)}
+								</div>
+								<div className={styles.panelSection}>
+									{state.nextTier ? (
+										<button
+											type="button"
+											className={styles.claimButton}
+											onClick={() => cityCharterService.claimNextTier()}
+											disabled={!state.isEligibleForNext}
 										>
-											{state.isEligibleForNext ? 'Claimable' : 'Not ready'}
-										</span>
-									</div>
-									{renderRequirements(state.nextRequirements)}
-									<button
-										type="button"
-										className={styles.claimButton}
-										onClick={() => cityCharterService.claimNextTier()}
-										disabled={!state.isEligibleForNext}
-									>
-										Claim Charter
-									</button>
-								</>
-							)}
+											Claim Charter
+										</button>
+									) : null}
+								</div>
+							</div>
 						</div>
 					</>
 				)}

@@ -1,0 +1,622 @@
+import { BaseManager } from '../Managers'
+import type { EventClient, EventManager } from '../events'
+import { Event } from '../events'
+import { Receiver } from '../Receiver'
+import { SimulationEvents } from '../Simulation/events'
+import type { SimulationTickData } from '../Simulation/types'
+import type { WorldMapData, WorldMapNodeTradeOffer, WorldMapLink, WorldMapNode } from '../WorldMap/types'
+import type { BuildingManager } from '../Buildings'
+import { BuildingsEvents } from '../Buildings/events'
+import { ConstructionStage } from '../Buildings/types'
+import type { StorageManager } from '../Storage'
+import type { WorkProviderManager } from '../Settlers/WorkProvider'
+import { TradeEvents } from './events'
+import {
+	TradeRouteStatus,
+	type TradeRouteSelection,
+	type TradeRouteCancelled,
+	type TradeRouteState,
+	type TradeRouteUpdatedData,
+	type TradeRouteListData,
+	type TradeShipmentStartedData,
+	type TradeShipmentArrivedData,
+	type TradeReputationUpdatedData,
+	type TradeSnapshot
+} from './types'
+import { v4 as uuidv4 } from 'uuid'
+import type { Logger } from '../Logs'
+import type { ItemType } from '../Items/types'
+import { LogisticsRequestType } from '../Settlers/WorkProvider/types'
+import type { LogisticsRequest } from '../Settlers/WorkProvider/types'
+
+export interface TradeDeps {
+	buildings: BuildingManager
+	storage: StorageManager
+	work: WorkProviderManager
+}
+
+export * from './events'
+export * from './types'
+
+const TICK_INTERVAL_MS = 1000
+const DEFAULT_COOLDOWN_SECONDS = 8
+
+export class TradeManager extends BaseManager<TradeDeps> {
+	private routesByBuilding = new Map<string, TradeRouteState>()
+	private reputationByPlayer = new Map<string, number>()
+	private worldMap: WorldMapData | null = null
+	private nodesById = new Map<string, WorldMapNode>()
+	private travelMsByNode = new Map<string, number>()
+	private simulationTimeMs = 0
+	private tickAccumulatorMs = 0
+	private requestCounter = 0
+
+	constructor(
+		managers: TradeDeps,
+		private event: EventManager,
+		private logger: Logger
+	) {
+		super(managers)
+		this.setupEventHandlers()
+	}
+
+	public loadWorldMap(worldMap?: WorldMapData): void {
+		this.worldMap = worldMap || null
+		this.nodesById.clear()
+		this.travelMsByNode.clear()
+		if (!this.worldMap) {
+			return
+		}
+		for (const node of this.worldMap.nodes) {
+			this.nodesById.set(node.id, node)
+		}
+	}
+
+	private setupEventHandlers(): void {
+		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+			this.handleSimulationTick(data)
+		})
+
+		this.event.on(TradeEvents.CS.CreateRoute, (data: TradeRouteSelection, client: EventClient) => {
+			this.createOrQueueRoute(data, client)
+		})
+
+		this.event.on(TradeEvents.CS.CancelRoute, (data: TradeRouteCancelled, client: EventClient) => {
+			this.cancelRoute(data, client)
+		})
+
+		this.event.on(TradeEvents.CS.RequestRoutes, (_data: unknown, client: EventClient) => {
+			this.sendRoutesToClient(client)
+		})
+
+		this.event.on(Event.Players.CS.Join, (_data: any, client: EventClient) => {
+			this.sendRoutesToClient(client)
+		})
+
+		this.event.on(BuildingsEvents.SS.Removed, (data: { buildingInstanceId?: string }) => {
+			if (!data?.buildingInstanceId) {
+				return
+			}
+			this.routesByBuilding.delete(data.buildingInstanceId)
+		})
+	}
+
+	private handleSimulationTick(data: SimulationTickData): void {
+		this.simulationTimeMs = data.nowMs
+		this.tickAccumulatorMs += data.deltaMs
+		if (this.tickAccumulatorMs < TICK_INTERVAL_MS) {
+			return
+		}
+		this.tickAccumulatorMs -= TICK_INTERVAL_MS
+		this.tick()
+	}
+
+	private tick(): void {
+		for (const route of this.routesByBuilding.values()) {
+			const building = this.managers.buildings.getBuildingInstance(route.buildingInstanceId)
+			if (!building) {
+				this.routesByBuilding.delete(route.buildingInstanceId)
+				continue
+			}
+
+			let didUpdate = false
+			const previousStatus = route.status
+
+			if (route.status === TradeRouteStatus.Idle && route.pendingSelection) {
+				if (this.applyPendingSelection(route, route.pendingSelection)) {
+					route.pendingSelection = undefined
+					didUpdate = true
+				}
+			}
+
+			switch (route.status) {
+				case TradeRouteStatus.Idle:
+					route.status = TradeRouteStatus.Loading
+					didUpdate = true
+					break
+				case TradeRouteStatus.Loading:
+					didUpdate = this.updateLoading(route) || didUpdate
+					break
+				case TradeRouteStatus.Ready:
+					didUpdate = this.dispatchShipment(route) || didUpdate
+					break
+				case TradeRouteStatus.Outbound:
+					didUpdate = this.advanceOutbound(route) || didUpdate
+					break
+				case TradeRouteStatus.AtDestination:
+					route.status = TradeRouteStatus.Returning
+					route.returnRemainingMs = this.getTravelMs(route.nodeId)
+					didUpdate = true
+					break
+				case TradeRouteStatus.Returning:
+					didUpdate = this.advanceReturn(route) || didUpdate
+					break
+				case TradeRouteStatus.Unloading:
+					didUpdate = this.unloadShipment(route) || didUpdate
+					break
+				case TradeRouteStatus.Cooldown:
+					didUpdate = this.advanceCooldown(route) || didUpdate
+					break
+			}
+
+			if (previousStatus !== route.status) {
+				didUpdate = true
+			}
+
+			if (didUpdate) {
+				route.lastUpdatedAtMs = this.simulationTimeMs
+				this.emitRouteUpdated(route)
+			}
+		}
+	}
+
+	private updateLoading(route: TradeRouteState): boolean {
+		const offer = route.offer
+		const outgoingQuantity = this.managers.storage.getCurrentQuantity(route.buildingInstanceId, offer.offerItem, 'incoming')
+		const needed = Math.max(0, offer.offerQuantity - outgoingQuantity)
+		if (needed > 0) {
+			this.enqueueLogisticsInput(route, offer.offerItem, needed)
+		}
+
+		const canReceive = this.managers.storage.hasAvailableStorage(route.buildingInstanceId, offer.receiveItem, offer.receiveQuantity, 'outgoing')
+		if (needed <= 0 && canReceive) {
+			route.status = TradeRouteStatus.Ready
+			return true
+		}
+
+		return needed > 0
+	}
+
+	private dispatchShipment(route: TradeRouteState): boolean {
+		const offer = route.offer
+		const canReceive = this.managers.storage.hasAvailableStorage(route.buildingInstanceId, offer.receiveItem, offer.receiveQuantity, 'outgoing')
+		if (!canReceive) {
+			route.status = TradeRouteStatus.Loading
+			return true
+		}
+
+		const currentOutgoing = this.managers.storage.getCurrentQuantity(route.buildingInstanceId, offer.offerItem, 'incoming')
+		if (currentOutgoing < offer.offerQuantity) {
+			route.status = TradeRouteStatus.Loading
+			return true
+		}
+
+		const reservation = this.managers.storage.reserveStorage(
+			route.buildingInstanceId,
+			offer.offerItem,
+			offer.offerQuantity,
+			`trade:${route.routeId}`,
+			true,
+			true,
+			'incoming'
+		)
+		if (!reservation) {
+			return false
+		}
+
+		const removed = this.managers.storage.removeFromStorage(route.buildingInstanceId, offer.offerItem, offer.offerQuantity, reservation.reservationId)
+		if (!removed) {
+			this.managers.storage.releaseReservation(reservation.reservationId)
+			return false
+		}
+
+		const travelMs = this.getTravelMs(route.nodeId)
+		route.status = TradeRouteStatus.Outbound
+		route.outboundRemainingMs = travelMs
+		route.returnRemainingMs = undefined
+
+		const shipmentData: TradeShipmentStartedData = {
+			routeId: route.routeId,
+			buildingInstanceId: route.buildingInstanceId,
+			nodeId: route.nodeId,
+			offerId: route.offerId,
+			travelMs
+		}
+		this.event.emit(Receiver.Client, TradeEvents.SC.ShipmentStarted, shipmentData, route.playerId)
+		return true
+	}
+
+	private advanceOutbound(route: TradeRouteState): boolean {
+		if (typeof route.outboundRemainingMs !== 'number') {
+			return false
+		}
+		route.outboundRemainingMs = Math.max(0, route.outboundRemainingMs - TICK_INTERVAL_MS)
+		if (route.outboundRemainingMs <= 0) {
+			route.status = TradeRouteStatus.AtDestination
+			route.outboundRemainingMs = undefined
+			return true
+		}
+		return true
+	}
+
+	private advanceReturn(route: TradeRouteState): boolean {
+		if (typeof route.returnRemainingMs !== 'number') {
+			return false
+		}
+		route.returnRemainingMs = Math.max(0, route.returnRemainingMs - TICK_INTERVAL_MS)
+		if (route.returnRemainingMs <= 0) {
+			route.status = TradeRouteStatus.Unloading
+			route.returnRemainingMs = undefined
+			return true
+		}
+		return true
+	}
+
+	private unloadShipment(route: TradeRouteState): boolean {
+		const offer = route.offer
+		const reservation = this.managers.storage.reserveStorage(
+			route.buildingInstanceId,
+			offer.receiveItem,
+			offer.receiveQuantity,
+			`trade:${route.routeId}`,
+			false,
+			false,
+			'outgoing'
+		)
+		if (!reservation) {
+			return false
+		}
+
+		const added = this.managers.storage.addToStorage(route.buildingInstanceId, offer.receiveItem, offer.receiveQuantity, reservation.reservationId, 'outgoing')
+		if (!added) {
+			this.managers.storage.releaseReservation(reservation.reservationId)
+			return false
+		}
+
+		const rep = this.addReputation(route.playerId, offer.reputation)
+		const arrivalData: TradeShipmentArrivedData = {
+			routeId: route.routeId,
+			buildingInstanceId: route.buildingInstanceId,
+			nodeId: route.nodeId,
+			offerId: route.offerId
+		}
+		this.event.emit(Receiver.Client, TradeEvents.SC.ShipmentArrived, arrivalData, route.playerId)
+		this.event.emit(Receiver.Client, TradeEvents.SC.ReputationUpdated, {
+			playerId: route.playerId,
+			reputation: rep
+		} satisfies TradeReputationUpdatedData, route.playerId)
+
+		const cooldownSeconds = offer.cooldownSeconds ?? DEFAULT_COOLDOWN_SECONDS
+		route.status = TradeRouteStatus.Cooldown
+		route.cooldownRemainingMs = cooldownSeconds * 1000
+		return true
+	}
+
+	private advanceCooldown(route: TradeRouteState): boolean {
+		if (typeof route.cooldownRemainingMs !== 'number') {
+			return false
+		}
+		route.cooldownRemainingMs = Math.max(0, route.cooldownRemainingMs - TICK_INTERVAL_MS)
+		if (route.cooldownRemainingMs <= 0) {
+			route.cooldownRemainingMs = undefined
+			route.status = TradeRouteStatus.Idle
+			return true
+		}
+		return true
+	}
+
+	private enqueueLogisticsInput(route: TradeRouteState, itemType: ItemType, quantity: number): void {
+		const requestId = `trade:${route.routeId}:${this.requestCounter++}`
+		const request: LogisticsRequest = {
+			id: requestId,
+			type: LogisticsRequestType.Input,
+			buildingInstanceId: route.buildingInstanceId,
+			itemType,
+			quantity,
+			priority: 75,
+			createdAtMs: this.simulationTimeMs
+		}
+		this.managers.work.enqueueLogisticsRequest(request)
+	}
+
+	private createOrQueueRoute(data: TradeRouteSelection, client: EventClient): void {
+		if (!this.worldMap) {
+			this.logger.warn('[TradeManager] World map data not loaded; cannot create route.')
+			return
+		}
+
+		const building = this.managers.buildings.getBuildingInstance(data.buildingInstanceId)
+		if (!building) {
+			this.logger.warn('[TradeManager] Trading post not found for route request.')
+			return
+		}
+
+		if (building.playerId !== client.id) {
+			this.logger.warn('[TradeManager] Player tried to configure another player\'s trading post.')
+			return
+		}
+
+		const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
+		if (!definition?.isTradingPost) {
+			this.logger.warn('[TradeManager] Building is not a trading post:', building.buildingId)
+			return
+		}
+
+		if (building.stage !== ConstructionStage.Completed) {
+			this.logger.warn('[TradeManager] Trading post is not completed yet.')
+			return
+		}
+
+		const node = this.nodesById.get(data.nodeId)
+		if (!node) {
+			this.logger.warn('[TradeManager] Unknown trade node:', data.nodeId)
+			return
+		}
+
+		const offer = node.tradeOffers?.find(entry => entry.id === data.offerId)
+		if (!offer) {
+			this.logger.warn('[TradeManager] Unknown trade offer:', data.offerId)
+			return
+		}
+
+		if (!this.isReachableByLand(data.nodeId)) {
+			this.logger.warn('[TradeManager] Node not reachable by land:', data.nodeId)
+			return
+		}
+
+		const existing = this.routesByBuilding.get(data.buildingInstanceId)
+		if (existing) {
+			if (existing.status === TradeRouteStatus.Idle) {
+				this.applySelection(existing, data, offer)
+				this.emitRouteUpdated(existing)
+				return
+			}
+			existing.pendingSelection = { nodeId: data.nodeId, offerId: data.offerId }
+			this.emitRouteUpdated(existing)
+			return
+		}
+
+		const route: TradeRouteState = {
+			routeId: uuidv4(),
+			playerId: building.playerId,
+			mapId: building.mapId,
+			buildingInstanceId: building.id,
+			nodeId: data.nodeId,
+			offerId: data.offerId,
+			offer,
+			status: TradeRouteStatus.Idle,
+			lastUpdatedAtMs: this.simulationTimeMs
+		}
+
+		this.routesByBuilding.set(route.buildingInstanceId, route)
+		this.emitRouteUpdated(route)
+	}
+
+	private applyPendingSelection(route: TradeRouteState, pending: { nodeId: string; offerId: string }): boolean {
+		const node = this.nodesById.get(pending.nodeId)
+		const offer = node?.tradeOffers?.find(entry => entry.id === pending.offerId)
+		if (!node || !offer) {
+			return false
+		}
+		if (!this.isReachableByLand(node.id)) {
+			return false
+		}
+		this.applySelection(route, pending, offer)
+		return true
+	}
+
+	private applySelection(route: TradeRouteState, selection: { nodeId: string; offerId: string }, offer: WorldMapNodeTradeOffer): void {
+		route.nodeId = selection.nodeId
+		route.offerId = selection.offerId
+		route.offer = offer
+		route.pendingSelection = undefined
+		route.status = TradeRouteStatus.Idle
+		route.outboundRemainingMs = undefined
+		route.returnRemainingMs = undefined
+		route.cooldownRemainingMs = undefined
+	}
+
+	private cancelRoute(data: TradeRouteCancelled, client: EventClient): void {
+		const route = this.routesByBuilding.get(data.buildingInstanceId)
+		if (!route) {
+			return
+		}
+		if (route.playerId !== client.id) {
+			return
+		}
+		this.routesByBuilding.delete(data.buildingInstanceId)
+		this.sendRoutesToClient(client)
+	}
+
+	private emitRouteUpdated(route: TradeRouteState): void {
+		this.event.emit(Receiver.Client, TradeEvents.SC.RouteUpdated, { route } satisfies TradeRouteUpdatedData, route.playerId)
+	}
+
+	private sendRoutesToClient(client: EventClient): void {
+		const routes = Array.from(this.routesByBuilding.values()).filter(route => route.playerId === client.id)
+		const payload: TradeRouteListData = { routes }
+		client.emit(Receiver.Sender, TradeEvents.SC.RouteList, payload)
+		const reputation = this.reputationByPlayer.get(client.id) || 0
+		client.emit(Receiver.Sender, TradeEvents.SC.ReputationUpdated, { playerId: client.id, reputation } satisfies TradeReputationUpdatedData)
+	}
+
+	private addReputation(playerId: string, delta: number): number {
+		const current = this.reputationByPlayer.get(playerId) || 0
+		const next = current + delta
+		this.reputationByPlayer.set(playerId, next)
+		return next
+	}
+
+	private getTravelMs(nodeId: string): number {
+		if (!this.worldMap) {
+			return 0
+		}
+		const cached = this.travelMsByNode.get(nodeId)
+		if (typeof cached === 'number') {
+			return cached
+		}
+		const distance = this.findShortestDistance(nodeId)
+		const travelMs = Math.max(0, distance * this.worldMap.travelSecondsPerUnit * 1000)
+		this.travelMsByNode.set(nodeId, travelMs)
+		return travelMs
+	}
+
+	private findShortestDistance(targetNodeId: string): number {
+		if (!this.worldMap) {
+			return 0
+		}
+		const start = this.worldMap.homeNodeId
+		if (start === targetNodeId) {
+			return 0
+		}
+
+		const distances = new Map<string, number>()
+		const visited = new Set<string>()
+		distances.set(start, 0)
+
+		const getNeighbors = (nodeId: string): Array<{ id: string; distance: number }> => {
+			const neighbors: Array<{ id: string; distance: number }> = []
+			for (const link of this.worldMap?.links || []) {
+				if (link.type !== 'land') {
+					continue
+				}
+				if (link.fromId === nodeId) {
+					neighbors.push({ id: link.toId, distance: this.resolveLinkDistance(link) })
+				} else if (link.toId === nodeId) {
+					neighbors.push({ id: link.fromId, distance: this.resolveLinkDistance(link) })
+				}
+			}
+			return neighbors
+		}
+
+		while (visited.size < (this.worldMap?.nodes.length || 0)) {
+			let current: string | null = null
+			let currentDistance = Number.POSITIVE_INFINITY
+			for (const [nodeId, distance] of distances.entries()) {
+				if (visited.has(nodeId)) {
+					continue
+				}
+				if (distance < currentDistance) {
+					currentDistance = distance
+					current = nodeId
+				}
+			}
+
+			if (!current) {
+				break
+			}
+
+			if (current === targetNodeId) {
+				return currentDistance
+			}
+
+			visited.add(current)
+			for (const neighbor of getNeighbors(current)) {
+				if (visited.has(neighbor.id)) {
+					continue
+				}
+				const nextDistance = currentDistance + neighbor.distance
+				const existing = distances.get(neighbor.id)
+				if (existing === undefined || nextDistance < existing) {
+					distances.set(neighbor.id, nextDistance)
+				}
+			}
+		}
+
+		return 0
+	}
+
+	private resolveLinkDistance(link: WorldMapLink): number {
+		if (typeof link.distance === 'number') {
+			return link.distance
+		}
+		if (!this.worldMap) {
+			return 0
+		}
+		const from = this.nodesById.get(link.fromId)
+		const to = this.nodesById.get(link.toId)
+		if (!from || !to) {
+			return 0
+		}
+		const dx = from.position.x - to.position.x
+		const dy = from.position.y - to.position.y
+		return Math.hypot(dx, dy)
+	}
+
+	private isReachableByLand(targetNodeId: string): boolean {
+		if (!this.worldMap) {
+			return false
+		}
+		const start = this.worldMap.homeNodeId
+		const queue: string[] = [start]
+		const visited = new Set<string>([start])
+		while (queue.length > 0) {
+			const current = queue.shift()
+			if (!current) {
+				continue
+			}
+			if (current === targetNodeId) {
+				return true
+			}
+			for (const link of this.worldMap.links) {
+				if (link.type !== 'land') {
+					continue
+				}
+				const neighbor = link.fromId === current
+					? link.toId
+					: link.toId === current
+						? link.fromId
+						: null
+				if (!neighbor || visited.has(neighbor)) {
+					continue
+				}
+				visited.add(neighbor)
+				queue.push(neighbor)
+			}
+		}
+		return false
+	}
+
+	serialize(): TradeSnapshot {
+		return {
+			routes: Array.from(this.routesByBuilding.values()).map(route => ({
+				...route,
+				offer: { ...route.offer }
+			})),
+			reputation: Array.from(this.reputationByPlayer.entries()),
+			simulationTimeMs: this.simulationTimeMs,
+			tickAccumulatorMs: this.tickAccumulatorMs,
+			requestCounter: this.requestCounter
+		}
+	}
+
+	deserialize(state: TradeSnapshot): void {
+		this.routesByBuilding.clear()
+		for (const route of state.routes) {
+			this.routesByBuilding.set(route.buildingInstanceId, { ...route, offer: { ...route.offer } })
+		}
+		this.reputationByPlayer = new Map(state.reputation)
+		this.simulationTimeMs = state.simulationTimeMs
+		this.tickAccumulatorMs = state.tickAccumulatorMs
+		this.requestCounter = state.requestCounter ?? 0
+	}
+
+	reset(): void {
+		this.routesByBuilding.clear()
+		this.reputationByPlayer.clear()
+		this.travelMsByNode.clear()
+		this.simulationTimeMs = 0
+		this.tickAccumulatorMs = 0
+		this.requestCounter = 0
+	}
+}

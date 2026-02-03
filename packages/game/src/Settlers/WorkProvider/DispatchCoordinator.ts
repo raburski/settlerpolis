@@ -43,6 +43,18 @@ export class DispatchCoordinator {
 		private unassignWorker: (settlerId: SettlerId) => void
 	) {}
 
+	private isWarehouseLogisticsAssignment(assignment: WorkAssignment): boolean {
+		if (assignment.providerType !== WorkProviderType.Logistics || !assignment.buildingInstanceId) {
+			return false
+		}
+		const building = this.managers.buildings.getBuildingInstance(assignment.buildingInstanceId)
+		if (!building) {
+			return false
+		}
+		const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
+		return Boolean(definition?.isWarehouse)
+	}
+
 	processPendingDispatches(): void {
 		if (this.pendingDispatchAtMs.size === 0) {
 			return
@@ -76,8 +88,10 @@ export class DispatchCoordinator {
 
 		const assignment = this.assignments.get(settlerId)
 		if (!assignment) {
+			this.managers.population.setSettlerAssignment(settlerId, undefined, undefined, undefined)
 			this.managers.population.setSettlerWaitReason(settlerId, WorkWaitReason.NoWork)
 			this.managers.population.setSettlerLastStep(settlerId, undefined, WorkWaitReason.NoWork)
+			this.managers.population.setSettlerState(settlerId, SettlerState.Idle)
 			return
 		}
 
@@ -110,6 +124,7 @@ export class DispatchCoordinator {
 		if (!provider) {
 			this.managers.population.setSettlerWaitReason(settlerId, WorkWaitReason.ProviderMissing)
 			this.managers.population.setSettlerLastStep(settlerId, undefined, WorkWaitReason.ProviderMissing)
+			this.unassignWorker(settlerId)
 			return
 		}
 
@@ -134,8 +149,10 @@ export class DispatchCoordinator {
 			this.managers.population.setSettlerLastStep(settlerId, step.type, step.reason)
 			if (assignment.providerType === WorkProviderType.Logistics &&
 				(step.reason === WorkWaitReason.NoRequests || step.reason === WorkWaitReason.NoViableRequest)) {
-				this.unassignWorker(settlerId)
-				return
+				if (!this.isWarehouseLogisticsAssignment(assignment)) {
+					this.unassignWorker(settlerId)
+					return
+				}
 			}
 			if (assignment.providerType === WorkProviderType.Road &&
 				(step.reason === WorkWaitReason.NoWork || step.reason === WorkWaitReason.WrongProfession)) {
@@ -269,8 +286,10 @@ export class DispatchCoordinator {
 			this.productionTracker.handleProductionCompleted(assignment.buildingInstanceId, step.recipe)
 		}
 		if (assignment.providerType === WorkProviderType.Logistics && !this.logisticsProvider.hasPendingRequests()) {
-			this.unassignWorker(settlerId)
-			return
+			if (!this.isWarehouseLogisticsAssignment(assignment)) {
+				this.unassignWorker(settlerId)
+				return
+			}
 		}
 		this.dispatchNextStep(settlerId)
 	}

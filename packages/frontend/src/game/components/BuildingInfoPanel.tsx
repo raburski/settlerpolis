@@ -1,15 +1,19 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { EventBus } from '../EventBus'
-import { Event, BuildingInstance, BuildingDefinition, ConstructionStage, Settler, SettlerState, ProfessionType, ProductionStatus, WorkerRequestFailureReason } from '@rugged/game'
+import { Event, BuildingInstance, BuildingDefinition, ConstructionStage, Settler, SettlerState, ProfessionType, ProductionStatus, WorkerRequestFailureReason, TradeRouteStatus } from '@rugged/game'
+import type { TradeRouteState } from '@rugged/game'
 import { buildingService } from '../services/BuildingService'
 import { populationService } from '../services/PopulationService'
 import { itemService } from '../services/ItemService'
 import { storageService } from '../services/StorageService'
 import { productionService } from '../services/ProductionService'
+import { tradeService } from '../services/TradeService'
 import { DraggablePanel } from './DraggablePanel'
+import styles from './BuildingInfoPanel.module.css'
 import sharedStyles from './PanelShared.module.css'
 import confirmStyles from './ConfirmDialog.module.css'
 import { UiEvents } from '../uiEvents'
+import { worldMapData, type WorldMapNodeTradeOffer } from '../worldmap/data'
 
 // Component to display item emoji that reactively updates when metadata loads
 const ItemEmoji: React.FC<{ itemType: string }> = ({ itemType }) => {
@@ -35,6 +39,32 @@ const ItemEmoji: React.FC<{ itemType: string }> = ({ itemType }) => {
 	return <>{emoji}</>
 }
 
+const getTradeStatusLabel = (status?: TradeRouteStatus) => {
+	if (!status) return 'Idle'
+	switch (status) {
+		case TradeRouteStatus.Loading:
+			return 'Loading goods'
+		case TradeRouteStatus.Ready:
+			return 'Ready to dispatch'
+		case TradeRouteStatus.Outbound:
+			return 'Outbound'
+		case TradeRouteStatus.AtDestination:
+			return 'At destination'
+		case TradeRouteStatus.Returning:
+			return 'Returning'
+		case TradeRouteStatus.Unloading:
+			return 'Unloading'
+		case TradeRouteStatus.Cooldown:
+			return 'Cooldown'
+		default:
+			return 'Idle'
+	}
+}
+
+const formatTradeOffer = (offer: WorldMapNodeTradeOffer) => {
+	return `${offer.offerQuantity} ${offer.offerItem} → ${offer.receiveQuantity} ${offer.receiveItem}`
+}
+
 interface BuildingInfoData {
 	buildingInstance: BuildingInstance
 	buildingDefinition: BuildingDefinition
@@ -47,6 +77,34 @@ export const BuildingInfoPanel: React.FC = () => {
 	const [errorMessage, setErrorMessage] = useState<string | null>(null)
 	const [workerStatus, setWorkerStatus] = useState<string | null>(null)
 	const [showDemolishConfirm, setShowDemolishConfirm] = useState(false)
+	const [tradeRoute, setTradeRoute] = useState<TradeRouteState | null>(null)
+	const [tradeReputation, setTradeReputation] = useState(0)
+	const [selectedTradeNodeId, setSelectedTradeNodeId] = useState('')
+	const [selectedTradeOfferId, setSelectedTradeOfferId] = useState('')
+
+	const tradeNodes = useMemo(() => {
+		const links = worldMapData.links || []
+		const nodes = worldMapData.nodes || []
+		if (links.length === 0 || nodes.length === 0) {
+			return []
+		}
+		const visited = new Set<string>([worldMapData.homeNodeId])
+		const queue = [worldMapData.homeNodeId]
+		while (queue.length > 0) {
+			const current = queue.shift()
+			if (!current) continue
+			for (const link of links) {
+				if (link.type !== 'land') continue
+				const neighbor = link.fromId === current ? link.toId : link.toId === current ? link.fromId : null
+				if (!neighbor || visited.has(neighbor)) continue
+				visited.add(neighbor)
+				queue.push(neighbor)
+			}
+		}
+		return nodes.filter(node => node.id !== worldMapData.homeNodeId && visited.has(node.id) && (node.tradeOffers || []).length > 0)
+	}, [])
+
+	const selectedTradeNode = tradeNodes.find(node => node.id === selectedTradeNodeId)
 
 	useEffect(() => {
 		// Listen for building selection
@@ -119,7 +177,7 @@ export const BuildingInfoPanel: React.FC = () => {
 						message = 'No idle settler with required profession. Promote one in the Population panel.'
 						break
 					case WorkerRequestFailureReason.NoAvailableTool:
-						message = 'No tool available to change profession. Drop a tool (hammer/axe) on the map!'
+						message = 'No tool available to change profession. Drop a tool (hammer/axe/cart) on the map!'
 						break
 					case WorkerRequestFailureReason.BuildingNotFound:
 						message = 'Building not found'
@@ -263,6 +321,46 @@ export const BuildingInfoPanel: React.FC = () => {
 		}
 	}, [buildingInstance])
 
+	useEffect(() => {
+		if (!buildingInstance || !buildingDefinition?.isTradingPost) {
+			setTradeRoute(null)
+			return
+		}
+
+		tradeService.requestRoutes()
+		const route = tradeService.getRoute(buildingInstance.id) || null
+		setTradeRoute(route)
+		setTradeReputation(tradeService.getReputation(buildingInstance.playerId))
+
+		if (route) {
+			setSelectedTradeNodeId(route.nodeId)
+			setSelectedTradeOfferId(route.offerId)
+			return
+		}
+
+		const firstNode = tradeNodes.find(node => (node.tradeOffers || []).length > 0)
+		if (firstNode) {
+			setSelectedTradeNodeId(firstNode.id)
+			setSelectedTradeOfferId(firstNode.tradeOffers?.[0]?.id || '')
+		}
+	}, [buildingInstance?.id, buildingDefinition?.isTradingPost, tradeNodes])
+
+	useEffect(() => {
+		if (!buildingInstance || !buildingDefinition?.isTradingPost) {
+			return
+		}
+
+		const handleTradeUpdated = () => {
+			setTradeRoute(tradeService.getRoute(buildingInstance.id) || null)
+			setTradeReputation(tradeService.getReputation(buildingInstance.playerId))
+		}
+
+		EventBus.on(UiEvents.Trade.Updated, handleTradeUpdated)
+		return () => {
+			EventBus.off(UiEvents.Trade.Updated, handleTradeUpdated)
+		}
+	}, [buildingInstance?.id, buildingInstance?.playerId, buildingDefinition?.isTradingPost])
+
 	const handleCancelConstruction = () => {
 		if (buildingInstance && (buildingInstance.stage === ConstructionStage.CollectingResources || buildingInstance.stage === ConstructionStage.Constructing)) {
 			EventBus.emit(Event.Buildings.CS.Cancel, {
@@ -290,6 +388,28 @@ export const BuildingInfoPanel: React.FC = () => {
 		setShowDemolishConfirm(false)
 	}
 
+	const handleTradeNodeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+		const nextNodeId = event.target.value
+		setSelectedTradeNodeId(nextNodeId)
+		const nextNode = tradeNodes.find(node => node.id === nextNodeId)
+		const nextOffer = nextNode?.tradeOffers?.[0]?.id || ''
+		setSelectedTradeOfferId(nextOffer)
+	}
+
+	const handleTradeOfferChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+		setSelectedTradeOfferId(event.target.value)
+	}
+
+	const handleSetTradeRoute = () => {
+		if (!buildingInstance || !selectedTradeNodeId || !selectedTradeOfferId) return
+		tradeService.setRoute(buildingInstance.id, selectedTradeNodeId, selectedTradeOfferId)
+	}
+
+	const handleCancelTradeRoute = () => {
+		if (!buildingInstance) return
+		tradeService.cancelRoute(buildingInstance.id)
+	}
+
 	const handleClose = () => {
 		if (buildingInstance) {
 			EventBus.emit(UiEvents.Building.Highlight, { buildingInstanceId: buildingInstance.id, highlighted: false })
@@ -300,6 +420,17 @@ export const BuildingInfoPanel: React.FC = () => {
 		setBuildingDefinition(null)
 		EventBus.emit(UiEvents.Building.Close)
 	}
+
+	const bufferItemTypes = useMemo(() => {
+		if (!buildingDefinition || !buildingInstance) {
+			return []
+		}
+		const slotTypes = (buildingDefinition.storageSlots || []).map(slot => slot.itemType).filter(Boolean)
+		if (slotTypes.includes('*')) {
+			return Object.keys(storageService.getStorageItems(buildingInstance.id))
+		}
+		return Array.from(new Set(slotTypes))
+	}, [buildingDefinition, buildingInstance])
 
 	if (!isVisible || !buildingInstance || !buildingDefinition) {
 		return null
@@ -323,7 +454,18 @@ export const BuildingInfoPanel: React.FC = () => {
 		settler => settler.state === SettlerState.MovingToBuilding || settler.state === SettlerState.MovingToResource || settler.state === SettlerState.MovingToTool
 	)
 	const workerCount = assignedWorkers.length
+	const queuedWorkers = buildingInstance.pendingWorkers ?? 0
 	const maxWorkers = buildingDefinition.workerSlots || 0
+	const workerMetaParts: string[] = []
+	if (workingWorkers.length > 0) {
+		workerMetaParts.push(`${workingWorkers.length} active`)
+	}
+	if (movingWorkers.length > 0) {
+		workerMetaParts.push(`${movingWorkers.length} en route`)
+	}
+	if (queuedWorkers > 0) {
+		workerMetaParts.push(`${queuedWorkers} queued`)
+	}
 	// Buildings only need workers during Constructing stage (builders) or Completed stage (production workers)
 	// During CollectingResources, carriers are automatically requested by the system
 	const needsWorkers = buildingInstance.stage === ConstructionStage.Constructing ||
@@ -332,6 +474,19 @@ export const BuildingInfoPanel: React.FC = () => {
 	const hasRequiredProfession = requiredProfessionLabel !== undefined
 	const workAreaRadiusTiles = buildingDefinition.farm?.plotRadiusTiles ?? buildingDefinition.harvest?.radiusTiles
 	const canSelectWorkArea = isCompleted && typeof workAreaRadiusTiles === 'number' && workAreaRadiusTiles > 0
+	const isWarehouse = Boolean(buildingDefinition.isWarehouse)
+	const warehouseItemTypes = isWarehouse && buildingDefinition.storageSlots?.length
+		? Array.from(new Set(buildingDefinition.storageSlots.map((slot) => slot.itemType))).filter(Boolean)
+		: []
+	const storageRequests = (buildingInstance.storageRequests ?? warehouseItemTypes) as string[]
+	const storageRequestSet = new Set(storageRequests)
+	const isTradingPost = Boolean(buildingDefinition.isTradingPost)
+	const tradeOffers = selectedTradeNode?.tradeOffers || []
+	const tradeStatusLabel = getTradeStatusLabel(tradeRoute?.status)
+	const tradePending = Boolean(tradeRoute?.pendingSelection)
+	const tradeCountdownMs = tradeRoute?.outboundRemainingMs ?? tradeRoute?.returnRemainingMs ?? tradeRoute?.cooldownRemainingMs
+	const tradeCountdownSeconds = typeof tradeCountdownMs === 'number' ? Math.ceil(tradeCountdownMs / 1000) : null
+	const currentTradeNode = tradeRoute ? worldMapData.nodes.find(node => node.id === tradeRoute.nodeId) : null
 
 	// Get resource collection progress from building definition costs and collected resources
 	const requiredResources = buildingDefinition.costs || []
@@ -349,6 +504,19 @@ export const BuildingInfoPanel: React.FC = () => {
 		if (buildingInstance) {
 			EventBus.emit(UiEvents.Building.WorkAreaSelect, { buildingInstanceId: buildingInstance.id })
 		}
+	}
+
+	const handleStorageRequestToggle = (itemType: string) => {
+		const current = (buildingInstance.storageRequests ?? warehouseItemTypes) as string[]
+		const next = new Set(current)
+		if (next.has(itemType)) {
+			next.delete(itemType)
+		} else {
+			next.add(itemType)
+		}
+		const updated = Array.from(next)
+		buildingService.setStorageRequests(buildingInstance.id, updated)
+		setBuildingInstance({ ...buildingInstance, storageRequests: updated })
 	}
 
 	const professionLabels: Record<ProfessionType, string> = {
@@ -493,9 +661,7 @@ export const BuildingInfoPanel: React.FC = () => {
 						<span className={sharedStyles.label}>Workers:</span>
 						<span className={sharedStyles.value}>
 							{workerCount}
-							{(workingWorkers.length > 0 || movingWorkers.length > 0) && (
-								` (${workingWorkers.length} active${movingWorkers.length > 0 ? `, ${movingWorkers.length} en route` : ''})`
-							)}
+							{workerMetaParts.length > 0 && ` (${workerMetaParts.join(', ')})`}
 							{hasWorkerSlots && ` / ${maxWorkers}`}
 						</span>
 					</div>
@@ -538,7 +704,9 @@ export const BuildingInfoPanel: React.FC = () => {
 						</div>
 					) : (
 						<div className={sharedStyles.workerHint}>
-							No workers assigned yet
+							{queuedWorkers > 0
+								? `${queuedWorkers} worker${queuedWorkers === 1 ? '' : 's'} queued`
+								: 'No workers assigned yet'}
 						</div>
 					)}
 				</div>
@@ -644,7 +812,7 @@ export const BuildingInfoPanel: React.FC = () => {
 						<span className={sharedStyles.label}>Buffer:</span>
 						<span className={sharedStyles.value}>
 							<div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
-								{Array.from(new Set(buildingDefinition.storageSlots.map((slot) => slot.itemType)))
+								{bufferItemTypes
 									.filter((itemType) => Boolean(itemType))
 									.map((itemType) => {
 										const capacity = storageService.getStorageCapacity(buildingInstance.id, itemType)
@@ -659,6 +827,125 @@ export const BuildingInfoPanel: React.FC = () => {
 											</div>
 										)
 									})}
+							</div>
+						</span>
+					</div>
+				</div>
+			)}
+
+			{isCompleted && isTradingPost && (
+				<div className={sharedStyles.info}>
+					<div className={sharedStyles.infoRow}>
+						<span className={sharedStyles.label}>Trade reputation:</span>
+						<span className={sharedStyles.value}>{tradeReputation}</span>
+					</div>
+					<div className={sharedStyles.infoRow}>
+						<span className={sharedStyles.label}>Route status:</span>
+						<span className={sharedStyles.value}>
+							{tradeStatusLabel}
+							{tradeCountdownSeconds !== null ? ` (${tradeCountdownSeconds}s)` : ''}
+						</span>
+					</div>
+					<div className={styles.tradeControls}>
+						{tradeNodes.length === 0 ? (
+							<div className={styles.tradeHint}>No reachable trade nodes yet.</div>
+						) : (
+							<>
+								<label className={styles.tradeLabel} htmlFor="trade-destination">Destination</label>
+								<select
+									id="trade-destination"
+									className={styles.tradeSelect}
+									value={selectedTradeNodeId}
+									onChange={handleTradeNodeChange}
+								>
+									{!selectedTradeNodeId && (
+										<option value="" disabled>
+											Select a destination...
+										</option>
+									)}
+									{tradeNodes.map((node) => (
+										<option key={node.id} value={node.id}>
+											{node.label}
+										</option>
+									))}
+								</select>
+								<label className={styles.tradeLabel} htmlFor="trade-offer">Offer</label>
+								<select
+									id="trade-offer"
+									className={styles.tradeSelect}
+									value={selectedTradeOfferId}
+									onChange={handleTradeOfferChange}
+								>
+									{!selectedTradeOfferId && (
+										<option value="" disabled>
+											Select an offer...
+										</option>
+									)}
+									{tradeOffers.map((offer) => (
+										<option key={offer.id} value={offer.id}>
+											{formatTradeOffer(offer)}
+										</option>
+									))}
+								</select>
+								<div className={styles.tradeButtons}>
+									<button
+										type="button"
+										className={styles.tradeButton}
+										onClick={handleSetTradeRoute}
+										disabled={!selectedTradeNodeId || !selectedTradeOfferId}
+									>
+										{tradeRoute ? 'Queue Route' : 'Set Route'}
+									</button>
+									{tradeRoute ? (
+										<button
+											type="button"
+											className={styles.tradeButtonSecondary}
+											onClick={handleCancelTradeRoute}
+										>
+											Clear
+										</button>
+									) : null}
+								</div>
+							</>
+						)}
+						{tradeRoute ? (
+							<div className={styles.tradeHint}>
+								Current: {currentTradeNode?.label || tradeRoute.nodeId} · {formatTradeOffer(tradeRoute.offer)}
+							</div>
+						) : (
+							<div className={styles.tradeHint}>
+								Select a destination to begin trading.
+							</div>
+						)}
+						{tradePending ? (
+							<div className={styles.tradeHint}>
+								Route change queued after current shipment.
+							</div>
+						) : null}
+					</div>
+				</div>
+			)}
+
+			{isCompleted && isWarehouse && warehouseItemTypes.length > 0 && (
+				<div className={sharedStyles.info}>
+					<div className={sharedStyles.infoRow}>
+						<span className={sharedStyles.label}>Auto-deliver (low priority):</span>
+						<span className={sharedStyles.value}>
+							<div className={sharedStyles.storageToggleList}>
+								{warehouseItemTypes.map((itemType) => (
+									<label key={itemType} className={sharedStyles.storageToggleRow}>
+										<input
+											type="checkbox"
+											className={sharedStyles.storageToggleCheckbox}
+											checked={storageRequestSet.has(itemType)}
+											onChange={() => handleStorageRequestToggle(itemType)}
+										/>
+										<span className={sharedStyles.storageToggleLabel}>
+											<ItemEmoji itemType={itemType} />
+											<span>{itemType}</span>
+										</span>
+									</label>
+								))}
 							</div>
 						</span>
 					</div>

@@ -30,6 +30,17 @@ export const TransportHandler: StepHandler = {
 			return path && path.length > 0
 		}
 
+		const resolveReachableTarget = (from: { x: number, y: number }, target: { x: number, y: number }) => {
+			if (canReach(from, target)) {
+				return target
+			}
+			const fallback = managers.map.findNearestWalkablePosition(settler.mapId, target, 2)
+			if (fallback && canReach(from, fallback)) {
+				return fallback
+			}
+			return null
+		}
+
 		if (step.source.type === TransportSourceType.Ground) {
 			const source = step.source as Extract<TransportSource, { type: TransportSourceType.Ground }>
 			const reserved = reservationSystem.reserveLootItem(source.itemId, assignment.assignmentId)
@@ -38,8 +49,19 @@ export const TransportHandler: StepHandler = {
 			}
 			reservations.add(() => reservationSystem.releaseLootReservation(source.itemId, assignment.assignmentId))
 
+			if (!canReach(settler.position, source.position)) {
+				reservations.releaseAll()
+				return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+			}
+
 			let targetReservationId: string | null = null
 			let targetPosition = targetBuilding.position
+			const precheckTarget = resolveReachableTarget(source.position, targetPosition)
+			if (!precheckTarget) {
+				reservations.releaseAll()
+				return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+			}
+			targetPosition = precheckTarget
 			if (step.target.type === TransportTargetType.Storage) {
 				const reservation = reservationSystem.reserveStorageIncoming(step.target.buildingInstanceId, step.itemType, step.quantity, assignment.assignmentId)
 				if (!reservation) {
@@ -49,21 +71,13 @@ export const TransportHandler: StepHandler = {
 				targetReservationId = reservation.reservationId
 				targetPosition = reservation.position
 				reservations.add(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
-			}
 
-			if (!canReach(settler.position, source.position)) {
-				reservations.releaseAll()
-				return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
-			}
-
-			if (!canReach(source.position, targetPosition)) {
-				const fallback = managers.map.findNearestWalkablePosition(settler.mapId, targetPosition, 2)
-				if (fallback && canReach(source.position, fallback)) {
-					targetPosition = fallback
-				} else {
+				const reachableTarget = resolveReachableTarget(source.position, targetPosition)
+				if (!reachableTarget) {
 					reservations.releaseAll()
 					return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
 				}
+				targetPosition = reachableTarget
 			}
 
 			return {
@@ -81,20 +95,44 @@ export const TransportHandler: StepHandler = {
 		}
 
 		if (step.source.type === TransportSourceType.Storage) {
-			const reservation = reservationSystem.reserveStorageOutgoing(step.source.buildingInstanceId, step.itemType, step.quantity, assignment.assignmentId)
-			if (!reservation) {
-				return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
-			}
-			reservations.add(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
-
 			const sourceBuilding = managers.buildings.getBuildingInstance(step.source.buildingInstanceId)
 			if (!sourceBuilding) {
 				reservations.releaseAll()
 				return { actions: [] }
 			}
 
+			const reachableSource = resolveReachableTarget(settler.position, sourceBuilding.position)
+			if (!reachableSource) {
+				return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+			}
+
+			const precheckTarget = resolveReachableTarget(sourceBuilding.position, targetBuilding.position)
+			if (!precheckTarget) {
+				return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+			}
+
+			const reservation = reservationSystem.reserveStorageOutgoing(step.source.buildingInstanceId, step.itemType, step.quantity, assignment.assignmentId)
+			if (!reservation) {
+				return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
+			}
+			reservations.add(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
+
+			let sourcePosition = reservation.position
+			const reachableSourceSlot = resolveReachableTarget(settler.position, sourcePosition)
+			if (!reachableSourceSlot) {
+				reservations.releaseAll()
+				return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+			}
+			sourcePosition = reachableSourceSlot
+
 			let targetReservationId: string | null = null
 			let targetPosition = targetBuilding.position
+			const precheckSlotTarget = resolveReachableTarget(reservation.position, targetPosition)
+			if (!precheckSlotTarget) {
+				reservations.releaseAll()
+				return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+			}
+			targetPosition = precheckSlotTarget
 			if (step.target.type === TransportTargetType.Storage) {
 				const targetReservation = reservationSystem.reserveStorageIncoming(step.target.buildingInstanceId, step.itemType, step.quantity, assignment.assignmentId)
 				if (!targetReservation) {
@@ -104,26 +142,18 @@ export const TransportHandler: StepHandler = {
 				targetReservationId = targetReservation.reservationId
 				targetPosition = targetReservation.position
 				reservations.add(() => reservationSystem.releaseStorageReservation(targetReservation.reservationId))
-			}
 
-			if (!canReach(settler.position, reservation.position)) {
-				reservations.releaseAll()
-				return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
-			}
-
-			if (!canReach(reservation.position, targetPosition)) {
-				const fallback = managers.map.findNearestWalkablePosition(settler.mapId, targetPosition, 2)
-				if (fallback && canReach(reservation.position, fallback)) {
-					targetPosition = fallback
-				} else {
+				const reachableTarget = resolveReachableTarget(reservation.position, targetPosition)
+				if (!reachableTarget) {
 					reservations.releaseAll()
 					return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
 				}
+				targetPosition = reachableTarget
 			}
 
 			return {
 				actions: [
-					{ type: WorkActionType.Move, position: reservation.position, targetType: MoveTargetType.StorageSlot, targetId: reservation.reservationId, setState: SettlerState.MovingToBuilding },
+					{ type: WorkActionType.Move, position: sourcePosition, targetType: MoveTargetType.StorageSlot, targetId: reservation.reservationId, setState: SettlerState.MovingToBuilding },
 					{ type: WorkActionType.WithdrawStorage, buildingInstanceId: sourceBuilding.id, itemType: step.itemType, quantity: step.quantity, reservationId: reservation.reservationId, setState: SettlerState.CarryingItem },
 					{ type: WorkActionType.Move, position: targetPosition, targetType: step.target.type === TransportTargetType.Storage ? MoveTargetType.StorageSlot : MoveTargetType.Building, targetId: targetReservationId || targetBuilding.id, setState: SettlerState.CarryingItem },
 					// Construction consumes collectedResources (pre-storage), so it uses a dedicated action.

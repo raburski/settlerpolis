@@ -14,3 +14,4 @@ export type LootItemId = string
 export type ReservationId = string
 export type NPCId = string
 export type QuestId = string
+export type TradeRouteId = string

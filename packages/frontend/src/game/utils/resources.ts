@@ -1,7 +1,7 @@
 import { BuildingDefinition } from '@rugged/game'
 
 const addItemType = (items: Set<string>, itemType?: string) => {
-	if (!itemType) {
+	if (!itemType || itemType === '*') {
 		return
 	}
 	items.add(itemType)

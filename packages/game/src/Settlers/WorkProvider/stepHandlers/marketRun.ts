@@ -226,6 +226,7 @@ export const MarketRunHandler: StepHandler = {
 		if (!settler) {
 			return { actions: [] }
 		}
+		const carryCapacity = managers.population.getSettlerCarryCapacity(settlerId)
 
 		const allowedTypes = getAllowedMarketItemTypes(definition)
 		const carriedType = settler.stateContext.carryingItemType
@@ -273,7 +274,8 @@ export const MarketRunHandler: StepHandler = {
 
 		let remaining = carriedQuantity
 		if (!carriedType || carriedQuantity <= 0) {
-			const maxCarry = Math.max(1, config.carryQuantity ?? managers.items.getItemMetadata(resolvedItemType)?.maxStackSize ?? DEFAULT_CARRY_QUANTITY)
+			const maxCarryConfig = config.carryQuantity ?? managers.items.getItemMetadata(resolvedItemType)?.maxStackSize ?? DEFAULT_CARRY_QUANTITY
+			const maxCarry = Math.max(1, Math.min(carryCapacity, maxCarryConfig))
 			const available = managers.storage.getAvailableQuantity(market.id, resolvedItemType)
 			remaining = Math.min(maxCarry, available)
 			if (remaining > 0) {

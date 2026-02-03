@@ -199,6 +199,34 @@
 	line-height: 1;
 }
 
+.storageToggleList {
+	margin-top: 4px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.storageToggleRow {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.storageToggleCheckbox {
+	width: 16px;
+	height: 16px;
+	accent-color: #8bc34a;
+	cursor: pointer;
+}
+
+.storageToggleLabel {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: #e0e0e0;
+	font-size: 13px;
+}
+
 .completedMessage {
 	padding: 10px;
 	background: rgba(76, 175, 80, 0.2);
