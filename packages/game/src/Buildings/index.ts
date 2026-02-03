@@ -34,6 +34,8 @@ import { SimulationTickData } from '../Simulation/types'
 import type { StorageManager } from '../Storage'
 import { BaseManager } from '../Managers'
 import type { BuildingsSnapshot, BuildingInstanceSnapshot } from '../state/types'
+import { CityCharterEvents } from '../CityCharter/events'
+import type { CityCharterUnlockFlagsUpdated } from '../CityCharter/types'
 
 export interface BuildingDeps {
 	inventory: InventoryManager
@@ -55,6 +57,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	private simulationTimeMs = 0
 	private tickAccumulatorMs = 0
 	private autoProductionState = new Map<string, { status: ProductionStatus, progressMs: number, progress: number }>()
+	private unlockedFlagsByPlayerMap = new Map<string, Set<string>>()
 
 	constructor(
 		managers: BuildingDeps,
@@ -107,6 +110,15 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.handleSimulationTick(data)
 		})
+
+		this.event.on<CityCharterUnlockFlagsUpdated>(CityCharterEvents.SS.UnlockFlagsUpdated, (data) => {
+			const key = this.getPlayerMapKey(data.playerId, data.mapId)
+			this.unlockedFlagsByPlayerMap.set(key, new Set(data.unlockedFlags))
+		})
+	}
+
+	private getPlayerMapKey(playerId: string, mapId: string): string {
+		return `${playerId}:${mapId}`
 	}
 
 	private handleSimulationTick(data: SimulationTickData) {
@@ -181,6 +193,16 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		if (!definition) {
 			this.logger.error(`Building definition not found: ${buildingId}`)
 			return
+		}
+
+		if (definition.unlockFlags && definition.unlockFlags.length > 0) {
+			const key = this.getPlayerMapKey(client.id, client.currentGroup)
+			const unlockedFlags = this.unlockedFlagsByPlayerMap.get(key)
+			const isUnlocked = definition.unlockFlags.every(flag => unlockedFlags?.has(flag))
+			if (!isUnlocked) {
+				this.logger.warn(`Building ${buildingId} is locked for player ${client.id} on map ${client.currentGroup}`)
+				return
+			}
 		}
 
 		// Note: Resource validation removed - resources are collected from the ground by carriers
@@ -1471,6 +1493,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.activeConstructionWorkers.clear()
 		this.autoProductionState.clear()
 		this.buildingToMapObject.clear()
+		this.unlockedFlagsByPlayerMap.clear()
 		this.simulationTimeMs = 0
 		this.tickAccumulatorMs = 0
 	}

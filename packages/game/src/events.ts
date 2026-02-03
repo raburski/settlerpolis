@@ -25,6 +25,7 @@ import { StorageEvents } from './Storage/events'
 import { WorkProviderEvents } from './Settlers/WorkProvider/events'
 import { NeedsEvents } from './Needs/events'
 import { RoadEvents } from './Roads/events'
+import { CityCharterEvents } from './CityCharter/events'
 import type { PlayerJoinData, PlayerTransitionData, PlayerMoveData, EquipItemData, UnequipItemData, PlayerPlaceData } from './Players/types'
 import type { ChatMessageData, ChatSystemMessageData } from './Chat/types'
 import type { InventoryData, DropItemData, PickUpItemData, ConsumeItemData, MoveItemData, AddItemData, RemoveByTypePayload } from './Inventory/types'
@@ -52,6 +53,7 @@ import type { NeedType } from './Needs/NeedTypes'
 import type { RoadBuildRequestData, RoadTilesSyncData, RoadTilesUpdatedData, RoadPendingSyncData, RoadPendingUpdatedData } from './Roads/types'
 import type { ItemType } from './Items/types'
 import type { MoveTargetType } from './Movement/types'
+import type { CityCharterClaimRequest, CityCharterStateRequest, CityCharterStateData, CityCharterUnlockFlagsUpdated } from './CityCharter/types'
 import type {
 	BuildingId,
 	BuildingInstanceId,
@@ -273,6 +275,12 @@ export type EventPayloads = Record<string, unknown> & {
 	[NeedsEvents.SS.ContextResumed]: ContextResumedEventData
 	[NeedsEvents.SS.NeedPlanCreated]: NeedPlanCreatedEventData
 	[NeedsEvents.SS.NeedPlanFailed]: NeedPlanFailedEventData
+
+	[CityCharterEvents.CS.Claim]: CityCharterClaimRequest
+	[CityCharterEvents.CS.RequestState]: CityCharterStateRequest
+	[CityCharterEvents.SC.State]: CityCharterStateData
+	[CityCharterEvents.SC.Updated]: CityCharterStateData
+	[CityCharterEvents.SS.UnlockFlagsUpdated]: CityCharterUnlockFlagsUpdated
 }
 
 // Interface that NetworkManager implements
@@ -310,7 +318,8 @@ export const Event = {
 	Storage: StorageEvents,
 	Roads: RoadEvents,
 	Work: WorkProviderEvents,
-	Needs: NeedsEvents
+	Needs: NeedsEvents,
+	CityCharter: CityCharterEvents
 } as const
 
 export default Event 

@@ -11,6 +11,7 @@ import { TiledMap } from "./types"
 import { BuildingDefinition } from './Buildings/types'
 import { ProfessionDefinition, ProfessionToolDefinition } from './Population/types'
 import { ResourceNodeDefinition, ResourceNodeSpawn } from './ResourceNodes/types'
+import type { CityCharterContent } from './CityCharter/types'
 import type { ItemType } from './Items/types'
 import type { ProfessionType } from './Population/types'
 import type { MapId } from './ids'
@@ -44,6 +45,7 @@ export interface GameContent {
 	npcs: NPCContent[]
 	cutscenes: Cutscene[]
 	flags: Flag[]
+	cityCharters?: CityCharterContent
 	schedules: ScheduleOptions[]
 	triggers: Trigger[]
 	maps: Record<MapId, TiledMap>,
@@ -87,4 +89,5 @@ export * from './Population/types'
 export * from './Storage/types'
 export * from './Simulation/types'
 export * from './ResourceNodes/types'
+export * from './CityCharter/types'
 export * from './ids'

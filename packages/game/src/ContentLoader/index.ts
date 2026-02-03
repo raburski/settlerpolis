@@ -12,6 +12,7 @@ import { BuildingManager } from "../Buildings"
 import { PopulationManager } from "../Population"
 import { ResourceNodesManager } from "../ResourceNodes"
 import { WildlifeManager } from "../Wildlife"
+import { CityCharterManager } from "../CityCharter"
 import { dialogueCompose } from "../Dialogue/utils"
 import { DialogueTree } from "../Dialogue/types"
 import { GameContent, ScheduleOptions, Trigger } from "../types"
@@ -28,12 +29,13 @@ export class ContentLoader {
 		private npc: NPCManager,
 		private quest: QuestManager,
 		private scheduler: Scheduler,
-	private trigger: TriggerManager,
-	private affinity: AffinityManager,
-	private building: BuildingManager,
-	private population: PopulationManager,
-	private resourceNodes: ResourceNodesManager,
-	private wildlife: WildlifeManager,
+		private trigger: TriggerManager,
+		private affinity: AffinityManager,
+		private building: BuildingManager,
+		private population: PopulationManager,
+		private cityCharter: CityCharterManager,
+		private resourceNodes: ResourceNodesManager,
+		private wildlife: WildlifeManager,
 	private logger: Logger
 	) {
 		this.loadAllContent()
@@ -54,7 +56,8 @@ export class ContentLoader {
 			this.loadAffinityWeights(),
 			this.loadBuildings(),
 			this.loadProfessions(),
-			this.loadProfessionTools()
+			this.loadProfessionTools(),
+			this.loadCityCharters()
 		])
 		await this.loadResourceNodes()
 		this.wildlife.initializeForestSpawns()
@@ -180,6 +183,15 @@ export class ContentLoader {
 			this.logger.log('✓ Found', buildingsToLoad.length, 'buildings to load')
 		}
 		this.building.loadBuildings(buildingsToLoad)
+	}
+
+	private async loadCityCharters() {
+		this.logger.debug('Loading city charters from content:', this.content.cityCharters)
+		if (this.content.cityCharters) {
+			this.cityCharter.loadCharters(this.content.cityCharters)
+		} else {
+			this.logger.warn('No city charters found in content')
+		}
 	}
 
 	private async loadProfessions() {
