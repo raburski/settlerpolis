@@ -15,6 +15,7 @@ import { ConstructionPanel } from './ConstructionPanel'
 import { BuildingInfoPanel } from './BuildingInfoPanel'
 import { PopulationPanel } from './PopulationPanel'
 import { LogisticsPanel } from './LogisticsPanel'
+import { DeliveryPriorityPanel } from './DeliveryPriorityPanel'
 import { SettlerInfoPanel } from './SettlerInfoPanel'
 import { SaveLoadPanel } from './SaveLoadPanel'
 import { WorldMapPanel } from './WorldMapPanel'
@@ -28,6 +29,7 @@ export const UIContainer = () => {
 	const [isPopulationOpen, setIsPopulationOpen] = useState(false)
 	const [isLogisticsOpen, setIsLogisticsOpen] = useState(false)
 	const [isWorldMapOpen, setIsWorldMapOpen] = useState(false)
+	const [isPrioritiesOpen, setIsPrioritiesOpen] = useState(false)
 	const [saveLoadMode, setSaveLoadMode] = useState<'save' | 'load' | null>(null)
 	const [showDebugBounds, setShowDebugBounds] = useState(false)
 	const stockButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -36,6 +38,8 @@ export const UIContainer = () => {
 	const [populationAnchor, setPopulationAnchor] = useState<DOMRect | null>(null)
 	const logisticsButtonRef = useRef<HTMLButtonElement | null>(null)
 	const [logisticsAnchor, setLogisticsAnchor] = useState<DOMRect | null>(null)
+	const prioritiesButtonRef = useRef<HTMLButtonElement | null>(null)
+	const [prioritiesAnchor, setPrioritiesAnchor] = useState<DOMRect | null>(null)
 
 	useEffect(() => {
         const handleEvent = (data) => {
@@ -115,6 +119,26 @@ export const UIContainer = () => {
 		EventBus.emit(UiEvents.Settler.Close, {})
 		EventBus.emit(UiEvents.Construction.Cancel, {})
 	}, [isWorldMapOpen])
+	}, [isWorldMapOpen])
+
+	useEffect(() => {
+		if (!isPrioritiesOpen) {
+			return
+		}
+
+		const updateAnchor = () => {
+			if (prioritiesButtonRef.current) {
+				setPrioritiesAnchor(prioritiesButtonRef.current.getBoundingClientRect())
+			}
+		}
+
+		updateAnchor()
+		window.addEventListener('resize', updateAnchor)
+
+		return () => {
+			window.removeEventListener('resize', updateAnchor)
+		}
+	}, [isPrioritiesOpen])
 
 	if (!isVisible) {
 		return null
@@ -127,22 +151,32 @@ export const UIContainer = () => {
 				onToggleStock={() => {
 					setIsPopulationOpen(false)
 					setIsLogisticsOpen(false)
+					setIsPrioritiesOpen(false)
 					setIsStockOpen((prev) => !prev)
 				}}
 				isPopulationOpen={isPopulationOpen}
 				onTogglePopulation={() => {
 					setIsStockOpen(false)
 					setIsLogisticsOpen(false)
+					setIsPrioritiesOpen(false)
 					setIsPopulationOpen((prev) => !prev)
 				}}
 				isLogisticsOpen={isLogisticsOpen}
 				onToggleLogistics={() => {
 					setIsStockOpen(false)
 					setIsPopulationOpen(false)
+					setIsPrioritiesOpen(false)
 					setIsLogisticsOpen((prev) => !prev)
 				}}
 				isWorldMapOpen={isWorldMapOpen}
 				onToggleWorldMap={() => setIsWorldMapOpen((prev) => !prev)}
+				isPrioritiesOpen={isPrioritiesOpen}
+				onTogglePriorities={() => {
+					setIsStockOpen(false)
+					setIsPopulationOpen(false)
+					setIsLogisticsOpen(false)
+					setIsPrioritiesOpen((prev) => !prev)
+				}}
 				showDebugBounds={showDebugBounds}
 				onToggleDebugBounds={() => {
 					setShowDebugBounds((prev) => {
@@ -156,6 +190,7 @@ export const UIContainer = () => {
 				resourceButtonRef={stockButtonRef}
 				populationButtonRef={populationButtonRef}
 				logisticsButtonRef={logisticsButtonRef}
+				prioritiesButtonRef={prioritiesButtonRef}
 			/>
 			<SaveLoadPanel
 				isOpen={saveLoadMode !== null}
@@ -192,6 +227,10 @@ export const UIContainer = () => {
 			<LogisticsPanel
 				isVisible={isLogisticsOpen}
 				anchorRect={logisticsAnchor}
+			/>
+			<DeliveryPriorityPanel
+				isVisible={isPrioritiesOpen}
+				anchorRect={prioritiesAnchor}
 			/>
 		</>
 	)

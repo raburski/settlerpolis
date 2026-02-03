@@ -129,6 +129,30 @@
 	text-shadow: var(--dialog-text-shadow);
 }
 
+.sectionHeaderRow {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--spacing-sm);
+}
+
+.collapseButton {
+	background: transparent;
+	border: 2px solid var(--dialog-border);
+	border-radius: var(--dialog-border-radius);
+	color: var(--dialog-text);
+	font-size: 0.5rem;
+	text-transform: uppercase;
+	padding: 4px 8px;
+	cursor: pointer;
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+}
+
+.collapseButton:hover {
+	border-color: var(--dialog-border-accent);
+	color: var(--dialog-border-accent);
+}
+
 .field {
 	display: grid;
 	gap: 6px;
@@ -248,6 +272,52 @@
 	align-items: end;
 }
 
+.tileList {
+	display: grid;
+	gap: var(--spacing-sm);
+	margin-top: var(--spacing-sm);
+}
+
+.tileGroup {
+	display: grid;
+	gap: 6px;
+}
+
+.tileTitle {
+	font-size: 0.55rem;
+	color: var(--dialog-item-type);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+
+.tileRow {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.tilePill {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 6px;
+	border-radius: var(--dialog-border-radius);
+	background: rgba(14, 14, 18, 0.7);
+	border: 1px solid rgba(120, 106, 92, 0.6);
+	font-size: 0.55rem;
+	color: var(--dialog-text);
+}
+
+.tileRemove {
+	border: none;
+	background: transparent;
+	color: var(--dialog-border-accent);
+	cursor: pointer;
+	font-size: 0.65rem;
+	line-height: 1;
+	padding: 0 2px;
+}
+
 .checkboxField {
 	display: inline-flex;
 	align-items: center;
@@ -351,6 +421,21 @@
 	min-height: 100vh;
 	overflow: hidden;
 	background: #0a0a0a;
+}
+
+.viewportControls {
+	position: absolute;
+	top: var(--spacing-lg);
+	right: var(--spacing-lg);
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-sm);
+	padding: 6px 10px;
+	background: var(--dialog-item-bg);
+	border: var(--dialog-border-width) solid var(--dialog-item-border);
+	border-radius: var(--dialog-border-radius);
+	box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.45);
+	z-index: 2;
 }
 
 .canvas {

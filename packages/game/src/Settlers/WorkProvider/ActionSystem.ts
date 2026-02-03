@@ -15,6 +15,7 @@ import { Receiver } from '../../Receiver'
 import { WorkProviderEvents } from './events'
 import { ActionHandlers } from './actionHandlers'
 import type { ActionQueueContext, ActionSystemSnapshot } from '../../state/types'
+import type { MapManager } from '../../Map'
 
 export type ActionQueueContextResolver = (settlerId: string, context: ActionQueueContext, actions: WorkAction[]) => {
 	onComplete?: () => void
@@ -45,6 +46,7 @@ export interface ActionSystemDeps {
 	population: PopulationManager
 	reservations: ReservationSystem
 	roads: RoadManager
+	map: MapManager
 }
 
 export class ActionSystem {

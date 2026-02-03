@@ -17,6 +17,8 @@ type TopBarProps = {
 	onToggleLogistics: () => void
 	isWorldMapOpen: boolean
 	onToggleWorldMap: () => void
+	isPrioritiesOpen: boolean
+	onTogglePriorities: () => void
 	showDebugBounds: boolean
 	onToggleDebugBounds: () => void
 	onOpenSave: () => void
@@ -24,6 +26,7 @@ type TopBarProps = {
 	resourceButtonRef?: React.Ref<HTMLButtonElement>
 	populationButtonRef?: React.Ref<HTMLButtonElement>
 	logisticsButtonRef?: React.Ref<HTMLButtonElement>
+	prioritiesButtonRef?: React.Ref<HTMLButtonElement>
 }
 
 const ResourceEmoji: React.FC<{ itemType: string }> = ({ itemType }) => {
@@ -56,13 +59,16 @@ export const TopBar: React.FC<TopBarProps> = ({
 	onToggleLogistics,
 	isWorldMapOpen,
 	onToggleWorldMap,
+	isPrioritiesOpen,
+	onTogglePriorities,
 	showDebugBounds,
 	onToggleDebugBounds,
 	onOpenSave,
 	onOpenLoad,
 	resourceButtonRef,
 	populationButtonRef,
-	logisticsButtonRef
+	logisticsButtonRef,
+	prioritiesButtonRef
 }) => {
 	const totals = useGlobalStockTotals()
 	const [populationTotal, setPopulationTotal] = useState(
@@ -147,6 +153,17 @@ export const TopBar: React.FC<TopBarProps> = ({
 				>
 					<span className={styles.logisticsIcon}>📦</span>
 					<span className={styles.logisticsLabel}>Logistics</span>
+				</button>
+				<button
+					type="button"
+					className={styles.prioritiesButton}
+					data-active={isPrioritiesOpen}
+					onClick={onTogglePriorities}
+					aria-pressed={isPrioritiesOpen}
+					ref={prioritiesButtonRef}
+				>
+					<span className={styles.prioritiesIcon}>🎯</span>
+					<span className={styles.prioritiesLabel}>Priorities</span>
 				</button>
 			</div>
 			<div className={styles.right}>

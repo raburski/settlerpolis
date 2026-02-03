@@ -1,4 +1,7 @@
 export const WorkProviderEvents = {
+	CS: {
+		SetLogisticsPriorities: 'cs:work:logistics-priorities'
+	},
 	SC: {
 		LogisticsUpdated: 'sc:work:logistics-updated'
 	},

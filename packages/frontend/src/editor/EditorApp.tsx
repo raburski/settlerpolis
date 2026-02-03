@@ -23,20 +23,30 @@ export function EditorApp() {
 	const [elevation, setElevation] = useState(0)
 	const [entryPoint, setEntryPoint] = useState<Vec2 | null>(null)
 	const [centerPoint, setCenterPoint] = useState<Vec2 | null>(null)
+	const [accessTiles, setAccessTiles] = useState<Vec2[]>([])
+	const [blockedTiles, setBlockedTiles] = useState<Vec2[]>([])
 	const [loadError, setLoadError] = useState<string | null>(null)
-	const [copyStatus, setCopyStatus] = useState('')
 	const [showHelp, setShowHelp] = useState(false)
-	const [pickMode, setPickMode] = useState<'position' | 'entry' | 'center'>('position')
+	const [pickMode, setPickMode] = useState<'position' | 'entry' | 'center' | 'access' | 'blocked'>('position')
 	const [assetOptions, setAssetOptions] = useState<string[]>([])
 	const [assetIndexError, setAssetIndexError] = useState<string | null>(null)
 	const [selectedAsset, setSelectedAsset] = useState('')
+	const [assetOpen, setAssetOpen] = useState(false)
 	const [selectedBuildingId, setSelectedBuildingId] = useState('')
 	const [definitionDraft, setDefinitionDraft] = useState<Record<string, any> | null>(null)
-	const [definitionText, setDefinitionText] = useState('')
-	const [definitionError, setDefinitionError] = useState<string | null>(null)
-	const [definitionMode, setDefinitionMode] = useState<'editor' | 'json'>('editor')
 	const [storageSlots, setStorageSlots] = useState<StorageSlot[]>([])
+	const [storageOpen, setStorageOpen] = useState(false)
+	const [footprintOpen, setFootprintOpen] = useState(false)
+	const [entryCenterOpen, setEntryCenterOpen] = useState(false)
+	const [accessBlockedOpen, setAccessBlockedOpen] = useState(false)
+	const [transformOpen, setTransformOpen] = useState(false)
+	const [manualTransparent, setManualTransparent] = useState(false)
+	const [isEditingFields, setIsEditingFields] = useState(false)
+	const [sceneReady, setSceneReady] = useState(false)
+	const [buildingsFileHandle, setBuildingsFileHandle] = useState<FileSystemFileHandle | null>(null)
+	const [fileStatus, setFileStatus] = useState('')
 	const hasDefinition = Boolean(definitionDraft)
+	const supportsFilePicker = typeof window !== 'undefined' && 'showOpenFilePicker' in window
 
 	const buildingDefinitions = useMemo(() => {
 		const definitions = (content as { buildings?: Array<Record<string, any>> })?.buildings
@@ -55,9 +65,30 @@ export function EditorApp() {
 			.filter((item) => item.id)
 	}, [])
 
+	const itemEmojiMap = useMemo(() => {
+		const map = new Map<string, string>()
+		itemOptions.forEach((item) => {
+			if (item.id) {
+				map.set(item.id, item.emoji || '')
+			}
+		})
+		return map
+	}, [itemOptions])
+
 	const handleSceneReady = useCallback((scene: EditorScene | null) => {
 		sceneRef.current = scene
+		setSceneReady(Boolean(scene))
 		if (!scene) return
+	}, [])
+
+	const toggleTileOffset = useCallback((tiles: Vec2[], next: Vec2) => {
+		const rounded = { x: Math.round(next.x), y: Math.round(next.y) }
+		const key = `${rounded.x},${rounded.y}`
+		const exists = tiles.some((tile) => `${Math.round(tile.x)},${Math.round(tile.y)}` === key)
+		if (exists) {
+			return tiles.filter((tile) => `${Math.round(tile.x)},${Math.round(tile.y)}` !== key)
+		}
+		return [...tiles, rounded]
 	}, [])
 
 	useEffect(() => {
@@ -80,9 +111,25 @@ export function EditorApp() {
 				setPickMode('position')
 				return
 			}
+			if (pickMode === 'access') {
+				const offset = {
+					x: gridPosition.x - position.x,
+					y: gridPosition.y - position.y
+				}
+				setAccessTiles((prev) => toggleTileOffset(prev, offset))
+				return
+			}
+			if (pickMode === 'blocked') {
+				const offset = {
+					x: gridPosition.x - position.x,
+					y: gridPosition.y - position.y
+				}
+				setBlockedTiles((prev) => toggleTileOffset(prev, offset))
+				return
+			}
 			setPosition(gridPosition)
 		})
-	}, [pickMode, position.x, position.y])
+	}, [pickMode, position.x, position.y, toggleTileOffset])
 
 	const rotationRad = useMemo(
 		() => ({
@@ -93,6 +140,25 @@ export function EditorApp() {
 		[rotationDeg]
 	)
 
+	useEffect(() => {
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (event.defaultPrevented) return
+			const target = event.target as HTMLElement | null
+			if (target) {
+				const tagName = target.tagName.toLowerCase()
+				if (tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable) {
+					return
+				}
+			}
+			if (event.code !== 'KeyQ' && event.code !== 'KeyE') return
+			const stepDelta = event.code === 'KeyQ' ? -1 : 1
+			sceneRef.current?.rotateCamera(stepDelta)
+			event.preventDefault()
+		}
+		window.addEventListener('keydown', handleKeyDown)
+		return () => window.removeEventListener('keydown', handleKeyDown)
+	}, [])
+
 	const placement: EditorPlacement = useMemo(
 		() => ({
 			footprint,
@@ -102,14 +168,24 @@ export function EditorApp() {
 			elevation,
 			storageSlots,
 			entryPoint,
-			centerPoint
+			centerPoint,
+			accessTiles,
+			blockedTiles
 		}),
-		[footprint, position, rotationRad, scale, elevation, storageSlots, entryPoint, centerPoint]
+		[footprint, position, rotationRad, scale, elevation, storageSlots, entryPoint, centerPoint, accessTiles, blockedTiles]
 	)
 
 	useEffect(() => {
 		sceneRef.current?.updatePlacement(placement)
 	}, [placement])
+
+	const isAutoTransparent = isEditingFields || pickMode === 'entry' || pickMode === 'center'
+	const isTransparent = manualTransparent || isAutoTransparent
+
+	useEffect(() => {
+		if (!sceneReady) return
+		sceneRef.current?.setAssetOpacity(isTransparent ? 0.3 : 1)
+	}, [isTransparent, sceneReady])
 
 	const handleLoadAsset = useCallback(async (nextPath?: string) => {
 		const normalized = normalizeAssetPath(nextPath ?? assetPath)
@@ -131,33 +207,54 @@ export function EditorApp() {
 
 	const handleAddStorageSlot = useCallback(() => {
 		const defaultItem = itemOptions[0]?.id || ''
+		const emoji = itemEmojiMap.get(defaultItem) || ''
 		setStorageSlots((prev) => [
 			...prev,
 			{
 				itemType: defaultItem,
-				offset: { x: 0, y: 0 }
+				offset: { x: 0, y: 0 },
+				emoji
 			}
 		])
-	}, [itemOptions])
+	}, [itemEmojiMap, itemOptions])
 
 	const updateStorageSlot = useCallback((index: number, updates: Partial<StorageSlot>) => {
 		setStorageSlots((prev) =>
 			prev.map((slot, slotIndex) => {
 				if (slotIndex !== index) return slot
+				const hasOffsetUpdate = Object.prototype.hasOwnProperty.call(updates, 'offset')
+				let nextOffset = slot.offset
+				if (hasOffsetUpdate) {
+					if (updates.offset) {
+						nextOffset = {
+							...(slot.offset || { x: 0, y: 0 }),
+							...updates.offset
+						}
+					} else {
+						nextOffset = undefined
+					}
+				}
 				return {
 					...slot,
 					...updates,
-					offset: {
-						...slot.offset,
-						...(updates.offset || {})
-					}
+					offset: nextOffset
 				}
 			})
 		)
 	}, [])
 
-	const handlePickMode = useCallback((mode: 'position' | 'entry' | 'center') => {
+	const handlePickMode = useCallback((mode: 'position' | 'entry' | 'center' | 'access' | 'blocked') => {
 		setPickMode((prev) => (prev === mode ? 'position' : mode))
+	}, [])
+
+	const handleEditingFocus = useCallback(() => {
+		setIsEditingFields(true)
+	}, [])
+
+	const handleEditingBlur = useCallback((event: React.FocusEvent<HTMLElement>) => {
+		const next = event.relatedTarget as Node | null
+		if (next && event.currentTarget.contains(next)) return
+		setIsEditingFields(false)
 	}, [])
 
 	const updatePoint = useCallback((current: Vec2 | null, axis: 'x' | 'y', value: string): Vec2 | null => {
@@ -181,14 +278,6 @@ export function EditorApp() {
 		setStorageSlots((prev) => prev.filter((_, slotIndex) => slotIndex !== index))
 	}, [])
 
-	const syncDefinitionText = useCallback((draft: Record<string, any> | null) => {
-		if (!draft) {
-			setDefinitionText('')
-			return
-		}
-		setDefinitionText(JSON.stringify(draft, null, 2))
-	}, [])
-
 	const applyDefinitionToEditor = useCallback((draft: Record<string, any>) => {
 		const footprintDef = draft.footprint || {}
 		const width = Number(footprintDef.width) || 1
@@ -207,6 +296,7 @@ export function EditorApp() {
 			void handleLoadAsset(modelSrc)
 		} else {
 			setSelectedAsset('')
+			setAssetOpen(true)
 		}
 		const transform = render.transform || {}
 		const rotation = transform.rotation || { x: 0, y: 0, z: 0 }
@@ -245,32 +335,52 @@ export function EditorApp() {
 				? draft.storage.slots
 				: []
 		setStorageSlots(
-			slots.map((slot: any) => ({
-				itemType: String(slot.itemType ?? ''),
-				offset: {
-					x: Number(slot.offset?.x ?? 0),
-					y: Number(slot.offset?.y ?? 0)
-				},
-				hidden: slot.hidden ? true : undefined,
-				maxQuantity: typeof slot.maxQuantity === 'number' ? slot.maxQuantity : undefined
+			slots.map((slot: any) => {
+				const itemType = String(slot.itemType ?? '')
+				const offset =
+					slot.offset && typeof slot.offset === 'object'
+						? {
+								x: Number(slot.offset?.x ?? 0),
+								y: Number(slot.offset?.y ?? 0)
+							}
+						: undefined
+				return {
+					itemType,
+					offset,
+					hidden: slot.hidden ? true : offset ? undefined : true,
+					maxQuantity: typeof slot.maxQuantity === 'number' ? slot.maxQuantity : undefined,
+					emoji: itemEmojiMap.get(itemType) || ''
+				}
+			})
+		)
+		const access = Array.isArray(draft.accessTiles) ? draft.accessTiles : []
+		setAccessTiles(
+			access.map((tile: any) => ({
+				x: Number(tile?.x ?? 0),
+				y: Number(tile?.y ?? 0)
 			}))
 		)
-	}, [assetOptions, handleLoadAsset])
+		const blocked = Array.isArray(draft.blockedTiles) ? draft.blockedTiles : []
+		setBlockedTiles(
+			blocked.map((tile: any) => ({
+				x: Number(tile?.x ?? 0),
+				y: Number(tile?.y ?? 0)
+			}))
+		)
+	}, [assetOptions, handleLoadAsset, itemEmojiMap])
 
 	const loadDefinition = useCallback((definition: Record<string, any> | null) => {
 		if (!definition) {
 			setDefinitionDraft(null)
-			setDefinitionMode('editor')
-			syncDefinitionText(null)
 			setStorageSlots([])
+			setAccessTiles([])
+			setBlockedTiles([])
 			return
 		}
 		const draft = cloneDefinition(definition)
 		setDefinitionDraft(draft)
-		setDefinitionMode('editor')
-		syncDefinitionText(draft)
 		applyDefinitionToEditor(draft)
-	}, [applyDefinitionToEditor, syncDefinitionText])
+	}, [applyDefinitionToEditor])
 
 	const definitionOutput = useMemo(() => {
 		if (!definitionDraft) return null
@@ -282,18 +392,11 @@ export function EditorApp() {
 			footprint,
 			storageSlots,
 			entryPoint,
-			centerPoint
+			centerPoint,
+			accessTiles,
+			blockedTiles
 		})
-	}, [assetPath, definitionDraft, elevation, footprint, rotationRad, scale, storageSlots, entryPoint, centerPoint])
-
-	const definitionOutputText = useMemo(() => {
-		return definitionOutput ? JSON.stringify(definitionOutput, null, 2) : ''
-	}, [definitionOutput])
-
-	useEffect(() => {
-		if (definitionMode !== 'editor') return
-		setDefinitionText(definitionOutputText)
-	}, [definitionMode, definitionOutputText])
+	}, [assetPath, definitionDraft, elevation, footprint, rotationRad, scale, storageSlots, entryPoint, centerPoint, accessTiles, blockedTiles])
 
 	useEffect(() => {
 		const loadIndex = async () => {
@@ -322,106 +425,142 @@ export function EditorApp() {
 		setSelectedAsset(assetPath)
 	}, [assetOptions, assetPath, selectedAsset])
 
+	useEffect(() => {
+		if (itemEmojiMap.size === 0) return
+		setStorageSlots((prev) =>
+			prev.map((slot) => {
+				if (slot.emoji) return slot
+				const emoji = itemEmojiMap.get(slot.itemType) || ''
+				if (!emoji) return slot
+				return { ...slot, emoji }
+			})
+		)
+	}, [itemEmojiMap])
 
-	const jsonDefinition = useMemo(() => {
-		const transform = buildTransform(rotationRad, scale, elevation)
-		const base = {
-			version: 1,
-			asset: {
-				id: assetId || DEFAULT_ASSET_ID,
-				src: assetPath
-			},
-			footprint: {
-				width: footprint.width,
-				length: footprint.length
-			},
-			position: {
-				x: position.x,
-				y: position.y
+
+	const buildBuildingsPayload = useCallback(
+		(nextDefinition: Record<string, any>) => {
+			const existingIndex = buildingDefinitions.findIndex((building) => building.id === nextDefinition.id)
+			let buildingsList: Array<Record<string, any>> = []
+			if (existingIndex >= 0) {
+				buildingsList = buildingDefinitions.map((building, index) =>
+					index === existingIndex ? nextDefinition : building
+				)
+			} else {
+				buildingsList = [...buildingDefinitions, nextDefinition]
 			}
-		} as Record<string, any>
-		if (entryPoint) {
-			base.entryPoint = { x: entryPoint.x, y: entryPoint.y }
-		}
-		if (centerPoint) {
-			base.centerPoint = { x: centerPoint.x, y: centerPoint.y }
-		}
-		if (transform) {
-			base.transform = transform
-		}
-		return base
-	}, [assetId, assetPath, footprint, position, rotationRad, scale, elevation, entryPoint, centerPoint])
+			return { buildings: buildingsList }
+		},
+		[buildingDefinitions]
+	)
 
-	const formattedJson = useMemo(() => JSON.stringify(jsonDefinition, null, 2), [jsonDefinition])
-
-	const handleDownload = useCallback(() => {
-		const fileBase = (assetId || 'building').replace(/\s+/g, '_').toLowerCase()
-		const blob = new Blob([formattedJson], { type: 'application/json' })
+	const downloadBuildingsFile = useCallback((payload: Record<string, any>) => {
+		const blob = new Blob([JSON.stringify(payload, null, 2) + '\n'], { type: 'application/json' })
 		const url = URL.createObjectURL(blob)
 		const anchor = document.createElement('a')
 		anchor.href = url
-		anchor.download = `${fileBase}.model.json`
+		anchor.download = 'buildings.json'
 		anchor.click()
 		URL.revokeObjectURL(url)
-	}, [assetId, formattedJson])
+	}, [])
 
-	const handleCopy = useCallback(async () => {
-		try {
-			await navigator.clipboard.writeText(formattedJson)
-			setCopyStatus('Copied!')
-			setTimeout(() => setCopyStatus(''), 1500)
-		} catch (error) {
-			void error
-			setCopyStatus('Copy failed')
+	const handlePickBuildingsFile = useCallback(async (): Promise<FileSystemFileHandle | null> => {
+		if (!('showOpenFilePicker' in window)) {
+			setFileStatus('File picker not supported in this browser.')
+			return null
 		}
-	}, [formattedJson])
-
-	const handleCopyDefinition = useCallback(async () => {
-		if (!definitionOutputText) return
 		try {
-			await navigator.clipboard.writeText(definitionOutputText)
-			setCopyStatus('Definition copied!')
-			setTimeout(() => setCopyStatus(''), 1500)
-		} catch (error) {
-			void error
-			setCopyStatus('Copy failed')
-		}
-	}, [definitionOutputText])
-
-	const handleDownloadDefinition = useCallback(() => {
-		if (!definitionOutputText) return
-		const fileBase = (definitionOutput?.id || 'definition').replace(/\s+/g, '_').toLowerCase()
-		const blob = new Blob([definitionOutputText], { type: 'application/json' })
-		const url = URL.createObjectURL(blob)
-		const anchor = document.createElement('a')
-		anchor.href = url
-		anchor.download = `${fileBase}.definition.json`
-		anchor.click()
-		URL.revokeObjectURL(url)
-	}, [definitionOutput, definitionOutputText])
-
-	const handleApplyDefinitionJson = useCallback(() => {
-		if (!definitionText.trim()) return
-		try {
-			const parsed = JSON.parse(definitionText) as Record<string, any>
-			setDefinitionError(null)
-			setDefinitionDraft(parsed)
-			setDefinitionMode('editor')
-			if (typeof parsed.id === 'string') {
-				setSelectedBuildingId(parsed.id)
+			const [handle] = await window.showOpenFilePicker({
+				multiple: false,
+				types: [
+					{
+						description: 'Buildings JSON',
+						accept: { 'application/json': ['.json'] }
+					}
+				]
+			})
+			if (handle) {
+				setBuildingsFileHandle(handle)
+				setFileStatus(`Linked ${handle.name}`)
+				return handle
 			}
-			applyDefinitionToEditor(parsed)
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') {
+				return null
+			}
+			setFileStatus('Failed to pick file.')
+		}
+		return null
+	}, [])
+
+	const handleSaveToBuildingsFile = useCallback(async () => {
+		if (!definitionOutput || !definitionOutput.id) {
+			setFileStatus('Select a building definition first.')
+			return
+		}
+
+		if (!supportsFilePicker) {
+			const payload = buildBuildingsPayload(definitionOutput)
+			downloadBuildingsFile(payload)
+			setFileStatus('Downloaded buildings.json. Replace content/settlerpolis/buildings.json')
+			return
+		}
+
+		let handle = buildingsFileHandle
+		if (!handle) {
+			handle = await handlePickBuildingsFile()
+		}
+		if (!handle) {
+			return
+		}
+
+		try {
+			const permission = await handle.requestPermission({ mode: 'readwrite' })
+			if (permission !== 'granted') {
+				setFileStatus('Write permission denied.')
+				return
+			}
+			const file = await handle.getFile()
+			const text = await file.text()
+			const parsed = JSON.parse(text)
+			let buildingsList: Array<Record<string, any>> = []
+			let wrapObject: Record<string, any> | null = null
+
+			if (Array.isArray(parsed)) {
+				buildingsList = parsed
+			} else if (parsed && Array.isArray(parsed.buildings)) {
+				buildingsList = parsed.buildings
+				wrapObject = parsed
+			} else {
+				setFileStatus('Invalid buildings.json format.')
+				return
+			}
+
+			const nextDefinition = definitionOutput
+			const existingIndex = buildingsList.findIndex((building) => building.id === nextDefinition.id)
+			if (existingIndex >= 0) {
+				buildingsList[existingIndex] = nextDefinition
+			} else {
+				buildingsList.push(nextDefinition)
+			}
+
+			const payload = wrapObject ? { ...wrapObject, buildings: buildingsList } : buildingsList
+			const writable = await handle.createWritable()
+			await writable.write(JSON.stringify(payload, null, 2) + '\n')
+			await writable.close()
+			setFileStatus(`Saved ${nextDefinition.id}`)
 		} catch (error) {
 			void error
-			setDefinitionError('Invalid JSON. Fix the syntax and try again.')
+			setFileStatus('Failed to save file.')
 		}
-	}, [applyDefinitionToEditor, definitionText])
-
-	const handleSyncDefinitionFromEditor = useCallback(() => {
-		setDefinitionMode('editor')
-		setDefinitionText(definitionOutputText)
-		setDefinitionError(null)
-	}, [definitionOutputText])
+	}, [
+		buildBuildingsPayload,
+		buildingsFileHandle,
+		definitionOutput,
+		downloadBuildingsFile,
+		handlePickBuildingsFile,
+		supportsFilePicker
+	])
 
 	return (
 		<div className={styles.editorApp}>
@@ -429,12 +568,6 @@ export function EditorApp() {
 				<header className={styles.header}>
 					<div>
 						<p className={styles.overline}>Asset Placement Editor</p>
-						<h1 className={styles.title}>Define grid placement + transforms</h1>
-						<p className={styles.subtitle}>
-							Click the grid to set the top-left tile. Rotation inputs are in degrees; JSON exports radians.
-							Models are loaded from the frontend public assets folder (for example:
-							<code className={styles.inlineCode}>/assets/library/house.glb</code>).
-						</p>
 					</div>
 					<button
 						className={styles.infoButton}
@@ -455,7 +588,7 @@ export function EditorApp() {
 							<li>Select a model from the library.</li>
 							<li>Click the grid to set the top-left tile.</li>
 							<li>Set width/length (grid tiles) and transforms.</li>
-							<li>Copy or download the JSON for game content.</li>
+							<li>Save updates to buildings.json from the definition panel.</li>
 						</ul>
 					</section>
 				)}
@@ -483,36 +616,21 @@ export function EditorApp() {
 							</select>
 						</label>
 						<p className={styles.helperText}>
-							Load a building definition, then adjust the render settings below. Use “Apply JSON” if you edit the
-							definition text directly.
+							Load a building definition, then adjust the render settings below. Saving updates the shared
+							buildings.json file.
 						</p>
 						{definitionDraft && (
 							<>
 								<div className={styles.inlineRow}>
-									<button className={styles.secondaryButton} type="button" onClick={handleApplyDefinitionJson}>
-										Apply JSON
+									{supportsFilePicker && (
+										<button className={styles.secondaryButton} type="button" onClick={handlePickBuildingsFile}>
+											Choose buildings.json
+										</button>
+									)}
+									<button className={styles.primaryButton} type="button" onClick={handleSaveToBuildingsFile}>
+										{supportsFilePicker ? 'Save to file' : 'Download buildings.json'}
 									</button>
-									<button className={styles.secondaryButton} type="button" onClick={handleSyncDefinitionFromEditor}>
-										Sync from editor
-									</button>
-								</div>
-								{definitionError && <p className={styles.error}>{definitionError}</p>}
-								<textarea
-									className={styles.textArea}
-									value={definitionText}
-									onChange={(event) => {
-										setDefinitionMode('json')
-										setDefinitionText(event.target.value)
-									}}
-									rows={12}
-								/>
-								<div className={styles.inlineRow}>
-									<button className={styles.secondaryButton} type="button" onClick={handleCopyDefinition}>
-										Copy definition JSON
-									</button>
-									<button className={styles.primaryButton} type="button" onClick={handleDownloadDefinition}>
-										Download definition JSON
-									</button>
+									{fileStatus && <span className={styles.status}>{fileStatus}</span>}
 								</div>
 							</>
 						)}
@@ -520,426 +638,625 @@ export function EditorApp() {
 				)}
 
 				<section className={styles.section}>
-					<div className={styles.sectionHeader}>Asset</div>
-					{assetOptions.length > 0 && (
-						<label className={styles.field}>
-							<span>Asset library</span>
-							<select
-								value={selectedAsset}
-								onChange={(event) => {
-									const next = event.target.value
-									setSelectedAsset(next)
-									setAssetPath(next)
-									if (next) {
-										void handleLoadAsset(next)
-									} else {
-										void handleLoadAsset('')
-									}
-								}}
-							>
-								<option value="">Select an asset...</option>
-								{assetOptions.map((asset) => (
-									<option key={asset} value={asset}>
-										{asset}
-									</option>
-								))}
-							</select>
-						</label>
-					)}
-					{assetIndexError && <p className={styles.error}>{assetIndexError}</p>}
-					{!assetIndexError && assetOptions.length === 0 && (
-						<p className={styles.helperText}>No assets found yet. Run the content loader to build the index.</p>
-					)}
-					{!hasDefinition && (
-						<label className={styles.field}>
-							<span>Asset ID</span>
-							<input
-								type="text"
-								value={assetId}
-								onChange={(event) => setAssetId(event.target.value)}
-								placeholder="my_asset"
-							/>
-						</label>
-					)}
-					{loadError && <p className={styles.error}>{loadError}</p>}
-				</section>
-
-				<section className={styles.section}>
-					<div className={styles.sectionHeader}>Grid footprint</div>
-					<div className={styles.gridRow}>
-						<label className={styles.field}>
-							<span>Width</span>
-							<input
-								type="number"
-								step="1"
-								min="1"
-								value={footprint.width}
-								onChange={(event) =>
-									setFootprint((prev) => ({
-										...prev,
-										width: toInteger(event.target.value, prev.width)
-									}))
-								}
-							/>
-						</label>
-						<label className={styles.field}>
-							<span>Length</span>
-							<input
-								type="number"
-								step="1"
-								min="1"
-								value={footprint.length}
-								onChange={(event) =>
-									setFootprint((prev) => ({
-										...prev,
-										length: toInteger(event.target.value, prev.length)
-									}))
-								}
-							/>
-						</label>
-					</div>
-					<div className={styles.gridRow}>
-						<label className={styles.field}>
-							<span>Grid X</span>
-							<input
-								type="number"
-								step="1"
-								value={position.x}
-								onChange={(event) =>
-									setPosition((prev) => ({
-										...prev,
-										x: toNumber(event.target.value, prev.x)
-									}))
-								}
-							/>
-						</label>
-						<label className={styles.field}>
-							<span>Grid Y</span>
-							<input
-								type="number"
-								step="1"
-								value={position.y}
-								onChange={(event) =>
-									setPosition((prev) => ({
-										...prev,
-										y: toNumber(event.target.value, prev.y)
-									}))
-								}
-							/>
-						</label>
-					</div>
-				</section>
-
-				<section className={styles.section}>
-					<div className={styles.sectionHeader}>Entry + center points</div>
-					<p className={styles.helperText}>
-						Offsets are in tiles from the top-left corner of the footprint. Click the grid to pick a point.
-					</p>
-					{pickMode !== 'position' && (
-						<p className={styles.pickHint}>Click the grid to set the {pickMode} point.</p>
-					)}
-					<div className={styles.gridRow}>
-						<label className={styles.field}>
-							<span>Entry X</span>
-							<input
-								type="number"
-								step="0.1"
-								value={entryPoint?.x ?? ''}
-								onChange={(event) => setEntryPoint(updatePoint(entryPoint, 'x', event.target.value))}
-								placeholder="unset"
-							/>
-						</label>
-						<label className={styles.field}>
-							<span>Entry Y</span>
-							<input
-								type="number"
-								step="0.1"
-								value={entryPoint?.y ?? ''}
-								onChange={(event) => setEntryPoint(updatePoint(entryPoint, 'y', event.target.value))}
-								placeholder="unset"
-							/>
-						</label>
-					</div>
-					<div className={styles.inlineRow}>
+					<div className={styles.sectionHeaderRow}>
+						<div className={styles.sectionHeader}>Asset</div>
 						<button
-							className={`${styles.modeButton} ${pickMode === 'entry' ? styles.modeButtonActive : ''}`}
+							className={styles.collapseButton}
 							type="button"
-							onClick={() => handlePickMode('entry')}
+							onClick={() => setAssetOpen((prev) => !prev)}
+							aria-expanded={assetOpen}
 						>
-							Pick entry
-						</button>
-						<button className={styles.smallButton} type="button" onClick={() => setEntryPoint(null)}>
-							Clear
+							{assetOpen ? '^' : 'v'}
 						</button>
 					</div>
-
-					<div className={styles.gridRow}>
-						<label className={styles.field}>
-							<span>Center X</span>
-							<input
-								type="number"
-								step="0.1"
-								value={centerPoint?.x ?? ''}
-								onChange={(event) => setCenterPoint(updatePoint(centerPoint, 'x', event.target.value))}
-								placeholder="unset"
-							/>
-						</label>
-						<label className={styles.field}>
-							<span>Center Y</span>
-							<input
-								type="number"
-								step="0.1"
-								value={centerPoint?.y ?? ''}
-								onChange={(event) => setCenterPoint(updatePoint(centerPoint, 'y', event.target.value))}
-								placeholder="unset"
-							/>
-						</label>
-					</div>
-					<div className={styles.inlineRow}>
-						<button
-							className={`${styles.modeButton} ${pickMode === 'center' ? styles.modeButtonActive : ''}`}
-							type="button"
-							onClick={() => handlePickMode('center')}
-						>
-							Pick center
-						</button>
-						<button className={styles.secondaryButton} type="button" onClick={handleSetCenterFromFootprint}>
-							Use footprint center
-						</button>
-						<button className={styles.smallButton} type="button" onClick={() => setCenterPoint(null)}>
-							Clear
-						</button>
-					</div>
+					{assetOpen && (
+						<>
+							{assetOptions.length > 0 && (
+								<label className={styles.field}>
+									<span>Asset library</span>
+									<select
+										value={selectedAsset}
+										onChange={(event) => {
+											const next = event.target.value
+											setSelectedAsset(next)
+											setAssetPath(next)
+											if (next) {
+												void handleLoadAsset(next)
+											} else {
+												void handleLoadAsset('')
+											}
+										}}
+									>
+										<option value="">Select an asset...</option>
+										{assetOptions.map((asset) => (
+											<option key={asset} value={asset}>
+												{asset}
+											</option>
+										))}
+									</select>
+								</label>
+							)}
+							{assetIndexError && <p className={styles.error}>{assetIndexError}</p>}
+							{!assetIndexError && assetOptions.length === 0 && (
+								<p className={styles.helperText}>No assets found yet. Run the content loader to build the index.</p>
+							)}
+							{!hasDefinition && (
+								<label className={styles.field}>
+									<span>Asset ID</span>
+									<input
+										type="text"
+										value={assetId}
+										onChange={(event) => setAssetId(event.target.value)}
+										placeholder="my_asset"
+									/>
+								</label>
+							)}
+							{loadError && <p className={styles.error}>{loadError}</p>}
+						</>
+					)}
 				</section>
 
-				<section className={styles.section}>
-					<div className={styles.sectionHeader}>Transform</div>
-					<div className={styles.gridRow}>
-						<label className={styles.field}>
-							<span>Rotate X (deg)</span>
-							<input
-								type="number"
-								step="1"
-								value={rotationDeg.x}
-								onChange={(event) =>
-									setRotationDeg((prev) => ({
-										...prev,
-										x: toNumber(event.target.value, prev.x)
-									}))
-								}
-							/>
-						</label>
-						<label className={styles.field}>
-							<span>Rotate Y (deg)</span>
-							<input
-								type="number"
-								step="1"
-								value={rotationDeg.y}
-								onChange={(event) =>
-									setRotationDeg((prev) => ({
-										...prev,
-										y: toNumber(event.target.value, prev.y)
-									}))
-								}
-							/>
-						</label>
-						<label className={styles.field}>
-							<span>Rotate Z (deg)</span>
-							<input
-								type="number"
-								step="1"
-								value={rotationDeg.z}
-								onChange={(event) =>
-									setRotationDeg((prev) => ({
-										...prev,
-										z: toNumber(event.target.value, prev.z)
-									}))
-								}
-							/>
-						</label>
+				<section
+					className={styles.section}
+					onFocusCapture={handleEditingFocus}
+					onBlurCapture={handleEditingBlur}
+				>
+					<div className={styles.sectionHeaderRow}>
+						<div className={styles.sectionHeader}>Grid footprint</div>
+						<button
+							className={styles.collapseButton}
+							type="button"
+							onClick={() => setFootprintOpen((prev) => !prev)}
+							aria-expanded={footprintOpen}
+						>
+							{footprintOpen ? '^' : 'v'}
+						</button>
 					</div>
-					<div className={styles.gridRow}>
-						<label className={styles.field}>
-							<span>Scale X</span>
-							<input
-								type="number"
-								step="0.05"
-								value={scale.x}
-								onChange={(event) =>
-									setScale((prev) => ({
-										...prev,
-										x: toNumber(event.target.value, prev.x)
-									}))
-								}
-							/>
-						</label>
-						<label className={styles.field}>
-							<span>Scale Y</span>
-							<input
-								type="number"
-								step="0.05"
-								value={scale.y}
-								onChange={(event) =>
-									setScale((prev) => ({
-										...prev,
-										y: toNumber(event.target.value, prev.y)
-									}))
-								}
-							/>
-						</label>
-						<label className={styles.field}>
-							<span>Scale Z</span>
-							<input
-								type="number"
-								step="0.05"
-								value={scale.z}
-								onChange={(event) =>
-									setScale((prev) => ({
-										...prev,
-										z: toNumber(event.target.value, prev.z)
-									}))
-								}
-							/>
-						</label>
+					{footprintOpen && (
+						<>
+							<div className={styles.gridRow}>
+								<label className={styles.field}>
+									<span>Width</span>
+									<input
+										type="number"
+										step="1"
+										min="1"
+										value={footprint.width}
+										onChange={(event) =>
+											setFootprint((prev) => ({
+												...prev,
+												width: toInteger(event.target.value, prev.width)
+											}))
+										}
+									/>
+								</label>
+								<label className={styles.field}>
+									<span>Length</span>
+									<input
+										type="number"
+										step="1"
+										min="1"
+										value={footprint.length}
+										onChange={(event) =>
+											setFootprint((prev) => ({
+												...prev,
+												length: toInteger(event.target.value, prev.length)
+											}))
+										}
+									/>
+								</label>
+							</div>
+							<div className={styles.gridRow}>
+								<label className={styles.field}>
+									<span>Grid X</span>
+									<input
+										type="number"
+										step="1"
+										value={position.x}
+										onChange={(event) =>
+											setPosition((prev) => ({
+												...prev,
+												x: toNumber(event.target.value, prev.x)
+											}))
+										}
+									/>
+								</label>
+								<label className={styles.field}>
+									<span>Grid Y</span>
+									<input
+										type="number"
+										step="1"
+										value={position.y}
+										onChange={(event) =>
+											setPosition((prev) => ({
+												...prev,
+												y: toNumber(event.target.value, prev.y)
+											}))
+										}
+									/>
+								</label>
+							</div>
+						</>
+					)}
+				</section>
+
+				<section
+					className={styles.section}
+					onFocusCapture={handleEditingFocus}
+					onBlurCapture={handleEditingBlur}
+				>
+					<div className={styles.sectionHeaderRow}>
+						<div className={styles.sectionHeader}>Entry + center points</div>
+						<button
+							className={styles.collapseButton}
+							type="button"
+							onClick={() => setEntryCenterOpen((prev) => !prev)}
+							aria-expanded={entryCenterOpen}
+						>
+							{entryCenterOpen ? '^' : 'v'}
+						</button>
 					</div>
-					<label className={styles.field}>
-						<span>Elevation (Y)</span>
-						<input
-							type="number"
-							step="0.1"
-							value={elevation}
-							onChange={(event) => setElevation(toNumber(event.target.value, elevation))}
-						/>
-					</label>
+					{entryCenterOpen && (
+						<>
+							<p className={styles.helperText}>
+								Offsets are in tiles from the top-left corner of the footprint. Click the grid to pick a point.
+							</p>
+							{pickMode === 'entry' && (
+								<p className={styles.pickHint}>Click the grid to set the entry point.</p>
+							)}
+							{pickMode === 'center' && (
+								<p className={styles.pickHint}>Click the grid to set the center point.</p>
+							)}
+							{pickMode === 'access' && (
+								<p className={styles.pickHint}>Click the grid to toggle access tiles.</p>
+							)}
+							{pickMode === 'blocked' && (
+								<p className={styles.pickHint}>Click the grid to toggle blocked tiles.</p>
+							)}
+							<div className={styles.gridRow}>
+								<label className={styles.field}>
+									<span>Entry X</span>
+									<input
+										type="number"
+										step="0.1"
+										value={entryPoint?.x ?? ''}
+										onChange={(event) => setEntryPoint(updatePoint(entryPoint, 'x', event.target.value))}
+										placeholder="unset"
+									/>
+								</label>
+								<label className={styles.field}>
+									<span>Entry Y</span>
+									<input
+										type="number"
+										step="0.1"
+										value={entryPoint?.y ?? ''}
+										onChange={(event) => setEntryPoint(updatePoint(entryPoint, 'y', event.target.value))}
+										placeholder="unset"
+									/>
+								</label>
+							</div>
+							<div className={styles.inlineRow}>
+								<button
+									className={`${styles.modeButton} ${pickMode === 'entry' ? styles.modeButtonActive : ''}`}
+									type="button"
+									onClick={() => handlePickMode('entry')}
+								>
+									Pick entry
+								</button>
+								<button className={styles.smallButton} type="button" onClick={() => setEntryPoint(null)}>
+									Clear
+								</button>
+							</div>
+
+							<div className={styles.gridRow}>
+								<label className={styles.field}>
+									<span>Center X</span>
+									<input
+										type="number"
+										step="0.1"
+										value={centerPoint?.x ?? ''}
+										onChange={(event) => setCenterPoint(updatePoint(centerPoint, 'x', event.target.value))}
+										placeholder="unset"
+									/>
+								</label>
+								<label className={styles.field}>
+									<span>Center Y</span>
+									<input
+										type="number"
+										step="0.1"
+										value={centerPoint?.y ?? ''}
+										onChange={(event) => setCenterPoint(updatePoint(centerPoint, 'y', event.target.value))}
+										placeholder="unset"
+									/>
+								</label>
+							</div>
+							<div className={styles.inlineRow}>
+								<button
+									className={`${styles.modeButton} ${pickMode === 'center' ? styles.modeButtonActive : ''}`}
+									type="button"
+									onClick={() => handlePickMode('center')}
+								>
+									Pick center
+								</button>
+								<button className={styles.secondaryButton} type="button" onClick={handleSetCenterFromFootprint}>
+									Use footprint center
+								</button>
+								<button className={styles.smallButton} type="button" onClick={() => setCenterPoint(null)}>
+									Clear
+								</button>
+							</div>
+						</>
+					)}
 				</section>
 
 				{hasDefinition && (
 					<section className={styles.section}>
-						<div className={styles.sectionHeader}>Storage slots</div>
-						<p className={styles.helperText}>
-							Offsets are in tiles from the building’s top-left corner (0,0). Each slot renders as a colored
-							box on the grid.
-						</p>
-						{storageSlots.length === 0 && (
-							<p className={styles.helperText}>No storage slots yet.</p>
-						)}
-						{storageSlots.map((slot, index) => (
-							<div key={`${slot.itemType}-${index}`} className={styles.slotCard}>
-								<div className={styles.gridRow}>
-									<label className={styles.field}>
-										<span>Item</span>
-										{itemOptions.length > 0 ? (
-											<select
-												value={slot.itemType}
-												onChange={(event) => updateStorageSlot(index, { itemType: event.target.value })}
-											>
-												{itemOptions.map((item) => (
-													<option key={item.id} value={item.id}>
-														{item.emoji ? `${item.emoji} ` : ''}{item.label}
-													</option>
-												))}
-											</select>
-										) : (
-											<input
-												type="text"
-												value={slot.itemType}
-												onChange={(event) => updateStorageSlot(index, { itemType: event.target.value })}
-												placeholder="item_type"
-											/>
-										)}
-									</label>
-									<label className={styles.field}>
-										<span>Offset X</span>
-										<input
-											type="number"
-											step="1"
-											value={slot.offset.x}
-											onChange={(event) =>
-												updateStorageSlot(index, {
-													offset: { x: toIntegerLoose(event.target.value, slot.offset.x) }
-												})
-											}
-										/>
-									</label>
-									<label className={styles.field}>
-										<span>Offset Y</span>
-										<input
-											type="number"
-											step="1"
-											value={slot.offset.y}
-											onChange={(event) =>
-												updateStorageSlot(index, {
-													offset: { y: toIntegerLoose(event.target.value, slot.offset.y) }
-												})
-											}
-										/>
-									</label>
-								</div>
-								<div className={styles.slotRow}>
-									<label className={styles.field}>
-										<span>Max qty</span>
-										<input
-											type="number"
-											min="1"
-											step="1"
-											value={slot.maxQuantity ?? ''}
-											onChange={(event) =>
-												updateStorageSlot(index, {
-													maxQuantity: parseOptionalInt(event.target.value)
-												})
-											}
-										/>
-									</label>
-									<label className={styles.checkboxField}>
-										<input
-											type="checkbox"
-											checked={Boolean(slot.hidden)}
-											onChange={(event) => updateStorageSlot(index, { hidden: event.target.checked || undefined })}
-										/>
-										<span>Hidden</span>
-									</label>
+						<div className={styles.sectionHeaderRow}>
+							<div className={styles.sectionHeader}>Access + blocked tiles</div>
+							<button
+								className={styles.collapseButton}
+								type="button"
+								onClick={() => setAccessBlockedOpen((prev) => !prev)}
+								aria-expanded={accessBlockedOpen}
+							>
+								{accessBlockedOpen ? '^' : 'v'}
+							</button>
+						</div>
+						{accessBlockedOpen && (
+							<>
+								<p className={styles.helperText}>
+									Access tiles are walkable entry tiles (can be outside the footprint). Blocked tiles mark non-passable
+									tiles after the building completes.
+								</p>
+								<div className={styles.inlineRow}>
 									<button
+										className={`${styles.modeButton} ${pickMode === 'access' ? styles.modeButtonActive : ''}`}
 										type="button"
-										className={styles.smallButton}
-										onClick={() => removeStorageSlot(index)}
+										onClick={() => handlePickMode('access')}
 									>
-										Remove
+										Pick access
+									</button>
+									<button
+										className={`${styles.modeButton} ${pickMode === 'blocked' ? styles.modeButtonActive : ''}`}
+										type="button"
+										onClick={() => handlePickMode('blocked')}
+									>
+										Pick blocked
+									</button>
+									<button className={styles.smallButton} type="button" onClick={() => setAccessTiles([])}>
+										Clear access
+									</button>
+									<button className={styles.smallButton} type="button" onClick={() => setBlockedTiles([])}>
+										Clear blocked
 									</button>
 								</div>
-							</div>
-						))}
-						<div className={styles.inlineRow}>
-							<button
-								className={styles.secondaryButton}
-								type="button"
-								onClick={handleAddStorageSlot}
-								disabled={itemOptions.length === 0}
-							>
-								Add slot
-							</button>
-							{itemOptions.length === 0 && (
-								<span className={styles.helperText}>Item catalog not loaded.</span>
-							)}
-						</div>
+								<div className={styles.tileList}>
+									<div className={styles.tileGroup}>
+										<div className={styles.tileTitle}>Access tiles</div>
+										{accessTiles.length === 0 ? (
+											<span className={styles.helperText}>None set.</span>
+										) : (
+											<div className={styles.tileRow}>
+												{accessTiles.map((tile, index) => (
+													<div key={`access-${tile.x}-${tile.y}-${index}`} className={styles.tilePill}>
+														<span>({Math.round(tile.x)}, {Math.round(tile.y)})</span>
+														<button
+															className={styles.tileRemove}
+															type="button"
+															onClick={() =>
+																setAccessTiles((prev) =>
+																	prev.filter((_, tileIndex) => tileIndex !== index)
+																)
+															}
+														>
+															x
+														</button>
+													</div>
+												))}
+											</div>
+										)}
+									</div>
+									<div className={styles.tileGroup}>
+										<div className={styles.tileTitle}>Blocked tiles</div>
+										{blockedTiles.length === 0 ? (
+											<span className={styles.helperText}>None set.</span>
+										) : (
+											<div className={styles.tileRow}>
+												{blockedTiles.map((tile, index) => (
+													<div key={`blocked-${tile.x}-${tile.y}-${index}`} className={styles.tilePill}>
+														<span>({Math.round(tile.x)}, {Math.round(tile.y)})</span>
+														<button
+															className={styles.tileRemove}
+															type="button"
+															onClick={() =>
+																setBlockedTiles((prev) =>
+																	prev.filter((_, tileIndex) => tileIndex !== index)
+																)
+															}
+														>
+															x
+														</button>
+													</div>
+												))}
+											</div>
+										)}
+									</div>
+								</div>
+							</>
+						)}
 					</section>
 				)}
 
 				<section className={styles.section}>
-					<div className={styles.sectionHeader}>Export</div>
-					<div className={styles.inlineRow}>
-						<button className={styles.secondaryButton} type="button" onClick={handleCopy}>
-							Copy JSON
+					<div className={styles.sectionHeaderRow}>
+						<div className={styles.sectionHeader}>Transform</div>
+						<button
+							className={styles.collapseButton}
+							type="button"
+							onClick={() => setTransformOpen((prev) => !prev)}
+							aria-expanded={transformOpen}
+						>
+							{transformOpen ? '^' : 'v'}
 						</button>
-						<button className={styles.primaryButton} type="button" onClick={handleDownload}>
-							Download JSON
-						</button>
-						{copyStatus && <span className={styles.status}>{copyStatus}</span>}
 					</div>
-					<pre className={styles.jsonPreview}>{formattedJson}</pre>
+					{transformOpen && (
+						<>
+							<div className={styles.gridRow}>
+								<label className={styles.field}>
+									<span>Rotate X (deg)</span>
+									<input
+										type="number"
+										step="1"
+										value={rotationDeg.x}
+										onChange={(event) =>
+											setRotationDeg((prev) => ({
+												...prev,
+												x: toNumber(event.target.value, prev.x)
+											}))
+										}
+									/>
+								</label>
+								<label className={styles.field}>
+									<span>Rotate Y (deg)</span>
+									<input
+										type="number"
+										step="1"
+										value={rotationDeg.y}
+										onChange={(event) =>
+											setRotationDeg((prev) => ({
+												...prev,
+												y: toNumber(event.target.value, prev.y)
+											}))
+										}
+									/>
+								</label>
+								<label className={styles.field}>
+									<span>Rotate Z (deg)</span>
+									<input
+										type="number"
+										step="1"
+										value={rotationDeg.z}
+										onChange={(event) =>
+											setRotationDeg((prev) => ({
+												...prev,
+												z: toNumber(event.target.value, prev.z)
+											}))
+										}
+									/>
+								</label>
+							</div>
+							<div className={styles.gridRow}>
+								<label className={styles.field}>
+									<span>Scale X</span>
+									<input
+										type="number"
+										step="0.05"
+										value={scale.x}
+										onChange={(event) =>
+											setScale((prev) => ({
+												...prev,
+												x: toNumber(event.target.value, prev.x)
+											}))
+										}
+									/>
+								</label>
+								<label className={styles.field}>
+									<span>Scale Y</span>
+									<input
+										type="number"
+										step="0.05"
+										value={scale.y}
+										onChange={(event) =>
+											setScale((prev) => ({
+												...prev,
+												y: toNumber(event.target.value, prev.y)
+											}))
+										}
+									/>
+								</label>
+								<label className={styles.field}>
+									<span>Scale Z</span>
+									<input
+										type="number"
+										step="0.05"
+										value={scale.z}
+										onChange={(event) =>
+											setScale((prev) => ({
+												...prev,
+												z: toNumber(event.target.value, prev.z)
+											}))
+										}
+									/>
+								</label>
+							</div>
+							<label className={styles.field}>
+								<span>Elevation (Y)</span>
+								<input
+									type="number"
+									step="0.1"
+									value={elevation}
+									onChange={(event) => setElevation(toNumber(event.target.value, elevation))}
+								/>
+							</label>
+						</>
+					)}
 				</section>
+
+				{hasDefinition && (
+					<section className={styles.section}>
+						<div className={styles.sectionHeaderRow}>
+							<div className={styles.sectionHeader}>Storage slots</div>
+							<button
+								className={styles.collapseButton}
+								type="button"
+								onClick={() => setStorageOpen((prev) => !prev)}
+								aria-expanded={storageOpen}
+							>
+								{storageOpen ? '^' : 'v'}
+							</button>
+						</div>
+						{storageOpen && (
+							<>
+								{storageSlots.length === 0 && (
+									<p className={styles.helperText}>No storage slots yet.</p>
+								)}
+								{storageSlots.map((slot, index) => (
+									<div key={`${slot.itemType}-${index}`} className={styles.slotCard}>
+										<div className={styles.gridRow}>
+											<label className={styles.field}>
+												<span>Item</span>
+												{itemOptions.length > 0 ? (
+													<select
+														value={slot.itemType}
+														onChange={(event) =>
+															updateStorageSlot(index, {
+																itemType: event.target.value,
+																emoji: itemEmojiMap.get(event.target.value) || ''
+															})
+														}
+													>
+														{itemOptions.map((item) => (
+															<option key={item.id} value={item.id}>
+																{item.emoji ? `${item.emoji} ` : ''}{item.label}
+															</option>
+														))}
+													</select>
+												) : (
+													<input
+														type="text"
+														value={slot.itemType}
+														onChange={(event) =>
+															updateStorageSlot(index, {
+																itemType: event.target.value,
+																emoji: itemEmojiMap.get(event.target.value) || ''
+															})
+														}
+														placeholder="item_type"
+													/>
+												)}
+											</label>
+											<label className={styles.field}>
+												<span>Max qty</span>
+												<input
+													type="number"
+													min="1"
+													step="1"
+													value={slot.maxQuantity ?? ''}
+													onChange={(event) =>
+														updateStorageSlot(index, {
+															maxQuantity: parseOptionalInt(event.target.value)
+														})
+													}
+												/>
+											</label>
+										</div>
+										<div className={styles.inlineRow}>
+											<label className={styles.checkboxField}>
+												<input
+													type="checkbox"
+													checked={Boolean(slot.offset)}
+													onChange={(event) =>
+														updateStorageSlot(index, {
+															offset: event.target.checked ? { x: 0, y: 0 } : undefined,
+															hidden: event.target.checked ? undefined : true
+														})
+													}
+												/>
+												<span>Visible</span>
+											</label>
+											<button
+												type="button"
+												className={styles.smallButton}
+												onClick={() => removeStorageSlot(index)}
+											>
+												Remove
+											</button>
+										</div>
+										{slot.offset && (
+											<div className={styles.gridRow}>
+												<label className={styles.field}>
+													<span>Offset X</span>
+													<input
+														type="number"
+														step="1"
+														value={slot.offset?.x ?? ''}
+														placeholder="unset"
+														onChange={(event) =>
+															updateStorageSlot(index, {
+																offset: { x: toIntegerLoose(event.target.value, slot.offset?.x ?? 0) }
+															})
+														}
+													/>
+												</label>
+												<label className={styles.field}>
+													<span>Offset Y</span>
+													<input
+														type="number"
+														step="1"
+														value={slot.offset?.y ?? ''}
+														placeholder="unset"
+														onChange={(event) =>
+															updateStorageSlot(index, {
+																offset: { y: toIntegerLoose(event.target.value, slot.offset?.y ?? 0) }
+															})
+														}
+													/>
+												</label>
+											</div>
+										)}
+									</div>
+								))}
+								<div className={styles.inlineRow}>
+									<button
+										className={styles.secondaryButton}
+										type="button"
+										onClick={handleAddStorageSlot}
+										disabled={itemOptions.length === 0}
+									>
+										Add slot
+									</button>
+									{itemOptions.length === 0 && (
+										<span className={styles.helperText}>Item catalog not loaded.</span>
+									)}
+								</div>
+							</>
+						)}
+					</section>
+				)}
+
 			</div>
 
 			<div className={styles.viewport}>
+				<div className={styles.viewportControls}>
+					<label className={styles.checkboxField}>
+						<input
+							type="checkbox"
+							checked={isTransparent}
+							onChange={() => setManualTransparent((prev) => !prev)}
+						/>
+						Model 30% opacity
+					</label>
+				</div>
 				<EditorViewport onSceneReady={handleSceneReady} />
 				<div className={styles.hud}>
 					<div className={styles.hudCard}>
@@ -1025,6 +1342,8 @@ function mergeDefinitionWithEditor(
 		storageSlots: StorageSlot[]
 		entryPoint: Vec2 | null
 		centerPoint: Vec2 | null
+		accessTiles: Vec2[]
+		blockedTiles: Vec2[]
 	}
 ): Record<string, any> {
 	const next = cloneDefinition(definition)
@@ -1070,6 +1389,18 @@ function mergeDefinitionWithEditor(
 	} else if (next.centerPoint) {
 		delete next.centerPoint
 	}
+	const normalizedAccessTiles = normalizeTileOffsets(editor.accessTiles)
+	if (normalizedAccessTiles.length > 0) {
+		next.accessTiles = normalizedAccessTiles
+	} else if (next.accessTiles) {
+		delete next.accessTiles
+	}
+	const normalizedBlockedTiles = normalizeTileOffsets(editor.blockedTiles)
+	if (normalizedBlockedTiles.length > 0) {
+		next.blockedTiles = normalizedBlockedTiles
+	} else if (next.blockedTiles) {
+		delete next.blockedTiles
+	}
 	if (!next.storagePreservation && next.storage?.preservation) {
 		next.storagePreservation = next.storage.preservation
 	}
@@ -1111,7 +1442,7 @@ function isNearOne(value: number): boolean {
 
 function normalizeStorageSlots(slots: StorageSlot[]): Array<{
 	itemType: string
-	offset: { x: number; y: number }
+	offset?: { x: number; y: number }
 	hidden?: boolean
 	maxQuantity?: number
 }> {
@@ -1120,12 +1451,14 @@ function normalizeStorageSlots(slots: StorageSlot[]): Array<{
 		.map((slot) => {
 			const normalized: {
 				itemType: string
-				offset: { x: number; y: number }
+				offset?: { x: number; y: number }
 				hidden?: boolean
 				maxQuantity?: number
 			} = {
-				itemType: slot.itemType,
-				offset: {
+				itemType: slot.itemType
+			}
+			if (slot.offset) {
+				normalized.offset = {
 					x: Math.round(slot.offset.x),
 					y: Math.round(slot.offset.y)
 				}
@@ -1133,9 +1466,31 @@ function normalizeStorageSlots(slots: StorageSlot[]): Array<{
 			if (slot.hidden) {
 				normalized.hidden = true
 			}
+			if (!slot.offset && !slot.hidden) {
+				normalized.hidden = true
+			}
 			if (typeof slot.maxQuantity === 'number' && Number.isFinite(slot.maxQuantity)) {
 				normalized.maxQuantity = Math.max(1, Math.round(slot.maxQuantity))
 			}
 			return normalized
 		})
+}
+
+function normalizeTileOffsets(tiles: Vec2[]): Array<{ x: number; y: number }> {
+	const seen = new Set<string>()
+	const normalized: Array<{ x: number; y: number }> = []
+	for (const tile of tiles) {
+		const x = Math.round(tile.x)
+		const y = Math.round(tile.y)
+		if (!Number.isFinite(x) || !Number.isFinite(y)) {
+			continue
+		}
+		const key = `${x},${y}`
+		if (seen.has(key)) {
+			continue
+		}
+		seen.add(key)
+		normalized.push({ x, y })
+	}
+	return normalized
 }

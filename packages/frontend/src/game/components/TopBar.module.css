@@ -218,3 +218,31 @@
 	font-size: 0.6rem;
 	text-transform: uppercase;
 }
+
+.prioritiesButton {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: var(--spacing-xs) var(--spacing-sm);
+	background: #2f2a1d;
+	border: 3px solid #2f2a1d;
+	box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.5);
+	color: #fef3c7;
+	cursor: pointer;
+}
+
+.prioritiesButton[data-active='true'] {
+	border-color: #fbbf24;
+	box-shadow: 0 0 0 2px #fbbf24;
+}
+
+.prioritiesIcon {
+	font-size: 0.8rem;
+	line-height: 1;
+}
+
+.prioritiesLabel {
+	font-size: 0.6rem;
+	color: #fef3c7;
+	text-transform: uppercase;
+}

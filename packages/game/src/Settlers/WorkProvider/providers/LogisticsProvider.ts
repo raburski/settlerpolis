@@ -12,6 +12,8 @@ export class LogisticsProvider implements WorkProvider {
 	private assigned = new Set<string>()
 	private requests: LogisticsRequest[] = []
 	private inFlightConstruction = new Map<string, Map<string, number>>() // buildingInstanceId -> itemType -> quantity
+	private itemPriorities: ItemType[] = []
+	private itemPriorityIndex = new Map<ItemType, number>()
 
 	constructor(
 		private managers: WorkProviderDeps,
@@ -43,7 +45,26 @@ export class LogisticsProvider implements WorkProvider {
 		return [...this.requests]
 	}
 
+	public getItemPriorities(): ItemType[] {
+		this.syncItemPriorities()
+		return [...this.itemPriorities]
+	}
+
+	public setItemPriorities(itemPriorities: ItemType[] = []): void {
+		const seen = new Set<ItemType>()
+		this.itemPriorities = itemPriorities.filter((itemType) => {
+			if (!itemType || seen.has(itemType)) {
+				return false
+			}
+			seen.add(itemType)
+			return true
+		})
+		this.syncItemPriorities()
+		this.rebuildItemPriorityIndex()
+	}
+
 	public getMapId(): string {
+		this.pruneInvalidRequests()
 		const first = this.requests[0]
 		if (!first) {
 			return 'GLOBAL'
@@ -53,6 +74,7 @@ export class LogisticsProvider implements WorkProvider {
 	}
 
 	public getPlayerId(): string {
+		this.pruneInvalidRequests()
 		const first = this.requests[0]
 		if (!first) {
 			return 'GLOBAL'
@@ -127,6 +149,7 @@ export class LogisticsProvider implements WorkProvider {
 	}
 
 	requestNextStep(settlerId: string): WorkStep | null {
+		this.pruneInvalidRequests()
 		if (this.requests.length === 0) {
 			return { type: WorkStepType.Wait, reason: WorkWaitReason.NoRequests }
 		}
@@ -135,13 +158,30 @@ export class LogisticsProvider implements WorkProvider {
 			if (b.priority !== a.priority) {
 				return b.priority - a.priority
 			}
+			const aIndex = this.getItemPriorityIndex(a.itemType)
+			const bIndex = this.getItemPriorityIndex(b.itemType)
+			if (aIndex !== bIndex) {
+				return aIndex - bIndex
+			}
+			if (a.itemType !== b.itemType) {
+				return a.itemType.localeCompare(b.itemType)
+			}
 			return a.createdAtMs - b.createdAtMs
 		})
 
 		for (const request of sorted) {
 			const step = this.buildStepForRequest(request, settlerId)
 			if (step) {
-				this.requests = this.requests.filter(r => r.id !== request.id)
+				if (request.type === LogisticsRequestType.Construction && step.type === WorkStepType.Transport) {
+					const remaining = Math.max(0, request.quantity - step.quantity)
+					if (remaining > 0) {
+						request.quantity = remaining
+					} else {
+						this.requests = this.requests.filter(r => r.id !== request.id)
+					}
+				} else {
+					this.requests = this.requests.filter(r => r.id !== request.id)
+				}
 				return step
 			}
 		}
@@ -169,7 +209,13 @@ export class LogisticsProvider implements WorkProvider {
 				return null
 			}
 			const { source, quantity } = sourceResult
-			const transferQuantity = Math.min(request.quantity, quantity, maxStackSize)
+			const targetCapacity = request.type === LogisticsRequestType.Input
+				? this.getAvailableStorageCapacity(building.id, request.itemType)
+				: request.quantity
+			const transferQuantity = Math.min(request.quantity, quantity, maxStackSize, targetCapacity)
+			if (transferQuantity <= 0) {
+				return null
+			}
 
 			const target: TransportTarget = request.type === LogisticsRequestType.Construction
 				? { type: TransportTargetType.Construction, buildingInstanceId: building.id }
@@ -194,6 +240,11 @@ export class LogisticsProvider implements WorkProvider {
 				return null
 			}
 
+			const targetCapacity = this.getAvailableStorageCapacity(targetBuildingId, request.itemType)
+			if (targetCapacity <= 0) {
+				return null
+			}
+
 			const source: TransportSource = { type: TransportSourceType.Storage, buildingInstanceId: building.id }
 			const target: TransportTarget = { type: TransportTargetType.Storage, buildingInstanceId: targetBuildingId }
 			return {
@@ -201,7 +252,11 @@ export class LogisticsProvider implements WorkProvider {
 				source,
 				target,
 				itemType: request.itemType,
-				quantity: Math.min(request.quantity, maxStackSize)
+				quantity: Math.min(
+					request.quantity,
+					maxStackSize,
+					targetCapacity
+				)
 			}
 		}
 
@@ -344,38 +399,56 @@ export class LogisticsProvider implements WorkProvider {
 	}
 
 	private findTargetBuildings(itemType: string, quantity: number, mapId: string, playerId: string): string[] {
-		const buildings: string[] = []
+		const demandTargets: string[] = []
+		const warehouseTargets: string[] = []
 		const allBuildings = this.managers.buildings.getBuildingsForMap(mapId)
 			.filter(building => building.playerId === playerId)
 
 		for (const building of allBuildings) {
 			const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
-			if (!definition || !definition.productionRecipe) {
-				continue
-			}
-
-			const requiredInput = definition.productionRecipe.inputs.find(input => input.itemType === itemType)
-			if (!requiredInput) {
+			if (!definition) {
 				continue
 			}
 
 			const current = this.managers.storage.getCurrentQuantity(building.id, itemType)
 			const capacity = this.managers.storage.getStorageCapacity(building.id, itemType)
-			const desired = capacity > 0 ? capacity : requiredInput.quantity
-			const needed = desired - current
-			if (needed <= 0) {
+			const available = Math.max(0, capacity - current)
+			if (available <= 0) {
 				continue
 			}
 
-			const requestQuantity = Math.min(quantity, needed)
-			if (!this.managers.storage.hasAvailableStorage(building.id, itemType, requestQuantity)) {
+			const requiredInput = definition.productionRecipe?.inputs?.find(input => input.itemType === itemType)
+			if (requiredInput) {
+				const desired = capacity > 0 ? capacity : requiredInput.quantity
+				const needed = desired - current
+				if (needed > 0) {
+					const requestQuantity = Math.min(quantity, needed)
+					if (this.managers.storage.hasAvailableStorage(building.id, itemType, requestQuantity)) {
+						demandTargets.push(building.id)
+					}
+				}
 				continue
 			}
 
-			buildings.push(building.id)
+			const consumeEntry = definition.consumes?.find(entry => entry.itemType === itemType)
+			if (consumeEntry) {
+				const desired = Math.min(consumeEntry.desiredQuantity, capacity)
+				const needed = desired - current
+				if (needed > 0) {
+					const requestQuantity = Math.min(quantity, needed)
+					if (this.managers.storage.hasAvailableStorage(building.id, itemType, requestQuantity)) {
+						demandTargets.push(building.id)
+					}
+				}
+				continue
+			}
+
+			if (definition.isWarehouse && this.managers.storage.hasAvailableStorage(building.id, itemType, Math.min(quantity, available))) {
+				warehouseTargets.push(building.id)
+			}
 		}
 
-		return buildings
+		return demandTargets.length > 0 ? demandTargets : warehouseTargets
 	}
 
 	serialize(): LogisticsSnapshot {
@@ -386,13 +459,17 @@ export class LogisticsProvider implements WorkProvider {
 
 		return {
 			requests: [...this.requests],
-			inFlightConstruction
+			inFlightConstruction,
+			itemPriorities: this.getItemPriorities()
 		}
 	}
 
 	deserialize(state: LogisticsSnapshot): void {
 		this.assigned.clear()
 		this.requests = state.requests.map(request => ({ ...request }))
+		this.itemPriorities = [...(state.itemPriorities || [])]
+		this.rebuildItemPriorityIndex()
+		this.syncItemPriorities()
 		this.inFlightConstruction.clear()
 		for (const [buildingInstanceId, items] of state.inFlightConstruction) {
 			this.inFlightConstruction.set(buildingInstanceId, new Map(items))
@@ -403,5 +480,56 @@ export class LogisticsProvider implements WorkProvider {
 		this.assigned.clear()
 		this.requests = []
 		this.inFlightConstruction.clear()
+		this.itemPriorities = []
+		this.itemPriorityIndex.clear()
+	}
+
+	private rebuildItemPriorityIndex(): void {
+		this.itemPriorityIndex.clear()
+		this.itemPriorities.forEach((itemType, index) => {
+			this.itemPriorityIndex.set(itemType, index)
+		})
+	}
+
+	private syncItemPriorities(): void {
+		const items = this.managers.items.getItems()
+		if (items.length === 0) {
+			return
+		}
+		if (this.itemPriorities.length === 0) {
+			this.itemPriorities = items.map(item => item.id)
+			this.rebuildItemPriorityIndex()
+			return
+		}
+		const known = new Set(this.itemPriorities)
+		const missing = items.map(item => item.id).filter(id => !known.has(id))
+		if (missing.length > 0) {
+			this.itemPriorities = [...this.itemPriorities, ...missing]
+			this.rebuildItemPriorityIndex()
+		}
+	}
+
+	private getItemPriorityIndex(itemType: ItemType): number {
+		this.syncItemPriorities()
+		const index = this.itemPriorityIndex.get(itemType)
+		if (index === undefined) {
+			return this.itemPriorities.length
+		}
+		return index
+	}
+
+	private getAvailableStorageCapacity(buildingInstanceId: string, itemType: ItemType): number {
+		const capacity = this.managers.storage.getStorageCapacity(buildingInstanceId, itemType)
+		const current = this.managers.storage.getCurrentQuantity(buildingInstanceId, itemType)
+		return Math.max(0, capacity - current)
+	}
+
+	private pruneInvalidRequests(): void {
+		if (this.requests.length === 0) {
+			return
+		}
+		this.requests = this.requests.filter((request) => (
+			Boolean(this.managers.buildings.getBuildingInstance(request.buildingInstanceId))
+		))
 	}
 }

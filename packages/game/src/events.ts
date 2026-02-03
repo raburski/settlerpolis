@@ -192,6 +192,7 @@ export type EventPayloads = Record<string, unknown> & {
 	[BuildingsEvents.SS.Tick]: {}
 	[BuildingsEvents.SS.HouseCompleted]: { buildingInstanceId: BuildingInstanceId, buildingId: BuildingId }
 	[BuildingsEvents.SS.ConstructionCompleted]: { buildingInstanceId: BuildingInstanceId, buildingId: BuildingId, mapId: MapId, playerId: PlayerId }
+	[BuildingsEvents.SS.Removed]: { buildingInstanceId: BuildingInstanceId, buildingId: BuildingId, mapId: MapId, playerId: PlayerId }
 
 	[PopulationEvents.CS.RequestWorker]: RequestWorkerData
 	[PopulationEvents.CS.UnassignWorker]: UnassignWorkerData
@@ -230,7 +231,8 @@ export type EventPayloads = Record<string, unknown> & {
 	[RoadEvents.SC.PendingSync]: RoadPendingSyncData
 	[RoadEvents.SC.PendingUpdated]: RoadPendingUpdatedData
 
-	[WorkProviderEvents.SC.LogisticsUpdated]: { requests: LogisticsRequest[] }
+	[WorkProviderEvents.SC.LogisticsUpdated]: { requests: LogisticsRequest[], itemPriorities?: ItemType[] }
+	[WorkProviderEvents.CS.SetLogisticsPriorities]: { itemPriorities: ItemType[] }
 
 	[BuildingsEvents.SC.ProductionStarted]: { buildingInstanceId: BuildingInstanceId, recipe: ProductionRecipe }
 	[BuildingsEvents.SC.ProductionStopped]: { buildingInstanceId: BuildingInstanceId }

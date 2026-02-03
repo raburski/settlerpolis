@@ -21,7 +21,13 @@ export const ProductionWorkHandler: BuildingWorkHandler = {
 		for (const input of recipe.inputs) {
 			const current = managers.storage.getCurrentQuantity(building.id, input.itemType)
 			if (current < input.quantity) {
-				logistics.requestInput(building.id, input.itemType, input.quantity, 60)
+				const maxStackSize = managers.items.getItemMetadata(input.itemType)?.maxStackSize ?? input.quantity
+				const capacity = managers.storage.getStorageCapacity(building.id, input.itemType)
+				const availableCapacity = Math.max(0, capacity - current)
+				const bufferTarget = Math.min(availableCapacity, maxStackSize)
+				const missing = input.quantity - current
+				const requestQuantity = Math.max(missing, bufferTarget)
+				logistics.requestInput(building.id, input.itemType, requestQuantity, 60)
 				return { type: WorkStepType.Wait, reason: WorkWaitReason.MissingInputs }
 			}
 		}

@@ -3,11 +3,14 @@ import {
 	ArcRotateCamera,
 	Color3,
 	Color4,
+	DynamicTexture,
 	Engine,
 	HemisphericLight,
 	LinesMesh,
+	Material,
 	Mesh,
 	MeshBuilder,
+	MultiMaterial,
 	PointerEventTypes,
 	Scene,
 	SceneLoader,
@@ -16,12 +19,15 @@ import {
 	Vector3
 } from '@babylonjs/core'
 import '@babylonjs/loaders'
+import { getHighFidelity } from '../game/services/DisplaySettings'
+import { IsometricRotation } from '../shared/IsometricRotation'
 
 export interface StorageSlot {
 	itemType: string
-	offset: { x: number; y: number }
+	offset?: { x: number; y: number }
 	hidden?: boolean
 	maxQuantity?: number
+	emoji?: string
 }
 
 export interface EditorPlacement {
@@ -33,12 +39,14 @@ export interface EditorPlacement {
 	storageSlots: StorageSlot[]
 	entryPoint?: { x: number; y: number } | null
 	centerPoint?: { x: number; y: number } | null
+	accessTiles: Array<{ x: number; y: number }>
+	blockedTiles: Array<{ x: number; y: number }>
 }
 
 export type GridPickHandler = (position: { x: number; y: number }) => void
 
 const TILE_SIZE = 1
-const DEFAULT_GRID_SIZE = 12
+const DEFAULT_GRID_SIZE = 8
 
 export class EditorScene {
 	public readonly engine: Engine
@@ -50,22 +58,35 @@ export class EditorScene {
 	private groundMaterial: StandardMaterial | null = null
 	private footprint: LinesMesh | null = null
 	private gridSize = DEFAULT_GRID_SIZE
-	private orthoScale = 0.028
+	private readonly baseOrthoScale = 0.018
+	private fidelityScale = 1
+	private highFidelityEnabled = true
+	private readonly isoRotation = new IsometricRotation()
 	private assetTransform: TransformNode | null = null
 	private assetPivot: TransformNode | null = null
 	private assetMeshes: AbstractMesh[] = []
+	private assetOpacity = 1
+	private readonly assetMaterials = new Map<Material, { alpha: number; transparencyMode?: number | null }>()
 	private pickHandler: GridPickHandler | null = null
 	private lastPlacement: EditorPlacement | null = null
 	private lastFootprint: { width: number; length: number } | null = null
 	private storageSlotMeshes: Mesh[] = []
 	private storageSlotMaterials: Map<string, StandardMaterial> = new Map()
+	private emojiSlotMaterials: Map<string, StandardMaterial> = new Map()
+	private emojiSlotTextures: Map<string, DynamicTexture> = new Map()
+	private accessTileMeshes: Mesh[] = []
+	private blockedTileMeshes: Mesh[] = []
 	private entryMarker: Mesh | null = null
 	private centerMarker: Mesh | null = null
 	private entryMaterial: StandardMaterial | null = null
 	private centerMaterial: StandardMaterial | null = null
+	private accessTileMaterial: StandardMaterial | null = null
+	private blockedTileMaterial: StandardMaterial | null = null
 
 	constructor(canvas: HTMLCanvasElement) {
 		this.engine = new Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true })
+		this.highFidelityEnabled = getHighFidelity()
+		this.applyHardwareScaling()
 		this.scene = new Scene(this.engine)
 		this.scene.clearColor = new Color4(0.05, 0.06, 0.08, 1)
 
@@ -84,6 +105,7 @@ export class EditorScene {
 		this.camera.wheelDeltaPercentage = 0.01
 		this.camera.minZ = 0.1
 		this.camera.maxZ = 2000
+		this.camera.alpha = this.isoRotation.getAlphaForStep()
 		this.updateCameraOrtho()
 
 		const light = new HemisphericLight('editor-light', new Vector3(0.2, 1, 0.3), this.scene)
@@ -103,6 +125,12 @@ export class EditorScene {
 		})
 
 		this.engine.runRenderLoop(() => {
+			const rotationUpdate = this.isoRotation.update(Date.now())
+			if (rotationUpdate) {
+				this.camera.alpha = rotationUpdate.alpha
+			} else {
+				this.camera.alpha = this.isoRotation.getAlphaForStep()
+			}
 			this.scene.render()
 		})
 		window.addEventListener('resize', this.handleResize)
@@ -116,6 +144,14 @@ export class EditorScene {
 		this.storageSlotMeshes = []
 		this.storageSlotMaterials.forEach((material) => material.dispose())
 		this.storageSlotMaterials.clear()
+		this.emojiSlotMaterials.forEach((material) => material.dispose())
+		this.emojiSlotMaterials.clear()
+		this.emojiSlotTextures.forEach((texture) => texture.dispose())
+		this.emojiSlotTextures.clear()
+		this.accessTileMeshes.forEach((mesh) => mesh.dispose())
+		this.accessTileMeshes = []
+		this.blockedTileMeshes.forEach((mesh) => mesh.dispose())
+		this.blockedTileMeshes = []
 		this.entryMarker?.dispose()
 		this.centerMarker?.dispose()
 		this.entryMarker = null
@@ -128,6 +164,14 @@ export class EditorScene {
 			this.centerMaterial.dispose()
 			this.centerMaterial = null
 		}
+		if (this.accessTileMaterial) {
+			this.accessTileMaterial.dispose()
+			this.accessTileMaterial = null
+		}
+		if (this.blockedTileMaterial) {
+			this.blockedTileMaterial.dispose()
+			this.blockedTileMaterial = null
+		}
 		this.grid?.dispose()
 		this.footprint?.dispose()
 		this.ground?.dispose()
@@ -137,6 +181,10 @@ export class EditorScene {
 
 	setPickHandler(handler: GridPickHandler | null): void {
 		this.pickHandler = handler
+	}
+
+	rotateCamera(stepDelta: number): void {
+		this.isoRotation.rotateBySteps(stepDelta, this.camera.alpha)
 	}
 
 	updatePlacement(placement: EditorPlacement): void {
@@ -161,6 +209,8 @@ export class EditorScene {
 			)
 		}
 		this.updateStorageSlots(placement.storageSlots, placement.position)
+		this.updateTileMarkers(placement.accessTiles, placement.position, 'access')
+		this.updateTileMarkers(placement.blockedTiles, placement.position, 'blocked')
 		this.updateAccessPoints(placement.entryPoint ?? null, placement.centerPoint ?? null, placement.position)
 	}
 
@@ -180,6 +230,7 @@ export class EditorScene {
 			}
 			mesh.isPickable = false
 		})
+		this.applyAssetOpacity()
 
 		this.centerAsset()
 		if (this.lastPlacement) {
@@ -187,16 +238,30 @@ export class EditorScene {
 		}
 	}
 
+	setAssetOpacity(opacity: number): void {
+		const clamped = Math.max(0, Math.min(1, opacity))
+		this.assetOpacity = clamped
+		this.applyAssetOpacity()
+	}
+
 	private handleResize = () => {
 		this.engine.resize()
+		this.applyHardwareScaling()
 		this.updateCameraOrtho()
 	}
 
+	private applyHardwareScaling(): void {
+		const ratio = this.highFidelityEnabled ? (window.devicePixelRatio || 1) : 1
+		this.fidelityScale = ratio
+		this.engine.setHardwareScalingLevel(1 / ratio)
+	}
+
 	private updateCameraOrtho(): void {
+		const effectiveScale = this.baseOrthoScale / (this.fidelityScale || 1)
 		const renderWidth = this.engine.getRenderWidth()
 		const renderHeight = this.engine.getRenderHeight()
-		const halfWidth = (renderWidth / 2) * this.orthoScale
-		const halfHeight = (renderHeight / 2) * this.orthoScale
+		const halfWidth = (renderWidth / 2) * effectiveScale
+		const halfHeight = (renderHeight / 2) * effectiveScale
 		this.camera.orthoLeft = -halfWidth
 		this.camera.orthoRight = halfWidth
 		this.camera.orthoTop = halfHeight
@@ -280,10 +345,51 @@ export class EditorScene {
 			this.assetMeshes.forEach((mesh) => mesh.dispose(false, true))
 		}
 		this.assetMeshes = []
+		this.assetMaterials.clear()
 		this.assetPivot?.dispose()
 		this.assetTransform?.dispose()
 		this.assetPivot = null
 		this.assetTransform = null
+	}
+
+	private applyAssetOpacity(): void {
+		const materials = new Set<Material>()
+		this.assetMeshes.forEach((mesh) => {
+			mesh.visibility = 1
+			const material = mesh.material
+			if (!material) return
+			if (material instanceof MultiMaterial) {
+				material.subMaterials?.forEach((sub) => {
+					if (sub) materials.add(sub)
+				})
+				return
+			}
+			materials.add(material)
+		})
+		materials.forEach((material) => this.applyMaterialOpacity(material))
+	}
+
+	private applyMaterialOpacity(material: Material): void {
+		const cached = this.assetMaterials.get(material)
+		if (!cached) {
+			const transparencyMode =
+				'transparencyMode' in material ? (material as { transparencyMode?: number }).transparencyMode ?? null : null
+			this.assetMaterials.set(material, { alpha: material.alpha, transparencyMode })
+		}
+		const baseline = this.assetMaterials.get(material)
+		if (!baseline) return
+		if (this.assetOpacity < 1) {
+			material.alpha = baseline.alpha * this.assetOpacity
+			if ('transparencyMode' in material) {
+				;(material as { transparencyMode?: number }).transparencyMode = Material.MATERIAL_ALPHABLEND
+			}
+		} else {
+			material.alpha = baseline.alpha
+			if ('transparencyMode' in material) {
+				;(material as { transparencyMode?: number }).transparencyMode =
+					baseline.transparencyMode ?? Material.MATERIAL_OPAQUE
+			}
+		}
 	}
 
 	private updateStorageSlots(slots: StorageSlot[], origin: { x: number; y: number }): void {
@@ -291,18 +397,118 @@ export class EditorScene {
 		this.storageSlotMeshes = []
 		if (!slots || slots.length === 0) return
 		slots.forEach((slot, index) => {
+			if (!slot.offset) {
+				return
+			}
+			const centerX = (origin.x + slot.offset.x + 0.5) * TILE_SIZE
+			const centerZ = (origin.y + slot.offset.y + 0.5) * TILE_SIZE
+			const isHidden = Boolean(slot.hidden)
+			if (slot.emoji) {
+				const plane = MeshBuilder.CreatePlane(
+					`editor-storage-slot-${index}`,
+					{ size: 0.75 },
+					this.scene
+				)
+				plane.position.set(centerX, 0.14, centerZ)
+				plane.isPickable = false
+				plane.billboardMode = Mesh.BILLBOARDMODE_ALL
+				plane.material = this.getEmojiMaterial(slot.emoji, isHidden)
+				this.storageSlotMeshes.push(plane)
+				return
+			}
 			const mesh = MeshBuilder.CreateBox(
 				`editor-storage-slot-${index}`,
 				{ width: 0.75, height: 0.18, depth: 0.75 },
 				this.scene
 			)
-			const centerX = (origin.x + slot.offset.x + 0.5) * TILE_SIZE
-			const centerZ = (origin.y + slot.offset.y + 0.5) * TILE_SIZE
 			mesh.position.set(centerX, 0.12, centerZ)
 			mesh.isPickable = false
-			mesh.material = this.getSlotMaterial(slot.itemType || 'slot', Boolean(slot.hidden))
+			mesh.material = this.getSlotMaterial(slot.itemType || 'slot', isHidden)
 			this.storageSlotMeshes.push(mesh)
 		})
+	}
+
+	private getEmojiMaterial(emoji: string, hidden: boolean): StandardMaterial {
+		const key = `${emoji}:${hidden ? 'hidden' : 'visible'}`
+		const cached = this.emojiSlotMaterials.get(key)
+		if (cached) return cached
+
+		const textureSize = 128
+		const texture = new DynamicTexture(
+			`editor-emoji-${key}`,
+			{ width: textureSize, height: textureSize },
+			this.scene,
+			false
+		)
+		texture.hasAlpha = true
+		const ctx = texture.getContext()
+		ctx.clearRect(0, 0, textureSize, textureSize)
+		ctx.textAlign = 'center'
+		ctx.textBaseline = 'middle'
+		ctx.font = '96px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif'
+		ctx.fillText(emoji, textureSize / 2, textureSize / 2 + 6)
+		texture.update()
+
+		const material = new StandardMaterial(`editor-emoji-${key}`, this.scene)
+		material.diffuseTexture = texture
+		material.opacityTexture = texture
+		material.emissiveColor = new Color3(1, 1, 1)
+		material.specularColor = Color3.Black()
+		material.backFaceCulling = false
+		material.alpha = hidden ? 0.45 : 0.95
+
+		this.emojiSlotTextures.set(key, texture)
+		this.emojiSlotMaterials.set(key, material)
+		return material
+	}
+
+	private updateTileMarkers(
+		tiles: Array<{ x: number; y: number }>,
+		origin: { x: number; y: number },
+		mode: 'access' | 'blocked'
+	): void {
+		const meshes = mode === 'access' ? this.accessTileMeshes : this.blockedTileMeshes
+		meshes.forEach((mesh) => mesh.dispose())
+		meshes.length = 0
+		if (!tiles || tiles.length === 0) {
+			return
+		}
+
+		const material = this.getTileMaterial(mode)
+		tiles.forEach((tile, index) => {
+			const mesh = MeshBuilder.CreateBox(
+				`editor-${mode}-tile-${index}`,
+				{ width: 0.9, height: mode === 'access' ? 0.08 : 0.06, depth: 0.9 },
+				this.scene
+			)
+			const centerX = (origin.x + tile.x + 0.5) * TILE_SIZE
+			const centerZ = (origin.y + tile.y + 0.5) * TILE_SIZE
+			mesh.position.set(centerX, mode === 'access' ? 0.08 : 0.06, centerZ)
+			mesh.isPickable = false
+			mesh.material = material
+			meshes.push(mesh)
+		})
+	}
+
+	private getTileMaterial(mode: 'access' | 'blocked'): StandardMaterial {
+		if (mode === 'access') {
+			if (!this.accessTileMaterial) {
+				this.accessTileMaterial = new StandardMaterial('editor-access-tile', this.scene)
+				this.accessTileMaterial.diffuseColor = new Color3(0.2, 0.9, 0.6)
+				this.accessTileMaterial.emissiveColor = new Color3(0.08, 0.3, 0.2)
+				this.accessTileMaterial.specularColor = Color3.Black()
+				this.accessTileMaterial.alpha = 0.6
+			}
+			return this.accessTileMaterial
+		}
+		if (!this.blockedTileMaterial) {
+			this.blockedTileMaterial = new StandardMaterial('editor-blocked-tile', this.scene)
+			this.blockedTileMaterial.diffuseColor = new Color3(0.9, 0.25, 0.25)
+			this.blockedTileMaterial.emissiveColor = new Color3(0.3, 0.08, 0.08)
+			this.blockedTileMaterial.specularColor = Color3.Black()
+			this.blockedTileMaterial.alpha = 0.5
+		}
+		return this.blockedTileMaterial
 	}
 
 	private updateAccessPoints(
