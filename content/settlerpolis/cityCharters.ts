@@ -1,36 +1,66 @@
 import { CityCharterContent } from '@rugged/game'
 
 export const cityCharters: CityCharterContent = {
-	defaultTierId: 'camp',
+	defaultTierId: 'settlement',
 	tiers: [
 		{
-			id: 'camp',
-			level: 0,
-			name: 'Camp',
+			id: 'settlement',
+			level: 1,
+			name: 'Settlement',
 			requirements: {
 				population: 0
 			},
-			unlockFlags: [],
+			unlockFlags: ['charter:settlement'],
 			buffs: []
 		},
 		{
-			id: 'hamlet',
-			level: 1,
-			name: 'Hamlet',
+			id: 'market-town',
+			level: 2,
+			name: 'Market Town',
 			requirements: {
 				population: 6
 			},
-			unlockFlags: ['charter:hamlet'],
+			unlockFlags: ['charter:market-town'],
 			buffs: []
 		},
 		{
-			id: 'village',
-			level: 2,
-			name: 'Village',
+			id: 'chartered-city',
+			level: 3,
+			name: 'Chartered City',
 			requirements: {
 				population: 12
 			},
-			unlockFlags: ['charter:village'],
+			unlockFlags: ['charter:chartered-city'],
+			buffs: []
+		},
+		{
+			id: 'free-city',
+			level: 4,
+			name: 'Free City',
+			requirements: {
+				population: 18
+			},
+			unlockFlags: ['charter:free-city'],
+			buffs: []
+		},
+		{
+			id: 'trade-hub',
+			level: 5,
+			name: 'Trade Hub',
+			requirements: {
+				population: 24
+			},
+			unlockFlags: ['charter:trade-hub'],
+			buffs: []
+		},
+		{
+			id: 'metropolitan-seat',
+			level: 6,
+			name: 'Metropolitan Seat',
+			requirements: {
+				population: 30
+			},
+			unlockFlags: ['charter:metropolitan-seat'],
 			buffs: []
 		}
 	]

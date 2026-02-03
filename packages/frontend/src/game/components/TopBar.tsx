@@ -121,8 +121,8 @@ export const TopBar: React.FC<TopBarProps> = ({
 		{ id: 'planks', label: 'Planks' }
 	]
 	const populationLabel = `${populationTotal}/${housingCapacity}`
+	const populationOverCapacity = populationTotal > housingCapacity
 	const charterLabel = charterState?.currentTier?.name || 'Charter'
-	const charterLevel = charterState?.currentTier?.level ?? 0
 	const charterClaimable = Boolean(charterState?.isEligibleForNext)
 	const charterWarning = charterState ? !charterState.currentTierRequirementsMet : false
 	return (
@@ -163,6 +163,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 				<button
 					type="button"
 					className={styles.populationButton}
+					data-warning={populationOverCapacity}
 					data-active={isPopulationOpen}
 					onClick={onTogglePopulation}
 					aria-pressed={isPopulationOpen}
@@ -170,6 +171,11 @@ export const TopBar: React.FC<TopBarProps> = ({
 				>
 					<span className={styles.populationIcon}>👥</span>
 					<span className={styles.populationValue}>{populationLabel}</span>
+					{populationOverCapacity ? (
+						<span className={styles.populationWarning} title="Not enough housing">
+							⚠️
+						</span>
+					) : null}
 				</button>
 				<button
 					type="button"
@@ -183,7 +189,6 @@ export const TopBar: React.FC<TopBarProps> = ({
 				>
 					<span className={styles.cityIcon}>🏛️</span>
 					<span className={styles.cityLabel}>{charterLabel}</span>
-					<span className={styles.cityLevel}>L{charterLevel}</span>
 				</button>
 				<button
 					type="button"

@@ -194,6 +194,7 @@ export class LogisticsProvider implements WorkProvider {
 		if (!building) {
 			return null
 		}
+		const carryCapacity = this.managers.population.getSettlerCarryCapacity(settlerId)
 		const maxStackSize = this.managers.items.getItemMetadata(request.itemType)?.maxStackSize || request.quantity
 
 		if (request.type === LogisticsRequestType.Input || request.type === LogisticsRequestType.Construction) {
@@ -212,7 +213,7 @@ export class LogisticsProvider implements WorkProvider {
 			const targetCapacity = request.type === LogisticsRequestType.Input
 				? this.getAvailableStorageCapacity(building.id, request.itemType)
 				: request.quantity
-			const transferQuantity = Math.min(request.quantity, quantity, maxStackSize, targetCapacity)
+			const transferQuantity = Math.min(request.quantity, quantity, maxStackSize, targetCapacity, carryCapacity)
 			if (transferQuantity <= 0) {
 				return null
 			}
@@ -255,7 +256,8 @@ export class LogisticsProvider implements WorkProvider {
 				quantity: Math.min(
 					request.quantity,
 					maxStackSize,
-					targetCapacity
+					targetCapacity,
+					carryCapacity
 				)
 			}
 		}
@@ -410,8 +412,8 @@ export class LogisticsProvider implements WorkProvider {
 				continue
 			}
 
-			const current = this.managers.storage.getCurrentQuantity(building.id, itemType)
-			const capacity = this.managers.storage.getStorageCapacity(building.id, itemType)
+			const current = this.managers.storage.getCurrentQuantity(building.id, itemType, 'incoming')
+			const capacity = this.managers.storage.getStorageCapacity(building.id, itemType, 'incoming')
 			const available = Math.max(0, capacity - current)
 			if (available <= 0) {
 				continue
@@ -443,7 +445,11 @@ export class LogisticsProvider implements WorkProvider {
 				continue
 			}
 
-			if (definition.isWarehouse && this.managers.storage.hasAvailableStorage(building.id, itemType, Math.min(quantity, available))) {
+			if (
+				definition.isWarehouse &&
+				this.managers.buildings.isStorageRequestEnabled(building.id, itemType) &&
+				this.managers.storage.hasAvailableStorage(building.id, itemType, Math.min(quantity, available))
+			) {
 				warehouseTargets.push(building.id)
 			}
 		}
@@ -519,8 +525,8 @@ export class LogisticsProvider implements WorkProvider {
 	}
 
 	private getAvailableStorageCapacity(buildingInstanceId: string, itemType: ItemType): number {
-		const capacity = this.managers.storage.getStorageCapacity(buildingInstanceId, itemType)
-		const current = this.managers.storage.getCurrentQuantity(buildingInstanceId, itemType)
+		const capacity = this.managers.storage.getStorageCapacity(buildingInstanceId, itemType, 'incoming')
+		const current = this.managers.storage.getCurrentQuantity(buildingInstanceId, itemType, 'incoming')
 		return Math.max(0, capacity - current)
 	}
 

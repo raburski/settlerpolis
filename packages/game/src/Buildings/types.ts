@@ -104,6 +104,8 @@ export interface BuildingDefinition {
 	workerSlots?: number // Maximum number of workers that can be assigned to this building (for production/work)
 	priority?: number // Optional priority for logistics and job assignment (higher = more urgent)
 	isWarehouse?: boolean // Marks building as storage hub for overflow
+	isTradingPost?: boolean // Marks building as a trading post
+	blocksOutgoing?: boolean // If true, items cannot be transported out by logistics
 	harvest?: {
 		nodeType: ResourceNodeType
 		radiusTiles?: number
@@ -162,6 +164,8 @@ export interface BuildingInstance {
 	collectedResources: Map<ItemType, number> // itemType -> quantity collected (server-side only, client tracks via events)
 	requiredResources: BuildingCost[] // Required resources (derived from definition.costs, server-side only)
 	productionPaused?: boolean
+	storageRequests?: ItemType[] // Item types to request for storage delivery (warehouses)
+	pendingWorkers?: number // Queued worker requests awaiting assignment
 }
 
 export interface PlaceBuildingData {
@@ -177,6 +181,11 @@ export interface CancelBuildingData {
 export interface SetProductionPausedData {
 	buildingInstanceId: BuildingInstanceId
 	paused: boolean
+}
+
+export interface SetStorageRequestsData {
+	buildingInstanceId: BuildingInstanceId
+	itemTypes: ItemType[]
 }
 
 export interface SetWorkAreaData {
@@ -209,6 +218,16 @@ export interface BuildingCancelledData {
 export interface BuildingWorkAreaUpdatedData {
 	buildingInstanceId: BuildingInstanceId
 	center: Position
+}
+
+export interface BuildingStorageRequestsUpdatedData {
+	buildingInstanceId: BuildingInstanceId
+	itemTypes: ItemType[]
+}
+
+export interface BuildingWorkerQueueUpdatedData {
+	buildingInstanceId: BuildingInstanceId
+	queuedCount: number
 }
 
 export interface BuildingCatalogData {

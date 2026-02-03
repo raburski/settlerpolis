@@ -29,10 +29,6 @@ class CityCharterServiceClass {
 			return
 		}
 		if (!previous.isEligibleForNext && next.isEligibleForNext && next.nextTier) {
-			this.emitNotification(
-				`Charter upgrade available: ${next.nextTier.name}`,
-				'success'
-			)
 		}
 		if (previous.currentTierRequirementsMet && !next.currentTierRequirementsMet) {
 			this.emitNotification(

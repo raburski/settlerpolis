@@ -16,30 +16,32 @@ export const AcquireToolHandler: StepHandler = {
 		if (!settler) {
 			return { actions: [] }
 		}
-		if (settler.profession === step.profession) {
-			return { actions: [] }
-		}
 
-	const reservations = new ReservationBag()
-	const toolItemType = managers.population.getToolItemType(step.profession)
-	if (!toolItemType) {
-		const actions: WorkAction[] = [
-			{ type: WorkActionType.ChangeProfession, profession: step.profession, setState: SettlerState.Idle }
-		]
-		if (assignment.buildingInstanceId) {
-			const building = managers.buildings.getBuildingInstance(assignment.buildingInstanceId)
-			if (building) {
-				actions.push({
-					type: WorkActionType.Move,
-					position: building.position,
-					targetType: MoveTargetType.Building,
-					targetId: building.id,
-					setState: SettlerState.MovingToBuilding
-				})
+		const reservations = new ReservationBag()
+		const toolItemType = managers.population.getToolItemType(step.profession)
+		if (settler.profession === step.profession) {
+			if (!toolItemType || settler.stateContext.equippedItemType === toolItemType) {
+				return { actions: [] }
 			}
 		}
-		return { actions }
-	}
+		if (!toolItemType) {
+			const actions: WorkAction[] = [
+				{ type: WorkActionType.ChangeProfession, profession: step.profession, setState: SettlerState.Idle }
+			]
+			if (assignment.buildingInstanceId) {
+				const building = managers.buildings.getBuildingInstance(assignment.buildingInstanceId)
+				if (building) {
+					actions.push({
+						type: WorkActionType.Move,
+						position: building.position,
+						targetType: MoveTargetType.Building,
+						targetId: building.id,
+						setState: SettlerState.MovingToBuilding
+					})
+				}
+			}
+			return { actions }
+		}
 
 		let toolItemId = step.toolItemId
 		let toolPosition = step.toolPosition

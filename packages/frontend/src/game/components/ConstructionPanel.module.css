@@ -11,10 +11,19 @@
 	padding: var(--spacing-sm);
 	color: #fffbe7;
 	z-index: var(--z-index-modal);
-	height: 176px;
+	height: 136px;
 	overflow: hidden;
 	box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
 	font-family: 'Press Start 2P', monospace;
+	display: flex;
+	flex-direction: column;
+}
+
+.topBar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 6px;
 }
 
 .categoryTabs {
@@ -22,7 +31,7 @@
 	gap: 6px;
 	justify-content: flex-start;
 	align-items: flex-start;
-	margin-bottom: 6px;
+	flex-shrink: 0;
 }
 
 .categoryTab {
@@ -51,11 +60,69 @@
 	box-shadow: 0 0 0 2px #ffe066;
 }
 
+.topSeparator {
+	width: 2px;
+	height: 32px;
+	background: #2c1810;
+	box-shadow: 2px 0 0 rgba(0, 0, 0, 0.4);
+	flex-shrink: 0;
+}
+
+.topBottomSeparator {
+	height: 2px;
+	background: #2c1810;
+	box-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+	margin: 0 2px 6px;
+}
+
+.shortcutBar {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: 1;
+	flex-wrap: wrap;
+}
+
+.shortcutSlot {
+	width: 32px;
+	height: 32px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(44, 24, 16, 0.9);
+	border: 2px solid #2c1810;
+	cursor: pointer;
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
+	transition: all 0.2s ease;
+}
+
+.shortcutSlot:hover {
+	background: rgba(74, 44, 31, 0.95);
+	border-color: #ffe066;
+}
+
+.shortcutSlotEmpty {
+	background: rgba(20, 20, 20, 0.7);
+	border-style: dashed;
+	cursor: default;
+}
+
+.shortcutSlotDisabled {
+	opacity: 0.45;
+	filter: grayscale(0.8);
+}
+
+.shortcutIcon {
+	font-size: 18px;
+	line-height: 1;
+}
+
 .content {
 	display: flex;
 	gap: var(--spacing-sm);
 	align-items: stretch;
-	height: 100%;
+	flex: 1;
+	min-height: 0;
 }
 
 .leftColumn {

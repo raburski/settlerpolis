@@ -13,6 +13,7 @@ export { professionTools } from './professionTools'
 export { startingItems } from './startingItems'
 export { startingPopulation } from './startingPopulation'
 export { resourceNodeDefinitions, resourceNodes } from './resourceNodes'
+export { worldMap } from './worldMap'
 
 // Set the default map ID
 export const defaultMap = 'map1'

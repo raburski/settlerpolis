@@ -22,6 +22,8 @@ import { WorldMapPanel } from './WorldMapPanel'
 import { CityCharterPanel } from './CityCharterPanel'
 import { EventBus } from '../EventBus'
 import { Event, FXType } from '@rugged/game'
+import type { CityCharterStateData } from '@rugged/game'
+import { cityCharterService } from '../services/CityCharterService'
 import { UiEvents } from '../uiEvents'
 
 export const UIContainer = () => {
@@ -44,6 +46,8 @@ export const UIContainer = () => {
 	const [prioritiesAnchor, setPrioritiesAnchor] = useState<DOMRect | null>(null)
 	const charterButtonRef = useRef<HTMLButtonElement | null>(null)
 	const [charterAnchor, setCharterAnchor] = useState<DOMRect | null>(null)
+	const lastCharterEligibleRef = useRef<boolean | null>(null)
+	const lastCharterTierRef = useRef<string | null>(null)
 
 	useEffect(() => {
 		const handleEvent = (data) => {
@@ -57,6 +61,7 @@ export const UIContainer = () => {
 			EventBus.off(handleEvent)
 		}
 	}, [])
+
 
 	useEffect(() => {
 		if (!isStockOpen) {
@@ -161,6 +166,36 @@ export const UIContainer = () => {
 			window.removeEventListener('resize', updateAnchor)
 		}
 	}, [isCharterOpen])
+
+	useEffect(() => {
+		const handleCharterUpdated = (data: CityCharterStateData) => {
+			const wasEligible = lastCharterEligibleRef.current
+			const previousTierId = lastCharterTierRef.current
+			lastCharterEligibleRef.current = data.isEligibleForNext
+			lastCharterTierRef.current = data.nextTier?.id ?? null
+
+			if (!data.isEligibleForNext || !data.nextTier) {
+				return
+			}
+			if (wasEligible === null) {
+				return
+			}
+			if (!wasEligible || previousTierId !== data.nextTier.id) {
+				setIsStockOpen(false)
+				setIsPopulationOpen(false)
+				setIsLogisticsOpen(false)
+				setIsPrioritiesOpen(false)
+				setIsCharterOpen(true)
+			}
+		}
+
+		EventBus.on(UiEvents.CityCharter.Updated, handleCharterUpdated)
+		cityCharterService.requestState()
+
+		return () => {
+			EventBus.off(UiEvents.CityCharter.Updated, handleCharterUpdated)
+		}
+	}, [])
 
 	if (!isVisible) {
 		return null

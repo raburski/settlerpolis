@@ -152,6 +152,11 @@
 	box-shadow: 0 0 0 2px #ffe066;
 }
 
+.populationButton[data-warning='true'] {
+	border-color: #f87171;
+	box-shadow: 0 0 0 2px #f87171;
+}
+
 .populationIcon {
 	font-size: 0.8rem;
 	line-height: 1;
@@ -162,6 +167,13 @@
 	color: #ffffff;
 	font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
 	font-variant-numeric: tabular-nums;
+}
+
+.populationWarning {
+	font-size: 0.7rem;
+	line-height: 1;
+	color: #f87171;
+	text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.7);
 }
 
 .cityButton {

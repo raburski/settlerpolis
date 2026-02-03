@@ -47,6 +47,72 @@ const ItemEmoji: React.FC<{ itemType: string }> = ({ itemType }) => {
 	return <>{emoji}</>
 }
 
+type ShortcutEntry =
+	| { kind: 'building'; id: string }
+	| { kind: 'road'; roadType: RoadType }
+
+const SHORTCUT_SLOTS = 8
+const SHORTCUT_STORAGE_KEY = 'settlerpolis:construction-shortcuts'
+const SHORTCUT_MIME = 'application/x-construction-shortcut'
+
+const isValidRoadType = (value: unknown): value is RoadType =>
+	value === RoadType.Dirt || value === RoadType.Stone
+
+const isTypingTarget = (target: EventTarget | null): boolean => {
+	if (!target || !(target instanceof HTMLElement)) {
+		return false
+	}
+	const tagName = target.tagName
+	return (
+		tagName === 'INPUT' ||
+		tagName === 'TEXTAREA' ||
+		tagName === 'SELECT' ||
+		target.isContentEditable
+	)
+}
+
+const parseShortcutEntry = (value: unknown): ShortcutEntry | null => {
+	if (!value || typeof value !== 'object') {
+		return null
+	}
+	if ('kind' in value) {
+		const entry = value as { kind?: unknown; id?: unknown; roadType?: unknown }
+		if (entry.kind === 'building' && typeof entry.id === 'string') {
+			return { kind: 'building', id: entry.id }
+		}
+		if (entry.kind === 'road' && isValidRoadType(entry.roadType)) {
+			return { kind: 'road', roadType: entry.roadType }
+		}
+	}
+	return null
+}
+
+const loadShortcuts = (): Array<ShortcutEntry | null> => {
+	if (typeof window === 'undefined') {
+		return Array.from({ length: SHORTCUT_SLOTS }, () => null)
+	}
+	try {
+		const raw = window.localStorage.getItem(SHORTCUT_STORAGE_KEY)
+		if (!raw) {
+			return Array.from({ length: SHORTCUT_SLOTS }, () => null)
+		}
+		const parsed = JSON.parse(raw)
+		if (!Array.isArray(parsed)) {
+			return Array.from({ length: SHORTCUT_SLOTS }, () => null)
+		}
+		const normalized = parsed
+			.slice(0, SHORTCUT_SLOTS)
+			.map((entry) => parseShortcutEntry(entry))
+		while (normalized.length < SHORTCUT_SLOTS) {
+			normalized.push(null)
+		}
+		return normalized
+	} catch (error) {
+		console.warn('[ConstructionPanel] Failed to load shortcuts:', error)
+		return Array.from({ length: SHORTCUT_SLOTS }, () => null)
+	}
+}
+
 export const ConstructionPanel: React.FC = () => {
 	const [isVisible, setIsVisible] = useState(true) // Visible by default for Phase A testing
 	const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null)
@@ -56,6 +122,8 @@ export const ConstructionPanel: React.FC = () => {
 	const [unlockedFlags, setUnlockedFlags] = useState<string[]>(
 		cityCharterService.getState()?.unlockedFlags || []
 	)
+	const [shortcuts, setShortcuts] = useState<Array<ShortcutEntry | null>>(loadShortcuts)
+	const [draggingSlotIndex, setDraggingSlotIndex] = useState<number | null>(null)
 
 	useEffect(() => {
 		// Try to load buildings from content first (fallback)
@@ -93,12 +161,17 @@ export const ConstructionPanel: React.FC = () => {
 			setSelectedRoadType(null)
 		}
 
+		const handleConstructionCancelled = () => {
+			setSelectedBuilding(null)
+		}
+
 		const handleCharterUpdated = (data: { unlockedFlags?: string[] }) => {
 			setUnlockedFlags(data.unlockedFlags || [])
 		}
 
 		EventBus.on(Event.Buildings.SC.Catalog, handleBuildingCatalog)
 		EventBus.on(UiEvents.Construction.Toggle, handleToggle)
+		EventBus.on(UiEvents.Construction.Cancel, handleConstructionCancelled)
 		EventBus.on(Event.Buildings.SC.Placed, handleBuildingPlaced)
 		EventBus.on(UiEvents.Road.Cancelled, handleRoadCancelled)
 		EventBus.on(UiEvents.CityCharter.Updated, handleCharterUpdated)
@@ -115,6 +188,7 @@ export const ConstructionPanel: React.FC = () => {
 			clearTimeout(requestTimeout)
 			EventBus.off(Event.Buildings.SC.Catalog, handleBuildingCatalog)
 			EventBus.off(UiEvents.Construction.Toggle, handleToggle)
+			EventBus.off(UiEvents.Construction.Cancel, handleConstructionCancelled)
 			EventBus.off(Event.Buildings.SC.Placed, handleBuildingPlaced)
 			EventBus.off(UiEvents.Road.Cancelled, handleRoadCancelled)
 			EventBus.off(UiEvents.CityCharter.Updated, handleCharterUpdated)
@@ -154,29 +228,147 @@ export const ConstructionPanel: React.FC = () => {
 		: null
 
 	const unlockedSet = useMemo(() => new Set(unlockedFlags), [unlockedFlags])
-	const filteredBuildings = buildings.filter((building) => {
-		if (building.category !== selectedCategory) {
+	const isBuildingUnlocked = (building?: BuildingDefinition | null) => {
+		if (!building) {
 			return false
 		}
 		if (!building.unlockFlags || building.unlockFlags.length === 0) {
 			return true
 		}
 		return building.unlockFlags.every((flag) => unlockedSet.has(flag))
+	}
+	const filteredBuildings = buildings.filter((building) => {
+		if (building.category !== selectedCategory) {
+			return false
+		}
+		return isBuildingUnlocked(building)
 	})
 
 	useEffect(() => {
-		if (selectedBuilding && !filteredBuildings.some(building => building.id === selectedBuilding)) {
+		if (!selectedBuilding) {
+			return
+		}
+		const building = buildings.find((item) => item.id === selectedBuilding)
+		if (!isBuildingUnlocked(building)) {
 			setSelectedBuilding(null)
 			EventBus.emit(UiEvents.Construction.Cancel, {})
 		}
-	}, [selectedBuilding, filteredBuildings])
+	}, [selectedBuilding, buildings, unlockedSet])
 
 	useEffect(() => {
-		if (selectedRoadType && selectedCategory !== BuildingCategory.Infrastructure) {
-			setSelectedRoadType(null)
-			EventBus.emit(UiEvents.Road.Cancel, {})
+		if (typeof window === 'undefined') {
+			return
 		}
-	}, [selectedCategory, selectedRoadType])
+		try {
+			window.localStorage.setItem(SHORTCUT_STORAGE_KEY, JSON.stringify(shortcuts))
+		} catch (error) {
+			console.warn('[ConstructionPanel] Failed to save shortcuts:', error)
+		}
+	}, [shortcuts])
+
+	useEffect(() => {
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (!isVisible) {
+				return
+			}
+			if (event.defaultPrevented || event.repeat) {
+				return
+			}
+			if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+				return
+			}
+			if (isTypingTarget(event.target)) {
+				return
+			}
+
+			let index = -1
+			if (event.code.startsWith('Digit')) {
+				index = Number(event.code.replace('Digit', '')) - 1
+			} else if (event.code.startsWith('Numpad')) {
+				index = Number(event.code.replace('Numpad', '')) - 1
+			} else if (event.key >= '1' && event.key <= '8') {
+				index = Number(event.key) - 1
+			}
+
+			if (index < 0 || index >= SHORTCUT_SLOTS) {
+				return
+			}
+
+			const entry = shortcuts[index]
+			if (!entry) {
+				return
+			}
+			if (entry.kind === 'building') {
+				const building = buildings.find((item) => item.id === entry.id)
+				if (!building || !isBuildingUnlocked(building)) {
+					return
+				}
+				event.preventDefault()
+				handleBuildingSelect(entry.id)
+				return
+			}
+			if (entry.kind === 'road') {
+				event.preventDefault()
+				handleRoadSelect(entry.roadType)
+			}
+		}
+
+		window.addEventListener('keydown', handleKeyDown)
+		return () => {
+			window.removeEventListener('keydown', handleKeyDown)
+		}
+	}, [buildings, shortcuts, isVisible, unlockedSet, handleBuildingSelect, handleRoadSelect])
+
+	const getShortcutPayload = (entry: ShortcutEntry) => JSON.stringify(entry)
+
+	const readShortcutPayload = (dataTransfer: DataTransfer): ShortcutEntry | null => {
+		const raw =
+			dataTransfer.getData(SHORTCUT_MIME) ||
+			dataTransfer.getData('text/plain')
+		if (!raw) {
+			return null
+		}
+		try {
+			return parseShortcutEntry(JSON.parse(raw))
+		} catch {
+			return null
+		}
+	}
+
+	const setSlotShortcut = (index: number, entry: ShortcutEntry | null) => {
+		setShortcuts((prev) => {
+			const next = [...prev]
+			next[index] = entry
+			return next
+		})
+	}
+
+	const handleSlotDrop = (index: number, entry: ShortcutEntry) => {
+		setShortcuts((prev) => {
+			const next = [...prev]
+			if (draggingSlotIndex === null) {
+				next[index] = entry
+				return next
+			}
+			if (draggingSlotIndex === index) {
+				return next
+			}
+			const sourceEntry = next[draggingSlotIndex]
+			if (!sourceEntry) {
+				next[index] = entry
+				return next
+			}
+			const targetEntry = next[index]
+			if (targetEntry) {
+				next[draggingSlotIndex] = targetEntry
+			} else {
+				next[draggingSlotIndex] = null
+			}
+			next[index] = sourceEntry
+			return next
+		})
+		setDraggingSlotIndex(null)
+	}
 
 	if (!isVisible) {
 		return null
@@ -184,43 +376,122 @@ export const ConstructionPanel: React.FC = () => {
 
 	return (
 		<div className={styles.panel}>
-			<div className={styles.categoryTabs}>
-				<button
-					className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Infrastructure ? styles.categoryTabSelected : ''}`}
-					onClick={() => setSelectedCategory(BuildingCategory.Infrastructure)}
-					title="Infrastructure"
-				>
-					🛣️
-				</button>
-				<button
-					className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Civil ? styles.categoryTabSelected : ''}`}
-					onClick={() => setSelectedCategory(BuildingCategory.Civil)}
-					title="Civil"
-				>
-					🏠
-				</button>
-				<button
-					className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Storage ? styles.categoryTabSelected : ''}`}
-					onClick={() => setSelectedCategory(BuildingCategory.Storage)}
-					title="Storage"
-				>
-					📦
-				</button>
-				<button
-					className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Food ? styles.categoryTabSelected : ''}`}
-					onClick={() => setSelectedCategory(BuildingCategory.Food)}
-					title="Food"
-				>
-					🌾
-				</button>
-				<button
-					className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Industry ? styles.categoryTabSelected : ''}`}
-					onClick={() => setSelectedCategory(BuildingCategory.Industry)}
-					title="Industry"
-				>
-					🏭
-				</button>
+			<div className={styles.topBar}>
+				<div className={styles.categoryTabs}>
+					<button
+						className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Infrastructure ? styles.categoryTabSelected : ''}`}
+						onClick={() => setSelectedCategory(BuildingCategory.Infrastructure)}
+						title="Infrastructure"
+					>
+						🛣️
+					</button>
+					<button
+						className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Civil ? styles.categoryTabSelected : ''}`}
+						onClick={() => setSelectedCategory(BuildingCategory.Civil)}
+						title="Civil"
+					>
+						🏠
+					</button>
+					<button
+						className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Storage ? styles.categoryTabSelected : ''}`}
+						onClick={() => setSelectedCategory(BuildingCategory.Storage)}
+						title="Storage"
+					>
+						📦
+					</button>
+					<button
+						className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Food ? styles.categoryTabSelected : ''}`}
+						onClick={() => setSelectedCategory(BuildingCategory.Food)}
+						title="Food"
+					>
+						🌾
+					</button>
+					<button
+						className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Industry ? styles.categoryTabSelected : ''}`}
+						onClick={() => setSelectedCategory(BuildingCategory.Industry)}
+						title="Industry"
+					>
+						🏭
+					</button>
+				</div>
+				<div className={styles.topSeparator} aria-hidden="true" />
+				<div className={styles.shortcutBar}>
+					{shortcuts.map((entry, index) => {
+						const building = entry?.kind === 'building'
+							? buildings.find((item) => item.id === entry.id)
+							: null
+						const isUnavailable = entry?.kind === 'building' && !building
+						const isLocked = entry?.kind === 'building' && !!building && !isBuildingUnlocked(building)
+						const isDisabled = isUnavailable || isLocked
+						const shortcutIcon = entry?.kind === 'building'
+							? building ? (building.icon || '🏗️') : '❓'
+							: entry?.kind === 'road'
+								? entry.roadType === RoadType.Dirt ? '🟫' : '🪨'
+								: null
+						const title = entry?.kind === 'building'
+							? building
+								? isLocked ? `${building.name} (Locked)` : building.name
+								: `${entry.id} (Unavailable)`
+							: entry?.kind === 'road'
+								? entry.roadType === RoadType.Dirt ? 'Dirt road' : 'Stone road'
+								: 'Empty slot'
+
+						return (
+							<div
+								key={index}
+								className={`${styles.shortcutSlot} ${!entry ? styles.shortcutSlotEmpty : ''} ${isDisabled ? styles.shortcutSlotDisabled : ''}`}
+								title={title}
+								draggable={!!entry}
+								onClick={() => {
+									if (!entry || isDisabled) {
+										return
+									}
+									if (entry.kind === 'building') {
+										handleBuildingSelect(entry.id)
+										return
+									}
+									handleRoadSelect(entry.roadType)
+								}}
+								onDragStart={(event) => {
+									if (!entry) {
+										return
+									}
+									event.dataTransfer.setData(SHORTCUT_MIME, getShortcutPayload(entry))
+									event.dataTransfer.setData('text/plain', getShortcutPayload(entry))
+									event.dataTransfer.effectAllowed = 'move'
+									setDraggingSlotIndex(index)
+								}}
+								onDragEnd={(event) => {
+									if (draggingSlotIndex === null) {
+										return
+									}
+									if (event.dataTransfer.dropEffect === 'none') {
+										setSlotShortcut(draggingSlotIndex, null)
+									}
+									setDraggingSlotIndex(null)
+								}}
+								onDragOver={(event) => {
+									event.preventDefault()
+									event.dataTransfer.dropEffect = draggingSlotIndex === null ? 'copy' : 'move'
+								}}
+								onDrop={(event) => {
+									event.preventDefault()
+									const payload = readShortcutPayload(event.dataTransfer)
+									if (!payload) {
+										return
+									}
+									handleSlotDrop(index, payload)
+								}}
+							>
+								{shortcutIcon && (
+									<div className={styles.shortcutIcon}>{shortcutIcon}</div>
+								)}
+							</div>
+						)
+					})}
+				</div>
 			</div>
+			<div className={styles.topBottomSeparator} aria-hidden="true" />
 			<div className={styles.content}>
 				<div className={styles.leftColumn}>
 					<div className={styles.buildingsList}>
@@ -239,6 +510,13 @@ export const ConstructionPanel: React.FC = () => {
 											className={`${styles.buildingItem} ${selectedRoadType === RoadType.Dirt ? styles.selected : ''}`}
 											onClick={() => handleRoadSelect(RoadType.Dirt)}
 											title="Dirt road"
+											draggable={true}
+											onDragStart={(event) => {
+												const payload = getShortcutPayload({ kind: 'road', roadType: RoadType.Dirt })
+												event.dataTransfer.setData(SHORTCUT_MIME, payload)
+												event.dataTransfer.setData('text/plain', payload)
+												event.dataTransfer.effectAllowed = 'copy'
+											}}
 										>
 											<div className={styles.buildingIcon}>🟫</div>
 										</div>
@@ -246,6 +524,13 @@ export const ConstructionPanel: React.FC = () => {
 											className={`${styles.buildingItem} ${selectedRoadType === RoadType.Stone ? styles.selected : ''}`}
 											onClick={() => handleRoadSelect(RoadType.Stone)}
 											title="Stone road"
+											draggable={true}
+											onDragStart={(event) => {
+												const payload = getShortcutPayload({ kind: 'road', roadType: RoadType.Stone })
+												event.dataTransfer.setData(SHORTCUT_MIME, payload)
+												event.dataTransfer.setData('text/plain', payload)
+												event.dataTransfer.effectAllowed = 'copy'
+											}}
 										>
 											<div className={styles.buildingIcon}>🪨</div>
 										</div>
@@ -257,6 +542,13 @@ export const ConstructionPanel: React.FC = () => {
 										className={`${styles.buildingItem} ${selectedBuilding === building.id ? styles.selected : ''}`}
 										onClick={() => handleBuildingSelect(building.id)}
 										title={building.description || building.name}
+										draggable={true}
+										onDragStart={(event) => {
+											const payload = getShortcutPayload({ kind: 'building', id: building.id })
+											event.dataTransfer.setData(SHORTCUT_MIME, payload)
+											event.dataTransfer.setData('text/plain', payload)
+											event.dataTransfer.effectAllowed = 'copy'
+										}}
 									>
 										<div className={styles.buildingIcon}>{building.icon || '🏗️'}</div>
 									</div>

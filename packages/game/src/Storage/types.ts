@@ -10,11 +10,14 @@ export enum StorageReservationStatus {
 	Cancelled = 'cancelled'
 }
 
+export type StorageSlotRole = 'incoming' | 'outgoing' | 'any'
+
 export interface StorageSlotDefinition {
-	itemType: ItemType
+	itemType: ItemType | '*'
 	offset?: { x: number, y: number }
 	hidden?: boolean
 	maxQuantity?: number
+	role?: StorageSlotRole
 }
 
 export interface StoragePreservation {
@@ -25,7 +28,7 @@ export interface StoragePreservation {
 export interface StorageSlot {
 	slotId: StorageSlotId
 	buildingInstanceId: BuildingInstanceId
-	itemType: ItemType
+	itemType: ItemType | '*'
 	position: import('../types').Position
 	pileSize: number
 	quantity: number
@@ -34,12 +37,14 @@ export interface StorageSlot {
 	reservedOutgoing: number
 	mapObjectId?: MapObjectId
 	hidden?: boolean
+	role?: StorageSlotRole
+	isWildcard?: boolean
 }
 
 export interface BuildingStorage {
 	buildingInstanceId: BuildingInstanceId
 	slots: Map<StorageSlotId, StorageSlot>
-	slotsByItem: Map<ItemType, StorageSlotId[]>
+	slotsByItem: Map<string, StorageSlotId[]>
 }
 
 export interface StorageReservation {

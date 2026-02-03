@@ -69,6 +69,14 @@ export const startingItems: StartingItem[] = [
 		}
 	},
 	{
+		itemType: ItemType.Cart,
+		offset: {
+			x: 2,
+			y: 2, // 2 tiles below
+			tileBased: true
+		}
+	},
+	{
 		itemType: ItemType.Pickaxe,
 		offset: {
 			x: 3,

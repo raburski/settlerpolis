@@ -189,7 +189,7 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 						const activeCount = stats.byProfessionActive[professionType] || 0
 						const canRequestTool = toolAvailability[professionType] || false
 						const isCarrier = professionType === ProfessionType.Carrier
-						const requiresTool = ![ProfessionType.Carrier, ProfessionType.Farmer, ProfessionType.Miller, ProfessionType.Baker, ProfessionType.Vendor].includes(professionType)
+						const requiresTool = ![ProfessionType.Carrier, ProfessionType.Farmer, ProfessionType.Miller, ProfessionType.Baker].includes(professionType)
 						const canRevert = (idleByProfession[professionType] || 0) > 0
 						let addTitle = `Request ${professionLabels[professionType]} tool pickup`
 						if (!canRequestTool) {

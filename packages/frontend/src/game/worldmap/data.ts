@@ -1,27 +1,25 @@
-export enum WorldMapNodeType {
-	Home = 'home',
-	City = 'city',
-	Expedition = 'expedition'
+import type { WorldMapData } from '@rugged/game'
+import { WorldMapNodeType } from '@rugged/game'
+
+export { WorldMapNodeType }
+export type { WorldMapData } from '@rugged/game'
+export type { WorldMapNode, WorldMapNodeTradeOffer, WorldMapLink } from '@rugged/game'
+
+const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'
+let contentWorldMap: WorldMapData | null = null
+
+try {
+	const contentModules = import.meta.glob('../../../../../content/*/worldMap.ts', { eager: true })
+	const contentPath = `../../../../../content/${CONTENT_FOLDER}/worldMap.ts`
+	const module = contentModules[contentPath] as { worldMap?: WorldMapData } | undefined
+	contentWorldMap = module?.worldMap || null
+} catch (error) {
+	console.warn('[WorldMap] Failed to load content world map:', error)
 }
 
-export type WorldMapNode = {
-	id: string
-	label: string
-	type: WorldMapNodeType
-	position: { x: number; y: number }
-	description: string
-}
-
-export type WorldMapData = {
-	image: string
-	travelDaysPerUnit: number
-	nodes: WorldMapNode[]
-	homeNodeId: string
-}
-
-export const worldMapData: WorldMapData = {
+const fallbackWorldMap: WorldMapData = {
 	image: '/worldmap-placeholder.svg',
-	travelDaysPerUnit: 10,
+	travelSecondsPerUnit: 30,
 	homeNodeId: 'home',
 	nodes: [
 		{
@@ -30,20 +28,9 @@ export const worldMapData: WorldMapData = {
 			type: WorldMapNodeType.Home,
 			position: { x: 0.22, y: 0.58 },
 			description: 'Your frontier capital and supply anchor.'
-		},
-		{
-			id: 'stonewatch',
-			label: 'Stonewatch',
-			type: WorldMapNodeType.City,
-			position: { x: 0.72, y: 0.32 },
-			description: 'A fortified trade city in the northern cliffs.'
-		},
-		{
-			id: 'sunken-ruins',
-			label: 'Sunken Ruins',
-			type: WorldMapNodeType.Expedition,
-			position: { x: 0.52, y: 0.78 },
-			description: 'Half-flooded ruins rumored to hide relics.'
 		}
-	]
+	],
+	links: []
 }
+
+export const worldMapData: WorldMapData = contentWorldMap || fallbackWorldMap

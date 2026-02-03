@@ -24,6 +24,7 @@ import { Vector3 } from '@babylonjs/core'
 import { itemService } from '../../services/ItemService'
 import { sceneManager } from '../../services/SceneManager'
 import type { GameRuntime } from '../../runtime/GameRuntime'
+import type { PointerState } from '../../input/InputManager'
 
 export abstract class GameScene extends MapScene {
 	public player: LocalPlayer | null = null
@@ -43,6 +44,14 @@ export abstract class GameScene extends MapScene {
 	public textDisplayService: TextDisplayService | null = null
 	protected npcProximityService: NPCProximityService
 	protected sceneData: any = {}
+	private readonly handleMapRightClick = (pointer: PointerState) => {
+		if (pointer.wasDrag || pointer.button !== 2) {
+			return
+		}
+		EventBus.emit(UiEvents.Construction.Cancel, {})
+		EventBus.emit(UiEvents.Road.Cancel, {})
+		EventBus.emit(UiEvents.Building.WorkAreaCancel, {})
+	}
 
 	constructor(runtime: GameRuntime, config: { mapKey: string; mapPath: string }) {
 		super(runtime, config.mapKey, config.mapPath)
@@ -86,6 +95,7 @@ export abstract class GameScene extends MapScene {
 		this.itemPlacementManager = new ItemPlacementManager(this, this.player.controller)
 		this.roadOverlay = new RoadOverlay(this, this.map.tileWidth)
 		this.fx = new FX(this)
+		this.runtime.input.on('pointerup', this.handleMapRightClick)
 
 		EventBus.emit(UiEvents.Scene.Ready, { mapId: this.mapKey })
 
@@ -401,6 +411,8 @@ export abstract class GameScene extends MapScene {
 	}
 
 	protected cleanupScene(): void {
+		this.runtime.input.off('pointerup', this.handleMapRightClick)
+
 		this.keyboard?.destroy()
 		this.keyboard = null
 

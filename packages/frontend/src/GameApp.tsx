@@ -8,7 +8,12 @@ export function GameApp() {
 	const gameRef = useRef<IRefBabylonGame | null>(null)
 
 	return (
-		<div id="app">
+		<div
+			id="app"
+			onContextMenu={(event) => {
+				event.preventDefault()
+			}}
+		>
 			<BabylonGame ref={gameRef} />
 			<UIContainer />
 			<DisconnectModal />

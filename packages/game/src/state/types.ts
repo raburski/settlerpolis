@@ -24,6 +24,7 @@ import type { ScheduledEvent } from '../Scheduler/types'
 import type { Position } from '../types'
 import type { MoveTargetType } from '../Movement/types'
 import type { ItemType } from '../Items/types'
+import type { TradeSnapshot } from '../Trade/types'
 import type {
 	BuildingInstanceId,
 	MapId,
@@ -60,9 +61,10 @@ export interface GameSnapshotV1 {
 		affinity: AffinitySnapshot
 		resourceNodes: ResourceNodesSnapshot
 	roads: RoadsSnapshot
-	cityCharter: CityCharterSnapshot
-	triggers: TriggersSnapshot
-	scheduler: SchedulerSnapshot
+		cityCharter: CityCharterSnapshot
+		trade: TradeSnapshot
+		triggers: TriggersSnapshot
+		scheduler: SchedulerSnapshot
 	reservations: ReservationSnapshot
 	}
 }
@@ -179,6 +181,7 @@ export interface WorkProviderSnapshot {
 	pendingDispatchAtMs: MapEntries<number>
 	actionSystem: ActionSystemSnapshot
 	logistics: LogisticsSnapshot
+	pendingWorkerRequests?: Array<{ buildingInstanceId: BuildingInstanceId, requestedAtMs: number }>
 }
 
 export interface LogisticsSnapshot {

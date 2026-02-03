@@ -30,6 +30,7 @@ export class InputManager {
 		this.renderer = renderer
 		this.attachEvents()
 		this.canvas.addEventListener('dragstart', this.handleDragStart)
+		this.canvas.addEventListener('contextmenu', this.handleContextMenu)
 	}
 
 	on(event: 'pointermove' | 'pointerdown' | 'pointerup', handler: PointerHandler): void {
@@ -65,6 +66,7 @@ export class InputManager {
 		this.canvas.removeEventListener('pointerdown', this.handlePointerDown)
 		this.canvas.removeEventListener('pointerup', this.handlePointerUp)
 		this.canvas.removeEventListener('dragstart', this.handleDragStart)
+		this.canvas.removeEventListener('contextmenu', this.handleContextMenu)
 		this.handlers.clear()
 		this.pickHandlers.clear()
 	}
@@ -143,6 +145,10 @@ export class InputManager {
 	}
 
 	private handleDragStart = (event: DragEvent) => {
+		event.preventDefault()
+	}
+
+	private handleContextMenu = (event: MouseEvent) => {
 		event.preventDefault()
 	}
 }

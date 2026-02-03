@@ -5,7 +5,7 @@ import type { MapObjectsManager } from '../MapObjects'
 import type { MapManager } from '../Map'
 import { Logger } from '../Logs'
 import { StorageEvents } from './events'
-import { BuildingStorage, StorageReservation, StorageReservationResult, StorageSlot, StorageReservationStatus } from './types'
+import { BuildingStorage, StorageReservation, StorageReservationResult, StorageSlot, StorageReservationStatus, StorageSlotRole } from './types'
 import { v4 as uuidv4 } from 'uuid'
 import { Receiver } from '../Receiver'
 import { SimulationEvents } from '../Simulation/events'
@@ -31,6 +31,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	private readonly GAME_DAY_MS = 24 * 60 * 1000
 	private tickAccumulatorMs = 0
 	private simulationTimeMs = 0
+	private readonly WILDCARD_ITEM_TYPE = '*'
 
 	constructor(
 		managers: StorageDeps,
@@ -72,9 +73,80 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		return Math.max(1, metadata?.maxStackSize || 1)
 	}
 
-	private getSlotsForItem(storage: BuildingStorage, itemType: string): StorageSlot[] {
+	private addSlotToIndex(storage: BuildingStorage, itemType: string, slotId: string): void {
+		const list = storage.slotsByItem.get(itemType)
+		if (list) {
+			list.push(slotId)
+			return
+		}
+		storage.slotsByItem.set(itemType, [slotId])
+	}
+
+	private removeSlotFromIndex(storage: BuildingStorage, itemType: string, slotId: string): void {
+		const list = storage.slotsByItem.get(itemType)
+		if (!list) {
+			return
+		}
+		const next = list.filter(id => id !== slotId)
+		if (next.length === 0) {
+			storage.slotsByItem.delete(itemType)
+			return
+		}
+		storage.slotsByItem.set(itemType, next)
+	}
+
+	private isWildcardItem(itemType: string): boolean {
+		return itemType === this.WILDCARD_ITEM_TYPE
+	}
+
+	private slotAllowsDirection(slot: StorageSlot, direction: StorageSlotRole): boolean {
+		if (direction === 'any') {
+			return true
+		}
+		if (direction === 'incoming') {
+			return slot.role !== 'outgoing'
+		}
+		return slot.role !== 'incoming'
+	}
+
+	private getSlotsForItem(storage: BuildingStorage, itemType: string, direction: StorageSlotRole = 'any'): StorageSlot[] {
 		const slotIds = storage.slotsByItem.get(itemType) || []
-		return slotIds.map(id => storage.slots.get(id)).filter(Boolean) as StorageSlot[]
+		const wildcardIds = storage.slotsByItem.get(this.WILDCARD_ITEM_TYPE) || []
+		const candidates = [...slotIds, ...wildcardIds]
+		return candidates
+			.map(id => storage.slots.get(id))
+			.filter(Boolean)
+			.filter(slot => this.slotAllowsDirection(slot as StorageSlot, direction)) as StorageSlot[]
+	}
+
+	private assignWildcardSlot(storage: BuildingStorage, slot: StorageSlot, itemType: string): void {
+		if (!slot.isWildcard) {
+			return
+		}
+		if (slot.itemType === itemType) {
+			return
+		}
+		if (!this.isWildcardItem(slot.itemType)) {
+			return
+		}
+		this.removeSlotFromIndex(storage, slot.itemType, slot.slotId)
+		slot.itemType = itemType
+		this.addSlotToIndex(storage, itemType, slot.slotId)
+	}
+
+	private maybeResetWildcardSlot(storage: BuildingStorage, slot: StorageSlot): void {
+		if (!slot.isWildcard) {
+			return
+		}
+		if (slot.quantity > 0 || slot.reservedIncoming > 0 || slot.reservedOutgoing > 0) {
+			return
+		}
+		if (this.isWildcardItem(slot.itemType)) {
+			return
+		}
+		this.removeSlotFromIndex(storage, slot.itemType, slot.slotId)
+		slot.itemType = this.WILDCARD_ITEM_TYPE
+		this.addSlotToIndex(storage, slot.itemType, slot.slotId)
 	}
 
 	private rotateOffset(
@@ -253,7 +325,10 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		const tileSize = this.getTileSize(building.mapId)
 		const rotation = typeof building.rotation === 'number' ? building.rotation : 0
 		for (const slotDef of definition.storageSlots) {
-			const basePileSize = this.getPileSize(slotDef.itemType)
+			const isWildcard = this.isWildcardItem(slotDef.itemType)
+			const basePileSize = isWildcard
+				? Math.max(1, slotDef.maxQuantity || 1)
+				: this.getPileSize(slotDef.itemType)
 			const pileSize = typeof slotDef.maxQuantity === 'number'
 				? Math.max(1, Math.min(basePileSize, slotDef.maxQuantity))
 				: basePileSize
@@ -280,14 +355,13 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				batches: [],
 				reservedIncoming: 0,
 				reservedOutgoing: 0,
-				hidden: this.resolveSlotHidden(slotDef)
+				hidden: this.resolveSlotHidden(slotDef),
+				role: slotDef.role || 'any',
+				isWildcard
 			}
 
 			storage.slots.set(slotId, slot)
-			if (!storage.slotsByItem.has(slotDef.itemType)) {
-				storage.slotsByItem.set(slotDef.itemType, [])
-			}
-			storage.slotsByItem.get(slotDef.itemType)!.push(slotId)
+			this.addSlotToIndex(storage, slotDef.itemType, slotId)
 		}
 
 		this.buildingStorages.set(buildingInstanceId, storage)
@@ -326,7 +400,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	// Reserve storage space for delivery (incoming or outgoing) at a specific slot
-	public reserveStorage(buildingInstanceId: string, itemType: string, quantity: number, reservedBy: string, isOutgoing: boolean = false, allowInternal: boolean = false): StorageReservationResult | null {
+	public reserveStorage(buildingInstanceId: string, itemType: string, quantity: number, reservedBy: string, isOutgoing: boolean = false, allowInternal: boolean = false, directionOverride?: StorageSlotRole): StorageReservationResult | null {
 		const storage = this.buildingStorages.get(buildingInstanceId)
 		if (!storage) {
 			this.logger.warn(`[StorageManager] Cannot reserve storage: Building ${buildingInstanceId} has no storage`)
@@ -338,13 +412,14 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			return null
 		}
 
-		const capacity = this.getStorageCapacity(buildingInstanceId, itemType)
+		const direction: StorageSlotRole = directionOverride || (isOutgoing ? 'outgoing' : 'incoming')
+		const capacity = this.getStorageCapacity(buildingInstanceId, itemType, direction)
 		if (capacity === 0) {
 			this.logger.warn(`[StorageManager] Cannot reserve storage: Building ${buildingInstanceId} does not accept item type ${itemType}`)
 			return null
 		}
 
-		let slots = this.getSlotsForItem(storage, itemType)
+		let slots = this.getSlotsForItem(storage, itemType, direction)
 		if (slots.length === 0) {
 			this.logger.warn(`[StorageManager] Cannot reserve storage: No slots for ${itemType} in building ${buildingInstanceId}`)
 			return null
@@ -372,6 +447,10 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				return null
 			}
 			slot.reservedIncoming += quantity
+		}
+
+		if (slot) {
+			this.assignWildcardSlot(storage, slot, itemType)
 		}
 
 		const reservationId = uuidv4()
@@ -421,6 +500,10 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		}
 		const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
 		if (!definition) {
+			return false
+		}
+
+		if (definition.blocksOutgoing) {
 			return false
 		}
 
@@ -506,6 +589,10 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		slot.quantity = Math.max(0, slot.quantity - removed)
 		this.removeFromSlotBatches(slot, removed)
 		this.updatePileForSlot(slot)
+		const storage = this.buildingStorages.get(slot.buildingInstanceId)
+		if (storage) {
+			this.maybeResetWildcardSlot(storage, slot)
+		}
 
 		this.emitStorageUpdated(slot.buildingInstanceId, slot.itemType)
 
@@ -583,7 +670,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	// Add items to building storage
-	public addToStorage(buildingInstanceId: string, itemType: string, quantity: number, reservationId?: string): boolean {
+	public addToStorage(buildingInstanceId: string, itemType: string, quantity: number, reservationId?: string, direction: StorageSlotRole = 'incoming'): boolean {
 		const storage = this.buildingStorages.get(buildingInstanceId)
 		if (!storage) {
 			this.logger.warn(`[StorageManager] Cannot add to storage: Building ${buildingInstanceId} has no storage`)
@@ -598,7 +685,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 		let slot = this.getStorageSlotByReservation(reservationId)
 		if (!slot) {
-			const slots = this.getSlotsForItem(storage, itemType)
+			const slots = this.getSlotsForItem(storage, itemType, direction)
 			slot = slots.find(candidate => (candidate.pileSize - candidate.quantity - candidate.reservedIncoming) >= quantity) || null
 		}
 
@@ -611,6 +698,8 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			this.logger.warn(`[StorageManager] Cannot add to storage: Slot full for ${itemType} (requested: ${quantity})`)
 			return false
 		}
+
+		this.assignWildcardSlot(storage, slot, itemType)
 
 		slot.quantity += quantity
 		this.addToSlotBatches(slot, quantity)
@@ -631,7 +720,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	// Remove items from building storage
-	public removeFromStorage(buildingInstanceId: string, itemType: string, quantity: number, reservationId?: string): boolean {
+	public removeFromStorage(buildingInstanceId: string, itemType: string, quantity: number, reservationId?: string, direction: StorageSlotRole = 'any'): boolean {
 		const storage = this.buildingStorages.get(buildingInstanceId)
 		if (!storage) {
 			this.logger.warn(`[StorageManager] Cannot remove from storage: Building ${buildingInstanceId} has no storage`)
@@ -640,8 +729,11 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 		let slot = this.getStorageSlotByReservation(reservationId)
 		if (!slot) {
-			const slots = this.getSlotsForItem(storage, itemType)
-			slot = slots.find(candidate => (candidate.quantity - candidate.reservedOutgoing) >= quantity) || null
+			const slots = this.getSlotsForItem(storage, itemType, direction)
+			slot = slots.find(candidate => {
+				const reserved = direction === 'incoming' ? candidate.reservedIncoming : candidate.reservedOutgoing
+				return (candidate.quantity - reserved) >= quantity
+			}) || null
 		}
 
 		if (!slot) {
@@ -657,6 +749,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		slot.quantity = Math.max(0, slot.quantity - quantity)
 		this.removeFromSlotBatches(slot, quantity)
 		this.updatePileForSlot(slot)
+		this.maybeResetWildcardSlot(storage, slot)
 
 		const current = this.getCurrentQuantity(buildingInstanceId, itemType)
 		const capacity = this.getStorageCapacity(buildingInstanceId, itemType)
@@ -672,12 +765,12 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	// Check if building has available storage for item type
-	public hasAvailableStorage(buildingInstanceId: string, itemType: string, quantity: number): boolean {
+	public hasAvailableStorage(buildingInstanceId: string, itemType: string, quantity: number, direction: StorageSlotRole = 'incoming'): boolean {
 		const storage = this.buildingStorages.get(buildingInstanceId)
 		if (!storage) {
 			return false
 		}
-		const slots = this.getSlotsForItem(storage, itemType)
+		const slots = this.getSlotsForItem(storage, itemType, direction)
 		return slots.some(slot => (slot.pileSize - slot.quantity - slot.reservedIncoming) >= quantity)
 	}
 
@@ -688,13 +781,11 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	// Get storage capacity for item type (reads from BuildingDefinition)
-	public getStorageCapacity(buildingInstanceId: string, itemType: string): number {
+	public getStorageCapacity(buildingInstanceId: string, itemType: string, direction: StorageSlotRole = 'any'): number {
 		const storage = this.buildingStorages.get(buildingInstanceId)
 		if (storage) {
-			const slots = this.getSlotsForItem(storage, itemType)
-			if (slots.length > 0) {
-				return slots.reduce((sum, slot) => sum + slot.pileSize, 0)
-			}
+			const slots = this.getSlotsForItem(storage, itemType, direction)
+			return slots.reduce((sum, slot) => sum + slot.pileSize, 0)
 		}
 
 		const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
@@ -708,9 +799,12 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		}
 		if (definition.storageSlots.length > 0) {
 			return definition.storageSlots
-				.filter(slot => slot.itemType === itemType)
+				.filter(slot => slot.itemType === itemType || slot.itemType === this.WILDCARD_ITEM_TYPE)
+				.filter(slot => this.slotAllowsDirection({ role: slot.role } as StorageSlot, direction))
 				.reduce((sum, slot) => {
-					const basePileSize = this.getPileSize(slot.itemType)
+					const basePileSize = this.isWildcardItem(slot.itemType)
+						? Math.max(1, slot.maxQuantity || 1)
+						: this.getPileSize(slot.itemType)
 					const pileSize = typeof slot.maxQuantity === 'number'
 						? Math.max(1, Math.min(basePileSize, slot.maxQuantity))
 						: basePileSize
@@ -724,22 +818,22 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	// Get available quantity for an item type (items available for transport)
 	// Returns: current items in storage minus items reserved for outgoing transport
 	// This is used to check if a building has items that can be transported to other buildings
-	public getAvailableQuantity(buildingInstanceId: string, itemType: string): number {
+	public getAvailableQuantity(buildingInstanceId: string, itemType: string, direction: StorageSlotRole = 'outgoing'): number {
 		const storage = this.buildingStorages.get(buildingInstanceId)
 		if (!storage) {
 			return 0
 		}
-		const slots = this.getSlotsForItem(storage, itemType)
+		const slots = this.getSlotsForItem(storage, itemType, direction)
 		return slots.reduce((sum, slot) => sum + Math.max(0, slot.quantity - slot.reservedOutgoing), 0)
 	}
 
 	// Get current quantity for an item type
-	public getCurrentQuantity(buildingInstanceId: string, itemType: string): number {
+	public getCurrentQuantity(buildingInstanceId: string, itemType: string, direction: StorageSlotRole = 'any'): number {
 		const storage = this.buildingStorages.get(buildingInstanceId)
 		if (!storage) {
 			return 0
 		}
-		const slots = this.getSlotsForItem(storage, itemType)
+		const slots = this.getSlotsForItem(storage, itemType, direction)
 		return slots.reduce((sum, slot) => sum + slot.quantity, 0)
 	}
 
@@ -822,6 +916,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				} else {
 					slot.reservedIncoming = Math.max(0, slot.reservedIncoming - reservation.quantity)
 				}
+				this.maybeResetWildcardSlot(storage, slot)
 			}
 		}
 
@@ -859,6 +954,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				} else {
 					slot.reservedIncoming = Math.max(0, slot.reservedIncoming - reservation.quantity)
 				}
+				this.maybeResetWildcardSlot(storage, slot)
 			}
 		}
 
@@ -1028,8 +1124,15 @@ export class StorageManager extends BaseManager<StorageDeps> {
 				)
 				const expectedX = building.position.x + rotatedOffset.x * tileSize
 				const expectedY = building.position.y + rotatedOffset.y * tileSize
-				const slots = this.getSlotsForItem(storage, slotDef.itemType)
-				const matched = slots.find(slot => Math.abs(slot.position.x - expectedX) < 0.01 && Math.abs(slot.position.y - expectedY) < 0.01)
+				const matched = Array.from(storage.slots.values()).find(slot => {
+					if (Math.abs(slot.position.x - expectedX) >= 0.01 || Math.abs(slot.position.y - expectedY) >= 0.01) {
+						return false
+					}
+					if (this.isWildcardItem(slotDef.itemType)) {
+						return slot.isWildcard
+					}
+					return slot.itemType === slotDef.itemType
+				})
 				if (!matched) {
 					continue
 				}

@@ -14,5 +14,6 @@ export enum ItemType {
 	Hammer = 'hammer',
 	Axe = 'axe',
 	Pickaxe = 'pickaxe',
+	Cart = 'cart',
 	Tombstone = 'tombstone'
 }
