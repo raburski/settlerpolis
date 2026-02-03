@@ -17,6 +17,7 @@ import { PopulationPanel } from './PopulationPanel'
 import { LogisticsPanel } from './LogisticsPanel'
 import { SettlerInfoPanel } from './SettlerInfoPanel'
 import { SaveLoadPanel } from './SaveLoadPanel'
+import { WorldMapPanel } from './WorldMapPanel'
 import { EventBus } from "../EventBus"
 import { Event, FXType } from '@rugged/game'
 import { UiEvents } from '../uiEvents'
@@ -26,6 +27,7 @@ export const UIContainer = () => {
 	const [isStockOpen, setIsStockOpen] = useState(false)
 	const [isPopulationOpen, setIsPopulationOpen] = useState(false)
 	const [isLogisticsOpen, setIsLogisticsOpen] = useState(false)
+	const [isWorldMapOpen, setIsWorldMapOpen] = useState(false)
 	const [saveLoadMode, setSaveLoadMode] = useState<'save' | 'load' | null>(null)
 	const [showDebugBounds, setShowDebugBounds] = useState(false)
 	const stockButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -105,6 +107,15 @@ export const UIContainer = () => {
 		}
 	}, [isLogisticsOpen])
 
+	useEffect(() => {
+		if (!isWorldMapOpen) {
+			return
+		}
+		EventBus.emit(UiEvents.Building.Close, {})
+		EventBus.emit(UiEvents.Settler.Close, {})
+		EventBus.emit(UiEvents.Construction.Cancel, {})
+	}, [isWorldMapOpen])
+
 	if (!isVisible) {
 		return null
 	}
@@ -130,6 +141,8 @@ export const UIContainer = () => {
 					setIsPopulationOpen(false)
 					setIsLogisticsOpen((prev) => !prev)
 				}}
+				isWorldMapOpen={isWorldMapOpen}
+				onToggleWorldMap={() => setIsWorldMapOpen((prev) => !prev)}
 				showDebugBounds={showDebugBounds}
 				onToggleDebugBounds={() => {
 					setShowDebugBounds((prev) => {
@@ -149,6 +162,10 @@ export const UIContainer = () => {
 				mode={saveLoadMode ?? 'save'}
 				onClose={() => setSaveLoadMode(null)}
 			/>
+			<WorldMapPanel
+				isOpen={isWorldMapOpen}
+				onClose={() => setIsWorldMapOpen(false)}
+			/>
 			<Notifications />
 			<StockPanel
 				isVisible={isStockOpen}
@@ -164,9 +181,9 @@ export const UIContainer = () => {
 			<Settings />
 			<SidePanel />
 			<SystemMessages />
-			<ConstructionPanel />
-			<BuildingInfoPanel />
-			<SettlerInfoPanel />
+			{!isWorldMapOpen ? <ConstructionPanel /> : null}
+			{!isWorldMapOpen ? <BuildingInfoPanel /> : null}
+			{!isWorldMapOpen ? <SettlerInfoPanel /> : null}
 			<PopulationPanel
 				isVisible={isPopulationOpen}
 				onClose={() => setIsPopulationOpen(false)}

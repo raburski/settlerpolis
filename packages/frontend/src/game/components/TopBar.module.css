@@ -21,6 +21,12 @@
 	justify-self: start;
 }
 
+.leftGroup {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-sm);
+}
+
 .center {
 	display: flex;
 	align-items: center;
@@ -183,5 +189,32 @@
 .logisticsLabel {
 	font-size: 0.6rem;
 	color: #e2e8f0;
+	text-transform: uppercase;
+}
+
+.worldMapButton {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: var(--spacing-xs) var(--spacing-sm);
+	background: #1f2230;
+	border: 3px solid #1f2230;
+	box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.5);
+	color: #e2e8f0;
+	cursor: pointer;
+}
+
+.worldMapButton[data-active='true'] {
+	border-color: #93c5fd;
+	box-shadow: 0 0 0 2px #93c5fd;
+}
+
+.worldMapIcon {
+	font-size: 0.8rem;
+	line-height: 1;
+}
+
+.worldMapLabel {
+	font-size: 0.6rem;
 	text-transform: uppercase;
 }

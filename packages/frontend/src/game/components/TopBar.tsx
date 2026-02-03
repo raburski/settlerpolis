@@ -15,6 +15,8 @@ type TopBarProps = {
 	onTogglePopulation: () => void
 	isLogisticsOpen: boolean
 	onToggleLogistics: () => void
+	isWorldMapOpen: boolean
+	onToggleWorldMap: () => void
 	showDebugBounds: boolean
 	onToggleDebugBounds: () => void
 	onOpenSave: () => void
@@ -52,6 +54,8 @@ export const TopBar: React.FC<TopBarProps> = ({
 	onTogglePopulation,
 	isLogisticsOpen,
 	onToggleLogistics,
+	isWorldMapOpen,
+	onToggleWorldMap,
 	showDebugBounds,
 	onToggleDebugBounds,
 	onOpenSave,
@@ -90,7 +94,19 @@ export const TopBar: React.FC<TopBarProps> = ({
 	return (
 		<div className={styles.topBar}>
 			<div className={styles.left}>
-				<World />
+				<div className={styles.leftGroup}>
+					<World />
+					<button
+						type="button"
+						className={styles.worldMapButton}
+						data-active={isWorldMapOpen}
+						onClick={onToggleWorldMap}
+						aria-pressed={isWorldMapOpen}
+					>
+						<span className={styles.worldMapIcon}>🗺️</span>
+						<span className={styles.worldMapLabel}>World</span>
+					</button>
+				</div>
 			</div>
 			<div className={styles.center}>
 				<button
