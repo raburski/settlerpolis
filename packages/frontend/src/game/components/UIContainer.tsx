@@ -19,7 +19,8 @@ import { DeliveryPriorityPanel } from './DeliveryPriorityPanel'
 import { SettlerInfoPanel } from './SettlerInfoPanel'
 import { SaveLoadPanel } from './SaveLoadPanel'
 import { WorldMapPanel } from './WorldMapPanel'
-import { EventBus } from "../EventBus"
+import { CityCharterPanel } from './CityCharterPanel'
+import { EventBus } from '../EventBus'
 import { Event, FXType } from '@rugged/game'
 import { UiEvents } from '../uiEvents'
 
@@ -30,6 +31,7 @@ export const UIContainer = () => {
 	const [isLogisticsOpen, setIsLogisticsOpen] = useState(false)
 	const [isWorldMapOpen, setIsWorldMapOpen] = useState(false)
 	const [isPrioritiesOpen, setIsPrioritiesOpen] = useState(false)
+	const [isCharterOpen, setIsCharterOpen] = useState(false)
 	const [saveLoadMode, setSaveLoadMode] = useState<'save' | 'load' | null>(null)
 	const [showDebugBounds, setShowDebugBounds] = useState(false)
 	const stockButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -40,12 +42,14 @@ export const UIContainer = () => {
 	const [logisticsAnchor, setLogisticsAnchor] = useState<DOMRect | null>(null)
 	const prioritiesButtonRef = useRef<HTMLButtonElement | null>(null)
 	const [prioritiesAnchor, setPrioritiesAnchor] = useState<DOMRect | null>(null)
+	const charterButtonRef = useRef<HTMLButtonElement | null>(null)
+	const [charterAnchor, setCharterAnchor] = useState<DOMRect | null>(null)
 
 	useEffect(() => {
-        const handleEvent = (data) => {
-            if (data.type === FXType.DisplayUI) {
-                setIsVisible(data.visible ?? true)
-            }
+		const handleEvent = (data) => {
+			if (data.type === FXType.DisplayUI) {
+				setIsVisible(data.visible ?? true)
+			}
 		}
 		EventBus.on(Event.FX.SC.Play, handleEvent)
 
@@ -139,6 +143,25 @@ export const UIContainer = () => {
 		}
 	}, [isPrioritiesOpen])
 
+	useEffect(() => {
+		if (!isCharterOpen) {
+			return
+		}
+
+		const updateAnchor = () => {
+			if (charterButtonRef.current) {
+				setCharterAnchor(charterButtonRef.current.getBoundingClientRect())
+			}
+		}
+
+		updateAnchor()
+		window.addEventListener('resize', updateAnchor)
+
+		return () => {
+			window.removeEventListener('resize', updateAnchor)
+		}
+	}, [isCharterOpen])
+
 	if (!isVisible) {
 		return null
 	}
@@ -151,6 +174,7 @@ export const UIContainer = () => {
 					setIsPopulationOpen(false)
 					setIsLogisticsOpen(false)
 					setIsPrioritiesOpen(false)
+					setIsCharterOpen(false)
 					setIsStockOpen((prev) => !prev)
 				}}
 				isPopulationOpen={isPopulationOpen}
@@ -158,6 +182,7 @@ export const UIContainer = () => {
 					setIsStockOpen(false)
 					setIsLogisticsOpen(false)
 					setIsPrioritiesOpen(false)
+					setIsCharterOpen(false)
 					setIsPopulationOpen((prev) => !prev)
 				}}
 				isLogisticsOpen={isLogisticsOpen}
@@ -165,6 +190,7 @@ export const UIContainer = () => {
 					setIsStockOpen(false)
 					setIsPopulationOpen(false)
 					setIsPrioritiesOpen(false)
+					setIsCharterOpen(false)
 					setIsLogisticsOpen((prev) => !prev)
 				}}
 				isWorldMapOpen={isWorldMapOpen}
@@ -174,7 +200,16 @@ export const UIContainer = () => {
 					setIsStockOpen(false)
 					setIsPopulationOpen(false)
 					setIsLogisticsOpen(false)
+					setIsCharterOpen(false)
 					setIsPrioritiesOpen((prev) => !prev)
+				}}
+				isCharterOpen={isCharterOpen}
+				onToggleCharter={() => {
+					setIsStockOpen(false)
+					setIsPopulationOpen(false)
+					setIsLogisticsOpen(false)
+					setIsPrioritiesOpen(false)
+					setIsCharterOpen((prev) => !prev)
 				}}
 				showDebugBounds={showDebugBounds}
 				onToggleDebugBounds={() => {
@@ -190,6 +225,7 @@ export const UIContainer = () => {
 				populationButtonRef={populationButtonRef}
 				logisticsButtonRef={logisticsButtonRef}
 				prioritiesButtonRef={prioritiesButtonRef}
+				charterButtonRef={charterButtonRef}
 			/>
 			<SaveLoadPanel
 				isOpen={saveLoadMode !== null}
@@ -230,6 +266,11 @@ export const UIContainer = () => {
 			<DeliveryPriorityPanel
 				isVisible={isPrioritiesOpen}
 				anchorRect={prioritiesAnchor}
+			/>
+			<CityCharterPanel
+				isVisible={isCharterOpen}
+				onClose={() => setIsCharterOpen(false)}
+				anchorRect={charterAnchor}
 			/>
 		</>
 	)

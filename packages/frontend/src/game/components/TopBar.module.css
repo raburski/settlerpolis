@@ -164,6 +164,51 @@
 	font-variant-numeric: tabular-nums;
 }
 
+.cityButton {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: var(--spacing-xs) var(--spacing-sm);
+	background: #2d2412;
+	border: 3px solid #2d2412;
+	box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.5);
+	color: #fffbe7;
+	cursor: pointer;
+}
+
+.cityButton[data-active='true'] {
+	border-color: #ffe066;
+	box-shadow: 0 0 0 2px #ffe066;
+}
+
+.cityButton[data-claimable='true'] {
+	border-color: #34d399;
+	box-shadow: 0 0 0 2px #34d399;
+}
+
+.cityButton[data-warning='true'] {
+	border-color: #f87171;
+	box-shadow: 0 0 0 2px #f87171;
+}
+
+.cityIcon {
+	font-size: 0.8rem;
+	line-height: 1;
+}
+
+.cityLabel {
+	font-size: 0.6rem;
+	color: #fffbe7;
+	text-transform: uppercase;
+}
+
+.cityLevel {
+	font-size: 0.6rem;
+	color: #ffffff;
+	font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+	font-variant-numeric: tabular-nums;
+}
+
 .logisticsButton {
 	display: inline-flex;
 	align-items: center;

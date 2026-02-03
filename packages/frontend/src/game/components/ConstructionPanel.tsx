@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { EventBus } from '../EventBus'
 import { Event, BuildingCategory, BuildingDefinition, RoadType } from '@rugged/game'
 import { itemService } from '../services/ItemService'
+import { cityCharterService } from '../services/CityCharterService'
 import styles from './ConstructionPanel.module.css'
 import { UiEvents } from '../uiEvents'
 
@@ -52,6 +53,9 @@ export const ConstructionPanel: React.FC = () => {
 	const [selectedRoadType, setSelectedRoadType] = useState<RoadType | null>(null)
 	const [buildings, setBuildings] = useState<BuildingDefinition[]>([])
 	const [selectedCategory, setSelectedCategory] = useState<BuildingCategory>(BuildingCategory.Civil)
+	const [unlockedFlags, setUnlockedFlags] = useState<string[]>(
+		cityCharterService.getState()?.unlockedFlags || []
+	)
 
 	useEffect(() => {
 		// Try to load buildings from content first (fallback)
@@ -89,10 +93,16 @@ export const ConstructionPanel: React.FC = () => {
 			setSelectedRoadType(null)
 		}
 
+		const handleCharterUpdated = (data: { unlockedFlags?: string[] }) => {
+			setUnlockedFlags(data.unlockedFlags || [])
+		}
+
 		EventBus.on(Event.Buildings.SC.Catalog, handleBuildingCatalog)
 		EventBus.on(UiEvents.Construction.Toggle, handleToggle)
 		EventBus.on(Event.Buildings.SC.Placed, handleBuildingPlaced)
 		EventBus.on(UiEvents.Road.Cancelled, handleRoadCancelled)
+		EventBus.on(UiEvents.CityCharter.Updated, handleCharterUpdated)
+		cityCharterService.requestState()
 		
 		// Request catalog after a short delay to ensure server is ready
 		// This is a fallback in case the catalog wasn't sent on join
@@ -107,6 +117,7 @@ export const ConstructionPanel: React.FC = () => {
 			EventBus.off(UiEvents.Construction.Toggle, handleToggle)
 			EventBus.off(Event.Buildings.SC.Placed, handleBuildingPlaced)
 			EventBus.off(UiEvents.Road.Cancelled, handleRoadCancelled)
+			EventBus.off(UiEvents.CityCharter.Updated, handleCharterUpdated)
 		}
 	}, []) // Run once on mount
 
@@ -142,7 +153,16 @@ export const ConstructionPanel: React.FC = () => {
 		? buildings.find((building) => building.id === selectedBuilding) || null
 		: null
 
-	const filteredBuildings = buildings.filter((building) => building.category === selectedCategory)
+	const unlockedSet = useMemo(() => new Set(unlockedFlags), [unlockedFlags])
+	const filteredBuildings = buildings.filter((building) => {
+		if (building.category !== selectedCategory) {
+			return false
+		}
+		if (!building.unlockFlags || building.unlockFlags.length === 0) {
+			return true
+		}
+		return building.unlockFlags.every((flag) => unlockedSet.has(flag))
+	})
 
 	useEffect(() => {
 		if (selectedBuilding && !filteredBuildings.some(building => building.id === selectedBuilding)) {

@@ -755,6 +755,26 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		return total
 	}
 
+	public getTotalsForPlayerMap(mapId: string, playerId: string): Record<string, number> {
+		const totals: Record<string, number> = {}
+		for (const building of this.managers.buildings.getAllBuildings()) {
+			if (building.mapId !== mapId || building.playerId !== playerId) {
+				continue
+			}
+			if (building.stage !== ConstructionStage.Completed) {
+				continue
+			}
+			const storage = this.buildingStorages.get(building.id)
+			if (!storage) {
+				continue
+			}
+			for (const slot of storage.slots.values()) {
+				totals[slot.itemType] = (totals[slot.itemType] || 0) + slot.quantity
+			}
+		}
+		return totals
+	}
+
 	// Remove items from any storage in a map
 	public consumeFromAnyStorage(mapId: string, itemType: string, quantity: number): boolean {
 		if (quantity <= 0) {

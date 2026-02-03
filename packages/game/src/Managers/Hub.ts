@@ -30,6 +30,7 @@ import type { RoadManager } from '../Roads'
 import type { EventManager } from '../events'
 import type { Logger } from '../Logs'
 import type { WildlifeManager } from '../Wildlife'
+import type { CityCharterManager } from '../CityCharter'
 
 export interface Managers {
 	chat: ChatManager
@@ -62,6 +63,7 @@ export interface Managers {
 	work: WorkProviderManager
 	needs: NeedsManager
 	wildlife: WildlifeManager
+	cityCharter: CityCharterManager
 }
 
 export class ManagersHub implements Managers {
@@ -97,4 +99,5 @@ export class ManagersHub implements Managers {
 	work!: WorkProviderManager
 	needs!: NeedsManager
 	wildlife!: WildlifeManager
+	cityCharter!: CityCharterManager
 }

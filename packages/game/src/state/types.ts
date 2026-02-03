@@ -59,10 +59,11 @@ export interface GameSnapshotV1 {
 		flags: FlagsSnapshot
 		affinity: AffinitySnapshot
 		resourceNodes: ResourceNodesSnapshot
-		roads: RoadsSnapshot
-		triggers: TriggersSnapshot
-		scheduler: SchedulerSnapshot
-		reservations: ReservationSnapshot
+	roads: RoadsSnapshot
+	cityCharter: CityCharterSnapshot
+	triggers: TriggersSnapshot
+	scheduler: SchedulerSnapshot
+	reservations: ReservationSnapshot
 	}
 }
 
@@ -241,6 +242,18 @@ export interface RoadsSnapshot {
 	roadsByMap: MapEntries<RoadData>
 	jobsByMap: MapEntries<RoadJobSnapshot[]>
 	simulationTimeMs: number
+}
+
+export interface CityCharterStateSnapshot {
+	playerId: PlayerId
+	mapId: MapId
+	currentTierId: string
+	claimedTierIds: string[]
+	unlockedFlags: string[]
+}
+
+export interface CityCharterSnapshot {
+	states: CityCharterStateSnapshot[]
 }
 
 export interface RoadJobSnapshot {

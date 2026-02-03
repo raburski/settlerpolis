@@ -33,6 +33,7 @@ export class SnapshotService {
 				affinity: this.managers.affinity.serialize(),
 				resourceNodes: this.managers.resourceNodes.serialize(),
 				roads: this.managers.roads.serialize(),
+				cityCharter: this.managers.cityCharter.serialize(),
 				triggers: this.managers.trigger.serialize(),
 				scheduler: this.managers.scheduler.serialize()
 			}
@@ -66,6 +67,11 @@ export class SnapshotService {
 		this.managers.resourceNodes.deserialize(snapshot.state.resourceNodes)
 		this.managers.trigger.deserialize(snapshot.state.triggers)
 		this.managers.scheduler.deserialize(snapshot.state.scheduler)
+		if (snapshot.state.cityCharter) {
+			this.managers.cityCharter.deserialize(snapshot.state.cityCharter)
+		} else {
+			this.managers.cityCharter.reset?.()
+		}
 
 		this.managers.simulation.start()
 	}
@@ -90,6 +96,7 @@ export class SnapshotService {
 		this.managers.roads.reset?.()
 		this.managers.trigger.reset?.()
 		this.managers.scheduler.reset?.()
+		this.managers.cityCharter.reset?.()
 		this.managers.reservations.reset?.()
 		this.managers.time.reset?.()
 		this.managers.simulation.reset?.()

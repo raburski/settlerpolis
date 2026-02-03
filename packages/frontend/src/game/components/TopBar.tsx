@@ -4,9 +4,11 @@ import { World } from './World'
 import { itemService } from '../services/ItemService'
 import { populationService } from '../services/PopulationService'
 import { PopulationStatsData } from '@rugged/game'
+import type { CityCharterStateData } from '@rugged/game'
 import { useGlobalStockTotals } from './hooks/useGlobalStockTotals'
 import styles from './TopBar.module.css'
 import { UiEvents } from '../uiEvents'
+import { cityCharterService } from '../services/CityCharterService'
 
 type TopBarProps = {
 	isStockOpen: boolean
@@ -19,6 +21,8 @@ type TopBarProps = {
 	onToggleWorldMap: () => void
 	isPrioritiesOpen: boolean
 	onTogglePriorities: () => void
+	isCharterOpen: boolean
+	onToggleCharter: () => void
 	showDebugBounds: boolean
 	onToggleDebugBounds: () => void
 	onOpenSave: () => void
@@ -27,6 +31,7 @@ type TopBarProps = {
 	populationButtonRef?: React.Ref<HTMLButtonElement>
 	logisticsButtonRef?: React.Ref<HTMLButtonElement>
 	prioritiesButtonRef?: React.Ref<HTMLButtonElement>
+	charterButtonRef?: React.Ref<HTMLButtonElement>
 }
 
 const ResourceEmoji: React.FC<{ itemType: string }> = ({ itemType }) => {
@@ -61,6 +66,8 @@ export const TopBar: React.FC<TopBarProps> = ({
 	onToggleWorldMap,
 	isPrioritiesOpen,
 	onTogglePriorities,
+	isCharterOpen,
+	onToggleCharter,
 	showDebugBounds,
 	onToggleDebugBounds,
 	onOpenSave,
@@ -68,7 +75,8 @@ export const TopBar: React.FC<TopBarProps> = ({
 	resourceButtonRef,
 	populationButtonRef,
 	logisticsButtonRef,
-	prioritiesButtonRef
+	prioritiesButtonRef,
+	charterButtonRef
 }) => {
 	const totals = useGlobalStockTotals()
 	const [populationTotal, setPopulationTotal] = useState(
@@ -76,6 +84,9 @@ export const TopBar: React.FC<TopBarProps> = ({
 	)
 	const [housingCapacity, setHousingCapacity] = useState(
 		populationService.getStats().housingCapacity || 0
+	)
+	const [charterState, setCharterState] = useState<CityCharterStateData | null>(
+		cityCharterService.getState()
 	)
 
 	useEffect(() => {
@@ -91,12 +102,29 @@ export const TopBar: React.FC<TopBarProps> = ({
 		}
 	}, [])
 
+	useEffect(() => {
+		const handleCharterUpdate = (data: CityCharterStateData) => {
+			setCharterState(data)
+		}
+
+		EventBus.on(UiEvents.CityCharter.Updated, handleCharterUpdate)
+		cityCharterService.requestState()
+
+		return () => {
+			EventBus.off(UiEvents.CityCharter.Updated, handleCharterUpdate)
+		}
+	}, [])
+
 	const resourceItems = [
 		{ id: 'stone', label: 'Stone' },
 		{ id: 'logs', label: 'Logs' },
 		{ id: 'planks', label: 'Planks' }
 	]
 	const populationLabel = `${populationTotal}/${housingCapacity}`
+	const charterLabel = charterState?.currentTier?.name || 'Charter'
+	const charterLevel = charterState?.currentTier?.level ?? 0
+	const charterClaimable = Boolean(charterState?.isEligibleForNext)
+	const charterWarning = charterState ? !charterState.currentTierRequirementsMet : false
 	return (
 		<div className={styles.topBar}>
 			<div className={styles.left}>
@@ -142,6 +170,20 @@ export const TopBar: React.FC<TopBarProps> = ({
 				>
 					<span className={styles.populationIcon}>👥</span>
 					<span className={styles.populationValue}>{populationLabel}</span>
+				</button>
+				<button
+					type="button"
+					className={styles.cityButton}
+					data-active={isCharterOpen}
+					data-claimable={charterClaimable}
+					data-warning={charterWarning}
+					onClick={onToggleCharter}
+					aria-pressed={isCharterOpen}
+					ref={charterButtonRef}
+				>
+					<span className={styles.cityIcon}>🏛️</span>
+					<span className={styles.cityLabel}>{charterLabel}</span>
+					<span className={styles.cityLevel}>L{charterLevel}</span>
 				</button>
 				<button
 					type="button"

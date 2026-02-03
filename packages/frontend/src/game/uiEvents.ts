@@ -80,6 +80,9 @@ export const UiEvents = {
 		UiNotification: 'ui:notification',
 		SystemMessage: 'ui:message:system'
 	},
+	CityCharter: {
+		Updated: 'ui:city-charter:updated'
+	},
 	Debug: {
 		BoundsToggle: 'ui:debug:bounds-toggle'
 	}

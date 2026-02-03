@@ -36,6 +36,7 @@ import { ManagersHub } from './Managers'
 import { WildlifeManager } from './Wildlife'
 import { SnapshotService } from './state/SnapshotService'
 import type { GameSnapshotV1 } from './state/types'
+import { CityCharterManager } from './CityCharter'
 
 // Export types and events
 export * from './types'
@@ -46,6 +47,7 @@ export * from './Settlers/WorkProvider'
 export * from './Needs'
 export * from './Roads'
 export * from './Wildlife'
+export * from './CityCharter'
 export * from './state/types'
 export { SnapshotService } from './state/SnapshotService'
 export type { Serializable } from './state/Serializable'
@@ -122,6 +124,12 @@ export class GameManager {
 		// Create StorageManager after BuildingManager (to avoid circular dependency)
 		this.managers.storage = new StorageManager(this.managers, event, this.managers.logs.getLogger('StorageManager'))
 
+		this.managers.cityCharter = new CityCharterManager(
+			this.managers,
+			event,
+			this.managers.logs.getLogger('CityCharterManager')
+		)
+
 		// Create RoadManager after StorageManager so it can consume road materials
 		this.managers.roads = new RoadManager(this.managers, event, this.managers.logs.getLogger('RoadManager'))
 		
@@ -169,6 +177,7 @@ export class GameManager {
 			this.managers.affinity,
 			this.managers.buildings,
 			this.managers.population,
+			this.managers.cityCharter,
 			this.managers.resourceNodes,
 			this.managers.wildlife,
 			this.managers.logs.getLogger('ContentLoader')
@@ -209,6 +218,7 @@ export class GameManager {
 			'ResourceNodesManager',
 			'WorkProviderManager',
 			'NeedsManager',
+			'CityCharterManager',
 			'WildlifeManager'
 		]
 		for (const managerName of quietManagers) {
