@@ -125,11 +125,7 @@ export class GameManager {
 		this.managers.storage = new StorageManager(this.managers, event, this.managers.logs.getLogger('StorageManager'))
 
 		this.managers.cityCharter = new CityCharterManager(
-			{
-				population: this.managers.population,
-				buildings: this.managers.buildings,
-				storage: this.managers.storage
-			},
+			this.managers,
 			event,
 			this.managers.logs.getLogger('CityCharterManager')
 		)
