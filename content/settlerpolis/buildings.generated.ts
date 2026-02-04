@@ -1120,6 +1120,26 @@ export const buildings: BuildingDefinition[] = [
         "productionTime": 12
       },
       {
+        "id": "pickaxe",
+        "inputs": [
+          {
+            "itemType": "iron_bar",
+            "quantity": 1
+          },
+          {
+            "itemType": "logs",
+            "quantity": 1
+          }
+        ],
+        "outputs": [
+          {
+            "itemType": "pickaxe",
+            "quantity": 1
+          }
+        ],
+        "productionTime": 12
+      },
+      {
         "id": "hammer",
         "inputs": [
           {
@@ -1142,6 +1162,7 @@ export const buildings: BuildingDefinition[] = [
     ],
     "productionPlanDefaults": {
       "axe": 1,
+      "pickaxe": 1,
       "hammer": 1
     },
     "storageSlots": [
@@ -1167,10 +1188,17 @@ export const buildings: BuildingDefinition[] = [
         }
       },
       {
-        "itemType": "hammer",
+        "itemType": "pickaxe",
         "offset": {
           "x": 4,
           "y": 1
+        }
+      },
+      {
+        "itemType": "hammer",
+        "offset": {
+          "x": 4,
+          "y": 2
         }
       }
     ]

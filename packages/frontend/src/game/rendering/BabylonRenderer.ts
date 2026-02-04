@@ -1412,7 +1412,6 @@ export class BabylonRenderer {
 				mesh.material = this.getGroundTypeMaterial(typeIndex, variant)
 				mesh.isPickable = false
 				mesh.position.y = y
-				mesh.renderingGroupId = variant === 'smooth' ? 2 : 1
 				meshes.push(mesh)
 			} catch (error) {
 				console.warn(
@@ -1660,11 +1659,12 @@ export class BabylonRenderer {
 		return area * 0.5
 	}
 
-	private getGroundTypeMaterial(typeIndex: number): StandardMaterial {
-		return this.getGroundTypeMaterial(typeIndex, 'base')
-	}
-
-	private getGroundTypeMaterial(typeIndex: number, variant: 'base' | 'smooth'): StandardMaterial {
+	private getGroundTypeMaterial(typeIndex: number): StandardMaterial
+	private getGroundTypeMaterial(typeIndex: number, variant: 'base' | 'smooth'): StandardMaterial
+	private getGroundTypeMaterial(
+		typeIndex: number,
+		variant: 'base' | 'smooth' = 'base'
+	): StandardMaterial {
 		const materials = variant === 'smooth' ? this.groundTypeSmoothMaterials : this.groundTypeMaterials
 		const existing = materials.get(typeIndex)
 		if (existing) return existing
@@ -1679,7 +1679,6 @@ export class BabylonRenderer {
 		material.disableLighting = true
 		material.backFaceCulling = false
 		if (variant === 'smooth') {
-			material.zOffset = -1
 			material.disableDepthWrite = true
 		}
 		materials.set(typeIndex, material)
