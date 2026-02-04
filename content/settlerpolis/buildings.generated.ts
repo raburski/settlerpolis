@@ -144,6 +144,54 @@ export const buildings: BuildingDefinition[] = [
     ]
   },
   {
+    "id": "vault",
+    "name": "Vault",
+    "description": "Securely stores gold bars and coins",
+    "category": "storage",
+    "icon": "\ud83d\udd10",
+    "sprite": {
+      "foundation": "building_foundation",
+      "completed": "storehouse"
+    },
+    "footprint": {
+      "width": 2,
+      "height": 2
+    },
+    "constructionTime": 18,
+    "costs": [
+      {
+        "itemType": "stone",
+        "quantity": 3
+      },
+      {
+        "itemType": "planks",
+        "quantity": 1
+      }
+    ],
+    "isWarehouse": true,
+    "workerSlots": 1,
+    "requiredProfession": "carrier",
+    "storagePreservation": {
+      "spoilageMultiplier": 1
+    },
+    "storageSlots": [
+      {
+        "itemType": "gold_bar",
+        "offset": {
+          "x": 2,
+          "y": 0
+        }
+      },
+      {
+        "itemType": "gold_coin",
+        "offset": {
+          "x": 2,
+          "y": 1
+        }
+      }
+    ]
+  },
+  {
     "id": "food_cellar",
     "name": "Food Cellar",
     "description": "Stores preserved food",
@@ -480,6 +528,156 @@ export const buildings: BuildingDefinition[] = [
     ]
   },
   {
+    "id": "coal_mine",
+    "name": "Coal Mine",
+    "description": "Extracts coal from mountain seams",
+    "category": "metalwork",
+    "icon": "\u26cf\ufe0f",
+    "sprite": {
+      "foundation": "building_foundation",
+      "completed": "woodcutter_hut"
+    },
+    "footprint": {
+      "width": 2,
+      "height": 2
+    },
+    "constructionTime": 14,
+    "costs": [
+      {
+        "itemType": "logs",
+        "quantity": 1
+      },
+      {
+        "itemType": "stone",
+        "quantity": 1
+      }
+    ],
+    "requiredProfession": "miner",
+    "workerSlots": 1,
+    "allowedGroundTypes": [
+      "mountain"
+    ],
+    "productionRecipe": {
+      "inputs": [],
+      "outputs": [
+        {
+          "itemType": "coal",
+          "quantity": 1
+        }
+      ],
+      "productionTime": 10
+    },
+    "storageSlots": [
+      {
+        "itemType": "coal",
+        "offset": {
+          "x": 2,
+          "y": 0
+        }
+      }
+    ]
+  },
+  {
+    "id": "iron_mine",
+    "name": "Iron Mine",
+    "description": "Extracts iron ore from mountain veins",
+    "category": "metalwork",
+    "icon": "\u26cf\ufe0f",
+    "sprite": {
+      "foundation": "building_foundation",
+      "completed": "woodcutter_hut"
+    },
+    "footprint": {
+      "width": 2,
+      "height": 2
+    },
+    "constructionTime": 15,
+    "costs": [
+      {
+        "itemType": "logs",
+        "quantity": 1
+      },
+      {
+        "itemType": "stone",
+        "quantity": 1
+      }
+    ],
+    "requiredProfession": "miner",
+    "workerSlots": 1,
+    "allowedGroundTypes": [
+      "mountain"
+    ],
+    "productionRecipe": {
+      "inputs": [],
+      "outputs": [
+        {
+          "itemType": "iron_ore",
+          "quantity": 1
+        }
+      ],
+      "productionTime": 12
+    },
+    "storageSlots": [
+      {
+        "itemType": "iron_ore",
+        "offset": {
+          "x": 2,
+          "y": 0
+        }
+      }
+    ]
+  },
+  {
+    "id": "gold_mine",
+    "name": "Gold Mine",
+    "description": "Extracts gold ore from mountain seams",
+    "category": "metalwork",
+    "icon": "\u26cf\ufe0f",
+    "sprite": {
+      "foundation": "building_foundation",
+      "completed": "woodcutter_hut"
+    },
+    "footprint": {
+      "width": 2,
+      "height": 2
+    },
+    "constructionTime": 16,
+    "costs": [
+      {
+        "itemType": "logs",
+        "quantity": 1
+      },
+      {
+        "itemType": "stone",
+        "quantity": 1
+      }
+    ],
+    "requiredProfession": "miner",
+    "workerSlots": 1,
+    "allowedGroundTypes": [
+      "mountain"
+    ],
+    "productionRecipe": {
+      "inputs": [],
+      "outputs": [
+        {
+          "itemType": "gold_ore",
+          "quantity": 1
+        }
+      ],
+      "productionTime": 14
+    },
+    "storageSlots": [
+      {
+        "itemType": "gold_ore",
+        "offset": {
+          "x": 2,
+          "y": 0
+        }
+      }
+    ]
+  },
+  {
     "id": "sawmill",
     "name": "Sawmill",
     "description": "Converts logs into planks",
@@ -533,6 +731,445 @@ export const buildings: BuildingDefinition[] = [
         "itemType": "planks",
         "offset": {
           "x": 3,
+          "y": 1
+        }
+      }
+    ]
+  },
+  {
+    "id": "iron_smelter",
+    "name": "Iron Smelter",
+    "description": "Smelts iron ore into iron bars",
+    "category": "metalwork",
+    "icon": "\ud83d\udd25",
+    "sprite": {
+      "foundation": "building_foundation",
+      "completed": "sawmill"
+    },
+    "footprint": {
+      "width": 3,
+      "height": 3
+    },
+    "constructionTime": 20,
+    "costs": [
+      {
+        "itemType": "logs",
+        "quantity": 2
+      },
+      {
+        "itemType": "stone",
+        "quantity": 2
+      }
+    ],
+    "requiredProfession": "metallurgist",
+    "workerSlots": 1,
+    "productionRecipe": {
+      "inputs": [
+        {
+          "itemType": "iron_ore",
+          "quantity": 1
+        },
+        {
+          "itemType": "coal",
+          "quantity": 1
+        }
+      ],
+      "outputs": [
+        {
+          "itemType": "iron_bar",
+          "quantity": 1
+        }
+      ],
+      "productionTime": 12
+    },
+    "storageSlots": [
+      {
+        "itemType": "iron_ore",
+        "offset": {
+          "x": 3,
+          "y": 0
+        }
+      },
+      {
+        "itemType": "coal",
+        "offset": {
+          "x": 3,
+          "y": 1
+        }
+      },
+      {
+        "itemType": "iron_bar",
+        "offset": {
+          "x": 3,
+          "y": 2
+        }
+      }
+    ]
+  },
+  {
+    "id": "gold_smelter",
+    "name": "Gold Smelter",
+    "description": "Smelts gold ore into gold bars",
+    "category": "metalwork",
+    "icon": "\ud83d\udd25",
+    "sprite": {
+      "foundation": "building_foundation",
+      "completed": "sawmill"
+    },
+    "footprint": {
+      "width": 3,
+      "height": 3
+    },
+    "constructionTime": 22,
+    "costs": [
+      {
+        "itemType": "logs",
+        "quantity": 2
+      },
+      {
+        "itemType": "stone",
+        "quantity": 2
+      }
+    ],
+    "requiredProfession": "metallurgist",
+    "workerSlots": 1,
+    "productionRecipe": {
+      "inputs": [
+        {
+          "itemType": "gold_ore",
+          "quantity": 1
+        },
+        {
+          "itemType": "coal",
+          "quantity": 1
+        }
+      ],
+      "outputs": [
+        {
+          "itemType": "gold_bar",
+          "quantity": 1
+        }
+      ],
+      "productionTime": 14
+    },
+    "storageSlots": [
+      {
+        "itemType": "gold_ore",
+        "offset": {
+          "x": 3,
+          "y": 0
+        }
+      },
+      {
+        "itemType": "coal",
+        "offset": {
+          "x": 3,
+          "y": 1
+        }
+      },
+      {
+        "itemType": "gold_bar",
+        "offset": {
+          "x": 3,
+          "y": 2
+        }
+      }
+    ]
+  },
+  {
+    "id": "mint",
+    "name": "Mint",
+    "description": "Mints gold bars into gold coins",
+    "category": "metalwork",
+    "icon": "\ud83e\ude99",
+    "sprite": {
+      "foundation": "building_foundation",
+      "completed": "sawmill"
+    },
+    "footprint": {
+      "width": 3,
+      "height": 3
+    },
+    "constructionTime": 20,
+    "costs": [
+      {
+        "itemType": "logs",
+        "quantity": 2
+      },
+      {
+        "itemType": "stone",
+        "quantity": 2
+      }
+    ],
+    "requiredProfession": "metallurgist",
+    "workerSlots": 1,
+    "productionRecipe": {
+      "inputs": [
+        {
+          "itemType": "gold_bar",
+          "quantity": 1
+        }
+      ],
+      "outputs": [
+        {
+          "itemType": "gold_coin",
+          "quantity": 10
+        }
+      ],
+      "productionTime": 8
+    },
+    "storageSlots": [
+      {
+        "itemType": "gold_bar",
+        "offset": {
+          "x": 3,
+          "y": 0
+        }
+      },
+      {
+        "itemType": "gold_coin",
+        "offset": {
+          "x": 3,
+          "y": 1
+        }
+      }
+    ]
+  },
+  {
+    "id": "armory",
+    "name": "Armory",
+    "description": "Forges weapons and helmets",
+    "category": "metalwork",
+    "icon": "\ud83d\udee1\ufe0f",
+    "sprite": {
+      "foundation": "building_foundation",
+      "completed": "sawmill"
+    },
+    "footprint": {
+      "width": 3,
+      "height": 3
+    },
+    "constructionTime": 22,
+    "costs": [
+      {
+        "itemType": "logs",
+        "quantity": 2
+      },
+      {
+        "itemType": "stone",
+        "quantity": 2
+      },
+      {
+        "itemType": "planks",
+        "quantity": 1
+      }
+    ],
+    "requiredProfession": "metallurgist",
+    "workerSlots": 1,
+    "productionRecipes": [
+      {
+        "id": "spear",
+        "inputs": [
+          {
+            "itemType": "iron_bar",
+            "quantity": 1
+          },
+          {
+            "itemType": "logs",
+            "quantity": 1
+          }
+        ],
+        "outputs": [
+          {
+            "itemType": "spear",
+            "quantity": 1
+          }
+        ],
+        "productionTime": 16
+      },
+      {
+        "id": "crossbow",
+        "inputs": [
+          {
+            "itemType": "iron_bar",
+            "quantity": 2
+          },
+          {
+            "itemType": "logs",
+            "quantity": 1
+          }
+        ],
+        "outputs": [
+          {
+            "itemType": "crossbow",
+            "quantity": 1
+          }
+        ],
+        "productionTime": 16
+      },
+      {
+        "id": "helmet",
+        "inputs": [
+          {
+            "itemType": "iron_bar",
+            "quantity": 2
+          },
+          {
+            "itemType": "logs",
+            "quantity": 1
+          }
+        ],
+        "outputs": [
+          {
+            "itemType": "helmet",
+            "quantity": 1
+          }
+        ],
+        "productionTime": 16
+      }
+    ],
+    "productionPlanDefaults": {
+      "spear": 1,
+      "crossbow": 1,
+      "helmet": 1
+    },
+    "storageSlots": [
+      {
+        "itemType": "iron_bar",
+        "offset": {
+          "x": 3,
+          "y": 0
+        }
+      },
+      {
+        "itemType": "logs",
+        "offset": {
+          "x": 3,
+          "y": 1
+        }
+      },
+      {
+        "itemType": "spear",
+        "offset": {
+          "x": 4,
+          "y": 0
+        }
+      },
+      {
+        "itemType": "crossbow",
+        "offset": {
+          "x": 4,
+          "y": 1
+        }
+      },
+      {
+        "itemType": "helmet",
+        "offset": {
+          "x": 4,
+          "y": 2
+        }
+      }
+    ]
+  },
+  {
+    "id": "blacksmith",
+    "name": "Blacksmith",
+    "description": "Forges tools for settlers",
+    "category": "metalwork",
+    "icon": "\ud83d\udee0\ufe0f",
+    "sprite": {
+      "foundation": "building_foundation",
+      "completed": "sawmill"
+    },
+    "footprint": {
+      "width": 3,
+      "height": 3
+    },
+    "constructionTime": 20,
+    "costs": [
+      {
+        "itemType": "logs",
+        "quantity": 2
+      },
+      {
+        "itemType": "stone",
+        "quantity": 2
+      }
+    ],
+    "requiredProfession": "metallurgist",
+    "workerSlots": 1,
+    "productionRecipes": [
+      {
+        "id": "axe",
+        "inputs": [
+          {
+            "itemType": "iron_bar",
+            "quantity": 1
+          },
+          {
+            "itemType": "logs",
+            "quantity": 1
+          }
+        ],
+        "outputs": [
+          {
+            "itemType": "axe",
+            "quantity": 1
+          }
+        ],
+        "productionTime": 12
+      },
+      {
+        "id": "hammer",
+        "inputs": [
+          {
+            "itemType": "iron_bar",
+            "quantity": 2
+          },
+          {
+            "itemType": "logs",
+            "quantity": 1
+          }
+        ],
+        "outputs": [
+          {
+            "itemType": "hammer",
+            "quantity": 1
+          }
+        ],
+        "productionTime": 12
+      }
+    ],
+    "productionPlanDefaults": {
+      "axe": 1,
+      "hammer": 1
+    },
+    "storageSlots": [
+      {
+        "itemType": "iron_bar",
+        "offset": {
+          "x": 3,
+          "y": 0
+        }
+      },
+      {
+        "itemType": "logs",
+        "offset": {
+          "x": 3,
+          "y": 1
+        }
+      },
+      {
+        "itemType": "axe",
+        "offset": {
+          "x": 4,
+          "y": 0
+        }
+      },
+      {
+        "itemType": "hammer",
+        "offset": {
+          "x": 4,
           "y": 1
         }
       }

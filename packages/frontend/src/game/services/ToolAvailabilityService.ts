@@ -7,7 +7,7 @@ type UpdateCallback = () => void
 class ToolAvailabilityService {
 	private itemTypesById = new Map<string, string>()
 	private itemTypeCounts = new Map<string, number>()
-	private itemTypeProfession = new Map<string, ProfessionType | null>()
+	private itemTypeProfessions = new Map<string, ProfessionType[]>()
 	private itemMetadataSubscriptions = new Map<string, () => void>()
 	private updateCallbacks: Set<UpdateCallback> = new Set()
 	private professionToolCounts: Record<ProfessionType, number> = {
@@ -15,6 +15,7 @@ class ToolAvailabilityService {
 		[ProfessionType.Builder]: 0,
 		[ProfessionType.Woodcutter]: 0,
 		[ProfessionType.Miner]: 0,
+		[ProfessionType.Metallurgist]: 0,
 		[ProfessionType.Farmer]: 0,
 		[ProfessionType.Miller]: 0,
 		[ProfessionType.Baker]: 0,
@@ -44,13 +45,13 @@ class ToolAvailabilityService {
 			this.itemTypesById.set(item.id, item.itemType)
 			const nextCount = (this.itemTypeCounts.get(item.itemType) || 0) + 1
 			this.itemTypeCounts.set(item.itemType, nextCount)
-			const hadProfession = this.itemTypeProfession.has(item.itemType)
-			this.ensureItemTypeProfession(item.itemType)
-			if (hadProfession) {
-				const profession = this.itemTypeProfession.get(item.itemType)
-				if (profession) {
+			const hadProfessions = this.itemTypeProfessions.has(item.itemType)
+			this.ensureItemTypeProfessions(item.itemType)
+			if (hadProfessions) {
+				const professions = this.itemTypeProfessions.get(item.itemType) || []
+				professions.forEach(profession => {
 					this.professionToolCounts[profession] = (this.professionToolCounts[profession] || 0) + 1
-				}
+				})
 			}
 			this.notifyUpdate()
 		}
@@ -70,22 +71,22 @@ class ToolAvailabilityService {
 			this.itemTypeCounts.set(itemType, nextCount)
 		}
 
-		const profession = this.itemTypeProfession.get(itemType)
-		if (profession) {
+		const professions = this.itemTypeProfessions.get(itemType) || []
+		professions.forEach(profession => {
 			const nextProfessionCount = (this.professionToolCounts[profession] || 0) - 1
 			this.professionToolCounts[profession] = Math.max(0, nextProfessionCount)
-		}
+		})
 		this.notifyUpdate()
 	}
 
-	private ensureItemTypeProfession(itemType: string): void {
-		if (this.itemTypeProfession.has(itemType)) {
+	private ensureItemTypeProfessions(itemType: string): void {
+		if (this.itemTypeProfessions.has(itemType)) {
 			return
 		}
 
 		const metadata = itemService.getItemType(itemType)
 		if (metadata) {
-			this.setItemTypeProfession(itemType, metadata.changesProfession)
+			this.setItemTypeProfessions(itemType, metadata.changesProfessions, metadata.changesProfession)
 			return
 		}
 
@@ -96,23 +97,30 @@ class ToolAvailabilityService {
 		const unsubscribe = itemService.subscribeToItemMetadata(itemType, (itemMetadata) => {
 			this.itemMetadataSubscriptions.delete(itemType)
 			unsubscribe()
-			this.setItemTypeProfession(itemType, itemMetadata?.changesProfession)
+			this.setItemTypeProfessions(itemType, itemMetadata?.changesProfessions, itemMetadata?.changesProfession)
 		})
 
 		this.itemMetadataSubscriptions.set(itemType, unsubscribe)
 	}
 
-	private setItemTypeProfession(itemType: string, professionValue?: string): void {
-		if (!professionValue) {
-			this.itemTypeProfession.set(itemType, null)
+	private setItemTypeProfessions(itemType: string, professionsValue?: string[], professionValue?: string): void {
+		const rawProfessions = (professionsValue && professionsValue.length > 0)
+			? professionsValue
+			: professionValue
+				? [professionValue]
+				: []
+		const professions = rawProfessions.map((value) => value as ProfessionType)
+		if (professions.length === 0) {
+			this.itemTypeProfessions.set(itemType, [])
 			return
 		}
 
-		const profession = professionValue as ProfessionType
-		this.itemTypeProfession.set(itemType, profession)
+		this.itemTypeProfessions.set(itemType, professions)
 		const count = this.itemTypeCounts.get(itemType) || 0
 		if (count > 0) {
-			this.professionToolCounts[profession] = (this.professionToolCounts[profession] || 0) + count
+			professions.forEach(profession => {
+				this.professionToolCounts[profession] = (this.professionToolCounts[profession] || 0) + count
+			})
 			this.notifyUpdate()
 		}
 	}
@@ -123,6 +131,7 @@ class ToolAvailabilityService {
 			[ProfessionType.Builder]: this.professionToolCounts[ProfessionType.Builder] > 0,
 			[ProfessionType.Woodcutter]: this.professionToolCounts[ProfessionType.Woodcutter] > 0,
 			[ProfessionType.Miner]: this.professionToolCounts[ProfessionType.Miner] > 0,
+			[ProfessionType.Metallurgist]: this.professionToolCounts[ProfessionType.Metallurgist] > 0,
 			[ProfessionType.Farmer]: true,
 			[ProfessionType.Miller]: true,
 			[ProfessionType.Baker]: true,

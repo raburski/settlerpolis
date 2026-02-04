@@ -413,6 +413,13 @@ export const ConstructionPanel: React.FC = () => {
 					>
 						🏭
 					</button>
+					<button
+						className={`${styles.categoryTab} ${selectedCategory === BuildingCategory.Metalwork ? styles.categoryTabSelected : ''}`}
+						onClick={() => setSelectedCategory(BuildingCategory.Metalwork)}
+						title="Metalwork"
+					>
+						⚒️
+					</button>
 				</div>
 				<div className={styles.topSeparator} aria-hidden="true" />
 				<div className={styles.shortcutBar}>
@@ -483,6 +490,9 @@ export const ConstructionPanel: React.FC = () => {
 									handleSlotDrop(index, payload)
 								}}
 							>
+								<span className={styles.shortcutIndex} aria-hidden="true">
+									{index + 1}
+								</span>
 								{shortcutIcon && (
 									<div className={styles.shortcutIcon}>{shortcutIcon}</div>
 								)}

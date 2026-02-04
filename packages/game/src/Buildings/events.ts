@@ -4,6 +4,8 @@ export const BuildingsEvents = {
 		Cancel: 'cs:buildings:cancel',
 		RequestPreview: 'cs:buildings:request-preview',
 		SetProductionPaused: 'cs:buildings:set-production-paused',
+		SetProductionPlan: 'cs:buildings:set-production-plan',
+		SetGlobalProductionPlan: 'cs:buildings:set-global-production-plan',
 		SetWorkArea: 'cs:buildings:set-work-area',
 		SetStorageRequests: 'cs:buildings:set-storage-requests'
 	},
@@ -22,7 +24,9 @@ export const BuildingsEvents = {
 		ProductionStopped: 'sc:buildings:production-stopped',
 		ProductionProgress: 'sc:buildings:production-progress',
 		ProductionCompleted: 'sc:buildings:production-completed',
-		ProductionStatusChanged: 'sc:buildings:production-status-changed'
+		ProductionStatusChanged: 'sc:buildings:production-status-changed',
+		ProductionPlanUpdated: 'sc:buildings:production-plan-updated',
+		GlobalProductionPlanUpdated: 'sc:buildings:global-production-plan-updated'
 	},
 	SS: {
 		Tick: 'ss:buildings:tick',

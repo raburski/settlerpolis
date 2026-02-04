@@ -39,6 +39,7 @@ export interface ItemMetadata {
 		blocksPlacement: boolean
 	}
 	changesProfession?: ProfessionType // ProfessionType that this item grants when picked up (e.g., 'builder', 'woodcutter')
+	changesProfessions?: ProfessionType[] // Multiple professions this item can grant (e.g., builders and metallurgists)
 }
 
 export interface ItemTypeRequest {

@@ -94,6 +94,7 @@
 	cursor: pointer;
 	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
 	transition: all 0.2s ease;
+	position: relative;
 }
 
 .shortcutSlot:hover {
@@ -115,6 +116,18 @@
 .shortcutIcon {
 	font-size: 18px;
 	line-height: 1;
+}
+
+.shortcutIndex {
+	position: absolute;
+	top: 2px;
+	right: 3px;
+	font-size: 0.4rem;
+	line-height: 1;
+	color: #fffbe7;
+	opacity: 0.28;
+	pointer-events: none;
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5);
 }
 
 .content {

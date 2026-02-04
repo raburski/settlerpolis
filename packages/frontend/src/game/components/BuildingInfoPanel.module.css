@@ -106,6 +106,102 @@
 	border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.productionPanel {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.productionStatus {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.productionStatusDetail {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 4px;
+	font-size: 0.9em;
+	color: #d6d6d6;
+}
+
+.productionStatusItem {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.productionPlan {
+	margin-top: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.productionPlanGlobal {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 12px;
+	color: #cfcfcf;
+}
+
+.productionPlanRecipe {
+	padding: 8px;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	border-radius: 6px;
+	background: rgba(255, 255, 255, 0.03);
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.productionPlanHeader {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.productionPlanToggle {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 13px;
+	color: #e0e0e0;
+}
+
+.productionPlanTitle {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.productionPlanItem {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.productionPlanWeight {
+	font-size: 12px;
+	color: #bdbdbd;
+}
+
+.productionPlanSlider {
+	width: 100%;
+}
+
+.productionPlanDetails {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 12px;
+	color: #c9c9c9;
+}
+
 .cancelButton {
 	width: 100%;
 	padding: 10px;

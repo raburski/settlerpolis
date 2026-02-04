@@ -222,14 +222,19 @@ export class ContentLoader {
 		
 		// Also load profession tools from items (items with changesProfession property)
 		const items = this.content.items || []
-		const toolsFromItems = items
-			.filter(item => item.changesProfession)
-			.map(item => ({
+		const toolsFromItems = items.flatMap(item => {
+			const professions = (item.changesProfessions && item.changesProfessions.length > 0)
+				? item.changesProfessions
+				: item.changesProfession
+					? [item.changesProfession]
+					: []
+			return professions.map(profession => ({
 				itemType: item.id,
-				targetProfession: item.changesProfession!,
+				targetProfession: profession,
 				name: item.name,
 				description: item.description
 			}))
+		})
 
 		// Combine both sources
 		const allTools = [...toolsFromContent, ...toolsFromItems]

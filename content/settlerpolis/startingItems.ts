@@ -45,6 +45,22 @@ export const startingItems: StartingItem[] = [
 		}
 	},
 	{
+		itemType: ItemType.Hammer,
+		offset: {
+			x: 4,
+			y: 0,
+			tileBased: true
+		}
+	},
+	{
+		itemType: ItemType.Hammer,
+		offset: {
+			x: 5,
+			y: 0,
+			tileBased: true
+		}
+	},
+	{
 		itemType: ItemType.Axe,
 		offset: {
 			x: 0,
@@ -81,6 +97,22 @@ export const startingItems: StartingItem[] = [
 		offset: {
 			x: 3,
 			y: 0,
+			tileBased: true
+		}
+	},
+	{
+		itemType: ItemType.Pickaxe,
+		offset: {
+			x: 4,
+			y: 1,
+			tileBased: true
+		}
+	},
+	{
+		itemType: ItemType.Pickaxe,
+		offset: {
+			x: 5,
+			y: 1,
 			tileBased: true
 		}
 	},

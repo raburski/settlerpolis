@@ -1,4 +1,4 @@
-import type { BuildingDefinition } from './types'
+import type { BuildingDefinition, ProductionRecipe } from './types'
 
 export enum BuildingWorkKind {
 	Harvest = 'harvest',
@@ -12,7 +12,7 @@ export const getBuildingWorkKinds = (definition: BuildingDefinition): BuildingWo
 	if (definition.harvest) {
 		kinds.push(BuildingWorkKind.Harvest)
 	}
-	if (definition.productionRecipe) {
+	if (definition.productionRecipe || (definition.productionRecipes && definition.productionRecipes.length > 0)) {
 		kinds.push(BuildingWorkKind.Production)
 	}
 	if (definition.farm) {
@@ -29,9 +29,37 @@ export const getHarvestDefinition = (definition: BuildingDefinition): BuildingDe
 }
 
 export const getProductionRecipe = (definition: BuildingDefinition): BuildingDefinition['productionRecipe'] | undefined => {
-	return definition.productionRecipe
+	return definition.productionRecipe ?? definition.productionRecipes?.[0]
 }
 
 export const getFarmDefinition = (definition: BuildingDefinition): BuildingDefinition['farm'] | undefined => {
 	return definition.farm
+}
+
+const buildRecipeId = (recipe: ProductionRecipe, index: number): string => {
+	const outputs = recipe.outputs?.map(output => output.itemType).filter(Boolean).join('+')
+	if (outputs && outputs.length > 0) {
+		return outputs
+	}
+	return `recipe-${index}`
+}
+
+export const getProductionRecipes = (definition: BuildingDefinition): Array<ProductionRecipe & { id: string }> => {
+	const recipes = definition.productionRecipes && definition.productionRecipes.length > 0
+		? definition.productionRecipes
+		: (definition.productionRecipe ? [definition.productionRecipe] : [])
+
+	if (recipes.length === 0) {
+		return []
+	}
+
+	const seen = new Set<string>()
+	return recipes.map((recipe, index) => {
+		let id = recipe.id ?? buildRecipeId(recipe, index)
+		if (seen.has(id)) {
+			id = `${id}-${index}`
+		}
+		seen.add(id)
+		return { ...recipe, id }
+	})
 }

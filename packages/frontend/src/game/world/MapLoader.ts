@@ -7,6 +7,20 @@ export interface MapLayer {
 	height?: number
 }
 
+export interface MapTileset {
+	firstGid: number
+	name?: string
+	image: string
+	imageWidth: number
+	imageHeight: number
+	tileWidth: number
+	tileHeight: number
+	tileCount?: number
+	columns: number
+	margin: number
+	spacing: number
+}
+
 export interface MapData {
 	key: string
 	width: number
@@ -14,6 +28,7 @@ export interface MapData {
 	tileWidth: number
 	tileHeight: number
 	layers: MapLayer[]
+	tilesets: MapTileset[]
 }
 
 export interface LoadedMap {
@@ -29,13 +44,29 @@ export class MapLoader {
 			throw new Error(`Failed to load map ${mapKey} from ${mapUrl}`)
 		}
 		const json = await response.json()
+		const tilesets: MapTileset[] = (json.tilesets || [])
+			.filter((tileset: any) => Boolean(tileset?.image))
+			.map((tileset: any) => ({
+				firstGid: tileset.firstgid,
+				name: tileset.name,
+				image: tileset.image,
+				imageWidth: tileset.imagewidth,
+				imageHeight: tileset.imageheight,
+				tileWidth: tileset.tilewidth,
+				tileHeight: tileset.tileheight,
+				tileCount: tileset.tilecount,
+				columns: tileset.columns,
+				margin: tileset.margin || 0,
+				spacing: tileset.spacing || 0
+			}))
 		const data: MapData = {
 			key: mapKey,
 			width: json.width,
 			height: json.height,
 			tileWidth: json.tilewidth,
 			tileHeight: json.tileheight,
-			layers: json.layers || []
+			layers: json.layers || [],
+			tilesets
 		}
 
 		const collisionLayer = data.layers.find((layer) => layer.name === 'collision' && layer.type === 'tilelayer')

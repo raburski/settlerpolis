@@ -14,9 +14,14 @@ import {
 	BuildingCancelledData,
 	ProductionStatus,
 	ProductionRecipe,
+	ProductionPlan,
 	SetWorkAreaData,
 	BuildingWorkAreaUpdatedData,
-	SetStorageRequestsData
+	SetStorageRequestsData,
+	SetProductionPlanData,
+	SetGlobalProductionPlanData,
+	ProductionPlanUpdatedData,
+	GlobalProductionPlanUpdatedData
 } from './types'
 import { Receiver } from '../Receiver'
 import { v4 as uuidv4 } from 'uuid'
@@ -37,6 +42,7 @@ import { BaseManager } from '../Managers'
 import type { BuildingsSnapshot, BuildingInstanceSnapshot } from '../state/types'
 import { CityCharterEvents } from '../CityCharter/events'
 import type { CityCharterUnlockFlagsUpdated } from '../CityCharter/types'
+import { getProductionRecipes } from './work'
 
 export interface BuildingDeps {
 	inventory: InventoryManager
@@ -59,6 +65,9 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	private tickAccumulatorMs = 0
 	private autoProductionState = new Map<string, { status: ProductionStatus, progressMs: number, progress: number }>()
 	private unlockedFlagsByPlayerMap = new Map<string, Set<string>>()
+	private globalProductionPlansByPlayer = new Map<string, Map<BuildingId, ProductionPlan>>()
+	private defaultProductionPlans = new Map<BuildingId, ProductionPlan>()
+	private productionCountsByBuilding = new Map<string, Map<string, number>>()
 
 	constructor(
 		managers: BuildingDeps,
@@ -119,6 +128,14 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 				buildingInstanceId: building.id,
 				itemTypes: normalized
 			}, building.mapId)
+		})
+
+		this.event.on<SetProductionPlanData>(BuildingsEvents.CS.SetProductionPlan, (data, client) => {
+			this.setProductionPlan(data, client)
+		})
+
+		this.event.on<SetGlobalProductionPlanData>(BuildingsEvents.CS.SetGlobalProductionPlan, (data, client) => {
+			this.setGlobalProductionPlan(data, client)
 		})
 
 		// Handle player join to send existing buildings and building catalog
@@ -288,6 +305,10 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			requiredResources: [],
 			productionPaused: false
 		}
+		if (getProductionRecipes(definition).length > 0) {
+			buildingInstance.useGlobalProductionPlan = true
+			this.ensureGlobalPlanForPlayer(client.id, definition)
+		}
 		const storageRequests = this.normalizeStorageRequests(definition)
 		if (storageRequests) {
 			buildingInstance.storageRequests = storageRequests
@@ -430,6 +451,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.assignedWorkers.delete(building.id)
 		this.activeConstructionWorkers.delete(building.id)
 		this.autoProductionState.delete(building.id)
+		this.productionCountsByBuilding.delete(building.id)
 
 		// Remove storage piles/records before deleting the building
 		if (this.managers.storage) {
@@ -469,6 +491,71 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 
 		this.event.emit(Receiver.Group, BuildingsEvents.SC.WorkAreaUpdated, updatedData, building.mapId)
+	}
+
+	private setProductionPlan(data: SetProductionPlanData, client: EventClient): void {
+		const building = this.buildings.get(data.buildingInstanceId)
+		if (!building) {
+			return
+		}
+		if (building.playerId !== client.id) {
+			this.logger.error(`Player ${client.id} does not own building ${data.buildingInstanceId}`)
+			return
+		}
+		const definition = this.definitions.get(building.buildingId)
+		if (!definition) {
+			return
+		}
+		const recipes = getProductionRecipes(definition)
+		if (recipes.length === 0) {
+			return
+		}
+
+		const globalPlan = this.ensureGlobalPlanForPlayer(client.id, definition)
+		let useGlobal = typeof data.useGlobal === 'boolean'
+			? data.useGlobal
+			: (building.useGlobalProductionPlan ?? true)
+
+		if (data.plan) {
+			building.productionPlan = this.normalizeProductionPlan(definition, data.plan, globalPlan)
+			if (typeof data.useGlobal !== 'boolean') {
+				useGlobal = false
+			}
+		}
+
+		building.useGlobalProductionPlan = useGlobal
+
+		const updatedData: ProductionPlanUpdatedData = {
+			buildingInstanceId: building.id,
+			plan: building.productionPlan,
+			useGlobal
+		}
+		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionPlanUpdated, updatedData, building.mapId)
+	}
+
+	private setGlobalProductionPlan(data: SetGlobalProductionPlanData, client: EventClient): void {
+		const definition = this.definitions.get(data.buildingId)
+		if (!definition) {
+			return
+		}
+		const recipes = getProductionRecipes(definition)
+		if (recipes.length === 0) {
+			return
+		}
+
+		const normalized = this.normalizeProductionPlan(definition, data.plan)
+		if (!normalized) {
+			return
+		}
+
+		const plans = this.getOrCreateGlobalPlansForPlayer(client.id)
+		plans.set(data.buildingId, normalized)
+
+		const updatedData: GlobalProductionPlanUpdatedData = {
+			buildingId: data.buildingId,
+			plan: normalized
+		}
+		client.emit(Receiver.Sender, BuildingsEvents.SC.GlobalProductionPlanUpdated, updatedData)
 	}
 
 	// Initialize building with resource collection
@@ -960,11 +1047,26 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		const startTileY = Math.floor(position.y / tileSize)
 
 		const footprint = this.getRotatedFootprint(definition, rotation)
+		const allowedGroundTypes = definition.allowedGroundTypes || []
+		const enforceGroundTypes = allowedGroundTypes.length > 0
+
 		// Check all tiles within the building's footprint
 		for (let tileY = 0; tileY < footprint.height; tileY++) {
 			for (let tileX = 0; tileX < footprint.width; tileX++) {
 				const checkTileX = startTileX + tileX
 				const checkTileY = startTileY + tileY
+
+				if (enforceGroundTypes) {
+					const groundType = this.managers.map.getGroundTypeAt(mapId, checkTileX, checkTileY)
+					if (!groundType || !allowedGroundTypes.includes(groundType)) {
+						this.logger.debug(`Ground type mismatch at tile (${checkTileX}, ${checkTileY})`)
+						return true
+					}
+					// Allow placement on allowed ground types even if the collision layer is marked
+					if (this.managers.map.isCollision(mapId, checkTileX, checkTileY)) {
+						continue
+					}
+				}
 
 				// Check if this tile has collision (non-zero value in collision data)
 				if (this.managers.map.isCollision(mapId, checkTileX, checkTileY)) {
@@ -1147,16 +1249,23 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			this.logger.warn('No building definitions loaded! Check content loading.')
 			return
 		}
+		const globalProductionPlans = this.ensureGlobalPlansForPlayer(client.id)
 		client.emit(Receiver.Sender, BuildingsEvents.SC.Catalog, {
-			buildings: buildingDefinitions
+			buildings: buildingDefinitions,
+			globalProductionPlans: Object.fromEntries(globalProductionPlans.entries())
 		})
 		this.logger.debug(`Catalog event emitted to client ${client.id}`)
 	}
 
 	public loadBuildings(definitions: BuildingDefinition[]): void {
 		this.logger.log(`Loading ${definitions.length} building definitions`)
+		this.defaultProductionPlans.clear()
 		for (const definition of definitions) {
 			this.definitions.set(definition.id, definition)
+			const defaultPlan = this.buildDefaultProductionPlan(definition)
+			if (defaultPlan) {
+				this.defaultProductionPlans.set(definition.id, defaultPlan)
+			}
 			this.logger.debug(`Loaded building: ${definition.id} - ${definition.name}`)
 		}
 		this.logger.log(`Total building definitions: ${this.definitions.size}`)
@@ -1248,6 +1357,47 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			return
 		}
 		building.productionPaused = paused
+	}
+
+	public getEffectiveProductionPlan(buildingInstanceId: string): ProductionPlan | undefined {
+		const building = this.buildings.get(buildingInstanceId)
+		if (!building) {
+			return undefined
+		}
+		const definition = this.definitions.get(building.buildingId)
+		if (!definition) {
+			return undefined
+		}
+		const recipes = getProductionRecipes(definition)
+		if (recipes.length === 0) {
+			return undefined
+		}
+		const globalPlan = this.ensureGlobalPlanForPlayer(building.playerId, definition)
+		if (building.useGlobalProductionPlan === false) {
+			return this.normalizeProductionPlan(definition, building.productionPlan, globalPlan) ?? globalPlan
+		}
+		return globalPlan
+	}
+
+	public getProductionCounts(buildingInstanceId: string): Record<string, number> {
+		const counts = this.productionCountsByBuilding.get(buildingInstanceId)
+		if (!counts) {
+			return {}
+		}
+		return Object.fromEntries(counts.entries())
+	}
+
+	public recordProduction(buildingInstanceId: string, recipeId: string | undefined, quantity = 1): void {
+		if (!recipeId || quantity <= 0) {
+			return
+		}
+		let counts = this.productionCountsByBuilding.get(buildingInstanceId)
+		if (!counts) {
+			counts = new Map<string, number>()
+			this.productionCountsByBuilding.set(buildingInstanceId, counts)
+		}
+		const current = counts.get(recipeId) || 0
+		counts.set(recipeId, current + quantity)
 	}
 
 	public getBuildingsForMap(mapId: string): BuildingInstance[] {
@@ -1497,6 +1647,82 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		return unique
 	}
 
+	private getOrCreateGlobalPlansForPlayer(playerId: string): Map<BuildingId, ProductionPlan> {
+		let plans = this.globalProductionPlansByPlayer.get(playerId)
+		if (!plans) {
+			plans = new Map<BuildingId, ProductionPlan>()
+			this.globalProductionPlansByPlayer.set(playerId, plans)
+		}
+		return plans
+	}
+
+	private ensureGlobalPlansForPlayer(playerId: string): Map<BuildingId, ProductionPlan> {
+		const plans = this.getOrCreateGlobalPlansForPlayer(playerId)
+		for (const definition of this.definitions.values()) {
+			if (!this.defaultProductionPlans.has(definition.id)) {
+				continue
+			}
+			if (!plans.has(definition.id)) {
+				const defaultPlan = this.defaultProductionPlans.get(definition.id)
+				if (defaultPlan) {
+					plans.set(definition.id, { ...defaultPlan })
+				}
+			}
+		}
+		return plans
+	}
+
+	private ensureGlobalPlanForPlayer(playerId: string, definition: BuildingDefinition): ProductionPlan {
+		const plans = this.getOrCreateGlobalPlansForPlayer(playerId)
+		const existing = plans.get(definition.id)
+		if (existing) {
+			return existing
+		}
+		const defaultPlan = this.defaultProductionPlans.get(definition.id) ?? this.buildDefaultProductionPlan(definition)
+		const plan = defaultPlan ? { ...defaultPlan } : {}
+		plans.set(definition.id, plan)
+		return plan
+	}
+
+	private buildDefaultProductionPlan(definition: BuildingDefinition): ProductionPlan | undefined {
+		const recipes = getProductionRecipes(definition)
+		if (recipes.length === 0) {
+			return undefined
+		}
+		const defaults = definition.productionPlanDefaults || {}
+		const plan: ProductionPlan = {}
+		for (const recipe of recipes) {
+			const raw = defaults[recipe.id]
+			const weight = typeof raw === 'number' && Number.isFinite(raw) ? raw : 1
+			plan[recipe.id] = Math.max(0, weight)
+		}
+		return plan
+	}
+
+	private normalizeProductionPlan(
+		definition: BuildingDefinition,
+		plan?: ProductionPlan,
+		fallback?: ProductionPlan
+	): ProductionPlan | undefined {
+		const recipes = getProductionRecipes(definition)
+		if (recipes.length === 0) {
+			return undefined
+		}
+		const normalized: ProductionPlan = {}
+		for (const recipe of recipes) {
+			const raw = plan?.[recipe.id]
+			const fallbackValue = fallback?.[recipe.id]
+			let weight = typeof raw === 'number' && Number.isFinite(raw)
+				? raw
+				: (typeof fallbackValue === 'number' && Number.isFinite(fallbackValue) ? fallbackValue : 0)
+			if (weight < 0) {
+				weight = 0
+			}
+			normalized[recipe.id] = weight
+		}
+		return normalized
+	}
+
 	public destroy() {
 		// no-op for now (tick-driven construction)
 	}
@@ -1525,6 +1751,14 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			])),
 			autoProductionState: Array.from(this.autoProductionState.entries()),
 			buildingToMapObject: Array.from(this.buildingToMapObject.entries()),
+			productionCountsByBuilding: Array.from(this.productionCountsByBuilding.entries()).map(([buildingId, counts]) => ([
+				buildingId,
+				Array.from(counts.entries())
+			])),
+			globalProductionPlans: Array.from(this.globalProductionPlansByPlayer.entries()).map(([playerId, plans]) => ([
+				playerId,
+				Array.from(plans.entries())
+			])),
 			simulationTimeMs: this.simulationTimeMs,
 			tickAccumulatorMs: this.tickAccumulatorMs
 		}
@@ -1539,6 +1773,13 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 				position: { ...building.position },
 				workAreaCenter: building.workAreaCenter ? { ...building.workAreaCenter } : undefined,
 				collectedResources
+			}
+			if (typeof restored.useGlobalProductionPlan !== 'boolean') {
+				const definition = this.definitions.get(restored.buildingId)
+				if (definition && getProductionRecipes(definition).length > 0) {
+					const hasLocalPlan = restored.productionPlan && Object.keys(restored.productionPlan).length > 0
+					restored.useGlobalProductionPlan = !hasLocalPlan
+				}
 			}
 			this.buildings.set(restored.id, restored)
 		}
@@ -1560,6 +1801,14 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 		this.autoProductionState = new Map(state.autoProductionState)
 		this.buildingToMapObject = new Map(state.buildingToMapObject)
+		this.productionCountsByBuilding.clear()
+		for (const [buildingId, counts] of state.productionCountsByBuilding ?? []) {
+			this.productionCountsByBuilding.set(buildingId, new Map(counts))
+		}
+		this.globalProductionPlansByPlayer.clear()
+		for (const [playerId, plans] of state.globalProductionPlans ?? []) {
+			this.globalProductionPlansByPlayer.set(playerId, new Map(plans))
+		}
 		this.simulationTimeMs = state.simulationTimeMs
 		this.tickAccumulatorMs = state.tickAccumulatorMs
 

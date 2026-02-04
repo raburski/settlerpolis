@@ -53,7 +53,7 @@ export interface PopulationDeps {
 export class PopulationManager extends BaseManager<PopulationDeps> {
 	private settlers = new Map<string, Settler>() // settlerId -> Settler
 	private houseOccupants = new Map<string, Set<string>>() // houseId -> settlerIds
-	private professionTools = new Map<ItemType, ProfessionType>() // itemType -> ProfessionType
+	private professionTools = new Map<ProfessionType, ItemType>() // professionType -> itemType
 	private professions = new Map<ProfessionType, ProfessionDefinition>() // professionType -> ProfessionDefinition
 	private stats: PopulationStats
 	private startingPopulation: Array<{ profession: ProfessionType, count: number }> = []
@@ -150,7 +150,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	public loadProfessionTools(tools: ProfessionToolDefinition[]): void {
 		this.professionTools.clear()
 		tools.forEach(tool => {
-			this.professionTools.set(tool.itemType, tool.targetProfession)
+			this.professionTools.set(tool.targetProfession, tool.itemType)
 		})
 		this.logger.log(`Loaded ${tools.length} profession tools`)
 	}
@@ -454,12 +454,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	}
 
 	public getToolItemType(profession: ProfessionType): ItemType | null {
-		for (const [itemType, targetProfession] of this.professionTools.entries()) {
-			if (targetProfession === profession) {
-				return itemType
-			}
-		}
-		return null
+		return this.professionTools.get(profession) ?? null
 	}
 
 	public findAvailableToolOnMap(mapId: string, itemType: ItemType): { id: string, position: Position } | null {

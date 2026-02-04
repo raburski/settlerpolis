@@ -26,6 +26,7 @@ export abstract class MapScene {
 	protected transitioning: boolean = false
 	public assetsLoaded: boolean = false
 	private collisionOverlay: AbstractMesh[] = []
+	private groundTypeMeshes: AbstractMesh[] = []
 
 	constructor(runtime: GameRuntime, mapKey: string, mapPath: string) {
 		this.runtime = runtime
@@ -50,6 +51,7 @@ export abstract class MapScene {
 		this.cameras.main.destroy()
 		this.physics.clearStatics()
 		this.clearCollisionOverlay()
+		this.clearGroundTypeMeshes()
 	}
 
 	protected initializeScene(): void {
@@ -92,7 +94,24 @@ export abstract class MapScene {
 		})
 
 		this.runtime.renderer.createGround(`${data.key}-ground`, widthInPixels, heightInPixels)
+		const groundLayer = data.layers.find((layer) => layer.name === 'ground' && layer.type === 'tilelayer')
+		if (groundLayer?.data?.length) {
+			this.runtime.renderer.resetGroundMaterial()
+			this.clearGroundTypeMeshes()
+			this.groundTypeMeshes = this.runtime.renderer.createGroundTypeMeshes({
+				mapUrl: this.mapPath,
+				mapWidth: data.width,
+				mapHeight: data.height,
+				tileWidth: data.tileWidth,
+				tileHeight: data.tileHeight,
+				layer: groundLayer,
+				tilesets: data.tilesets
+			})
+		} else {
+			this.runtime.renderer.resetGroundMaterial()
+		}
 		this.runtime.renderer.setCameraTarget(widthInPixels / 2, heightInPixels / 2)
+		this.runtime.renderer.logRenderState('map-init')
 
 		this.cameras.main.setBounds(0, 0, widthInPixels, heightInPixels)
 
@@ -108,5 +127,11 @@ export abstract class MapScene {
 		if (this.collisionOverlay.length === 0) return
 		this.collisionOverlay.forEach((mesh) => mesh.dispose())
 		this.collisionOverlay = []
+	}
+
+	private clearGroundTypeMeshes(): void {
+		if (this.groundTypeMeshes.length === 0) return
+		this.groundTypeMeshes.forEach((mesh) => mesh.dispose())
+		this.groundTypeMeshes = []
 	}
 }

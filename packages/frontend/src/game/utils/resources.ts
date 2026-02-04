@@ -17,6 +17,10 @@ export const buildResourceList = (definitions: BuildingDefinition[]): string[] =
 			definition.storageSlots.forEach((slot) => addItemType(items, slot.itemType))
 		}
 
+		definition.productionRecipes?.forEach((recipe) => {
+			recipe.inputs?.forEach((input) => addItemType(items, input.itemType))
+			recipe.outputs?.forEach((output) => addItemType(items, output.itemType))
+		})
 		definition.productionRecipe?.inputs?.forEach((input) => addItemType(items, input.itemType))
 		definition.productionRecipe?.outputs?.forEach((output) => addItemType(items, output.itemType))
 		definition.autoProduction?.inputs?.forEach((input) => addItemType(items, input.itemType))

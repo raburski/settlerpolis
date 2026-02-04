@@ -1,5 +1,5 @@
 import { EventManager, Event, EventClient } from '../events'
-import { MapData, MapLayer, MapObjectLayer, MapLoadData, MapTransitionData, CollisionData, NPCSpots, NPCSpot, PathData, MapTrigger, TiledMap, MapUrlService } from './types'
+import type { MapData, MapLayer, MapObjectLayer, MapLoadData, MapTransitionData, CollisionData, NPCSpots, NPCSpot, PathData, MapTrigger, TiledMap, MapUrlService, GroundType, TiledTileset } from './types'
 import type { RoadData } from '../Roads/types'
 import { MapEvents } from './events'
 import { Receiver } from '../Receiver'
@@ -20,6 +20,16 @@ export class MapManager {
 	private readonly MAPS_DIR = '/assets/maps/'//FETCH ? '/assets/maps/' : path.join(__dirname, '../../../assets/maps')
 	private debug = true
 	private defaultMapId: string = 'town' // Default starting map
+	private readonly groundColumnOrder: GroundType[] = [
+		'grass',
+		'dirt',
+		'sand',
+		'rock',
+		'mountain',
+		'water_shallow',
+		'water_deep',
+		'mud'
+	] as GroundType[]
 
 	constructor(
 		private event: EventManager,
@@ -308,6 +318,52 @@ export class MapManager {
 
 		const index = y * map.collision.width + x
 		return index >= 0 && index < map.collision.data.length && map.collision.data[index] !== 0
+	}
+
+	public getGroundTypeAt(mapId: string, x: number, y: number): GroundType | null {
+		const map = this.maps.get(mapId)
+		if (!map) return null
+
+		const groundLayer = map.tiledMap.layers.find((layer) => layer.name === 'ground' && Array.isArray(layer.data))
+		if (!groundLayer?.data) {
+			return null
+		}
+
+		if (x < 0 || y < 0 || x >= map.tiledMap.width || y >= map.tiledMap.height) {
+			return null
+		}
+
+		const index = y * map.tiledMap.width + x
+		const rawGid = groundLayer.data[index]
+		const gid = rawGid & 0x1fffffff
+		if (!gid) {
+			return null
+		}
+
+		const tileset = this.getTilesetForGid(map.tiledMap, gid)
+		if (!tileset || !tileset.columns) {
+			return null
+		}
+
+		const localId = gid - tileset.firstgid
+		if (localId < 0 || this.groundColumnOrder.length === 0) {
+			return null
+		}
+
+		const column = localId % tileset.columns
+		const columnIndex = column % this.groundColumnOrder.length
+		return this.groundColumnOrder[columnIndex] ?? null
+	}
+
+	private getTilesetForGid(tiledMap: TiledMap, gid: number): TiledTileset | null {
+		const tilesets = tiledMap.tilesets || []
+		let match: TiledTileset | null = null
+		for (const tileset of tilesets) {
+			if (tileset.firstgid <= gid && (!match || tileset.firstgid > match.firstgid)) {
+				match = tileset
+			}
+		}
+		return match
 	}
 
 	public findPath(mapId: string, start: Position, end: Position, options?: { roadData?: RoadData, allowDiagonal?: boolean }): Position[] {
