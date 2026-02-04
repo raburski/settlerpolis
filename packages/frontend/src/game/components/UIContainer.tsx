@@ -20,6 +20,7 @@ import { SettlerInfoPanel } from './SettlerInfoPanel'
 import { SaveLoadPanel } from './SaveLoadPanel'
 import { WorldMapPanel } from './WorldMapPanel'
 import { CityCharterPanel } from './CityCharterPanel'
+import { ReputationPanel } from './ReputationPanel'
 import { EventBus } from '../EventBus'
 import { Event, FXType } from '@rugged/game'
 import type { CityCharterStateData } from '@rugged/game'
@@ -34,10 +35,13 @@ export const UIContainer = () => {
 	const [isWorldMapOpen, setIsWorldMapOpen] = useState(false)
 	const [isPrioritiesOpen, setIsPrioritiesOpen] = useState(false)
 	const [isCharterOpen, setIsCharterOpen] = useState(false)
+	const [isReputationOpen, setIsReputationOpen] = useState(false)
 	const [saveLoadMode, setSaveLoadMode] = useState<'save' | 'load' | null>(null)
 	const [showDebugBounds, setShowDebugBounds] = useState(false)
 	const stockButtonRef = useRef<HTMLButtonElement | null>(null)
 	const [stockAnchor, setStockAnchor] = useState<DOMRect | null>(null)
+	const reputationButtonRef = useRef<HTMLButtonElement | null>(null)
+	const [reputationAnchor, setReputationAnchor] = useState<DOMRect | null>(null)
 	const populationButtonRef = useRef<HTMLButtonElement | null>(null)
 	const [populationAnchor, setPopulationAnchor] = useState<DOMRect | null>(null)
 	const logisticsButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -100,6 +104,25 @@ export const UIContainer = () => {
 			window.removeEventListener('resize', updateAnchor)
 		}
 	}, [isPopulationOpen])
+
+	useEffect(() => {
+		if (!isReputationOpen) {
+			return
+		}
+
+		const updateAnchor = () => {
+			if (reputationButtonRef.current) {
+				setReputationAnchor(reputationButtonRef.current.getBoundingClientRect())
+			}
+		}
+
+		updateAnchor()
+		window.addEventListener('resize', updateAnchor)
+
+		return () => {
+			window.removeEventListener('resize', updateAnchor)
+		}
+	}, [isReputationOpen])
 
 	useEffect(() => {
 		if (!isLogisticsOpen) {
@@ -185,6 +208,7 @@ export const UIContainer = () => {
 				setIsPopulationOpen(false)
 				setIsLogisticsOpen(false)
 				setIsPrioritiesOpen(false)
+				setIsReputationOpen(false)
 				setIsCharterOpen(true)
 			}
 		}
@@ -210,6 +234,7 @@ export const UIContainer = () => {
 					setIsLogisticsOpen(false)
 					setIsPrioritiesOpen(false)
 					setIsCharterOpen(false)
+					setIsReputationOpen(false)
 					setIsStockOpen((prev) => !prev)
 				}}
 				isPopulationOpen={isPopulationOpen}
@@ -218,6 +243,7 @@ export const UIContainer = () => {
 					setIsLogisticsOpen(false)
 					setIsPrioritiesOpen(false)
 					setIsCharterOpen(false)
+					setIsReputationOpen(false)
 					setIsPopulationOpen((prev) => !prev)
 				}}
 				isLogisticsOpen={isLogisticsOpen}
@@ -226,7 +252,17 @@ export const UIContainer = () => {
 					setIsPopulationOpen(false)
 					setIsPrioritiesOpen(false)
 					setIsCharterOpen(false)
+					setIsReputationOpen(false)
 					setIsLogisticsOpen((prev) => !prev)
+				}}
+				isReputationOpen={isReputationOpen}
+				onToggleReputation={() => {
+					setIsStockOpen(false)
+					setIsPopulationOpen(false)
+					setIsLogisticsOpen(false)
+					setIsPrioritiesOpen(false)
+					setIsCharterOpen(false)
+					setIsReputationOpen((prev) => !prev)
 				}}
 				isWorldMapOpen={isWorldMapOpen}
 				onToggleWorldMap={() => setIsWorldMapOpen((prev) => !prev)}
@@ -236,6 +272,7 @@ export const UIContainer = () => {
 					setIsPopulationOpen(false)
 					setIsLogisticsOpen(false)
 					setIsCharterOpen(false)
+					setIsReputationOpen(false)
 					setIsPrioritiesOpen((prev) => !prev)
 				}}
 				isCharterOpen={isCharterOpen}
@@ -244,6 +281,7 @@ export const UIContainer = () => {
 					setIsPopulationOpen(false)
 					setIsLogisticsOpen(false)
 					setIsPrioritiesOpen(false)
+					setIsReputationOpen(false)
 					setIsCharterOpen((prev) => !prev)
 				}}
 				showDebugBounds={showDebugBounds}
@@ -257,6 +295,7 @@ export const UIContainer = () => {
 				onOpenSave={() => setSaveLoadMode('save')}
 				onOpenLoad={() => setSaveLoadMode('load')}
 				resourceButtonRef={stockButtonRef}
+				reputationButtonRef={reputationButtonRef}
 				populationButtonRef={populationButtonRef}
 				logisticsButtonRef={logisticsButtonRef}
 				prioritiesButtonRef={prioritiesButtonRef}
@@ -276,6 +315,11 @@ export const UIContainer = () => {
 				isVisible={isStockOpen}
 				onClose={() => setIsStockOpen(false)}
 				anchorRect={stockAnchor}
+			/>
+			<ReputationPanel
+				isVisible={isReputationOpen}
+				onClose={() => setIsReputationOpen(false)}
+				anchorRect={reputationAnchor}
 			/>
 			<Chat />
 			<Inventory />

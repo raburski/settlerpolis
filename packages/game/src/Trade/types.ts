@@ -61,15 +61,10 @@ export type TradeShipmentArrivedData = {
 	offerId: string
 }
 
-export type TradeReputationUpdatedData = {
-	playerId: PlayerId
-	reputation: number
-}
-
 export type TradeSnapshot = {
 	routes: TradeRouteState[]
-	reputation: Array<[PlayerId, number]>
 	simulationTimeMs: number
 	tickAccumulatorMs: number
 	requestCounter: number
+	reputation?: Array<[PlayerId, number]>
 }

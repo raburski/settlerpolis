@@ -9,6 +9,8 @@ import { useGlobalStockTotals } from './hooks/useGlobalStockTotals'
 import styles from './TopBar.module.css'
 import { UiEvents } from '../uiEvents'
 import { cityCharterService } from '../services/CityCharterService'
+import { reputationService } from '../services/ReputationService'
+import { playerService } from '../services/PlayerService'
 
 type TopBarProps = {
 	isStockOpen: boolean
@@ -23,11 +25,14 @@ type TopBarProps = {
 	onTogglePriorities: () => void
 	isCharterOpen: boolean
 	onToggleCharter: () => void
+	isReputationOpen: boolean
+	onToggleReputation: () => void
 	showDebugBounds: boolean
 	onToggleDebugBounds: () => void
 	onOpenSave: () => void
 	onOpenLoad: () => void
 	resourceButtonRef?: React.Ref<HTMLButtonElement>
+	reputationButtonRef?: React.Ref<HTMLButtonElement>
 	populationButtonRef?: React.Ref<HTMLButtonElement>
 	logisticsButtonRef?: React.Ref<HTMLButtonElement>
 	prioritiesButtonRef?: React.Ref<HTMLButtonElement>
@@ -68,11 +73,14 @@ export const TopBar: React.FC<TopBarProps> = ({
 	onTogglePriorities,
 	isCharterOpen,
 	onToggleCharter,
+	isReputationOpen,
+	onToggleReputation,
 	showDebugBounds,
 	onToggleDebugBounds,
 	onOpenSave,
 	onOpenLoad,
 	resourceButtonRef,
+	reputationButtonRef,
 	populationButtonRef,
 	logisticsButtonRef,
 	prioritiesButtonRef,
@@ -87,6 +95,9 @@ export const TopBar: React.FC<TopBarProps> = ({
 	)
 	const [charterState, setCharterState] = useState<CityCharterStateData | null>(
 		cityCharterService.getState()
+	)
+	const [reputation, setReputation] = useState(
+		reputationService.getReputation(playerService.playerId)
 	)
 
 	useEffect(() => {
@@ -112,6 +123,19 @@ export const TopBar: React.FC<TopBarProps> = ({
 
 		return () => {
 			EventBus.off(UiEvents.CityCharter.Updated, handleCharterUpdate)
+		}
+	}, [])
+
+	useEffect(() => {
+		const handleReputationUpdated = () => {
+			setReputation(reputationService.getReputation(playerService.playerId))
+		}
+
+		EventBus.on(UiEvents.Reputation.Updated, handleReputationUpdated)
+		reputationService.requestState()
+
+		return () => {
+			EventBus.off(UiEvents.Reputation.Updated, handleReputationUpdated)
 		}
 	}, [])
 
@@ -159,6 +183,18 @@ export const TopBar: React.FC<TopBarProps> = ({
 							<span className={styles.resourceValue}>{totals[item.id] || 0}</span>
 						</span>
 					))}
+				</button>
+				<button
+					type="button"
+					className={styles.reputationButton}
+					data-active={isReputationOpen}
+					onClick={onToggleReputation}
+					aria-pressed={isReputationOpen}
+					title="Reputation"
+					ref={reputationButtonRef}
+				>
+					<span className={styles.reputationIcon}>⭐</span>
+					<span className={styles.reputationValue}>{reputation}</span>
 				</button>
 				<button
 					type="button"

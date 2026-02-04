@@ -25,6 +25,7 @@ import type { Position } from '../types'
 import type { MoveTargetType } from '../Movement/types'
 import type { ItemType } from '../Items/types'
 import type { TradeSnapshot } from '../Trade/types'
+import type { ReputationSnapshot } from '../Reputation/types'
 import type {
 	BuildingInstanceId,
 	MapId,
@@ -59,6 +60,7 @@ export interface GameSnapshotV1 {
 		dialogue: DialogueSnapshot
 		flags: FlagsSnapshot
 		affinity: AffinitySnapshot
+		reputation: ReputationSnapshot
 		resourceNodes: ResourceNodesSnapshot
 	roads: RoadsSnapshot
 		cityCharter: CityCharterSnapshot

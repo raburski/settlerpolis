@@ -8,7 +8,6 @@ export const TradeEvents = {
 		RouteList: 'sc:trade:routes',
 		RouteUpdated: 'sc:trade:route-updated',
 		ShipmentStarted: 'sc:trade:shipment-started',
-		ShipmentArrived: 'sc:trade:shipment-arrived',
-		ReputationUpdated: 'sc:trade:reputation-updated'
+		ShipmentArrived: 'sc:trade:shipment-arrived'
 	}
 } as const

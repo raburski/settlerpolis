@@ -38,6 +38,7 @@ import { SnapshotService } from './state/SnapshotService'
 import type { GameSnapshotV1 } from './state/types'
 import { CityCharterManager } from './CityCharter'
 import { TradeManager } from './Trade'
+import { ReputationManager } from './Reputation'
 
 // Export types and events
 export * from './types'
@@ -50,6 +51,7 @@ export * from './Roads'
 export * from './Wildlife'
 export * from './CityCharter'
 export * from './Trade'
+export * from './Reputation'
 export * from './WorldMap'
 export * from './state/types'
 export { SnapshotService } from './state/SnapshotService'
@@ -97,6 +99,7 @@ export class GameManager {
 		this.managers.inventory = new InventoryManager(this.managers, event, this.managers.logs.getLogger('InventoryManager'))
 		this.managers.flags = new FlagsManager(event, this.managers.logs.getLogger('FlagsManager'))
 		this.managers.affinity = new AffinityManager(event, this.managers.logs.getLogger('AffinityManager'))
+		this.managers.reputation = new ReputationManager(event)
 		this.managers.quest = new QuestManager(this.managers, event, this.managers.logs.getLogger('QuestManager'))
 		this.managers.loot = new LootManager(this.managers, event, this.managers.logs.getLogger('LootManager'))
 		this.managers.cutscene = new CutsceneManager(event, this.managers.logs.getLogger('CutsceneManager'))
@@ -212,6 +215,7 @@ export class GameManager {
 			'InventoryManager',
 			'FlagsManager',
 			'AffinityManager',
+			'ReputationManager',
 			'QuestManager',
 			'LootManager',
 			'CutsceneManager',

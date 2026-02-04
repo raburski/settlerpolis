@@ -32,6 +32,7 @@ import type { Logger } from '../Logs'
 import type { WildlifeManager } from '../Wildlife'
 import type { CityCharterManager } from '../CityCharter'
 import type { TradeManager } from '../Trade'
+import type { ReputationManager } from '../Reputation'
 
 export interface Managers {
 	chat: ChatManager
@@ -66,6 +67,7 @@ export interface Managers {
 	wildlife: WildlifeManager
 	cityCharter: CityCharterManager
 	trade: TradeManager
+	reputation: ReputationManager
 }
 
 export class ManagersHub implements Managers {
@@ -103,4 +105,5 @@ export class ManagersHub implements Managers {
 	wildlife!: WildlifeManager
 	cityCharter!: CityCharterManager
 	trade!: TradeManager
+	reputation!: ReputationManager
 }

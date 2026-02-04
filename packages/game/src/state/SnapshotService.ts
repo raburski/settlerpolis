@@ -31,6 +31,7 @@ export class SnapshotService {
 				dialogue: this.managers.dialogue.serialize(),
 				flags: this.managers.flags.serialize(),
 				affinity: this.managers.affinity.serialize(),
+				reputation: this.managers.reputation.serialize(),
 				resourceNodes: this.managers.resourceNodes.serialize(),
 				roads: this.managers.roads.serialize(),
 				cityCharter: this.managers.cityCharter.serialize(),
@@ -70,6 +71,13 @@ export class SnapshotService {
 		this.managers.dialogue.deserialize(snapshot.state.dialogue)
 		this.managers.flags.deserialize(snapshot.state.flags)
 		this.managers.affinity.deserialize(snapshot.state.affinity)
+		if (snapshot.state.reputation) {
+			this.managers.reputation.deserialize(snapshot.state.reputation)
+		} else if (snapshot.state.trade?.reputation) {
+			this.managers.reputation.deserialize({ reputation: snapshot.state.trade.reputation })
+		} else {
+			this.managers.reputation.reset?.()
+		}
 		this.managers.resourceNodes.deserialize(snapshot.state.resourceNodes)
 		this.managers.trigger.deserialize(snapshot.state.triggers)
 		this.managers.scheduler.deserialize(snapshot.state.scheduler)
@@ -98,6 +106,7 @@ export class SnapshotService {
 		this.managers.dialogue.reset?.()
 		this.managers.flags.reset?.()
 		this.managers.affinity.reset?.()
+		this.managers.reputation.reset?.()
 		this.managers.resourceNodes.reset?.()
 		this.managers.roads.reset?.()
 		this.managers.trigger.reset?.()

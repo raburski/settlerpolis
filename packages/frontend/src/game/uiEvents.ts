@@ -86,6 +86,9 @@ export const UiEvents = {
 	Trade: {
 		Updated: 'ui:trade:updated'
 	},
+	Reputation: {
+		Updated: 'ui:reputation:updated'
+	},
 	Debug: {
 		BoundsToggle: 'ui:debug:bounds-toggle'
 	}
