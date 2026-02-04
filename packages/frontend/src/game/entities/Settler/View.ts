@@ -24,6 +24,7 @@ export class SettlerView extends BaseMovementView {
 		[ProfessionType.Builder]: '🔨',
 		[ProfessionType.Woodcutter]: '🪓',
 		[ProfessionType.Miner]: '⛏️',
+		[ProfessionType.Metallurgist]: '⚒️',
 		[ProfessionType.Farmer]: '🌾',
 		[ProfessionType.Miller]: '🌬️',
 		[ProfessionType.Baker]: '🥖',

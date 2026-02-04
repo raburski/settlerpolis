@@ -11,6 +11,7 @@ export enum ProfessionType {
 	Builder = 'builder',
 	Woodcutter = 'woodcutter',
 	Miner = 'miner',
+	Metallurgist = 'metallurgist',
 	Farmer = 'farmer',
 	Miller = 'miller',
 	Baker = 'baker',

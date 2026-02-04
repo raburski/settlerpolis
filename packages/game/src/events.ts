@@ -43,7 +43,7 @@ import type { FXPlayEventData } from './FX/types'
 import type { CutsceneTriggerEventData } from './Cutscene/types'
 import type { MapLoadData, MapLoadResponseData, MapTransitionData, MapTransitionResponseData } from './Map/types'
 import type { TimeUpdateEventData, TimeSpeedUpdateEventData, TimePauseEventData, TimeSyncEventData } from './Time/types'
-import type { PlaceBuildingData, CancelBuildingData, SetProductionPausedData, SetWorkAreaData, SetStorageRequestsData, BuildingPlacedData, BuildingProgressData, BuildingCompletedData, BuildingCancelledData, BuildingCatalogData, BuildingWorkAreaUpdatedData, BuildingStorageRequestsUpdatedData, BuildingWorkerQueueUpdatedData, ConstructionStage } from './Buildings/types'
+import type { PlaceBuildingData, CancelBuildingData, SetProductionPausedData, SetProductionPlanData, SetGlobalProductionPlanData, SetWorkAreaData, SetStorageRequestsData, BuildingPlacedData, BuildingProgressData, BuildingCompletedData, BuildingCancelledData, BuildingCatalogData, BuildingWorkAreaUpdatedData, BuildingStorageRequestsUpdatedData, BuildingWorkerQueueUpdatedData, ProductionPlanUpdatedData, GlobalProductionPlanUpdatedData, ConstructionStage } from './Buildings/types'
 import type { RequestWorkerData, UnassignWorkerData, RequestListData, PopulationListData, PopulationStatsData, Settler, ProfessionType, WorkerRequestFailureReason } from './Population/types'
 import type { WorkAssignment, WorkStep, WorkAction, LogisticsRequest } from './Settlers/WorkProvider/types'
 import type { ProductionRecipe, ProductionStatus } from './Buildings/types'
@@ -186,6 +186,8 @@ export type EventPayloads = Record<string, unknown> & {
 	[BuildingsEvents.CS.Cancel]: CancelBuildingData
 	[BuildingsEvents.CS.RequestPreview]: { buildingId: BuildingId }
 	[BuildingsEvents.CS.SetProductionPaused]: SetProductionPausedData
+	[BuildingsEvents.CS.SetProductionPlan]: SetProductionPlanData
+	[BuildingsEvents.CS.SetGlobalProductionPlan]: SetGlobalProductionPlanData
 	[BuildingsEvents.CS.SetWorkArea]: SetWorkAreaData
 	[BuildingsEvents.CS.SetStorageRequests]: SetStorageRequestsData
 	[BuildingsEvents.SC.Placed]: BuildingPlacedData
@@ -198,6 +200,8 @@ export type EventPayloads = Record<string, unknown> & {
 	[BuildingsEvents.SC.WorkAreaUpdated]: BuildingWorkAreaUpdatedData
 	[BuildingsEvents.SC.StorageRequestsUpdated]: BuildingStorageRequestsUpdatedData
 	[BuildingsEvents.SC.WorkerQueueUpdated]: BuildingWorkerQueueUpdatedData
+	[BuildingsEvents.SC.ProductionPlanUpdated]: ProductionPlanUpdatedData
+	[BuildingsEvents.SC.GlobalProductionPlanUpdated]: GlobalProductionPlanUpdatedData
 	[BuildingsEvents.SS.Tick]: {}
 	[BuildingsEvents.SS.HouseCompleted]: { buildingInstanceId: BuildingInstanceId, buildingId: BuildingId }
 	[BuildingsEvents.SS.ConstructionCompleted]: { buildingInstanceId: BuildingInstanceId, buildingId: BuildingId, mapId: MapId, playerId: PlayerId }

@@ -2,7 +2,7 @@ import { Receiver } from '../../Receiver'
 import { BuildingsEvents } from '../../Buildings/events'
 import { ProductionStatus } from '../../Buildings/types'
 import type { ProductionRecipe, SetProductionPausedData } from '../../Buildings/types'
-import { getBuildingWorkKinds } from '../../Buildings/work'
+import { getBuildingWorkKinds, getProductionRecipes } from '../../Buildings/work'
 import type { WorkProviderDeps } from './deps'
 import type { EventManager } from '../../events'
 import type { AssignmentStore } from './AssignmentStore'
@@ -59,7 +59,7 @@ export class ProductionTracker {
 			return
 		}
 		const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
-		if (!definition?.productionRecipe) {
+		if (!definition || getProductionRecipes(definition).length === 0) {
 			return
 		}
 		if (step.type === WorkStepType.Produce) {
@@ -132,6 +132,7 @@ export class ProductionTracker {
 	}
 
 	handleProductionCompleted(buildingInstanceId: BuildingInstanceId, recipe: ProductionRecipe): void {
+		this.managers.buildings.recordProduction(buildingInstanceId, recipe.id, 1)
 		this.emitProductionCompleted(buildingInstanceId, recipe)
 	}
 

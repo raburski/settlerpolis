@@ -9,6 +9,7 @@ export interface ItemType {
 	category?: string
 	emoji?: string
 	changesProfession?: string
+	changesProfessions?: string[]
 }
 
 type UpdateCallback = () => void

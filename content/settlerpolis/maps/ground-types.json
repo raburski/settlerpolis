@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "description": "Ground tileset contract: each column in the ground tileset maps to one ground type in this order.",
+  "columnOrder": [
+    "grass",
+    "dirt",
+    "sand",
+    "rock",
+    "mountain",
+    "water_shallow",
+    "water_deep",
+    "mud"
+  ],
+  "colors": {
+    "grass": "#4f9d4a",
+    "dirt": "#9a6b3f",
+    "sand": "#d1b36a",
+    "rock": "#7b7f86",
+    "mountain": "#4a4f55",
+    "water_shallow": "#4b86b8",
+    "water_deep": "#1f4e7a",
+    "mud": "#6f5a3c"
+  },
+  "notes": [
+    "Columns are 0-based in the tileset image.",
+    "All tiles in a column are visual variants of the same ground type.",
+    "Ground layer uses this tileset; roads are rendered separately."
+  ]
+}

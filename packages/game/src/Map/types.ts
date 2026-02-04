@@ -7,6 +7,21 @@ export interface TiledMap {
 	tilewidth: number
 	tileheight: number
 	layers: TiledLayer[]
+	tilesets?: TiledTileset[]
+}
+
+export interface TiledTileset {
+	firstgid: number
+	columns: number
+	tilewidth: number
+	tileheight: number
+	tilecount: number
+	name?: string
+	image?: string
+	imagewidth?: number
+	imageheight?: number
+	margin?: number
+	spacing?: number
 }
 
 export interface TiledLayer {
@@ -130,6 +145,17 @@ export interface PathData {
 	width: number
 	height: number
 	data: number[]
+}
+
+export enum GroundType {
+	Grass = 'grass',
+	Dirt = 'dirt',
+	Sand = 'sand',
+	Rock = 'rock',
+	Mountain = 'mountain',
+	WaterShallow = 'water_shallow',
+	WaterDeep = 'water_deep',
+	Mud = 'mud'
 }
 
 /**

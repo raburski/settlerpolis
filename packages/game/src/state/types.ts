@@ -11,7 +11,7 @@ import type { NeedsState } from '../Needs/NeedsState'
 import type { NeedType, NeedPriority } from '../Needs/NeedTypes'
 import type { NeedLevel } from '../Needs/NeedTypes'
 import type { WorkAssignment, LogisticsRequest, WorkWaitReason, WorkAction, WorkStep } from '../Settlers/WorkProvider/types'
-import type { ProductionStatus } from '../Buildings/types'
+import type { ProductionStatus, ProductionPlan } from '../Buildings/types'
 import type { NPC, NPCRoutineStep } from '../NPC/types'
 import type { PlayerQuestState, QuestProgress } from '../Quest/types'
 import type { Flag } from '../Flags/types'
@@ -113,6 +113,8 @@ export interface BuildingsSnapshot {
 	activeConstructionWorkers: MapEntries<string[]>
 	autoProductionState: MapEntries<{ status: ProductionStatus, progressMs: number, progress: number }>
 	buildingToMapObject: MapEntries<string>
+	productionCountsByBuilding?: MapEntries<MapEntries<number>>
+	globalProductionPlans?: MapEntries<MapEntries<ProductionPlan>>
 	simulationTimeMs: number
 	tickAccumulatorMs: number
 }

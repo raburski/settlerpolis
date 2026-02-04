@@ -1,11 +1,13 @@
 import { EventBus } from '../EventBus'
 import { Event, ProductionStatus } from '@rugged/game'
+import type { ProductionRecipe } from '@rugged/game'
 import { UiEvents } from '../uiEvents'
 
 export interface BuildingProductionState {
 	buildingInstanceId: string
 	status: ProductionStatus
 	progress: number // 0-100
+	currentRecipe?: ProductionRecipe
 }
 
 class ProductionServiceClass {
@@ -26,12 +28,14 @@ class ProductionServiceClass {
 				production = {
 					buildingInstanceId: data.buildingInstanceId,
 					status: ProductionStatus.InProduction,
-					progress: 0
+					progress: 0,
+					currentRecipe: data.recipe
 				}
 				this.buildingProductions.set(data.buildingInstanceId, production)
 			} else {
 				production.status = ProductionStatus.InProduction
 				production.progress = 0
+				production.currentRecipe = data.recipe
 			}
 
 			EventBus.emit(UiEvents.Production.Updated, {
@@ -48,6 +52,7 @@ class ProductionServiceClass {
 			if (production) {
 				production.status = ProductionStatus.Idle
 				production.progress = 0
+				production.currentRecipe = undefined
 
 				EventBus.emit(UiEvents.Production.Updated, {
 					buildingInstanceId: data.buildingInstanceId,
@@ -80,6 +85,7 @@ class ProductionServiceClass {
 			const production = this.buildingProductions.get(data.buildingInstanceId)
 			if (production) {
 				production.progress = 100
+				production.currentRecipe = data.recipe
 				// Status will be updated by status changed event
 
 				EventBus.emit(UiEvents.Production.Updated, {
@@ -99,7 +105,8 @@ class ProductionServiceClass {
 				production = {
 					buildingInstanceId: data.buildingInstanceId,
 					status: data.status,
-					progress: 0
+					progress: 0,
+					currentRecipe: undefined
 				}
 				this.buildingProductions.set(data.buildingInstanceId, production)
 			} else {

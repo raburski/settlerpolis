@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { EventBus } from '../EventBus'
 import { Event } from '@rugged/game'
 import { cityCharterService } from '../services/CityCharterService'
@@ -40,12 +40,60 @@ export const CityCharterPanel = ({ isVisible, onClose, anchorRect }: CityCharter
 	const [state, setState] = useState<CityCharterStateData | null>(
 		cityCharterService.getState()
 	)
+	const [animationPhase, setAnimationPhase] = useState<'idle' | 'shift'>('idle')
+	const [transition, setTransition] = useState<{
+		from: CityCharterStateData
+		to: CityCharterStateData
+	} | null>(null)
 	const [buildingDefinitions, setBuildingDefinitions] = useState<BuildingDefinition[]>(
 		buildingService.getAllBuildingDefinitions()
 	)
+	const pendingStateRef = useRef<CityCharterStateData | null>(null)
+	const stateRef = useRef<CityCharterStateData | null>(state)
+	const animationPhaseRef = useRef<'idle' | 'shift'>(animationPhase)
+
+	useEffect(() => {
+		stateRef.current = state
+	}, [state])
+
+	useEffect(() => {
+		animationPhaseRef.current = animationPhase
+	}, [animationPhase])
 
 	useEffect(() => {
 		const handleUpdate = (data: CityCharterStateData) => {
+			if (!stateRef.current) {
+				setState(data)
+				return
+			}
+
+			const previous = stateRef.current
+			const advancedTier =
+				previous.nextTier?.id &&
+				data.currentTier?.id &&
+				data.currentTier.id === previous.nextTier.id
+			const prefersReducedMotion =
+				typeof window !== 'undefined' &&
+				window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+			const isCompactLayout =
+				typeof window !== 'undefined' &&
+				window.matchMedia?.('(max-width: 760px)')?.matches
+
+			if (advancedTier && !prefersReducedMotion && !isCompactLayout) {
+				if (animationPhaseRef.current !== 'idle') {
+					pendingStateRef.current = data
+					return
+				}
+				setTransition({ from: previous, to: data })
+				setAnimationPhase('shift')
+				return
+			}
+
+			if (animationPhaseRef.current !== 'idle') {
+				pendingStateRef.current = data
+				return
+			}
+
 			setState(data)
 		}
 
@@ -66,6 +114,35 @@ export const CityCharterPanel = ({ isVisible, onClose, anchorRect }: CityCharter
 		}
 	}, [])
 
+	useEffect(() => {
+		if (animationPhase !== 'shift') {
+			return
+		}
+		if (!transition) {
+			return
+		}
+
+		const timeout = window.setTimeout(() => {
+			const pending = pendingStateRef.current
+			if (pending) {
+				setState(pending)
+				pendingStateRef.current = null
+			} else if (transition) {
+				setState(transition.to)
+			}
+			setTransition(null)
+			setAnimationPhase('idle')
+		}, 520)
+
+		return () => {
+			window.clearTimeout(timeout)
+		}
+	}, [animationPhase, transition])
+
+	const isShiftAnimating = animationPhase === 'shift' && Boolean(transition)
+	const displayState = isShiftAnimating ? transition!.from : state
+	const futureTier = isShiftAnimating ? transition!.to.nextTier : undefined
+
 	const panelStyle = anchorRect
 		? {
 			left: anchorRect.left + anchorRect.width / 2,
@@ -75,15 +152,22 @@ export const CityCharterPanel = ({ isVisible, onClose, anchorRect }: CityCharter
 		: undefined
 
 	const currentUnlocks = useMemo(
-		() => resolveTierUnlocks(state?.currentTier, buildingDefinitions),
-		[state?.currentTier, buildingDefinitions]
+		() => resolveTierUnlocks(displayState?.currentTier, buildingDefinitions),
+		[displayState?.currentTier, buildingDefinitions]
 	)
 	const nextUnlocks = useMemo(
-		() => resolveTierUnlocks(state?.nextTier, buildingDefinitions),
-		[state?.nextTier, buildingDefinitions]
+		() => resolveTierUnlocks(displayState?.nextTier, buildingDefinitions),
+		[displayState?.nextTier, buildingDefinitions]
 	)
-	const currentBuffs = state?.currentTier?.buffs || []
-	const nextBuffs = state?.nextTier?.buffs || []
+	const futureUnlocks = useMemo(
+		() => resolveTierUnlocks(futureTier, buildingDefinitions),
+		[futureTier, buildingDefinitions]
+	)
+	const currentBuffs = displayState?.currentTier?.buffs || []
+	const nextBuffs = displayState?.nextTier?.buffs || []
+	const futureBuffs = futureTier?.buffs || []
+	const nextClaimable = Boolean(displayState?.isEligibleForNext && displayState?.nextTier)
+	const futureClaimable = Boolean(transition?.to.isEligibleForNext && futureTier)
 
 	if (!isVisible) {
 		return null
@@ -99,115 +183,204 @@ export const CityCharterPanel = ({ isVisible, onClose, anchorRect }: CityCharter
 			</div>
 
 			<div className={styles.content}>
-				{!state ? (
+				{!displayState ? (
 					<div className={styles.emptyState}>Loading charter...</div>
 				) : (
 					<>
-						<div className={styles.panelGrid}>
-							<div className={`${styles.tierPanel} ${styles.currentPanel}`}>
-								<div className={styles.panelLabel}>Current Tier</div>
-								<div className={styles.panelName}>{state.currentTier.name}</div>
-								<div className={styles.panelSection}>
-									<div className={styles.sectionTitle}>Unlocks</div>
-									{currentUnlocks.length === 0 ? (
-										<div className={styles.emptyState}>None yet.</div>
-									) : (
-										<div className={styles.unlockGrid}>
-											{currentUnlocks.map((entry) => (
-												<div key={entry.id} className={styles.unlockTile} title={entry.name}>
-													<span className={styles.unlockIcon}>{entry.icon || '?'}</span>
-													<span className={styles.unlockName}>{entry.name}</span>
-												</div>
-											))}
-										</div>
-									)}
-								</div>
-								<div className={styles.panelSection}>
-									<div className={styles.sectionTitle}>Buffs</div>
-									{currentBuffs.length === 0 ? (
-										<div className={styles.emptyState}>None yet.</div>
-									) : (
-										<ul className={styles.buffList}>
-											{currentBuffs.map((buff) => {
-												const label = buff.description || buff.id
-												const value = formatBuffValue(buff.value)
-												return (
-													<li key={buff.id} className={styles.buffItem}>
-														<span>{label}</span>
-														{value ? <span className={styles.buffValue}>{value}</span> : null}
-													</li>
-												)
-											})}
-										</ul>
-									)}
-								</div>
-							</div>
-
-							<div className={styles.panelArrow} aria-hidden="true">
-								<span>→</span>
-							</div>
-							<div
-								className={styles.tierPanel}
-								data-claimable={state.isEligibleForNext && Boolean(state.nextTier)}
-							>
-								<div className={styles.panelLabel}>Next Tier</div>
-								<div className={styles.panelName}>{state.nextTier?.name ?? '—'}</div>
-								<div className={styles.panelSection}>
-									<div className={styles.sectionTitle}>Unlocks</div>
-									{state.nextTier ? (
-										nextUnlocks.length === 0 ? (
+						<div
+							className={styles.panelGrid}
+							data-phase={animationPhase}
+						>
+							<div className={styles.panelSlide}>
+								<div
+									className={`${styles.tierPanel} ${styles.currentPanel}`}
+								>
+									<div className={styles.panelLabel}>Current Tier</div>
+									<div className={styles.panelName}>{displayState.currentTier.name}</div>
+									<div className={styles.panelSection}>
+										<div className={styles.sectionTitle}>Unlocks</div>
+										{currentUnlocks.length === 0 ? (
 											<div className={styles.emptyState}>None yet.</div>
 										) : (
 											<div className={styles.unlockGrid}>
-												{nextUnlocks.map((entry) => (
-													<div key={entry.id} className={styles.unlockTile} title={entry.name}>
+												{currentUnlocks.map((entry) => (
+													<div
+														key={entry.id}
+														className={styles.unlockTile}
+														title={entry.name}
+													>
 														<span className={styles.unlockIcon}>{entry.icon || '?'}</span>
 														<span className={styles.unlockName}>{entry.name}</span>
 													</div>
 												))}
 											</div>
-										)
-									) : (
-										<div className={styles.emptyState}>No further tiers.</div>
-									)}
-								</div>
-								<div className={styles.panelSection}>
-									<div className={styles.sectionTitle}>Buffs</div>
-									{state.nextTier ? (
-										nextBuffs.length === 0 ? (
+										)}
+									</div>
+									<div className={styles.panelSection}>
+										<div className={styles.sectionTitle}>Buffs</div>
+										{currentBuffs.length === 0 ? (
 											<div className={styles.emptyState}>None yet.</div>
 										) : (
 											<ul className={styles.buffList}>
-												{nextBuffs.map((buff) => {
+												{currentBuffs.map((buff) => {
 													const label = buff.description || buff.id
 													const value = formatBuffValue(buff.value)
 													return (
 														<li key={buff.id} className={styles.buffItem}>
 															<span>{label}</span>
-															{value ? (
-																<span className={styles.buffValue}>{value}</span>
-															) : null}
+															{value ? <span className={styles.buffValue}>{value}</span> : null}
 														</li>
 													)
 												})}
 											</ul>
-										)
-									) : (
-										<div className={styles.emptyState}>No further tiers.</div>
-									)}
+										)}
+									</div>
 								</div>
-								<div className={styles.panelSection}>
-									{state.nextTier ? (
-										<button
-											type="button"
-											className={styles.claimButton}
-											onClick={() => cityCharterService.claimNextTier()}
-											disabled={!state.isEligibleForNext}
-										>
-											Claim Charter
-										</button>
+
+								<div className={styles.panelArrow} aria-hidden="true">
+									<span>→</span>
+								</div>
+								<div
+									className={styles.tierPanel}
+									data-claimable={nextClaimable}
+									data-role="next"
+								>
+									<div className={styles.panelLabel}>Next Tier</div>
+									<div className={styles.panelName}>{displayState.nextTier?.name ?? '—'}</div>
+									<div className={styles.panelSection}>
+										<div className={styles.sectionTitle}>Unlocks</div>
+										{displayState.nextTier ? (
+											nextUnlocks.length === 0 ? (
+												<div className={styles.emptyState}>None yet.</div>
+											) : (
+												<div className={styles.unlockGrid}>
+													{nextUnlocks.map((entry) => (
+														<div
+															key={entry.id}
+															className={styles.unlockTile}
+															title={entry.name}
+														>
+															<span className={styles.unlockIcon}>{entry.icon || '?'}</span>
+															<span className={styles.unlockName}>{entry.name}</span>
+														</div>
+													))}
+												</div>
+											)
+										) : (
+											<div className={styles.emptyState}>No further tiers.</div>
+										)}
+									</div>
+									<div className={styles.panelSection}>
+										<div className={styles.sectionTitle}>Buffs</div>
+										{displayState.nextTier ? (
+											nextBuffs.length === 0 ? (
+												<div className={styles.emptyState}>None yet.</div>
+											) : (
+												<ul className={styles.buffList}>
+													{nextBuffs.map((buff) => {
+														const label = buff.description || buff.id
+														const value = formatBuffValue(buff.value)
+														return (
+															<li key={buff.id} className={styles.buffItem}>
+																<span>{label}</span>
+																{value ? <span className={styles.buffValue}>{value}</span> : null}
+															</li>
+														)
+													})}
+												</ul>
+											)
+										) : (
+											<div className={styles.emptyState}>No further tiers.</div>
+										)}
+									</div>
+									{displayState.nextTier ? (
+										<div className={styles.claimRow}>
+											<button
+												type="button"
+												className={styles.claimButton}
+												onClick={() => cityCharterService.claimNextTier()}
+												disabled={!displayState.isEligibleForNext}
+											>
+												Claim Charter
+											</button>
+										</div>
 									) : null}
 								</div>
+
+								{isShiftAnimating ? (
+									<div
+										className={`${styles.tierPanel} ${styles.futurePanel}`}
+										data-claimable={futureClaimable}
+									>
+										<div className={styles.panelLabel}>Next Tier</div>
+										<div className={styles.panelName}>{futureTier?.name ?? '—'}</div>
+										<div className={styles.panelSection}>
+											<div className={styles.sectionTitle}>Unlocks</div>
+											{futureTier ? (
+												futureUnlocks.length === 0 ? (
+													<div className={styles.emptyState}>None yet.</div>
+												) : (
+													<div className={styles.unlockGrid}>
+														{futureUnlocks.map((entry) => (
+															<div
+																key={entry.id}
+																className={styles.unlockTile}
+																title={entry.name}
+															>
+																<span className={styles.unlockIcon}>{entry.icon || '?'}</span>
+																<span className={styles.unlockName}>{entry.name}</span>
+															</div>
+														))}
+													</div>
+												)
+											) : (
+												<div className={styles.emptyState}>No further tiers.</div>
+											)}
+										</div>
+										<div className={styles.panelSection}>
+											<div className={styles.sectionTitle}>Buffs</div>
+											{futureTier ? (
+												futureBuffs.length === 0 ? (
+													<div className={styles.emptyState}>None yet.</div>
+												) : (
+													<ul className={styles.buffList}>
+														{futureBuffs.map((buff) => {
+															const label = buff.description || buff.id
+															const value = formatBuffValue(buff.value)
+															return (
+																<li key={buff.id} className={styles.buffItem}>
+																	<span>{label}</span>
+																	{value ? (
+																		<span className={styles.buffValue}>{value}</span>
+																	) : null}
+																</li>
+															)
+														})}
+													</ul>
+												)
+											) : (
+												<div className={styles.emptyState}>No further tiers.</div>
+											)}
+										</div>
+										{futureTier ? (
+											<div className={styles.claimRow}>
+												<button
+													type="button"
+													className={styles.claimButton}
+													onClick={() => cityCharterService.claimNextTier()}
+													disabled={!transition?.to.isEligibleForNext}
+												>
+													Claim Charter
+												</button>
+											</div>
+										) : null}
+									</div>
+								) : null}
+								{isShiftAnimating ? (
+									<div className={`${styles.panelArrow} ${styles.futureArrow}`} aria-hidden="true">
+										<span>→</span>
+									</div>
+								) : null}
 							</div>
 						</div>
 					</>

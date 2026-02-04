@@ -5,6 +5,7 @@ import type { Logger } from '../../../Logs'
 import { calculateDistance } from '../../../utils'
 import type { LogisticsSnapshot } from '../../../state/types'
 import type { ItemType } from '../../../Items/types'
+import { getProductionRecipes } from '../../../Buildings/work'
 
 export class LogisticsProvider implements WorkProvider {
 	public readonly id = 'logistics'
@@ -419,17 +420,28 @@ export class LogisticsProvider implements WorkProvider {
 				continue
 			}
 
-			const requiredInput = definition.productionRecipe?.inputs?.find(input => input.itemType === itemType)
-			if (requiredInput) {
-				const desired = capacity > 0 ? capacity : requiredInput.quantity
-				const needed = desired - current
-				if (needed > 0) {
-					const requestQuantity = Math.min(quantity, needed)
-					if (this.managers.storage.hasAvailableStorage(building.id, itemType, requestQuantity)) {
-						demandTargets.push(building.id)
+			const productionRecipes = getProductionRecipes(definition)
+			if (productionRecipes.length > 0) {
+				const plan = this.managers.buildings.getEffectiveProductionPlan(building.id) || {}
+				const matchingInputs = productionRecipes.flatMap(recipe => {
+					const weight = plan[recipe.id] ?? 1
+					if (weight <= 0) {
+						return []
 					}
+					return recipe.inputs.filter(input => input.itemType === itemType)
+				})
+				if (matchingInputs.length > 0) {
+					const maxRequired = Math.max(...matchingInputs.map(input => input.quantity))
+					const desired = capacity > 0 ? capacity : maxRequired
+					const needed = desired - current
+					if (needed > 0) {
+						const requestQuantity = Math.min(quantity, needed)
+						if (this.managers.storage.hasAvailableStorage(building.id, itemType, requestQuantity)) {
+							demandTargets.push(building.id)
+						}
+					}
+					continue
 				}
-				continue
 			}
 
 			const consumeEntry = definition.consumes?.find(entry => entry.itemType === itemType)

@@ -5,8 +5,8 @@ export const hammerItem: ItemMetadata = {
 	id: ItemType.Hammer,
 	name: 'Hammer',
 	emoji: '🔨',
-	description: 'A hammer that turns settlers into builders',
+	description: 'A hammer used by builders and metallurgists',
 	category: ItemCategory.Tool,
 	stackable: false,
-	changesProfession: ProfessionType.Builder
+	changesProfessions: [ProfessionType.Builder, ProfessionType.Metallurgist]
 }

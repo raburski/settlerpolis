@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { EventBus } from '../EventBus'
 import { Event, BuildingInstance, BuildingDefinition, ConstructionStage, Settler, SettlerState, ProfessionType, ProductionStatus, WorkerRequestFailureReason, TradeRouteStatus } from '@rugged/game'
-import type { TradeRouteState } from '@rugged/game'
+import type { TradeRouteState, ProductionRecipe, ProductionPlan } from '@rugged/game'
 import { buildingService } from '../services/BuildingService'
 import { populationService } from '../services/PopulationService'
 import { itemService } from '../services/ItemService'
@@ -66,6 +66,135 @@ const formatTradeOffer = (offer: WorldMapNodeTradeOffer) => {
 	return `${offer.offerQuantity} ${offer.offerItem} → ${offer.receiveQuantity} ${offer.receiveItem}`
 }
 
+const buildRecipeId = (recipe: ProductionRecipe, index: number) => {
+	const outputs = recipe.outputs?.map(output => output.itemType).filter(Boolean).join('+')
+	if (outputs && outputs.length > 0) {
+		return outputs
+	}
+	return `recipe-${index}`
+}
+
+const normalizeProductionRecipes = (definition?: BuildingDefinition): Array<ProductionRecipe & { id: string }> => {
+	if (!definition) {
+		return []
+	}
+	const recipes = definition.productionRecipes && definition.productionRecipes.length > 0
+		? definition.productionRecipes
+		: (definition.productionRecipe ? [definition.productionRecipe] : [])
+	if (recipes.length === 0) {
+		return []
+	}
+	const seen = new Set<string>()
+	return recipes.map((recipe, index) => {
+		let id = recipe.id ?? buildRecipeId(recipe, index)
+		if (seen.has(id)) {
+			id = `${id}-${index}`
+		}
+		seen.add(id)
+		return { ...recipe, id }
+	})
+}
+
+const buildDefaultPlan = (recipes: Array<ProductionRecipe & { id: string }>, defaults?: ProductionPlan): ProductionPlan => {
+	const plan: ProductionPlan = {}
+	for (const recipe of recipes) {
+		const weight = defaults?.[recipe.id]
+		plan[recipe.id] = typeof weight === 'number' && Number.isFinite(weight) ? weight : 1
+	}
+	return plan
+}
+
+const normalizePlanForUi = (plan: ProductionPlan | undefined, recipeIds: string[]): ProductionPlan => {
+	if (recipeIds.length === 0) {
+		return {}
+	}
+	const normalized: ProductionPlan = {}
+	const enabledIds = recipeIds.filter(id => (plan?.[id] ?? 0) > 0)
+
+	if (enabledIds.length === 0) {
+		const base = Math.floor(100 / recipeIds.length)
+		let remainder = 100 - base * recipeIds.length
+		recipeIds.forEach((id) => {
+			const add = remainder > 0 ? 1 : 0
+			normalized[id] = base + add
+			if (remainder > 0) {
+				remainder -= 1
+			}
+		})
+		return normalized
+	}
+
+	const totalEnabled = enabledIds.reduce((sum, id) => sum + (plan?.[id] ?? 0), 0)
+	const scaled = enabledIds.map(id => {
+		const raw = plan?.[id] ?? 0
+		return totalEnabled > 0 ? Math.round((raw / totalEnabled) * 100) : 0
+	})
+	let diff = 100 - scaled.reduce((sum, value) => sum + value, 0)
+	if (diff !== 0 && scaled.length > 0) {
+		scaled[0] = Math.max(0, scaled[0] + diff)
+	}
+	enabledIds.forEach((id, index) => {
+		normalized[id] = scaled[index]
+	})
+	recipeIds.forEach((id) => {
+		if (!normalized[id]) {
+			normalized[id] = 0
+		}
+	})
+	return normalized
+}
+
+const adjustPlanWeights = (plan: ProductionPlan, recipeIds: string[], recipeId: string, nextWeight: number): ProductionPlan => {
+	const clampedWeight = Math.max(0, Math.min(100, nextWeight))
+	const enabledIds = recipeIds.filter(id => (plan[id] ?? 0) > 0 || id === recipeId)
+
+	if (enabledIds.length <= 1) {
+		const singlePlan: ProductionPlan = {}
+		recipeIds.forEach(id => {
+			singlePlan[id] = id === recipeId ? 100 : 0
+		})
+		return singlePlan
+	}
+
+	const otherIds = enabledIds.filter(id => id !== recipeId)
+	const targetOtherTotal = Math.max(0, 100 - clampedWeight)
+	const otherTotal = otherIds.reduce((sum, id) => sum + (plan[id] ?? 0), 0)
+
+	const nextPlan: ProductionPlan = {}
+	recipeIds.forEach(id => {
+		nextPlan[id] = 0
+	})
+	nextPlan[recipeId] = clampedWeight
+
+	if (otherIds.length === 0) {
+		return nextPlan
+	}
+
+	if (otherTotal <= 0) {
+		const base = Math.floor(targetOtherTotal / otherIds.length)
+		let remainder = targetOtherTotal - base * otherIds.length
+		otherIds.forEach(id => {
+			const add = remainder > 0 ? 1 : 0
+			nextPlan[id] = base + add
+			if (remainder > 0) {
+				remainder -= 1
+			}
+		})
+		return nextPlan
+	}
+
+	const scaled = otherIds.map(id => Math.round(((plan[id] ?? 0) / otherTotal) * targetOtherTotal))
+	let diff = targetOtherTotal - scaled.reduce((sum, value) => sum + value, 0)
+	if (diff !== 0 && scaled.length > 0) {
+		scaled[0] = Math.max(0, scaled[0] + diff)
+	}
+	otherIds.forEach((id, index) => {
+		nextPlan[id] = Math.max(0, scaled[index])
+	})
+
+	return nextPlan
+}
+
 interface BuildingInfoData {
 	buildingInstance: BuildingInstance
 	buildingDefinition: BuildingDefinition
@@ -106,6 +235,34 @@ export const BuildingInfoPanel: React.FC = () => {
 	}, [])
 
 	const selectedTradeNode = tradeNodes.find(node => node.id === selectedTradeNodeId)
+	const productionRecipes = useMemo(() => normalizeProductionRecipes(buildingDefinition || undefined), [buildingDefinition])
+	const productionRecipeIds = useMemo(() => productionRecipes.map(recipe => recipe.id), [productionRecipes])
+	const defaultProductionPlan = useMemo(
+		() => buildDefaultPlan(productionRecipes, buildingDefinition?.productionPlanDefaults),
+		[productionRecipes, buildingDefinition]
+	)
+	const globalProductionPlan = buildingDefinition ? buildingService.getGlobalProductionPlan(buildingDefinition.id) : undefined
+	const useGlobalProductionPlan = buildingInstance?.useGlobalProductionPlan !== false
+	const baseProductionPlan = useMemo(() => {
+		if (productionRecipeIds.length === 0) {
+			return {}
+		}
+		if (!buildingInstance || !buildingDefinition) {
+			return defaultProductionPlan
+		}
+		if (useGlobalProductionPlan) {
+			return globalProductionPlan || defaultProductionPlan
+		}
+		return buildingInstance.productionPlan || globalProductionPlan || defaultProductionPlan
+	}, [productionRecipeIds, buildingInstance, buildingDefinition, useGlobalProductionPlan, globalProductionPlan, defaultProductionPlan])
+	const uiProductionPlan = useMemo(
+		() => normalizePlanForUi(baseProductionPlan, productionRecipeIds),
+		[baseProductionPlan, productionRecipeIds]
+	)
+	const defaultUiPlan = useMemo(
+		() => normalizePlanForUi(defaultProductionPlan, productionRecipeIds),
+		[defaultProductionPlan, productionRecipeIds]
+	)
 
 	useEffect(() => {
 		// Listen for building selection
@@ -458,7 +615,49 @@ export const BuildingInfoPanel: React.FC = () => {
 	const isConstructing = buildingInstance.stage === ConstructionStage.Constructing
 	const isCollectingResources = buildingInstance.stage === ConstructionStage.CollectingResources
 	const hasWorkerSlots = buildingDefinition.workerSlots !== undefined
-	const canPauseWork = Boolean(buildingDefinition.productionRecipe || buildingDefinition.harvest || buildingDefinition.farm)
+	const canPauseWork = Boolean((productionRecipes.length > 0) || buildingDefinition.harvest || buildingDefinition.farm)
+	const handlePlanUpdate = (nextPlan: ProductionPlan) => {
+		if (!buildingInstance || !buildingDefinition) {
+			return
+		}
+		if (useGlobalProductionPlan) {
+			buildingService.setGlobalProductionPlan(buildingDefinition.id, nextPlan)
+			return
+		}
+		buildingService.setProductionPlan(buildingInstance.id, nextPlan, false)
+	}
+
+	const handlePlanWeightChange = (recipeId: string, nextWeight: number) => {
+		if (productionRecipeIds.length === 0) {
+			return
+		}
+		const nextPlan = adjustPlanWeights(uiProductionPlan, productionRecipeIds, recipeId, nextWeight)
+		handlePlanUpdate(nextPlan)
+	}
+
+	const handlePlanToggle = (recipeId: string) => {
+		if (productionRecipeIds.length === 0) {
+			return
+		}
+		const currentWeight = uiProductionPlan[recipeId] ?? 0
+		if (currentWeight > 0) {
+			handlePlanUpdate(adjustPlanWeights(uiProductionPlan, productionRecipeIds, recipeId, 0))
+			return
+		}
+		const fallback = Math.max(1, defaultUiPlan[recipeId] ?? Math.round(100 / Math.max(1, productionRecipeIds.length)))
+		handlePlanUpdate(adjustPlanWeights(uiProductionPlan, productionRecipeIds, recipeId, fallback))
+	}
+
+	const handleUseGlobalToggle = () => {
+		if (!buildingInstance || !buildingDefinition) {
+			return
+		}
+		if (useGlobalProductionPlan) {
+			buildingService.setProductionPlan(buildingInstance.id, uiProductionPlan, false)
+			return
+		}
+		buildingService.setProductionPlan(buildingInstance.id, undefined, true)
+	}
 	const settlers = populationService.getSettlers()
 	const assignedWorkers = settlers.filter(
 		settler => settler.buildingId === buildingInstance.id && Boolean(settler.stateContext.assignmentId)
@@ -540,6 +739,7 @@ export const BuildingInfoPanel: React.FC = () => {
 		[ProfessionType.Builder]: 'Builder',
 		[ProfessionType.Woodcutter]: 'Woodcutter',
 		[ProfessionType.Miner]: 'Miner',
+		[ProfessionType.Metallurgist]: 'Metallurgist',
 		[ProfessionType.Farmer]: 'Farmer',
 		[ProfessionType.Miller]: 'Miller',
 		[ProfessionType.Baker]: 'Baker',
@@ -551,6 +751,7 @@ export const BuildingInfoPanel: React.FC = () => {
 		[ProfessionType.Builder]: '🔨',
 		[ProfessionType.Woodcutter]: '🪓',
 		[ProfessionType.Miner]: '⛏️',
+		[ProfessionType.Metallurgist]: '⚒️',
 		[ProfessionType.Farmer]: '🌾',
 		[ProfessionType.Miller]: '🌬️',
 		[ProfessionType.Baker]: '🥖',
@@ -968,7 +1169,7 @@ export const BuildingInfoPanel: React.FC = () => {
 				</div>
 			)}
 
-			{isCompleted && buildingDefinition.productionRecipe && (
+			{isCompleted && productionRecipes.length > 0 && (
 				<div className={sharedStyles.info}>
 					<div className={sharedStyles.infoRow}>
 						<span className={sharedStyles.label}>Production:</span>
@@ -978,42 +1179,59 @@ export const BuildingInfoPanel: React.FC = () => {
 								const status = production?.status || ProductionStatus.Idle
 								const progress = production?.progress || 0
 								const isPaused = status === ProductionStatus.Paused
-								
+								const currentRecipe = production?.currentRecipe
+								const singleRecipe = productionRecipes.length === 1 ? productionRecipes[0] : null
+
 								let statusContent: React.ReactNode
 								if (status === ProductionStatus.InProduction) {
 									statusContent = (
-										<div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+										<div className={styles.productionStatus}>
 											<span>🔄 Producing... {Math.round(progress)}%</span>
-											<div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
-												<span style={{ fontSize: '0.9em' }}>Inputs:</span>
-												{buildingDefinition.productionRecipe.inputs.map((input, idx) => (
-													<div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-														<ItemEmoji itemType={input.itemType} />
-														<span>{input.quantity}x {input.itemType}</span>
-													</div>
-												))}
-												<span style={{ fontSize: '0.9em', marginTop: '4px' }}>Outputs:</span>
-												{buildingDefinition.productionRecipe.outputs.map((output, idx) => (
-													<div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-														<ItemEmoji itemType={output.itemType} />
-														<span>{output.quantity}x {output.itemType}</span>
-													</div>
-												))}
-											</div>
+											{currentRecipe && productionRecipes.length > 1 && (
+												<div className={styles.productionStatusDetail}>
+													<span>Current:</span>
+													{currentRecipe.outputs.map((output, idx) => (
+														<span key={`${output.itemType}-${idx}`} className={styles.productionStatusItem}>
+															<ItemEmoji itemType={output.itemType} />
+															{output.quantity}x {output.itemType}
+														</span>
+													))}
+												</div>
+											)}
+											{singleRecipe && (
+												<div className={styles.productionStatusDetail}>
+													<span>Inputs:</span>
+													{singleRecipe.inputs.map((input, idx) => (
+														<span key={`${input.itemType}-${idx}`} className={styles.productionStatusItem}>
+															<ItemEmoji itemType={input.itemType} />
+															{input.quantity}x {input.itemType}
+														</span>
+													))}
+													<span>Outputs:</span>
+													{singleRecipe.outputs.map((output, idx) => (
+														<span key={`${output.itemType}-${idx}`} className={styles.productionStatusItem}>
+															<ItemEmoji itemType={output.itemType} />
+															{output.quantity}x {output.itemType}
+														</span>
+													))}
+												</div>
+											)}
 										</div>
 									)
 								} else if (status === ProductionStatus.NoInput) {
 									statusContent = (
-										<div>
+										<div className={styles.productionStatus}>
 											<span>⏸️ Waiting for inputs</span>
-											<div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
-												{buildingDefinition.productionRecipe.inputs.map((input, idx) => (
-													<div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-														<ItemEmoji itemType={input.itemType} />
-														<span>Need {input.quantity}x {input.itemType}</span>
-													</div>
-												))}
-											</div>
+											{singleRecipe && (
+												<div className={styles.productionStatusDetail}>
+													{singleRecipe.inputs.map((input, idx) => (
+														<span key={`${input.itemType}-${idx}`} className={styles.productionStatusItem}>
+															<ItemEmoji itemType={input.itemType} />
+															Need {input.quantity}x {input.itemType}
+														</span>
+													))}
+												</div>
+											)}
 										</div>
 									)
 								} else if (status === ProductionStatus.NoWorker) {
@@ -1025,7 +1243,7 @@ export const BuildingInfoPanel: React.FC = () => {
 								}
 
 								return (
-									<div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+									<div className={styles.productionPanel}>
 										{statusContent}
 										<button
 											className={sharedStyles.actionButton}
@@ -1033,6 +1251,74 @@ export const BuildingInfoPanel: React.FC = () => {
 										>
 											{isPaused ? 'Resume Production' : 'Pause Production'}
 										</button>
+										{productionRecipes.length > 1 && (
+											<div className={styles.productionPlan}>
+												<label className={styles.productionPlanGlobal}>
+													<input
+														type="checkbox"
+														checked={useGlobalProductionPlan}
+														onChange={handleUseGlobalToggle}
+													/>
+													<span>Use global weights</span>
+												</label>
+												{productionRecipes.map((recipe) => {
+													const weight = uiProductionPlan[recipe.id] ?? 0
+													const isEnabled = weight > 0
+													return (
+														<div key={recipe.id} className={styles.productionPlanRecipe}>
+															<div className={styles.productionPlanHeader}>
+																<label className={styles.productionPlanToggle}>
+																	<input
+																		type="checkbox"
+																		checked={isEnabled}
+																		onChange={() => handlePlanToggle(recipe.id)}
+																	/>
+																	<span className={styles.productionPlanTitle}>
+																		{recipe.outputs.map((output, idx) => (
+																			<span key={`${recipe.id}-out-${idx}`} className={styles.productionPlanItem}>
+																				<ItemEmoji itemType={output.itemType} />
+																				{output.quantity}x {output.itemType}
+																			</span>
+																		))}
+																	</span>
+																</label>
+																<span className={styles.productionPlanWeight}>{Math.round(weight)}%</span>
+															</div>
+															<input
+																type="range"
+																min={0}
+																max={100}
+																step={1}
+																value={Math.round(weight)}
+																disabled={!isEnabled}
+																onChange={(event) => handlePlanWeightChange(recipe.id, Number(event.target.value))}
+																className={styles.productionPlanSlider}
+															/>
+															<div className={styles.productionPlanDetails}>
+																<div>
+																	<span>Inputs:</span>
+																	{recipe.inputs.map((input, idx) => (
+																		<span key={`${recipe.id}-in-${idx}`} className={styles.productionPlanItem}>
+																			<ItemEmoji itemType={input.itemType} />
+																			{input.quantity}x {input.itemType}
+																		</span>
+																	))}
+																</div>
+																<div>
+																	<span>Outputs:</span>
+																	{recipe.outputs.map((output, idx) => (
+																		<span key={`${recipe.id}-out-detail-${idx}`} className={styles.productionPlanItem}>
+																			<ItemEmoji itemType={output.itemType} />
+																			{output.quantity}x {output.itemType}
+																		</span>
+																	))}
+																</div>
+															</div>
+														</div>
+													)
+												})}
+											</div>
+										)}
 									</div>
 								)
 							})()}
@@ -1041,7 +1327,7 @@ export const BuildingInfoPanel: React.FC = () => {
 				</div>
 			)}
 
-			{isCompleted && !buildingDefinition.productionRecipe && canPauseWork && (
+			{isCompleted && productionRecipes.length === 0 && canPauseWork && (
 				<div className={sharedStyles.info}>
 					<div className={sharedStyles.infoRow}>
 						<span className={sharedStyles.label}>Work:</span>
@@ -1091,7 +1377,7 @@ export const BuildingInfoPanel: React.FC = () => {
 				</div>
 			)}
 
-			{isCompleted && !buildingDefinition.storageSlots?.length && !buildingDefinition.productionRecipe && !buildingDefinition.harvest && !buildingDefinition.farm && (
+			{isCompleted && !buildingDefinition.storageSlots?.length && productionRecipes.length === 0 && !buildingDefinition.harvest && !buildingDefinition.farm && (
 				<div className={sharedStyles.actions}>
 					<div className={sharedStyles.completedMessage}>
 						Building is ready for use

@@ -2,6 +2,7 @@ import { Position } from '../types'
 import { ItemType } from '../Items/types'
 import type { ProfessionType } from '../Population/types'
 import type { ResourceNodeType } from '../ResourceNodes/types'
+import type { GroundType } from '../Map/types'
 import type { BuildingId, BuildingInstanceId, MapId, PlayerId } from '../ids'
 
 export type { BuildingId, BuildingInstanceId } from '../ids'
@@ -18,6 +19,7 @@ export interface BuildingCost {
 }
 
 export interface ProductionRecipe {
+	id?: string
 	inputs: Array<{
 		itemType: ItemType
 		quantity: number
@@ -28,6 +30,8 @@ export interface ProductionRecipe {
 	}>
 	productionTime: number // Time in seconds to produce one batch
 }
+
+export type ProductionPlan = Record<string, number>
 
 export enum ProductionStatus {
 	Idle = 'idle',
@@ -51,6 +55,7 @@ export enum BuildingCategory {
 	Storage = 'storage',
 	Food = 'food',
 	Industry = 'industry',
+	Metalwork = 'metalwork',
 	Infrastructure = 'infrastructure'
 }
 
@@ -94,6 +99,7 @@ export interface BuildingDefinition {
 		x: number
 		y: number
 	}>
+	allowedGroundTypes?: GroundType[]
 	constructionTime: number // in seconds
 	costs: BuildingCost[]
 	unlockFlags?: string[] // Optional flags that must be set to unlock this building
@@ -146,6 +152,8 @@ export interface BuildingDefinition {
 	}
 	// Phase C: Production and storage
 	productionRecipe?: ProductionRecipe
+	productionRecipes?: ProductionRecipe[]
+	productionPlanDefaults?: ProductionPlan
 	autoProduction?: ProductionRecipe
 }
 
@@ -164,6 +172,8 @@ export interface BuildingInstance {
 	collectedResources: Map<ItemType, number> // itemType -> quantity collected (server-side only, client tracks via events)
 	requiredResources: BuildingCost[] // Required resources (derived from definition.costs, server-side only)
 	productionPaused?: boolean
+	productionPlan?: ProductionPlan
+	useGlobalProductionPlan?: boolean
 	storageRequests?: ItemType[] // Item types to request for storage delivery (warehouses)
 	pendingWorkers?: number // Queued worker requests awaiting assignment
 }
@@ -181,6 +191,17 @@ export interface CancelBuildingData {
 export interface SetProductionPausedData {
 	buildingInstanceId: BuildingInstanceId
 	paused: boolean
+}
+
+export interface SetProductionPlanData {
+	buildingInstanceId: BuildingInstanceId
+	plan?: ProductionPlan
+	useGlobal?: boolean
+}
+
+export interface SetGlobalProductionPlanData {
+	buildingId: BuildingId
+	plan: ProductionPlan
 }
 
 export interface SetStorageRequestsData {
@@ -232,4 +253,16 @@ export interface BuildingWorkerQueueUpdatedData {
 
 export interface BuildingCatalogData {
 	buildings: BuildingDefinition[]
+	globalProductionPlans?: Record<BuildingId, ProductionPlan>
+}
+
+export interface ProductionPlanUpdatedData {
+	buildingInstanceId: BuildingInstanceId
+	plan?: ProductionPlan
+	useGlobal: boolean
+}
+
+export interface GlobalProductionPlanUpdatedData {
+	buildingId: BuildingId
+	plan: ProductionPlan
 }

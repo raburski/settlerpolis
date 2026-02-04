@@ -6,7 +6,24 @@
 	background: linear-gradient(180deg, rgba(26, 22, 18, 0.97), rgba(15, 15, 15, 0.95));
 	border: 4px solid #3b2b1a;
 	padding: 0;
-	min-width: 520px;
+	--charter-panel-width: 260px;
+	--charter-panel-height: 340px;
+	--charter-gap: var(--spacing-lg);
+	--charter-arrow: 32px;
+	--charter-padding-x: 14px;
+	--charter-padding-y: 12px;
+	--charter-shift: calc(
+		var(--charter-panel-width) + var(--charter-gap) + var(--charter-arrow) + var(--charter-gap)
+	);
+	min-width: calc(
+		var(--charter-panel-width) +
+			var(--charter-panel-width) +
+			var(--charter-gap) +
+			var(--charter-gap) +
+			var(--charter-arrow) +
+			var(--charter-padding-x) +
+			var(--charter-padding-x)
+	);
 	max-width: 760px;
 	box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
 	z-index: var(--z-index-modal);
@@ -76,16 +93,43 @@
 }
 
 .content {
-	padding: 12px 14px;
+	padding: var(--charter-padding-y) var(--charter-padding-x);
 	display: flex;
 	flex-direction: column;
 	gap: 14px;
 }
 
 .panelGrid {
+	overflow: hidden;
+	position: relative;
+}
+
+.panelSlide {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr);
-	gap: var(--spacing-lg);
+	grid-template-columns:
+		var(--charter-panel-width)
+		var(--charter-arrow)
+		var(--charter-panel-width);
+	gap: var(--charter-gap);
+	position: relative;
+	will-change: transform;
+	width: calc(
+		var(--charter-panel-width) +
+			var(--charter-panel-width) +
+			var(--charter-gap) +
+			var(--charter-gap) +
+			var(--charter-arrow)
+	);
+	margin: 0 auto;
+	transition: none;
+	align-items: center;
+}
+
+.futurePanel {
+	position: absolute;
+	top: 0;
+	left: calc(var(--charter-shift) + var(--charter-shift));
+	pointer-events: none;
 }
 
 .tierPanel {
@@ -96,6 +140,16 @@
 	background: rgba(20, 20, 20, 0.85);
 	border: 2px solid #2c1810;
 	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+	width: var(--charter-panel-width);
+	height: var(--charter-panel-height);
+	overflow: auto;
+	box-sizing: border-box;
+}
+
+.claimRow {
+	margin-top: auto;
+	display: flex;
+	justify-content: center;
 }
 
 .currentPanel {
@@ -112,6 +166,38 @@
 		0 0 0 2px rgba(71, 255, 156, 0.25);
 }
 
+.panelGrid[data-phase='shift'] .panelSlide {
+	transition: transform 520ms ease;
+	transform: translateX(calc(-1 * var(--charter-shift)));
+}
+
+.panelGrid[data-phase='shift'] .tierPanel {
+	transition: border-color 520ms ease, box-shadow 520ms ease;
+}
+
+.panelGrid[data-phase='shift'] .tierPanel[data-claimable='true'] {
+	border-color: #ffd166;
+	box-shadow:
+		inset 0 0 0 1px rgba(255, 209, 102, 0.3),
+		0 0 0 2px rgba(255, 209, 102, 0.2);
+}
+
+.panelGrid[data-phase='shift'] .panelSlide [data-role='next'] .claimButton {
+	opacity: 0;
+	transform: translateY(6px);
+}
+
+.futurePanel .claimButton {
+	opacity: 0;
+	transform: translateY(6px);
+}
+
+.panelGrid[data-phase='shift'] .futurePanel .claimButton {
+	opacity: 1;
+	transform: translateY(0);
+	transition-delay: 160ms;
+}
+
 .panelArrow {
 	display: flex;
 	align-items: center;
@@ -119,6 +205,16 @@
 	color: #f6b26b;
 	font-size: 1.2rem;
 	text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+	width: var(--charter-arrow);
+	line-height: 1;
+	height: var(--charter-panel-height);
+}
+
+.futureArrow {
+	position: absolute;
+	top: 0;
+	left: calc(var(--charter-shift) + var(--charter-panel-width) + var(--charter-gap));
+	pointer-events: none;
 }
 
 .panelLabel {
@@ -211,6 +307,7 @@
 	text-transform: uppercase;
 	font-size: 0.55rem;
 	align-self: center;
+	transition: opacity 520ms ease, transform 520ms ease;
 }
 
 .claimButton:enabled {
@@ -240,13 +337,30 @@
 	.panel {
 		min-width: 320px;
 		max-width: 92vw;
+		--charter-panel-width: 100%;
+		--charter-panel-height: auto;
 	}
 
-	.panelGrid {
+	.panelSlide {
 		grid-template-columns: 1fr;
+		width: 100%;
 	}
 
 	.panelArrow {
 		display: none;
+	}
+
+	.futurePanel {
+		display: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.panelSlide {
+		transition: none;
+	}
+
+	.panelGrid[data-phase='shift'] .panelSlide {
+		transform: none;
 	}
 }

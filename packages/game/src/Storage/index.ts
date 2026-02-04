@@ -5,6 +5,7 @@ import type { MapObjectsManager } from '../MapObjects'
 import type { MapManager } from '../Map'
 import { Logger } from '../Logs'
 import { StorageEvents } from './events'
+import { getProductionRecipes } from '../Buildings/work'
 import { BuildingStorage, StorageReservation, StorageReservationResult, StorageSlot, StorageReservationStatus, StorageSlotRole } from './types'
 import { v4 as uuidv4 } from 'uuid'
 import { Receiver } from '../Receiver'
@@ -516,9 +517,19 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			return false
 		}
 
-		const recipeInputs = definition.productionRecipe?.inputs?.some(entry => entry.itemType === itemType)
-		if (recipeInputs) {
-			return false
+		const productionRecipes = getProductionRecipes(definition)
+		if (productionRecipes.length > 0) {
+			const plan = this.managers.buildings.getEffectiveProductionPlan(buildingInstanceId) || {}
+			const hasInput = productionRecipes.some(recipe => {
+				const weight = plan[recipe.id] ?? 1
+				if (weight <= 0) {
+					return false
+				}
+				return recipe.inputs.some(entry => entry.itemType === itemType)
+			})
+			if (hasInput) {
+				return false
+			}
 		}
 
 		const autoInputs = definition.autoProduction?.inputs?.some(entry => entry.itemType === itemType)
