@@ -27,6 +27,7 @@ import { NeedsEvents } from './Needs/events'
 import { RoadEvents } from './Roads/events'
 import { CityCharterEvents } from './CityCharter/events'
 import { TradeEvents } from './Trade/events'
+import { ReputationEvents } from './Reputation/events'
 import type { PlayerJoinData, PlayerTransitionData, PlayerMoveData, EquipItemData, UnequipItemData, PlayerPlaceData } from './Players/types'
 import type { ChatMessageData, ChatSystemMessageData } from './Chat/types'
 import type { InventoryData, DropItemData, PickUpItemData, ConsumeItemData, MoveItemData, AddItemData, RemoveByTypePayload } from './Inventory/types'
@@ -55,7 +56,8 @@ import type { RoadBuildRequestData, RoadTilesSyncData, RoadTilesUpdatedData, Roa
 import type { ItemType } from './Items/types'
 import type { MoveTargetType } from './Movement/types'
 import type { CityCharterClaimRequest, CityCharterStateRequest, CityCharterStateData, CityCharterUnlockFlagsUpdated } from './CityCharter/types'
-import type { TradeRouteSelection, TradeRouteCancelled, TradeRouteListData, TradeRouteUpdatedData, TradeShipmentStartedData, TradeShipmentArrivedData, TradeReputationUpdatedData } from './Trade/types'
+import type { TradeRouteSelection, TradeRouteCancelled, TradeRouteListData, TradeRouteUpdatedData, TradeShipmentStartedData, TradeShipmentArrivedData } from './Trade/types'
+import type { ReputationUpdatedData } from './Reputation/types'
 import type {
 	BuildingId,
 	BuildingInstanceId,
@@ -294,7 +296,9 @@ export type EventPayloads = Record<string, unknown> & {
 	[TradeEvents.SC.RouteUpdated]: TradeRouteUpdatedData
 	[TradeEvents.SC.ShipmentStarted]: TradeShipmentStartedData
 	[TradeEvents.SC.ShipmentArrived]: TradeShipmentArrivedData
-	[TradeEvents.SC.ReputationUpdated]: TradeReputationUpdatedData
+
+	[ReputationEvents.CS.RequestState]: {}
+	[ReputationEvents.SC.Updated]: ReputationUpdatedData
 }
 
 // Interface that NetworkManager implements
@@ -334,7 +338,8 @@ export const Event = {
 	Work: WorkProviderEvents,
 	Needs: NeedsEvents,
 	CityCharter: CityCharterEvents,
-	Trade: TradeEvents
+	Trade: TradeEvents,
+	Reputation: ReputationEvents
 } as const
 
 export default Event 

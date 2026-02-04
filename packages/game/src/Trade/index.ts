@@ -20,7 +20,6 @@ import {
 	type TradeRouteListData,
 	type TradeShipmentStartedData,
 	type TradeShipmentArrivedData,
-	type TradeReputationUpdatedData,
 	type TradeSnapshot
 } from './types'
 import { v4 as uuidv4 } from 'uuid'
@@ -28,11 +27,13 @@ import type { Logger } from '../Logs'
 import type { ItemType } from '../Items/types'
 import { LogisticsRequestType } from '../Settlers/WorkProvider/types'
 import type { LogisticsRequest } from '../Settlers/WorkProvider/types'
+import type { ReputationManager } from '../Reputation'
 
 export interface TradeDeps {
 	buildings: BuildingManager
 	storage: StorageManager
 	work: WorkProviderManager
+	reputation: ReputationManager
 }
 
 export * from './events'
@@ -43,7 +44,6 @@ const DEFAULT_COOLDOWN_SECONDS = 8
 
 export class TradeManager extends BaseManager<TradeDeps> {
 	private routesByBuilding = new Map<string, TradeRouteState>()
-	private reputationByPlayer = new Map<string, number>()
 	private worldMap: WorldMapData | null = null
 	private nodesById = new Map<string, WorldMapNode>()
 	private travelMsByNode = new Map<string, number>()
@@ -283,7 +283,6 @@ export class TradeManager extends BaseManager<TradeDeps> {
 			return false
 		}
 
-		const rep = this.addReputation(route.playerId, offer.reputation)
 		const arrivalData: TradeShipmentArrivedData = {
 			routeId: route.routeId,
 			buildingInstanceId: route.buildingInstanceId,
@@ -291,10 +290,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 			offerId: route.offerId
 		}
 		this.event.emit(Receiver.Client, TradeEvents.SC.ShipmentArrived, arrivalData, route.playerId)
-		this.event.emit(Receiver.Client, TradeEvents.SC.ReputationUpdated, {
-			playerId: route.playerId,
-			reputation: rep
-		} satisfies TradeReputationUpdatedData, route.playerId)
+		this.managers.reputation.addReputation(route.playerId, offer.reputation)
 
 		const cooldownSeconds = offer.cooldownSeconds ?? DEFAULT_COOLDOWN_SECONDS
 		route.status = TradeRouteStatus.Cooldown
@@ -446,15 +442,6 @@ export class TradeManager extends BaseManager<TradeDeps> {
 		const routes = Array.from(this.routesByBuilding.values()).filter(route => route.playerId === client.id)
 		const payload: TradeRouteListData = { routes }
 		client.emit(Receiver.Sender, TradeEvents.SC.RouteList, payload)
-		const reputation = this.reputationByPlayer.get(client.id) || 0
-		client.emit(Receiver.Sender, TradeEvents.SC.ReputationUpdated, { playerId: client.id, reputation } satisfies TradeReputationUpdatedData)
-	}
-
-	private addReputation(playerId: string, delta: number): number {
-		const current = this.reputationByPlayer.get(playerId) || 0
-		const next = current + delta
-		this.reputationByPlayer.set(playerId, next)
-		return next
 	}
 
 	private getTravelMs(nodeId: string): number {
@@ -593,7 +580,6 @@ export class TradeManager extends BaseManager<TradeDeps> {
 				...route,
 				offer: { ...route.offer }
 			})),
-			reputation: Array.from(this.reputationByPlayer.entries()),
 			simulationTimeMs: this.simulationTimeMs,
 			tickAccumulatorMs: this.tickAccumulatorMs,
 			requestCounter: this.requestCounter
@@ -605,7 +591,6 @@ export class TradeManager extends BaseManager<TradeDeps> {
 		for (const route of state.routes) {
 			this.routesByBuilding.set(route.buildingInstanceId, { ...route, offer: { ...route.offer } })
 		}
-		this.reputationByPlayer = new Map(state.reputation)
 		this.simulationTimeMs = state.simulationTimeMs
 		this.tickAccumulatorMs = state.tickAccumulatorMs
 		this.requestCounter = state.requestCounter ?? 0
@@ -613,7 +598,6 @@ export class TradeManager extends BaseManager<TradeDeps> {
 
 	reset(): void {
 		this.routesByBuilding.clear()
-		this.reputationByPlayer.clear()
 		this.travelMsByNode.clear()
 		this.simulationTimeMs = 0
 		this.tickAccumulatorMs = 0

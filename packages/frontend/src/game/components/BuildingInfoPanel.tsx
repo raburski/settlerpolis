@@ -8,6 +8,7 @@ import { itemService } from '../services/ItemService'
 import { storageService } from '../services/StorageService'
 import { productionService } from '../services/ProductionService'
 import { tradeService } from '../services/TradeService'
+import { reputationService } from '../services/ReputationService'
 import { DraggablePanel } from './DraggablePanel'
 import styles from './BuildingInfoPanel.module.css'
 import sharedStyles from './PanelShared.module.css'
@@ -78,7 +79,7 @@ export const BuildingInfoPanel: React.FC = () => {
 	const [workerStatus, setWorkerStatus] = useState<string | null>(null)
 	const [showDemolishConfirm, setShowDemolishConfirm] = useState(false)
 	const [tradeRoute, setTradeRoute] = useState<TradeRouteState | null>(null)
-	const [tradeReputation, setTradeReputation] = useState(0)
+	const [reputation, setReputation] = useState(0)
 	const [selectedTradeNodeId, setSelectedTradeNodeId] = useState('')
 	const [selectedTradeOfferId, setSelectedTradeOfferId] = useState('')
 
@@ -330,7 +331,8 @@ export const BuildingInfoPanel: React.FC = () => {
 		tradeService.requestRoutes()
 		const route = tradeService.getRoute(buildingInstance.id) || null
 		setTradeRoute(route)
-		setTradeReputation(tradeService.getReputation(buildingInstance.playerId))
+		reputationService.requestState()
+		setReputation(reputationService.getReputation(buildingInstance.playerId))
 
 		if (route) {
 			setSelectedTradeNodeId(route.nodeId)
@@ -352,7 +354,6 @@ export const BuildingInfoPanel: React.FC = () => {
 
 		const handleTradeUpdated = () => {
 			setTradeRoute(tradeService.getRoute(buildingInstance.id) || null)
-			setTradeReputation(tradeService.getReputation(buildingInstance.playerId))
 		}
 
 		EventBus.on(UiEvents.Trade.Updated, handleTradeUpdated)
@@ -360,6 +361,21 @@ export const BuildingInfoPanel: React.FC = () => {
 			EventBus.off(UiEvents.Trade.Updated, handleTradeUpdated)
 		}
 	}, [buildingInstance?.id, buildingInstance?.playerId, buildingDefinition?.isTradingPost])
+
+	useEffect(() => {
+		if (!buildingInstance || !buildingDefinition?.isTradingPost) {
+			return
+		}
+
+		const handleReputationUpdated = () => {
+			setReputation(reputationService.getReputation(buildingInstance.playerId))
+		}
+
+		EventBus.on(UiEvents.Reputation.Updated, handleReputationUpdated)
+		return () => {
+			EventBus.off(UiEvents.Reputation.Updated, handleReputationUpdated)
+		}
+	}, [buildingInstance?.playerId, buildingDefinition?.isTradingPost])
 
 	const handleCancelConstruction = () => {
 		if (buildingInstance && (buildingInstance.stage === ConstructionStage.CollectingResources || buildingInstance.stage === ConstructionStage.Constructing)) {
@@ -836,8 +852,8 @@ export const BuildingInfoPanel: React.FC = () => {
 			{isCompleted && isTradingPost && (
 				<div className={sharedStyles.info}>
 					<div className={sharedStyles.infoRow}>
-						<span className={sharedStyles.label}>Trade reputation:</span>
-						<span className={sharedStyles.value}>{tradeReputation}</span>
+						<span className={sharedStyles.label}>Reputation:</span>
+						<span className={sharedStyles.value}>{reputation}</span>
 					</div>
 					<div className={sharedStyles.infoRow}>
 						<span className={sharedStyles.label}>Route status:</span>

@@ -14,6 +14,8 @@ import '../services/PopulationService'
 import '../services/LogisticsService'
 // Initialize CityCharterService to start listening to events
 import '../services/CityCharterService'
+// Initialize ReputationService to start listening to events
+import '../services/ReputationService'
 
 const IS_REMOTE_GAME = false
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'

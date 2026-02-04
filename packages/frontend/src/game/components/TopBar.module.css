@@ -114,6 +114,35 @@
 	box-shadow: 0 0 0 2px #ffe066;
 }
 
+.reputationButton {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: var(--spacing-xs) var(--spacing-sm);
+	background: #2a2014;
+	border: 3px solid #2a2014;
+	box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.5);
+	color: #fffbe7;
+	cursor: pointer;
+}
+
+.reputationButton[data-active='true'] {
+	border-color: #facc15;
+	box-shadow: 0 0 0 2px #facc15;
+}
+
+.reputationIcon {
+	font-size: 0.8rem;
+	line-height: 1;
+}
+
+.reputationValue {
+	font-size: 0.65rem;
+	color: #ffffff;
+	font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+	font-variant-numeric: tabular-nums;
+}
+
 .resourceItem {
 	display: inline-flex;
 	align-items: center;

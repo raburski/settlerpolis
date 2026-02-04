@@ -5,7 +5,6 @@ import { UiEvents } from '../uiEvents'
 
 class TradeService {
 	private routesByBuilding = new Map<string, TradeRouteState>()
-	private reputationByPlayer = new Map<string, number>()
 
 	constructor() {
 		this.setupEventHandlers()
@@ -25,18 +24,11 @@ class TradeService {
 			this.routesByBuilding.set(data.route.buildingInstanceId, data.route)
 			this.emitUpdate()
 		})
-
-		EventBus.on(Event.Trade.SC.ReputationUpdated, (data: { playerId: string; reputation: number }) => {
-			if (!data?.playerId) return
-			this.reputationByPlayer.set(data.playerId, data.reputation)
-			this.emitUpdate()
-		})
 	}
 
 	private emitUpdate(): void {
 		EventBus.emit(UiEvents.Trade.Updated, {
-			routes: this.getRoutes(),
-			reputationByPlayer: new Map(this.reputationByPlayer)
+			routes: this.getRoutes()
 		})
 	}
 
@@ -62,14 +54,6 @@ class TradeService {
 
 	public getRoutes(): TradeRouteState[] {
 		return Array.from(this.routesByBuilding.values())
-	}
-
-	public getReputation(playerId?: string): number {
-		if (playerId) {
-			return this.reputationByPlayer.get(playerId) || 0
-		}
-		const first = Array.from(this.reputationByPlayer.values())[0]
-		return first || 0
 	}
 }
 
