@@ -26,9 +26,11 @@ export class SettlerView extends BaseMovementView {
 		[ProfessionType.Miner]: '⛏️',
 		[ProfessionType.Metallurgist]: '⚒️',
 		[ProfessionType.Farmer]: '🌾',
+		[ProfessionType.Fisher]: '🎣',
 		[ProfessionType.Miller]: '🌬️',
 		[ProfessionType.Baker]: '🥖',
-		[ProfessionType.Vendor]: '🛍️'
+		[ProfessionType.Vendor]: '🛍️',
+		[ProfessionType.Hunter]: '🏹'
 	}
 
 	constructor(scene: GameScene, x: number, y: number, settlerId: string, profession: ProfessionType, speed: number = 64) {

@@ -13,6 +13,17 @@ export const professionTools: ProfessionToolDefinition[] = [
 		targetProfession: ProfessionType.Woodcutter,
 		name: 'Axe',
 		description: 'Turns settlers into woodcutters'
+	},
+	{
+		itemType: ItemType.FishingRod,
+		targetProfession: ProfessionType.Fisher,
+		name: 'Fishing Rod',
+		description: 'Turns settlers into fishers'
+	},
+	{
+		itemType: ItemType.Crossbow,
+		targetProfession: ProfessionType.Hunter,
+		name: 'Crossbow',
+		description: 'Turns settlers into hunters'
 	}
 ]
-

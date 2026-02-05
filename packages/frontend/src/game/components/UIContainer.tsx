@@ -21,6 +21,7 @@ import { SaveLoadPanel } from './SaveLoadPanel'
 import { WorldMapPanel } from './WorldMapPanel'
 import { CityCharterPanel } from './CityCharterPanel'
 import { ReputationPanel } from './ReputationPanel'
+import { RenderStatsMeter } from './RenderStatsMeter'
 import { EventBus } from '../EventBus'
 import { Event, FXType } from '@rugged/game'
 import type { CityCharterStateData } from '@rugged/game'
@@ -301,6 +302,7 @@ export const UIContainer = () => {
 				prioritiesButtonRef={prioritiesButtonRef}
 				charterButtonRef={charterButtonRef}
 			/>
+			<RenderStatsMeter />
 			<SaveLoadPanel
 				isOpen={saveLoadMode !== null}
 				mode={saveLoadMode ?? 'save'}

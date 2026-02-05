@@ -19,7 +19,7 @@ import {
 	Vector3
 } from '@babylonjs/core'
 import '@babylonjs/loaders'
-import { getHighFidelity } from '../game/services/DisplaySettings'
+import { getHighFidelity, getScrollSensitivityWheelDelta } from '../game/services/DisplaySettings'
 import { IsometricRotation } from '../shared/IsometricRotation'
 
 export interface StorageSlot {
@@ -102,7 +102,7 @@ export class EditorScene {
 		this.camera.attachControl(canvas, true)
 		this.camera.inputs.removeByType('ArcRotateCameraPointersInput')
 		this.camera.mode = ArcRotateCamera.ORTHOGRAPHIC_CAMERA
-		this.camera.wheelDeltaPercentage = 0.01
+		this.camera.wheelDeltaPercentage = getScrollSensitivityWheelDelta()
 		this.camera.minZ = 0.1
 		this.camera.maxZ = 2000
 		this.camera.alpha = this.isoRotation.getAlphaForStep()

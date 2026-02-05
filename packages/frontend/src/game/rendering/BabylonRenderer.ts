@@ -30,6 +30,15 @@ interface GroundTilesConfig {
 	tileHeight: number
 	layer: MapLayer
 	tilesets: MapTileset[]
+	heightLayer?: MapLayer
+}
+
+interface GroundHeightConfig {
+	mapWidth: number
+	mapHeight: number
+	tileWidth: number
+	tileHeight: number
+	layer: MapLayer
 }
 
 interface ContourSegment {
@@ -69,6 +78,12 @@ const GROUND_TYPE_COLORS: Record<GroundType, string> = {
 }
 
 const GROUND_SMOOTHING_ITERATIONS = 2
+const GROUND_SMOOTHING_PULL = 0.6
+const GROUND_HEIGHT_SCALE = 6
+const GROUND_HEIGHT_SHADE = 0.35
+const GROUND_HEIGHT_SUBDIVISIONS_MAX = 512
+const GROUND_MOUNTAIN_INDEX = GROUND_TYPE_ORDER.indexOf('mountain') + 1
+const GROUND_MOUNTAIN_MIN_HEIGHT = 0.08
 const DEBUG_GROUND_CONTOURS = false
 const DEBUG_GROUND_CONTOUR_TYPE: GroundType | 'all' = 'all'
 const DEBUG_GROUND_CONTOUR_MAX_POINTS = 1200
@@ -88,11 +103,19 @@ export class BabylonRenderer {
 	private groundIndexTexture: DynamicTexture | null = null
 	private groundAtlasTexture: DynamicTexture | null = null
 	private groundPaletteTexture: DynamicTexture | null = null
+	private groundHeightTexture: DynamicTexture | null = null
+	private groundHeightFallbackTexture: DynamicTexture | null = null
+	private groundHeightData: number[] | null = null
+	private groundHeightConfig: { mapWidth: number; mapHeight: number; tileWidth: number; tileHeight: number } | null = null
+	private groundTypeGrid: Uint8Array | null = null
+	private groundTypeGridWidth = 0
+	private groundTypeGridHeight = 0
 	private groundShaderMaterial: ShaderMaterial | null = null
 	private groundPaletteMaterial: ShaderMaterial | null = null
 	private groundTypeMaterials: Map<number, StandardMaterial> = new Map()
 	private groundTypeSmoothMaterials: Map<number, StandardMaterial> = new Map()
 	private groundTilesRequest = 0
+	private sharedBoxMeshes: Map<string, Mesh> = new Map()
 	private readonly baseRadius = 800
 	private readonly isoAlpha = Math.PI / 4
 	private readonly isoBeta = Math.acos(1 / Math.sqrt(3))
@@ -197,6 +220,12 @@ export class BabylonRenderer {
 		this.updateCameraOrtho()
 	}
 
+	setScrollWheelDeltaPercentage(value: number): void {
+		if (Number.isFinite(value) && value > 0) {
+			this.camera.wheelDeltaPercentage = value
+		}
+	}
+
 	fitCameraToMap(mapWidth: number, mapHeight: number): void {
 		const renderWidth = this.engine.getRenderWidth()
 		const renderHeight = this.engine.getRenderHeight()
@@ -274,6 +303,19 @@ export class BabylonRenderer {
 			this.groundPaletteTexture.dispose()
 			this.groundPaletteTexture = null
 		}
+		if (this.groundHeightTexture) {
+			this.groundHeightTexture.dispose()
+			this.groundHeightTexture = null
+		}
+		if (this.groundHeightFallbackTexture) {
+			this.groundHeightFallbackTexture.dispose()
+			this.groundHeightFallbackTexture = null
+		}
+		this.groundHeightData = null
+		this.groundHeightConfig = null
+		this.groundTypeGrid = null
+		this.groundTypeGridWidth = 0
+		this.groundTypeGridHeight = 0
 		if (this.groundTexture) {
 			this.groundTexture.dispose()
 			this.groundTexture = null
@@ -288,13 +330,31 @@ export class BabylonRenderer {
 		}
 	}
 
-	createGround(id: string, width: number, height: number): Mesh {
+	createGround(
+		id: string,
+		width: number,
+		height: number,
+		options?: { subdivisionsX?: number; subdivisionsY?: number; updatable?: boolean }
+	): Mesh {
 		if (this.ground) {
 			this.ground.dispose()
 		}
+		const subdivisionsX = options?.subdivisionsX
+			? Math.max(1, Math.min(options.subdivisionsX, GROUND_HEIGHT_SUBDIVISIONS_MAX))
+			: undefined
+		const subdivisionsY = options?.subdivisionsY
+			? Math.max(1, Math.min(options.subdivisionsY, GROUND_HEIGHT_SUBDIVISIONS_MAX))
+			: undefined
 		this.ground = MeshBuilder.CreateGround(
 			id,
-			{ width, height, subdivisions: 1 },
+			{
+				width,
+				height,
+				subdivisions: 1,
+				subdivisionsX,
+				subdivisionsY,
+				updatable: options?.updatable
+			},
 			this.scene
 		)
 		this.ground.position.y = 0
@@ -309,12 +369,212 @@ export class BabylonRenderer {
 		return this.ground
 	}
 
+	applyGroundHeightMap(config: GroundHeightConfig): void {
+		const ground = this.ground
+		if (!ground) return
+		if (!config.layer?.data?.length) return
+
+		const mapWidth = Math.max(1, Math.floor(config.mapWidth))
+		const mapHeight = Math.max(1, Math.floor(config.mapHeight))
+		const totalTiles = mapWidth * mapHeight
+		const heightData = config.layer.data || []
+		if (heightData.length < totalTiles) return
+
+		const heightScale = Math.max(1, Math.floor(config.tileHeight)) * GROUND_HEIGHT_SCALE
+		const widthPx = Math.max(1, Math.floor(config.tileWidth)) * mapWidth
+		const heightPx = Math.max(1, Math.floor(config.tileHeight)) * mapHeight
+		const halfWidth = widthPx / 2
+		const halfHeight = heightPx / 2
+
+		const sampleHeight = (mapX: number, mapY: number) => {
+			const x = Math.max(0, Math.min(mapWidth - 1, mapX))
+			const y = Math.max(0, Math.min(mapHeight - 1, mapY))
+			const x0 = Math.floor(x)
+			const y0 = Math.floor(y)
+			const x1 = Math.min(mapWidth - 1, x0 + 1)
+			const y1 = Math.min(mapHeight - 1, y0 + 1)
+			const tx = x - x0
+			const ty = y - y0
+
+			let mask = 1
+			if (this.groundTypeGrid && this.groundTypeGridWidth === mapWidth && this.groundTypeGridHeight === mapHeight) {
+				const idx00 = y0 * mapWidth + x0
+				const idx10 = y0 * mapWidth + x1
+				const idx01 = y1 * mapWidth + x0
+				const idx11 = y1 * mapWidth + x1
+				const isMountain =
+					this.groundTypeGrid[idx00] === GROUND_MOUNTAIN_INDEX &&
+					this.groundTypeGrid[idx10] === GROUND_MOUNTAIN_INDEX &&
+					this.groundTypeGrid[idx01] === GROUND_MOUNTAIN_INDEX &&
+					this.groundTypeGrid[idx11] === GROUND_MOUNTAIN_INDEX
+				mask = isMountain ? 1 : 0
+			}
+			if (mask === 0) return 0
+
+			const h00 = heightData[y0 * mapWidth + x0] || 0
+			const h10 = heightData[y0 * mapWidth + x1] || 0
+			const h01 = heightData[y1 * mapWidth + x0] || 0
+			const h11 = heightData[y1 * mapWidth + x1] || 0
+
+			const h0 = h00 + (h10 - h00) * tx
+			const h1 = h01 + (h11 - h01) * tx
+			const h = h0 + (h1 - h0) * ty
+			let normalized = Math.max(0, Math.min(1, h / 255))
+			if (normalized < GROUND_MOUNTAIN_MIN_HEIGHT) {
+				normalized = GROUND_MOUNTAIN_MIN_HEIGHT
+			}
+			return normalized
+		}
+
+		const uvs = ground.getVerticesData('uv')
+		const tileWidth = Math.max(1, Math.floor(config.tileWidth))
+		const tileHeight = Math.max(1, Math.floor(config.tileHeight))
+
+		ground.updateMeshPositions((positions) => {
+			for (let i = 0; i < positions.length; i += 3) {
+				let mapX: number
+				let mapY: number
+				if (uvs && uvs.length >= ((i / 3) + 1) * 2) {
+					const uvIndex = (i / 3) * 2
+					const u = uvs[uvIndex]
+					const v = uvs[uvIndex + 1]
+					mapX = u * mapWidth
+					mapY = (1 - v) * mapHeight
+				} else {
+					mapX = (positions[i] + halfWidth) / tileWidth
+					mapY = (halfHeight - positions[i + 2]) / tileHeight
+				}
+				positions[i + 1] = sampleHeight(mapX, mapY) * heightScale
+			}
+		}, true)
+
+		this.groundHeightData = heightData
+		this.groundHeightConfig = {
+			mapWidth,
+			mapHeight,
+			tileWidth,
+			tileHeight
+		}
+
+		ground.refreshBoundingInfo()
+	}
+
+	getGroundHeightAt(x: number, z: number): number {
+		if (!this.groundHeightData || !this.groundHeightConfig) return 0
+		const { mapWidth, mapHeight, tileWidth, tileHeight } = this.groundHeightConfig
+		if (!Number.isFinite(x) || !Number.isFinite(z)) return 0
+
+		const widthPx = mapWidth * tileWidth
+		const heightPx = mapHeight * tileHeight
+		const mapX = x / tileWidth
+		const mapY = (heightPx - z) / tileHeight
+		const x0 = Math.max(0, Math.min(mapWidth - 1, Math.floor(mapX)))
+		const y0 = Math.max(0, Math.min(mapHeight - 1, Math.floor(mapY)))
+		const x1 = Math.min(mapWidth - 1, x0 + 1)
+		const y1 = Math.min(mapHeight - 1, y0 + 1)
+		const tx = Math.max(0, Math.min(1, mapX - x0))
+		const ty = Math.max(0, Math.min(1, mapY - y0))
+
+		if (this.groundTypeGrid && this.groundTypeGridWidth === mapWidth && this.groundTypeGridHeight === mapHeight) {
+			const idx00 = y0 * mapWidth + x0
+			const idx10 = y0 * mapWidth + x1
+			const idx01 = y1 * mapWidth + x0
+			const idx11 = y1 * mapWidth + x1
+			const isMountain =
+				this.groundTypeGrid[idx00] === GROUND_MOUNTAIN_INDEX &&
+				this.groundTypeGrid[idx10] === GROUND_MOUNTAIN_INDEX &&
+				this.groundTypeGrid[idx01] === GROUND_MOUNTAIN_INDEX &&
+				this.groundTypeGrid[idx11] === GROUND_MOUNTAIN_INDEX
+			if (!isMountain) return 0
+		}
+
+		const h00 = this.groundHeightData[y0 * mapWidth + x0] ?? 0
+		const h10 = this.groundHeightData[y0 * mapWidth + x1] ?? 0
+		const h01 = this.groundHeightData[y1 * mapWidth + x0] ?? 0
+		const h11 = this.groundHeightData[y1 * mapWidth + x1] ?? 0
+
+		const h0 = h00 + (h10 - h00) * tx
+		const h1 = h01 + (h11 - h01) * tx
+		const h = h0 + (h1 - h0) * ty
+		const normalized = Math.max(GROUND_MOUNTAIN_MIN_HEIGHT, Math.max(0, Math.min(255, h)) / 255)
+		return normalized * tileHeight * GROUND_HEIGHT_SCALE
+	}
+
+	getGroundHeightAtTile(tileX: number, tileY: number): number {
+		if (!this.groundHeightData || !this.groundHeightConfig) return 0
+		const { mapWidth, mapHeight, tileHeight } = this.groundHeightConfig
+		const x = Math.max(0, Math.min(mapWidth - 1, Math.floor(tileX)))
+		const y = Math.max(0, Math.min(mapHeight - 1, Math.floor(tileY)))
+		const idx = y * mapWidth + x
+		if (this.groundTypeGrid && this.groundTypeGridWidth === mapWidth && this.groundTypeGridHeight === mapHeight) {
+			if (this.groundTypeGrid[idx] !== GROUND_MOUNTAIN_INDEX) {
+				return 0
+			}
+		}
+		const h = this.groundHeightData[idx] ?? 0
+		const normalized = Math.max(GROUND_MOUNTAIN_MIN_HEIGHT, Math.max(0, Math.min(255, h)) / 255)
+		return normalized * tileHeight * GROUND_HEIGHT_SCALE
+	}
+
+	private buildGroundHeightTexture(layer: MapLayer, mapWidth: number, mapHeight: number): DynamicTexture | null {
+		const totalTiles = mapWidth * mapHeight
+		if (totalTiles <= 0) return null
+		const data = layer.data || []
+		if (data.length < totalTiles) return null
+
+		const heightTexture = new DynamicTexture(
+			'ground-height',
+			{ width: mapWidth, height: mapHeight },
+			this.scene,
+			false
+		)
+		heightTexture.wrapU = Texture.CLAMP_ADDRESSMODE
+		heightTexture.wrapV = Texture.CLAMP_ADDRESSMODE
+		heightTexture.updateSamplingMode(Texture.LINEAR_LINEAR)
+
+		const context = heightTexture.getContext()
+		const imageData = context.createImageData(mapWidth, mapHeight)
+		const pixels = imageData.data
+
+		for (let i = 0; i < totalTiles; i += 1) {
+			const value = data[i] ?? 0
+			const offset = i * 4
+			pixels[offset] = value
+			pixels[offset + 1] = value
+			pixels[offset + 2] = value
+			pixels[offset + 3] = 255
+		}
+
+		context.putImageData(imageData, 0, 0)
+		heightTexture.update()
+		return heightTexture
+	}
+
+	private ensureGroundHeightFallbackTexture(): DynamicTexture {
+		if (this.groundHeightFallbackTexture) return this.groundHeightFallbackTexture
+		const texture = new DynamicTexture('ground-height-fallback', { width: 1, height: 1 }, this.scene, false)
+		texture.wrapU = Texture.CLAMP_ADDRESSMODE
+		texture.wrapV = Texture.CLAMP_ADDRESSMODE
+		texture.updateSamplingMode(Texture.NEAREST_NEAREST)
+		const context = texture.getContext()
+		const imageData = context.createImageData(1, 1)
+		imageData.data[0] = 0
+		imageData.data[1] = 0
+		imageData.data[2] = 0
+		imageData.data[3] = 255
+		context.putImageData(imageData, 0, 0)
+		texture.update()
+		this.groundHeightFallbackTexture = texture
+		return texture
+	}
+
 	async applyGroundPalette(config: GroundTilesConfig): Promise<void> {
 		const ground = this.ground
 		if (!ground) return
 		if (!config.layer?.data?.length) return
 
 		const requestId = (this.groundTilesRequest += 1)
+		this.updateGroundTypeGrid(config.layer, config.mapWidth, config.mapHeight, config.tilesets)
 		const indexTexture = this.buildGroundIndexTextureFromLayer(
 			config.layer,
 			config.mapWidth,
@@ -340,6 +600,20 @@ export class BabylonRenderer {
 		}
 		material.setVector2('mapSize', new Vector2(config.mapWidth, config.mapHeight))
 		material.setFloat('macroStrength', 0.04)
+		material.setFloat('mountainIndex', GROUND_MOUNTAIN_INDEX)
+		material.setFloat('mountainMinHeight', GROUND_MOUNTAIN_MIN_HEIGHT)
+
+		const heightLayer = config.heightLayer
+		if (heightLayer?.data?.length) {
+			this.groundHeightTexture?.dispose()
+			this.groundHeightTexture = this.buildGroundHeightTexture(heightLayer, config.mapWidth, config.mapHeight)
+			const heightSampler = this.groundHeightTexture || this.ensureGroundHeightFallbackTexture()
+			material.setTexture('heightSampler', heightSampler)
+			material.setFloat('heightStrength', GROUND_HEIGHT_SHADE)
+		} else {
+			material.setTexture('heightSampler', this.ensureGroundHeightFallbackTexture())
+			material.setFloat('heightStrength', 0)
+		}
 		ground.material = material
 	}
 
@@ -425,12 +699,19 @@ export class BabylonRenderer {
 			}
 
 			const typeLabel = GROUND_TYPE_ORDER[typeIndex - 1]
-			const baseLoops = this.prepareContourLoops(polylines, typeIndex, typeLabel, 0, false)
-			if (baseLoops.length === 0) continue
-			const baseGroups = this.groupLoopsWithHoles(baseLoops)
+			const smoothingIterations = Math.max(0, GROUND_SMOOTHING_ITERATIONS)
+			const contourLoops = this.prepareContourLoops(
+				polylines,
+				typeIndex,
+				typeLabel,
+				smoothingIterations,
+				smoothingIterations > 0
+			)
+			if (contourLoops.length === 0) continue
+			const contourGroups = this.groupLoopsWithHoles(contourLoops)
 			const baseY = baseOffset + typeIndex * zOffsetStep
 			this.buildContourMeshes(
-				baseGroups,
+				contourGroups,
 				typeIndex,
 				baseY,
 				tileWidth,
@@ -438,28 +719,6 @@ export class BabylonRenderer {
 				meshes,
 				'base'
 			)
-
-			if (GROUND_SMOOTHING_ITERATIONS > 0) {
-				const smoothLoops = this.prepareContourLoops(
-					polylines,
-					typeIndex,
-					typeLabel,
-					GROUND_SMOOTHING_ITERATIONS,
-					true
-				)
-				if (smoothLoops.length > 0) {
-					const smoothGroups = this.groupLoopsWithHoles(smoothLoops)
-					this.buildContourMeshes(
-						smoothGroups,
-						typeIndex,
-						baseY + 0.002,
-						tileWidth,
-						tileHeight,
-						meshes,
-						'smooth'
-					)
-				}
-			}
 		}
 
 		if (meshes.length === 0) {
@@ -715,9 +974,13 @@ export class BabylonRenderer {
 				varying vec2 vUV;
 				uniform sampler2D indexSampler;
 				uniform sampler2D paletteSampler;
+				uniform sampler2D heightSampler;
 				uniform vec2 mapSize;
 				uniform float paletteSize;
 				uniform float macroStrength;
+				uniform float heightStrength;
+				uniform float mountainIndex;
+				uniform float mountainMinHeight;
 
 				float decodeIndex(vec4 enc) {
 					return enc.r * 255.0 + enc.g * 65280.0 + enc.b * 16711680.0;
@@ -744,6 +1007,14 @@ export class BabylonRenderer {
 
 					float macro = hash(floor(tilePos / 6.0));
 					color.rgb *= mix(1.0 - macroStrength, 1.0 + macroStrength, macro);
+
+					if (heightStrength > 0.0) {
+						float heightValue = texture2D(heightSampler, indexUV).r;
+						float isMountain = 1.0 - step(0.5, abs(index - mountainIndex));
+						heightValue = mix(0.0, max(heightValue, mountainMinHeight), isMountain);
+						float shade = mix(1.0 - heightStrength, 1.0 + heightStrength, heightValue);
+						color.rgb *= shade;
+					}
 					gl_FragColor = color;
 				}
 			`
@@ -756,8 +1027,16 @@ export class BabylonRenderer {
 				{ vertex: 'groundPalette', fragment: 'groundPalette' },
 				{
 					attributes: ['position', 'uv'],
-					uniforms: ['worldViewProjection', 'mapSize', 'paletteSize', 'macroStrength'],
-					samplers: ['indexSampler', 'paletteSampler']
+					uniforms: [
+						'worldViewProjection',
+						'mapSize',
+						'paletteSize',
+						'macroStrength',
+						'heightStrength',
+						'mountainIndex',
+						'mountainMinHeight'
+					],
+					samplers: ['indexSampler', 'paletteSampler', 'heightSampler']
 				}
 			)
 			this.groundPaletteMaterial.backFaceCulling = true
@@ -961,6 +1240,25 @@ export class BabylonRenderer {
 		context.putImageData(imageData, 0, 0)
 		indexTexture.update()
 		return indexTexture
+	}
+
+	private updateGroundTypeGrid(layer: MapLayer, mapWidth: number, mapHeight: number, tilesets: MapTileset[]): void {
+		const totalTiles = mapWidth * mapHeight
+		if (totalTiles <= 0) return
+		const data = layer.data || []
+		if (data.length < totalTiles) return
+		const sortedTilesets = tilesets
+			.filter((tileset) => typeof tileset.firstGid === 'number')
+			.sort((a, b) => a.firstGid - b.firstGid)
+		const grid = new Uint8Array(totalTiles)
+		for (let i = 0; i < totalTiles; i += 1) {
+			const rawGid = data[i] || 0
+			const gid = rawGid & 0x1fffffff
+			grid[i] = this.getGroundTypeIndex(gid, sortedTilesets)
+		}
+		this.groundTypeGrid = grid
+		this.groundTypeGridWidth = mapWidth
+		this.groundTypeGridHeight = mapHeight
 	}
 
 	private buildGroundPaletteTexture(
@@ -1272,19 +1570,12 @@ export class BabylonRenderer {
 		const endIter = requireExact ? startIter : 0
 		for (let iter = startIter; iter >= endIter; iter -= 1) {
 			const smoothed = iter > 0 ? this.chaikinSmooth2D(points, closed, iter) : points
-			const cleaned = this.dropDuplicatePoints(smoothed, closed)
+			let cleaned = this.dropDuplicatePoints(smoothed, closed)
 			if (cleaned.length < 3) continue
 			if (basePolygon && iter > 0) {
-				let inside = true
-				for (const point of cleaned) {
-					if (!this.isPointInsideOrOnPolygon(point, basePolygon, 1e-3)) {
-						inside = false
-						break
-					}
-				}
-				if (!inside) {
-					continue
-				}
+				cleaned = this.pullPointsTowardPolygon(cleaned, basePolygon, GROUND_SMOOTHING_PULL)
+				cleaned = this.dropDuplicatePoints(cleaned, closed)
+				if (cleaned.length < 3) continue
 			}
 			if (DEBUG_VALIDATE_POLYGONS) {
 				const validationPoints = this.sampleContourPoints(
@@ -1551,6 +1842,68 @@ export class BabylonRenderer {
 		return dx * dx + dy * dy
 	}
 
+	private closestPointOnSegment(
+		point: { x: number; y: number },
+		a: { x: number; y: number },
+		b: { x: number; y: number }
+	): { x: number; y: number } {
+		const abx = b.x - a.x
+		const aby = b.y - a.y
+		const abLenSq = abx * abx + aby * aby
+		if (abLenSq === 0) {
+			return { x: a.x, y: a.y }
+		}
+		let t = ((point.x - a.x) * abx + (point.y - a.y) * aby) / abLenSq
+		t = Math.max(0, Math.min(1, t))
+		return { x: a.x + abx * t, y: a.y + aby * t }
+	}
+
+	private closestPointOnPolygon(
+		point: { x: number; y: number },
+		polygon: { x: number; y: number }[]
+	): { x: number; y: number } {
+		let closest = polygon[0]
+		let bestDist = Infinity
+		for (let i = 0; i < polygon.length; i += 1) {
+			const a = polygon[i]
+			const b = polygon[(i + 1) % polygon.length]
+			const candidate = this.closestPointOnSegment(point, a, b)
+			const dx = point.x - candidate.x
+			const dy = point.y - candidate.y
+			const dist = dx * dx + dy * dy
+			if (dist < bestDist) {
+				bestDist = dist
+				closest = candidate
+			}
+		}
+		return closest
+	}
+
+	private pullPointsTowardPolygon(
+		points: { x: number; y: number }[],
+		polygon: { x: number; y: number }[],
+		pullStrength: number
+	): { x: number; y: number }[] {
+		const pull = Math.max(0, Math.min(1, pullStrength))
+		const adjusted: { x: number; y: number }[] = []
+		for (const point of points) {
+			const nearest = this.closestPointOnPolygon(point, polygon)
+			if (!this.isPointInsideOrOnPolygon(point, polygon, 1e-4)) {
+				adjusted.push(nearest)
+				continue
+			}
+			if (pull > 0) {
+				adjusted.push({
+					x: point.x + (nearest.x - point.x) * pull,
+					y: point.y + (nearest.y - point.y) * pull
+				})
+			} else {
+				adjusted.push(point)
+			}
+		}
+		return adjusted
+	}
+
 	private isSelfIntersecting(points: { x: number; y: number }[]): boolean {
 		const count = points.length
 		if (count < 4) return false
@@ -1758,6 +2111,34 @@ export class BabylonRenderer {
 		return mesh
 	}
 
+	createBoxInstance(
+		id: string,
+		size: { width: number; length: number; height: number },
+		style?: { emoji?: string; tint?: string }
+	): AbstractMesh {
+		const materialKey = style?.emoji ? `emoji:${style.emoji}` : style?.tint ? `tint:${style.tint}` : 'plain'
+		const key = `${size.width}x${size.length}x${size.height}|${materialKey}`
+		let base = this.sharedBoxMeshes.get(key)
+		if (!base) {
+			base = MeshBuilder.CreateBox(
+				`box-base-${key}`,
+				{ width: size.width, height: size.height, depth: size.length },
+				this.scene
+			)
+			base.isVisible = false
+			base.isPickable = false
+			if (style?.emoji) {
+				this.placeholderFactory.applyEmoji(base, style.emoji)
+			} else if (style?.tint) {
+				this.placeholderFactory.applyTint(base, style.tint)
+			}
+			this.sharedBoxMeshes.set(key, base)
+		}
+		const instance = base.createInstance(id)
+		instance.isPickable = false
+		return instance
+	}
+
 	setMeshPosition(mesh: AbstractMesh, x: number, y: number, z: number): void {
 		mesh.position.set(x, y, z)
 	}
@@ -1811,6 +2192,62 @@ export class BabylonRenderer {
 
 	setPickable(mesh: AbstractMesh, pickable: boolean): void {
 		mesh.isPickable = pickable
+	}
+
+	getRenderStats(): {
+		fps: number
+		meshes: number
+		activeMeshes: number
+		instances: number
+		thinInstances: number
+		groups: {
+			mapObjects: number
+			collision: number
+			roads: number
+			resourceNodes: number
+		}
+	} {
+		const meshes = this.scene.meshes.length
+		let activeMeshes = meshes
+		if (typeof this.scene.getActiveMeshes === 'function') {
+			try {
+				activeMeshes = this.scene.getActiveMeshes().length
+			} catch {
+				activeMeshes = meshes
+			}
+		}
+
+		let instances = 0
+		let thinInstances = 0
+		let mapObjects = 0
+		let collision = 0
+		let roads = 0
+		let resourceNodes = 0
+		for (const mesh of this.scene.meshes) {
+			const name = mesh.name || ''
+			if (name.startsWith('map-object-')) {
+				mapObjects += 1
+			} else if (name.includes('-collision')) {
+				collision += 1
+			} else if (name.startsWith('road-')) {
+				roads += 1
+			} else if (name.startsWith('resource-node-')) {
+				resourceNodes += 1
+			}
+			if (mesh instanceof Mesh) {
+				instances += mesh.instances?.length ?? 0
+				thinInstances += mesh.thinInstanceCount ?? 0
+			}
+		}
+
+		return {
+			fps: this.engine.getFps(),
+			meshes,
+			activeMeshes,
+			instances,
+			thinInstances,
+			groups: { mapObjects, collision, roads, resourceNodes }
+		}
 	}
 
 	screenToWorld(pointerX: number, pointerY: number): Vector3 | null {

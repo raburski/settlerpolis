@@ -116,6 +116,22 @@ export const startingItems: StartingItem[] = [
 			tileBased: true
 		}
 	},
+	{
+		itemType: ItemType.FishingRod,
+		offset: {
+			x: 6,
+			y: 0,
+			tileBased: true
+		}
+	},
+	{
+		itemType: ItemType.Crossbow,
+		offset: {
+			x: 7,
+			y: 0,
+			tileBased: true
+		}
+	},
 	// 40 logs below (positive y) as piles of up to 8
 	...generatePiles(ItemType.Logs, [8, 8, 8, 8, 8], -2, 3, 4),
 	// 40 stones above (negative y) as piles of up to 8

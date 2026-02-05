@@ -14,6 +14,7 @@ export interface ResourceNodeDefinition {
 	harvestQuantity: number
 	harvestTimeMs?: number
 	maxHarvests: number // Number of harvest actions before depletion
+	regenTimeMs?: number // Time in ms before depleted nodes regenerate
 	blocksMovement?: boolean
 }
 

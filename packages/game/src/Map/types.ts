@@ -33,6 +33,7 @@ export interface TiledLayer {
 	x: number
 	y: number
 	data?: number[]
+	encoding?: string
 	objects?: TiledObject[]
 	properties?: TiledProperty[]
 }
@@ -88,6 +89,7 @@ export interface MapData {
 	npcSpots: NPCSpots
 	paths: PathData
 	triggers: MapTrigger[]
+	resourceNodes?: import('../ResourceNodes/types').ResourceNodeSpawn[]
 }
 
 export interface MapLayer {

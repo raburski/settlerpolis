@@ -2,7 +2,7 @@ import { BabylonRenderer } from '../rendering/BabylonRenderer'
 import { InputManager } from '../input/InputManager'
 import { EventBus } from '../EventBus'
 import { UiEvents } from '../uiEvents'
-import { getHighFidelity } from '../services/DisplaySettings'
+import { getHighFidelity, getScrollSensitivityWheelDelta } from '../services/DisplaySettings'
 
 export interface RuntimeScene {
 	start(data?: any): void
@@ -15,21 +15,28 @@ export class GameRuntime {
 	public readonly input: InputManager
 	public readonly overlayRoot: HTMLDivElement
 	private activeScene: RuntimeScene | null = null
+	private renderStatsTimer = 0
 	private readonly handleHighFidelity = (data: { enabled: boolean }) => {
 		this.renderer.setHighFidelity(Boolean(data?.enabled))
+	}
+	private readonly handleScrollSensitivity = (data: { level: number }) => {
+		this.renderer.setScrollWheelDeltaPercentage(getScrollSensitivityWheelDelta(data?.level))
 	}
 
 	constructor(canvas: HTMLCanvasElement) {
 		this.renderer = new BabylonRenderer(canvas)
 		this.renderer.setHighFidelity(getHighFidelity())
+		this.renderer.setScrollWheelDeltaPercentage(getScrollSensitivityWheelDelta())
 		this.input = new InputManager(canvas, this.renderer)
 		this.overlayRoot = this.createOverlay(canvas)
 		EventBus.on(UiEvents.Settings.HighFidelity, this.handleHighFidelity)
+		EventBus.on(UiEvents.Settings.ScrollSensitivity, this.handleScrollSensitivity)
 	}
 
 	start(): void {
 		this.renderer.start((deltaMs) => {
 			this.activeScene?.update(deltaMs)
+			this.emitRenderStats(deltaMs)
 		})
 	}
 
@@ -47,6 +54,7 @@ export class GameRuntime {
 			this.activeScene = null
 		}
 		EventBus.off(UiEvents.Settings.HighFidelity, this.handleHighFidelity)
+		EventBus.off(UiEvents.Settings.ScrollSensitivity, this.handleScrollSensitivity)
 		this.input.dispose()
 		this.renderer.dispose()
 		this.overlayRoot.remove()
@@ -68,5 +76,12 @@ export class GameRuntime {
 		overlay.style.overflow = 'hidden'
 		parent.appendChild(overlay)
 		return overlay
+	}
+
+	private emitRenderStats(deltaMs: number): void {
+		this.renderStatsTimer += deltaMs
+		if (this.renderStatsTimer < 250) return
+		this.renderStatsTimer = 0
+		EventBus.emit(UiEvents.Debug.RenderStats, this.renderer.getRenderStats())
 	}
 }

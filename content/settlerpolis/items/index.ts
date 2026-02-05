@@ -1,4 +1,7 @@
 import rabbitItem from "./rabbit";
+import deerItem from "./deer";
+import deerMeatItem from "./deer_meat";
+import fishItem from "./fish";
 import carrotItem from "./carrot";
 import logsItem from "./logs";
 import treeItem from "./tree";
@@ -21,6 +24,7 @@ import breadItem from "./bread";
 import buildingFoundationItem from "./building_foundation";
 import { hammerItem } from "./hammer";
 import { axeItem } from "./axe";
+import fishingRodItem from "./fishing_rod";
 import pickaxeItem from "./pickaxe";
 import cartItem from "./cart";
 import tombstoneItem from "./tombstone";
@@ -29,6 +33,9 @@ export { ItemType } from "./types";
 
 export const items = [
 	rabbitItem,
+	deerItem,
+	deerMeatItem,
+	fishItem,
 	carrotItem,
 	logsItem,
 	treeItem,
@@ -51,6 +58,7 @@ export const items = [
 	buildingFoundationItem,
 	hammerItem,
 	axeItem,
+	fishingRodItem,
 	pickaxeItem,
 	cartItem,
 	tombstoneItem

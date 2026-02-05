@@ -7,6 +7,8 @@ import type { BuildingManager } from '../../Buildings'
 import type { PopulationManager } from '../../Population'
 import type { RoadManager } from '../../Roads'
 import type { ReservationSystem } from '../../Reservation'
+import type { NPCManager } from '../../NPC'
+import type { WildlifeManager } from '../../Wildlife'
 import type { WorkAction } from './types'
 import { WorkActionType } from './types'
 import { MoveTargetType } from '../../Movement/types'
@@ -47,6 +49,8 @@ export interface ActionSystemDeps {
 	reservations: ReservationSystem
 	roads: RoadManager
 	map: MapManager
+	npc: NPCManager
+	wildlife: WildlifeManager
 }
 
 export class ActionSystem {
@@ -267,6 +271,15 @@ export class ActionSystem {
 
 			if (action.type === WorkActionType.HarvestNode) {
 				this.managers.reservations.releaseNode(action.nodeId, reservationOwnerId || settlerId)
+				continue
+			}
+
+			if (action.type === WorkActionType.HuntNpc) {
+				const npc = this.managers.npc.getNPC(action.npcId)
+				const reservedBy = npc?.attributes?.reservedBy
+				if (reservedBy === settlerId) {
+					this.managers.npc.removeNPCAttribute(action.npcId, 'reservedBy')
+				}
 				continue
 			}
 

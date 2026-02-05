@@ -14,6 +14,7 @@ const KEY_CODES = {
 	RIGHT: 'ArrowRight',
 	I: 'KeyI',
 	Q: 'KeyQ',
+	H: 'KeyH',
 	ENTER: 'Enter',
 	SPACE: 'Space',
 	ESC: 'Escape',
@@ -146,6 +147,10 @@ export class Keyboard {
 
 	public isRotateRight(): boolean {
 		return this.enabled && !this.isInDialogue && this.isJustDown(KEY_CODES.E)
+	}
+
+	public isCameraHome(): boolean {
+		return this.enabled && !this.isInDialogue && this.isJustDown(KEY_CODES.H)
 	}
 
 	public destroy(): void {

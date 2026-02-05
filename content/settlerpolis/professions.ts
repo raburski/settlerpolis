@@ -23,7 +23,7 @@ export const professions: ProfessionDefinition[] = [
 		description: 'A settler skilled in cutting wood',
 		canBuild: false,
 		canCarry: true,
-		canWorkBuildings: ['woodcutter_hut'] // Can work in woodcutter hut (Phase C)
+		canWorkBuildings: ['woodcutter_hut', 'charcoal_kiln'] // Can work in woodcutter hut (Phase C)
 	},
 	{
 		type: ProfessionType.Miner,
@@ -50,6 +50,14 @@ export const professions: ProfessionDefinition[] = [
 		canWorkBuildings: ['farm']
 	},
 	{
+		type: ProfessionType.Fisher,
+		name: 'Fisher',
+		description: 'A settler skilled in fishing',
+		canBuild: false,
+		canCarry: true,
+		canWorkBuildings: ['fishers_hut']
+	},
+	{
 		type: ProfessionType.Miller,
 		name: 'Miller',
 		description: 'A settler skilled in milling grain',
@@ -72,5 +80,13 @@ export const professions: ProfessionDefinition[] = [
 		canBuild: false,
 		canCarry: true,
 		canWorkBuildings: ['market']
+	},
+	{
+		type: ProfessionType.Hunter,
+		name: 'Hunter',
+		description: 'A settler skilled in tracking wildlife',
+		canBuild: false,
+		canCarry: true,
+		canWorkBuildings: ['hunter_cabin']
 	}
 ]

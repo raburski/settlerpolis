@@ -17,9 +17,11 @@ class ToolAvailabilityService {
 		[ProfessionType.Miner]: 0,
 		[ProfessionType.Metallurgist]: 0,
 		[ProfessionType.Farmer]: 0,
+		[ProfessionType.Fisher]: 0,
 		[ProfessionType.Miller]: 0,
 		[ProfessionType.Baker]: 0,
-		[ProfessionType.Vendor]: 0
+		[ProfessionType.Vendor]: 0,
+		[ProfessionType.Hunter]: 0
 	}
 
 	constructor() {
@@ -133,9 +135,11 @@ class ToolAvailabilityService {
 			[ProfessionType.Miner]: this.professionToolCounts[ProfessionType.Miner] > 0,
 			[ProfessionType.Metallurgist]: this.professionToolCounts[ProfessionType.Metallurgist] > 0,
 			[ProfessionType.Farmer]: true,
+			[ProfessionType.Fisher]: this.professionToolCounts[ProfessionType.Fisher] > 0,
 			[ProfessionType.Miller]: true,
 			[ProfessionType.Baker]: true,
-			[ProfessionType.Vendor]: this.professionToolCounts[ProfessionType.Vendor] > 0
+			[ProfessionType.Vendor]: this.professionToolCounts[ProfessionType.Vendor] > 0,
+			[ProfessionType.Hunter]: this.professionToolCounts[ProfessionType.Hunter] > 0
 		}
 	}
 

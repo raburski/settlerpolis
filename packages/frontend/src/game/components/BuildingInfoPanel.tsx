@@ -66,6 +66,21 @@ const formatTradeOffer = (offer: WorldMapNodeTradeOffer) => {
 	return `${offer.offerQuantity} ${offer.offerItem} → ${offer.receiveQuantity} ${offer.receiveItem}`
 }
 
+type TradeRouteType = 'land' | 'sea'
+
+const resolveTradeRouteType = (definition?: BuildingDefinition | null): TradeRouteType | null => {
+	if (!definition) {
+		return null
+	}
+	if (definition.tradeRouteType) {
+		return definition.tradeRouteType
+	}
+	if (definition.isTradingPost) {
+		return 'land'
+	}
+	return null
+}
+
 const buildRecipeId = (recipe: ProductionRecipe, index: number) => {
 	const outputs = recipe.outputs?.map(output => output.itemType).filter(Boolean).join('+')
 	if (outputs && outputs.length > 0) {
@@ -212,7 +227,12 @@ export const BuildingInfoPanel: React.FC = () => {
 	const [selectedTradeNodeId, setSelectedTradeNodeId] = useState('')
 	const [selectedTradeOfferId, setSelectedTradeOfferId] = useState('')
 
+	const tradeRouteType = useMemo(() => resolveTradeRouteType(buildingDefinition), [buildingDefinition])
+
 	const tradeNodes = useMemo(() => {
+		if (!tradeRouteType) {
+			return []
+		}
 		const links = worldMapData.links || []
 		const nodes = worldMapData.nodes || []
 		if (links.length === 0 || nodes.length === 0) {
@@ -224,7 +244,7 @@ export const BuildingInfoPanel: React.FC = () => {
 			const current = queue.shift()
 			if (!current) continue
 			for (const link of links) {
-				if (link.type !== 'land') continue
+				if (link.type !== tradeRouteType) continue
 				const neighbor = link.fromId === current ? link.toId : link.toId === current ? link.fromId : null
 				if (!neighbor || visited.has(neighbor)) continue
 				visited.add(neighbor)
@@ -232,7 +252,7 @@ export const BuildingInfoPanel: React.FC = () => {
 			}
 		}
 		return nodes.filter(node => node.id !== worldMapData.homeNodeId && visited.has(node.id) && (node.tradeOffers || []).length > 0)
-	}, [])
+	}, [tradeRouteType])
 
 	const selectedTradeNode = tradeNodes.find(node => node.id === selectedTradeNodeId)
 	const productionRecipes = useMemo(() => normalizeProductionRecipes(buildingDefinition || undefined), [buildingDefinition])
@@ -480,7 +500,7 @@ export const BuildingInfoPanel: React.FC = () => {
 	}, [buildingInstance])
 
 	useEffect(() => {
-		if (!buildingInstance || !buildingDefinition?.isTradingPost) {
+		if (!buildingInstance || !tradeRouteType) {
 			setTradeRoute(null)
 			return
 		}
@@ -502,10 +522,10 @@ export const BuildingInfoPanel: React.FC = () => {
 			setSelectedTradeNodeId(firstNode.id)
 			setSelectedTradeOfferId(firstNode.tradeOffers?.[0]?.id || '')
 		}
-	}, [buildingInstance?.id, buildingDefinition?.isTradingPost, tradeNodes])
+	}, [buildingInstance?.id, tradeRouteType, tradeNodes])
 
 	useEffect(() => {
-		if (!buildingInstance || !buildingDefinition?.isTradingPost) {
+		if (!buildingInstance || !tradeRouteType) {
 			return
 		}
 
@@ -517,10 +537,10 @@ export const BuildingInfoPanel: React.FC = () => {
 		return () => {
 			EventBus.off(UiEvents.Trade.Updated, handleTradeUpdated)
 		}
-	}, [buildingInstance?.id, buildingInstance?.playerId, buildingDefinition?.isTradingPost])
+	}, [buildingInstance?.id, buildingInstance?.playerId, tradeRouteType])
 
 	useEffect(() => {
-		if (!buildingInstance || !buildingDefinition?.isTradingPost) {
+		if (!buildingInstance || !tradeRouteType) {
 			return
 		}
 
@@ -532,7 +552,7 @@ export const BuildingInfoPanel: React.FC = () => {
 		return () => {
 			EventBus.off(UiEvents.Reputation.Updated, handleReputationUpdated)
 		}
-	}, [buildingInstance?.playerId, buildingDefinition?.isTradingPost])
+	}, [buildingInstance?.playerId, tradeRouteType])
 
 	const handleCancelConstruction = () => {
 		if (buildingInstance && (buildingInstance.stage === ConstructionStage.CollectingResources || buildingInstance.stage === ConstructionStage.Constructing)) {
@@ -695,7 +715,7 @@ export const BuildingInfoPanel: React.FC = () => {
 		: []
 	const storageRequests = (buildingInstance.storageRequests ?? warehouseItemTypes) as string[]
 	const storageRequestSet = new Set(storageRequests)
-	const isTradingPost = Boolean(buildingDefinition.isTradingPost)
+	const isTradingRouteBuilding = Boolean(tradeRouteType)
 	const tradeOffers = selectedTradeNode?.tradeOffers || []
 	const tradeStatusLabel = getTradeStatusLabel(tradeRoute?.status)
 	const tradePending = Boolean(tradeRoute?.pendingSelection)
@@ -741,9 +761,11 @@ export const BuildingInfoPanel: React.FC = () => {
 		[ProfessionType.Miner]: 'Miner',
 		[ProfessionType.Metallurgist]: 'Metallurgist',
 		[ProfessionType.Farmer]: 'Farmer',
+		[ProfessionType.Fisher]: 'Fisher',
 		[ProfessionType.Miller]: 'Miller',
 		[ProfessionType.Baker]: 'Baker',
-		[ProfessionType.Vendor]: 'Vendor'
+		[ProfessionType.Vendor]: 'Vendor',
+		[ProfessionType.Hunter]: 'Hunter'
 	}
 
 	const professionIcons: Record<ProfessionType, string> = {
@@ -753,9 +775,11 @@ export const BuildingInfoPanel: React.FC = () => {
 		[ProfessionType.Miner]: '⛏️',
 		[ProfessionType.Metallurgist]: '⚒️',
 		[ProfessionType.Farmer]: '🌾',
+		[ProfessionType.Fisher]: '🎣',
 		[ProfessionType.Miller]: '🌬️',
 		[ProfessionType.Baker]: '🥖',
-		[ProfessionType.Vendor]: '🛍️'
+		[ProfessionType.Vendor]: '🛍️',
+		[ProfessionType.Hunter]: '🏹'
 	}
 
 	const formatWaitReason = (reason?: string): string | null => {
@@ -1050,7 +1074,7 @@ export const BuildingInfoPanel: React.FC = () => {
 				</div>
 			)}
 
-			{isCompleted && isTradingPost && (
+			{isCompleted && isTradingRouteBuilding && (
 				<div className={sharedStyles.info}>
 					<div className={sharedStyles.infoRow}>
 						<span className={sharedStyles.label}>Reputation:</span>

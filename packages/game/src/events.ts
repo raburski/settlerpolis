@@ -25,6 +25,7 @@ import { StorageEvents } from './Storage/events'
 import { WorkProviderEvents } from './Settlers/WorkProvider/events'
 import { NeedsEvents } from './Needs/events'
 import { RoadEvents } from './Roads/events'
+import { WildlifeEvents } from './Wildlife/events'
 import { CityCharterEvents } from './CityCharter/events'
 import { TradeEvents } from './Trade/events'
 import { ReputationEvents } from './Reputation/events'
@@ -287,6 +288,8 @@ export type EventPayloads = Record<string, unknown> & {
 	[NeedsEvents.SS.NeedPlanCreated]: NeedPlanCreatedEventData
 	[NeedsEvents.SS.NeedPlanFailed]: NeedPlanFailedEventData
 
+	[WildlifeEvents.SS.DeerKilled]: { npcId: string }
+
 	[CityCharterEvents.CS.Claim]: CityCharterClaimRequest
 	[CityCharterEvents.CS.RequestState]: CityCharterStateRequest
 	[CityCharterEvents.SC.State]: CityCharterStateData
@@ -341,6 +344,7 @@ export const Event = {
 	Roads: RoadEvents,
 	Work: WorkProviderEvents,
 	Needs: NeedsEvents,
+	Wildlife: WildlifeEvents,
 	CityCharter: CityCharterEvents,
 	Trade: TradeEvents,
 	Reputation: ReputationEvents

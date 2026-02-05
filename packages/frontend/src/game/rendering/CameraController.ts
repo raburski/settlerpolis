@@ -58,6 +58,14 @@ export class CameraController {
 		this.followTarget = null
 	}
 
+	recenterOnFollowTarget(): void {
+		this.followOffset = { x: 0, y: 0 }
+		this.panState = null
+		if (this.followTarget) {
+			this.renderer.setCameraTarget(this.followTarget.x, this.followTarget.y)
+		}
+	}
+
 	panBy(deltaX: number, deltaY: number): void {
 		if (this.followTarget) {
 			this.followOffset.x += deltaX

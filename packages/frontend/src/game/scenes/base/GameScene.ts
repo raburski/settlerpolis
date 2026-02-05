@@ -25,6 +25,7 @@ import { itemService } from '../../services/ItemService'
 import { sceneManager } from '../../services/SceneManager'
 import type { GameRuntime } from '../../runtime/GameRuntime'
 import type { PointerState } from '../../input/InputManager'
+import { ResourceNodeBatcher } from '../../rendering/ResourceNodeBatcher'
 
 export abstract class GameScene extends MapScene {
 	public player: LocalPlayer | null = null
@@ -44,6 +45,11 @@ export abstract class GameScene extends MapScene {
 	public textDisplayService: TextDisplayService | null = null
 	protected npcProximityService: NPCProximityService
 	protected sceneData: any = {}
+	private cameraPanVelocity = { x: 0, y: 0 }
+	private resourceNodeBatcher: ResourceNodeBatcher | null = null
+	private resourceCullTimer = 0
+	private lastResourceCullCenter: { x: number; y: number } | null = null
+	private resourceNodesDirty = false
 	private readonly handleMapRightClick = (pointer: PointerState) => {
 		if (pointer.wasDrag || pointer.button !== 2) {
 			return
@@ -95,6 +101,7 @@ export abstract class GameScene extends MapScene {
 		this.itemPlacementManager = new ItemPlacementManager(this, this.player.controller)
 		this.roadOverlay = new RoadOverlay(this, this.map.tileWidth)
 		this.fx = new FX(this)
+		this.resourceNodeBatcher = new ResourceNodeBatcher(this.runtime.renderer, this.map.tileWidth)
 		this.runtime.input.on('pointerup', this.handleMapRightClick)
 
 		EventBus.emit(UiEvents.Scene.Ready, { mapId: this.mapKey })
@@ -114,8 +121,10 @@ export abstract class GameScene extends MapScene {
 
 		this.updateCameraFromKeyboard(deltaMs)
 		this.updateCameraRotationFromKeyboard()
+		this.updateCameraHomeFromKeyboard()
 		this.keyboard?.update()
 		this.portalManager?.update()
+		this.updateResourceNodeVisibility(deltaMs)
 
 		if (this.player) {
 			this.player.controller.update(deltaMs)
@@ -162,8 +171,10 @@ export abstract class GameScene extends MapScene {
 
 	private updateCameraFromKeyboard(deltaMs: number): void {
 		if (!this.keyboard) return
-		const speed = 900
+		const speed = 1100
 		const verticalMultiplier = 1.25
+		const accelFactor = 0.3
+		const decelFactor = 0.22
 		let moveX = 0
 		let moveY = 0
 
@@ -172,9 +183,6 @@ export abstract class GameScene extends MapScene {
 		if (this.keyboard.isMovingUp()) moveY += 1
 		if (this.keyboard.isMovingDown()) moveY -= 1
 
-		if (moveX === 0 && moveY === 0) return
-
-		const distance = (speed * deltaMs) / 1000
 		const camera = this.runtime.renderer.camera
 		const right = camera.getDirection(Vector3.Right())
 		const up = camera.getDirection(Vector3.Up())
@@ -185,11 +193,27 @@ export abstract class GameScene extends MapScene {
 		rightGround.normalize()
 		upGround.normalize()
 
+		const hasInput = moveX !== 0 || moveY !== 0
 		const inputLength = Math.hypot(moveX, moveY) || 1
 		const weightedX = moveX / inputLength
 		const weightedY = (moveY / inputLength) * verticalMultiplier
 		const delta = rightGround.scale(weightedX).add(upGround.scale(weightedY))
-		this.cameras.main.panBy(delta.x * distance, delta.z * distance)
+		const targetVelocityX = hasInput ? delta.x * speed : 0
+		const targetVelocityY = hasInput ? delta.z * speed : 0
+		const factor = hasInput ? accelFactor : decelFactor
+		const smoothing = 1 - Math.pow(1 - factor, deltaMs / 16.67)
+
+		this.cameraPanVelocity.x += (targetVelocityX - this.cameraPanVelocity.x) * smoothing
+		this.cameraPanVelocity.y += (targetVelocityY - this.cameraPanVelocity.y) * smoothing
+
+		if (!hasInput && Math.hypot(this.cameraPanVelocity.x, this.cameraPanVelocity.y) < 0.01) {
+			this.cameraPanVelocity.x = 0
+			this.cameraPanVelocity.y = 0
+			return
+		}
+
+		const distance = deltaMs / 1000
+		this.cameras.main.panBy(this.cameraPanVelocity.x * distance, this.cameraPanVelocity.y * distance)
 	}
 
 	private updateCameraRotationFromKeyboard(): void {
@@ -198,6 +222,13 @@ export abstract class GameScene extends MapScene {
 			this.cameras.main.rotateByDegrees(-90)
 		} else if (this.keyboard.isRotateRight()) {
 			this.cameras.main.rotateByDegrees(90)
+		}
+	}
+
+	private updateCameraHomeFromKeyboard(): void {
+		if (!this.keyboard) return
+		if (this.keyboard.isCameraHome()) {
+			this.cameras.main.recenterOnFollowTarget()
 		}
 	}
 
@@ -310,6 +341,10 @@ export abstract class GameScene extends MapScene {
 
 	private handleMapObjectSpawn = (data: { object: any }) => {
 		if (data.object.mapId === this.mapKey) {
+			if (this.resourceNodeBatcher?.add(data.object)) {
+				this.resourceNodesDirty = true
+				return
+			}
 			const existing = this.mapObjects.get(data.object.id)
 			if (existing) {
 				existing.controller.destroy()
@@ -321,10 +356,58 @@ export abstract class GameScene extends MapScene {
 	}
 
 	private handleMapObjectDespawn = (data: { objectId: string }) => {
+		if (this.resourceNodeBatcher?.remove(data.objectId)) {
+			this.resourceNodesDirty = true
+			return
+		}
 		const mapObject = this.mapObjects.get(data.objectId)
 		if (mapObject) {
 			mapObject.controller.destroy()
 			this.mapObjects.delete(data.objectId)
+		}
+	}
+
+	private updateResourceNodeVisibility(deltaMs: number): void {
+		if (!this.resourceNodeBatcher) return
+		if (!this.resourceNodesDirty) return
+		this.resourceCullTimer += deltaMs
+		if (this.resourceCullTimer < 600) return
+		this.resourceCullTimer = 0
+		this.resourceNodesDirty = false
+		this.resourceNodeBatcher.updateAll()
+	}
+
+	private getVisibleWorldBounds(padding: number): { minX: number; minY: number; maxX: number; maxY: number } | null {
+		const renderer = this.runtime.renderer
+		const width = renderer.engine.getRenderWidth()
+		const height = renderer.engine.getRenderHeight()
+		if (width <= 0 || height <= 0) return null
+
+		const corners = [
+			renderer.screenToWorld(0, 0),
+			renderer.screenToWorld(width, 0),
+			renderer.screenToWorld(width, height),
+			renderer.screenToWorld(0, height)
+		].filter(Boolean) as Vector3[]
+
+		if (corners.length === 0) return null
+		let minX = corners[0].x
+		let maxX = corners[0].x
+		let minY = corners[0].z
+		let maxY = corners[0].z
+		for (let i = 1; i < corners.length; i += 1) {
+			const point = corners[i]
+			minX = Math.min(minX, point.x)
+			maxX = Math.max(maxX, point.x)
+			minY = Math.min(minY, point.z)
+			maxY = Math.max(maxY, point.z)
+		}
+
+		return {
+			minX: minX - padding,
+			maxX: maxX + padding,
+			minY: minY - padding,
+			maxY: maxY + padding
 		}
 	}
 
@@ -454,6 +537,12 @@ export abstract class GameScene extends MapScene {
 
 		this.roadOverlay?.destroy()
 		this.roadOverlay = null
+
+		this.resourceNodeBatcher?.dispose()
+		this.resourceNodeBatcher = null
+		this.resourceNodesDirty = false
+		this.resourceCullTimer = 0
+		this.lastResourceCullCenter = null
 
 		EventBus.off(Event.Players.SC.Joined, this.handlePlayerJoined)
 		EventBus.off(Event.Players.SC.Left, this.handlePlayerLeft)

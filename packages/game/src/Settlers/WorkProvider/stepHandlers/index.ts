@@ -3,6 +3,8 @@ import { WorkStepType } from '../types'
 import { AcquireToolHandler } from './acquireTool'
 import { ConstructHandler } from './construct'
 import { HarvestHandler } from './harvest'
+import { FishHandler } from './fish'
+import { HuntHandler } from './hunt'
 import { ProduceHandler } from './produce'
 import { PlantHandler } from './plant'
 import { BuildRoadHandler } from './buildRoad'
@@ -14,6 +16,8 @@ export const StepHandlers: Record<WorkStepType, StepHandler> = {
 	[WorkStepType.AcquireTool]: AcquireToolHandler,
 	[WorkStepType.Construct]: ConstructHandler,
 	[WorkStepType.Harvest]: HarvestHandler,
+	[WorkStepType.Fish]: FishHandler,
+	[WorkStepType.Hunt]: HuntHandler,
 	[WorkStepType.Produce]: ProduceHandler,
 	[WorkStepType.Plant]: PlantHandler,
 	[WorkStepType.BuildRoad]: BuildRoadHandler,

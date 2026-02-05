@@ -31,6 +31,31 @@ export class MapManager {
 		'mud'
 	] as GroundType[]
 
+	private decodeRleLayerData(tiledMap: TiledMap): void {
+		const total = tiledMap.width * tiledMap.height
+		if (!Number.isFinite(total) || total <= 0) return
+		for (const layer of tiledMap.layers || []) {
+			if (layer.type !== 'tilelayer' || layer.encoding !== 'rle' || !Array.isArray(layer.data)) continue
+			const encoded = layer.data
+			const decoded = new Array<number>(total)
+			let offset = 0
+			for (let i = 0; i < encoded.length; i += 2) {
+				if (offset >= total) break
+				const value = encoded[i] ?? 0
+				const count = encoded[i + 1] ?? 0
+				if (count <= 0) continue
+				const end = Math.min(total, offset + count)
+				decoded.fill(value, offset, end)
+				offset = end
+			}
+			if (offset < total) {
+				decoded.fill(0, offset)
+			}
+			layer.data = decoded
+			delete (layer as any).encoding
+		}
+	}
+
 	constructor(
 		private event: EventManager,
 		private mapUrlService: MapUrlService | undefined,
@@ -144,6 +169,54 @@ export class MapManager {
 		}
 		
 		return triggers
+	}
+
+	private extractResourceNodes(tiledMap: any, mapId: string): import('../ResourceNodes/types').ResourceNodeSpawn[] {
+		const resourceLayer = tiledMap.layers.find((layer: any) => layer.name === 'resource_nodes')
+		if (!resourceLayer || !resourceLayer.objects) {
+			return []
+		}
+
+		const tileWidth = tiledMap.tilewidth || 32
+		const tileHeight = tiledMap.tileheight || 32
+		const nodes: import('../ResourceNodes/types').ResourceNodeSpawn[] = []
+
+		for (const obj of resourceLayer.objects) {
+			const properties = Array.isArray(obj.properties) ? obj.properties : []
+			const getProperty = (name: string) => properties.find((prop: any) => prop.name === name)?.value
+			const nodeType = getProperty('nodeType') || (typeof obj.name === 'string' && obj.name.startsWith('resource:') ? obj.name.split(':')[1] : obj.type)
+			if (!nodeType) {
+				continue
+			}
+
+			const tileBased = getProperty('tileBased')
+			const quantity = getProperty('quantity')
+
+			const position = tileBased
+				? {
+					x: Math.round(obj.x / tileWidth),
+					y: Math.round(obj.y / tileHeight)
+				}
+				: {
+					x: obj.x,
+					y: obj.y
+				}
+
+			const spawn: import('../ResourceNodes/types').ResourceNodeSpawn = {
+				nodeType,
+				mapId,
+				position,
+				tileBased: Boolean(tileBased)
+			}
+
+			if (typeof quantity === 'number') {
+				spawn.quantity = quantity
+			}
+
+			nodes.push(spawn)
+		}
+
+		return nodes
 	}
 
 	private setupEventHandlers() {
@@ -479,6 +552,8 @@ export class MapManager {
 
 		for (const [mapId, tiledMap] of Object.entries(maps)) {
 			try {
+				this.decodeRleLayerData(tiledMap)
+
 				// Validate required map properties
 				if (!tiledMap || !tiledMap.layers || !Array.isArray(tiledMap.layers)) {
 					this.logger.error(`Invalid map data for ${mapId}`)
@@ -493,7 +568,8 @@ export class MapManager {
 					collision: this.extractCollisionData(tiledMap),
 					npcSpots: this.extractNPCSpots(tiledMap),
 					paths: this.extractPathsData(tiledMap),
-					triggers: this.extractTriggers(tiledMap)
+					triggers: this.extractTriggers(tiledMap),
+					resourceNodes: this.extractResourceNodes(tiledMap, mapId)
 				}
 
 				this.maps.set(mapId, mapData)

@@ -2,6 +2,7 @@ export interface MapLayer {
 	name: string
 	type: string
 	data?: number[]
+	encoding?: string
 	objects?: any[]
 	width?: number
 	height?: number
@@ -37,6 +38,33 @@ export interface LoadedMap {
 	objectLayers: Map<string, any[]>
 }
 
+const decodeRle = (encoded: number[], total: number): number[] => {
+	const decoded = new Array<number>(total)
+	let offset = 0
+	for (let i = 0; i < encoded.length; i += 2) {
+		if (offset >= total) break
+		const value = encoded[i] ?? 0
+		const count = encoded[i + 1] ?? 0
+		if (count <= 0) continue
+		const end = Math.min(total, offset + count)
+		decoded.fill(value, offset, end)
+		offset = end
+	}
+	if (offset < total) {
+		decoded.fill(0, offset)
+	}
+	return decoded
+}
+
+const decodeLayerData = (layers: MapLayer[], width: number, height: number) => {
+	const total = width * height
+	for (const layer of layers) {
+		if (layer.type !== 'tilelayer' || layer.encoding !== 'rle' || !Array.isArray(layer.data)) continue
+		layer.data = decodeRle(layer.data, total)
+		delete (layer as any).encoding
+	}
+}
+
 export class MapLoader {
 	async load(mapKey: string, mapUrl: string): Promise<LoadedMap> {
 		const response = await fetch(mapUrl)
@@ -68,6 +96,8 @@ export class MapLoader {
 			layers: json.layers || [],
 			tilesets
 		}
+
+		decodeLayerData(data.layers, data.width, data.height)
 
 		const collisionLayer = data.layers.find((layer) => layer.name === 'collision' && layer.type === 'tilelayer')
 		const collisionGrid = this.buildCollisionGrid(collisionLayer, data.width, data.height)

@@ -30,7 +30,6 @@ const getShortestDistance = (homeId: string, targetId: string, nodes: WorldMapNo
 
 	const neighbors = (nodeId: string) => {
 		return links.flatMap((link) => {
-			if (link.type !== 'land') return []
 			if (link.fromId === nodeId) return [{ id: link.toId, distance: getLinkDistance(link, nodes) }]
 			if (link.toId === nodeId) return [{ id: link.fromId, distance: getLinkDistance(link, nodes) }]
 			return []
@@ -164,7 +163,7 @@ export const WorldMapPanel = ({ isOpen, onClose }: WorldMapPanelProps) => {
 						{homeNode && selectedNode.id !== homeNode.id ? (
 							<div className={styles.detailStat}>
 								<span>Estimated travel</span>
-								<strong>{travelSeconds !== null ? formatDuration(travelSeconds) : 'No land route'}</strong>
+								<strong>{travelSeconds !== null ? formatDuration(travelSeconds) : 'No route'}</strong>
 							</div>
 						) : (
 							<div className={styles.detailStat}>
@@ -183,7 +182,7 @@ export const WorldMapPanel = ({ isOpen, onClose }: WorldMapPanelProps) => {
 								<strong>None listed</strong>
 							</div>
 						)}
-						<div className={styles.detailHint}>Set routes at a Trading Post.</div>
+						<div className={styles.detailHint}>Set routes at a Trading Post or Trading Port.</div>
 					</aside>
 				</div>
 			</div>

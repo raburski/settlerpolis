@@ -4,7 +4,8 @@ export const UiEvents = {
 	},
 	Settings: {
 		Toggle: 'ui:settings:toggle',
-		HighFidelity: 'ui:settings:high-fidelity'
+		HighFidelity: 'ui:settings:high-fidelity',
+		ScrollSensitivity: 'ui:settings:scroll-sensitivity'
 	},
 	Inventory: {
 		Toggle: 'ui:inventory:toggle',
@@ -90,6 +91,7 @@ export const UiEvents = {
 		Updated: 'ui:reputation:updated'
 	},
 	Debug: {
-		BoundsToggle: 'ui:debug:bounds-toggle'
+		BoundsToggle: 'ui:debug:bounds-toggle',
+		RenderStats: 'ui:debug:render-stats'
 	}
 } as const

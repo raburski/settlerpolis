@@ -4,10 +4,10 @@ import { Event } from '../events'
 import { Receiver } from '../Receiver'
 import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
-import type { WorldMapData, WorldMapNodeTradeOffer, WorldMapLink, WorldMapNode } from '../WorldMap/types'
+import type { WorldMapData, WorldMapNodeTradeOffer, WorldMapLink, WorldMapNode, WorldMapLinkType } from '../WorldMap/types'
 import type { BuildingManager } from '../Buildings'
 import { BuildingsEvents } from '../Buildings/events'
-import { ConstructionStage } from '../Buildings/types'
+import { ConstructionStage, type BuildingDefinition } from '../Buildings/types'
 import type { StorageManager } from '../Storage'
 import type { WorkProviderManager } from '../Settlers/WorkProvider'
 import { TradeEvents } from './events'
@@ -118,12 +118,19 @@ export class TradeManager extends BaseManager<TradeDeps> {
 				this.routesByBuilding.delete(route.buildingInstanceId)
 				continue
 			}
+			const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
+			const routeType = this.resolveTradeRouteType(definition)
+			if (!routeType) {
+				this.logger.warn('[TradeManager] Building does not support trade routes:', building.buildingId)
+				this.routesByBuilding.delete(route.buildingInstanceId)
+				continue
+			}
 
 			let didUpdate = false
 			const previousStatus = route.status
 
 			if (route.status === TradeRouteStatus.Idle && route.pendingSelection) {
-				if (this.applyPendingSelection(route, route.pendingSelection)) {
+				if (this.applyPendingSelection(route, route.pendingSelection, routeType)) {
 					route.pendingSelection = undefined
 					didUpdate = true
 				}
@@ -138,14 +145,14 @@ export class TradeManager extends BaseManager<TradeDeps> {
 					didUpdate = this.updateLoading(route) || didUpdate
 					break
 				case TradeRouteStatus.Ready:
-					didUpdate = this.dispatchShipment(route) || didUpdate
+					didUpdate = this.dispatchShipment(route, routeType) || didUpdate
 					break
 				case TradeRouteStatus.Outbound:
 					didUpdate = this.advanceOutbound(route) || didUpdate
 					break
 				case TradeRouteStatus.AtDestination:
 					route.status = TradeRouteStatus.Returning
-					route.returnRemainingMs = this.getTravelMs(route.nodeId)
+					route.returnRemainingMs = this.getTravelMs(route.nodeId, routeType)
 					didUpdate = true
 					break
 				case TradeRouteStatus.Returning:
@@ -187,7 +194,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 		return needed > 0
 	}
 
-	private dispatchShipment(route: TradeRouteState): boolean {
+	private dispatchShipment(route: TradeRouteState, routeType: WorldMapLinkType): boolean {
 		const offer = route.offer
 		const canReceive = this.managers.storage.hasAvailableStorage(route.buildingInstanceId, offer.receiveItem, offer.receiveQuantity, 'outgoing')
 		if (!canReceive) {
@@ -220,7 +227,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 			return false
 		}
 
-		const travelMs = this.getTravelMs(route.nodeId)
+		const travelMs = this.getTravelMs(route.nodeId, routeType)
 		route.status = TradeRouteStatus.Outbound
 		route.outboundRemainingMs = travelMs
 		route.returnRemainingMs = undefined
@@ -333,23 +340,24 @@ export class TradeManager extends BaseManager<TradeDeps> {
 
 		const building = this.managers.buildings.getBuildingInstance(data.buildingInstanceId)
 		if (!building) {
-			this.logger.warn('[TradeManager] Trading post not found for route request.')
+			this.logger.warn('[TradeManager] Trade building not found for route request.')
 			return
 		}
 
 		if (building.playerId !== client.id) {
-			this.logger.warn('[TradeManager] Player tried to configure another player\'s trading post.')
+			this.logger.warn('[TradeManager] Player tried to configure another player\'s trade building.')
 			return
 		}
 
 		const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
-		if (!definition?.isTradingPost) {
-			this.logger.warn('[TradeManager] Building is not a trading post:', building.buildingId)
+		const routeType = this.resolveTradeRouteType(definition)
+		if (!routeType) {
+			this.logger.warn('[TradeManager] Building is not a trade route hub:', building.buildingId)
 			return
 		}
 
 		if (building.stage !== ConstructionStage.Completed) {
-			this.logger.warn('[TradeManager] Trading post is not completed yet.')
+			this.logger.warn('[TradeManager] Trade building is not completed yet.')
 			return
 		}
 
@@ -365,8 +373,8 @@ export class TradeManager extends BaseManager<TradeDeps> {
 			return
 		}
 
-		if (!this.isReachableByLand(data.nodeId)) {
-			this.logger.warn('[TradeManager] Node not reachable by land:', data.nodeId)
+		if (!this.isReachableByLinkType(data.nodeId, routeType)) {
+			this.logger.warn('[TradeManager] Node not reachable by route type:', routeType, data.nodeId)
 			return
 		}
 
@@ -398,13 +406,13 @@ export class TradeManager extends BaseManager<TradeDeps> {
 		this.emitRouteUpdated(route)
 	}
 
-	private applyPendingSelection(route: TradeRouteState, pending: { nodeId: string; offerId: string }): boolean {
+	private applyPendingSelection(route: TradeRouteState, pending: { nodeId: string; offerId: string }, routeType: WorldMapLinkType): boolean {
 		const node = this.nodesById.get(pending.nodeId)
 		const offer = node?.tradeOffers?.find(entry => entry.id === pending.offerId)
 		if (!node || !offer) {
 			return false
 		}
-		if (!this.isReachableByLand(node.id)) {
+		if (!this.isReachableByLinkType(node.id, routeType)) {
 			return false
 		}
 		this.applySelection(route, pending, offer)
@@ -444,21 +452,22 @@ export class TradeManager extends BaseManager<TradeDeps> {
 		client.emit(Receiver.Sender, TradeEvents.SC.RouteList, payload)
 	}
 
-	private getTravelMs(nodeId: string): number {
+	private getTravelMs(nodeId: string, linkType: WorldMapLinkType): number {
 		if (!this.worldMap) {
 			return 0
 		}
-		const cached = this.travelMsByNode.get(nodeId)
+		const cacheKey = `${linkType}:${nodeId}`
+		const cached = this.travelMsByNode.get(cacheKey)
 		if (typeof cached === 'number') {
 			return cached
 		}
-		const distance = this.findShortestDistance(nodeId)
+		const distance = this.findShortestDistance(nodeId, linkType)
 		const travelMs = Math.max(0, distance * this.worldMap.travelSecondsPerUnit * 1000)
-		this.travelMsByNode.set(nodeId, travelMs)
+		this.travelMsByNode.set(cacheKey, travelMs)
 		return travelMs
 	}
 
-	private findShortestDistance(targetNodeId: string): number {
+	private findShortestDistance(targetNodeId: string, linkType: WorldMapLinkType): number {
 		if (!this.worldMap) {
 			return 0
 		}
@@ -474,7 +483,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 		const getNeighbors = (nodeId: string): Array<{ id: string; distance: number }> => {
 			const neighbors: Array<{ id: string; distance: number }> = []
 			for (const link of this.worldMap?.links || []) {
-				if (link.type !== 'land') {
+				if (link.type !== linkType) {
 					continue
 				}
 				if (link.fromId === nodeId) {
@@ -540,7 +549,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 		return Math.hypot(dx, dy)
 	}
 
-	private isReachableByLand(targetNodeId: string): boolean {
+	private isReachableByLinkType(targetNodeId: string, linkType: WorldMapLinkType): boolean {
 		if (!this.worldMap) {
 			return false
 		}
@@ -556,7 +565,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 				return true
 			}
 			for (const link of this.worldMap.links) {
-				if (link.type !== 'land') {
+				if (link.type !== linkType) {
 					continue
 				}
 				const neighbor = link.fromId === current
@@ -572,6 +581,19 @@ export class TradeManager extends BaseManager<TradeDeps> {
 			}
 		}
 		return false
+	}
+
+	private resolveTradeRouteType(definition?: BuildingDefinition | null): WorldMapLinkType | null {
+		if (!definition) {
+			return null
+		}
+		if (definition.tradeRouteType) {
+			return definition.tradeRouteType
+		}
+		if (definition.isTradingPost) {
+			return 'land'
+		}
+		return null
 	}
 
 	serialize(): TradeSnapshot {

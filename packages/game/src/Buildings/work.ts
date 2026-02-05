@@ -4,7 +4,9 @@ export enum BuildingWorkKind {
 	Harvest = 'harvest',
 	Production = 'production',
 	Farm = 'farm',
-	Market = 'market'
+	Market = 'market',
+	Fishing = 'fishing',
+	Hunting = 'hunting'
 }
 
 export const getBuildingWorkKinds = (definition: BuildingDefinition): BuildingWorkKind[] => {
@@ -21,6 +23,12 @@ export const getBuildingWorkKinds = (definition: BuildingDefinition): BuildingWo
 	if (definition.marketDistribution) {
 		kinds.push(BuildingWorkKind.Market)
 	}
+	if (definition.fishing) {
+		kinds.push(BuildingWorkKind.Fishing)
+	}
+	if (definition.hunting) {
+		kinds.push(BuildingWorkKind.Hunting)
+	}
 	return kinds
 }
 
@@ -34,6 +42,14 @@ export const getProductionRecipe = (definition: BuildingDefinition): BuildingDef
 
 export const getFarmDefinition = (definition: BuildingDefinition): BuildingDefinition['farm'] | undefined => {
 	return definition.farm
+}
+
+export const getFishingDefinition = (definition: BuildingDefinition): BuildingDefinition['fishing'] | undefined => {
+	return definition.fishing
+}
+
+export const getHuntingDefinition = (definition: BuildingDefinition): BuildingDefinition['hunting'] | undefined => {
+	return definition.hunting
 }
 
 const buildRecipeId = (recipe: ProductionRecipe, index: number): string => {

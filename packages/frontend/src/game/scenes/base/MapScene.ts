@@ -5,6 +5,8 @@ import { CameraController } from '../../rendering/CameraController'
 import type { GameRuntime } from '../../runtime/GameRuntime'
 import type { AbstractMesh } from '@babylonjs/core'
 
+const SHOW_COLLISION_OVERLAY = String(import.meta.env.VITE_DEBUG_COLLISION || '').toLowerCase() === 'true'
+
 interface MapView {
 	key: string
 	tileWidth: number
@@ -93,20 +95,36 @@ export abstract class MapScene {
 			this.physics.addStaticRect({ x: obj.x, y: obj.y - obj.height, width: obj.width, height: obj.height })
 		})
 
-		this.runtime.renderer.createGround(`${data.key}-ground`, widthInPixels, heightInPixels)
+		const heightLayer = data.layers.find((layer) => layer.name === 'heightmap' && layer.type === 'tilelayer')
+		const hasHeightMap = Boolean(heightLayer?.data?.length)
+		this.runtime.renderer.createGround(`${data.key}-ground`, widthInPixels, heightInPixels, {
+			subdivisionsX: hasHeightMap ? data.width : 1,
+			subdivisionsY: hasHeightMap ? data.height : 1,
+			updatable: hasHeightMap
+		})
 		const groundLayer = data.layers.find((layer) => layer.name === 'ground' && layer.type === 'tilelayer')
 		if (groundLayer?.data?.length) {
 			this.runtime.renderer.resetGroundMaterial()
 			this.clearGroundTypeMeshes()
-			this.groundTypeMeshes = this.runtime.renderer.createGroundTypeMeshes({
+			void this.runtime.renderer.applyGroundPalette({
 				mapUrl: this.mapPath,
 				mapWidth: data.width,
 				mapHeight: data.height,
 				tileWidth: data.tileWidth,
 				tileHeight: data.tileHeight,
 				layer: groundLayer,
-				tilesets: data.tilesets
+				tilesets: data.tilesets,
+				heightLayer: heightLayer || undefined
 			})
+			if (hasHeightMap && heightLayer) {
+				this.runtime.renderer.applyGroundHeightMap({
+					mapWidth: data.width,
+					mapHeight: data.height,
+					tileWidth: data.tileWidth,
+					tileHeight: data.tileHeight,
+					layer: heightLayer
+				})
+			}
 		} else {
 			this.runtime.renderer.resetGroundMaterial()
 		}
@@ -116,11 +134,13 @@ export abstract class MapScene {
 		this.cameras.main.setBounds(0, 0, widthInPixels, heightInPixels)
 
 		this.clearCollisionOverlay()
-		this.collisionOverlay = this.runtime.renderer.createCollisionOverlay(
-			`${data.key}-collision`,
-			collisionGrid,
-			data.tileWidth
-		)
+		if (SHOW_COLLISION_OVERLAY) {
+			this.collisionOverlay = this.runtime.renderer.createCollisionOverlay(
+				`${data.key}-collision`,
+				collisionGrid,
+				data.tileWidth
+			)
+		}
 	}
 
 	private clearCollisionOverlay(): void {
