@@ -25,9 +25,11 @@ export class PopulationStats {
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Metallurgist]: 0,
 			[ProfessionType.Farmer]: 0,
+			[ProfessionType.Fisher]: 0,
 			[ProfessionType.Miller]: 0,
 			[ProfessionType.Baker]: 0,
-			[ProfessionType.Vendor]: 0
+			[ProfessionType.Vendor]: 0,
+			[ProfessionType.Hunter]: 0
 		}
 		const byProfessionActive: Record<ProfessionType, number> = {
 			[ProfessionType.Carrier]: 0,
@@ -36,9 +38,11 @@ export class PopulationStats {
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Metallurgist]: 0,
 			[ProfessionType.Farmer]: 0,
+			[ProfessionType.Fisher]: 0,
 			[ProfessionType.Miller]: 0,
 			[ProfessionType.Baker]: 0,
-			[ProfessionType.Vendor]: 0
+			[ProfessionType.Vendor]: 0,
+			[ProfessionType.Hunter]: 0
 		}
 
 		let idleCount = 0

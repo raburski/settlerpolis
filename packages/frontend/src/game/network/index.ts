@@ -16,9 +16,12 @@ import '../services/LogisticsService'
 import '../services/CityCharterService'
 // Initialize ReputationService to start listening to events
 import '../services/ReputationService'
+import { resourceNodeRenderService } from '../services/ResourceNodeRenderService'
 
 const IS_REMOTE_GAME = false
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'
+
+void resourceNodeRenderService.load()
 
 // Load content using glob import
 const contentModules = import.meta.glob('../../../../../content/*/index.ts', { eager: true })

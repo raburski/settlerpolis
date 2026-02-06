@@ -8,6 +8,7 @@ import type {
 	BuildingInstanceId,
 	LogisticsRequestId,
 	LootItemId,
+	NPCId,
 	ResourceNodeId,
 	RoadJobId,
 	ReservationId,
@@ -35,6 +36,8 @@ export enum WorkStepType {
 	AcquireTool = 'acquire_tool',
 	Construct = 'construct',
 	Harvest = 'harvest',
+	Fish = 'fish',
+	Hunt = 'hunt',
 	Produce = 'produce',
 	Plant = 'plant',
 	BuildRoad = 'build_road',
@@ -76,6 +79,7 @@ export enum WorkActionType {
 	DeliverStorage = 'deliver_storage',
 	DeliverConstruction = 'deliver_construction',
 	HarvestNode = 'harvest_node',
+	HuntNpc = 'hunt_npc',
 	Produce = 'produce',
 	Plant = 'plant',
 	ChangeProfession = 'change_profession',
@@ -115,6 +119,8 @@ export type WorkStep =
 	| { type: WorkStepType.AcquireTool, profession: ProfessionType, toolItemId?: LootItemId, toolPosition?: Position }
 	| { type: WorkStepType.Construct, buildingInstanceId: BuildingInstanceId, durationMs: number }
 	| { type: WorkStepType.Harvest, buildingInstanceId: BuildingInstanceId, resourceNodeId: ResourceNodeId, outputItemType: ItemType, quantity: number, durationMs: number }
+	| { type: WorkStepType.Fish, buildingInstanceId: BuildingInstanceId, resourceNodeId: ResourceNodeId, targetPosition: Position, outputItemType: ItemType, quantity: number, durationMs: number }
+	| { type: WorkStepType.Hunt, buildingInstanceId: BuildingInstanceId, npcId: NPCId, outputItemType: ItemType, quantity: number, durationMs: number, wildlifeType?: string }
 	| { type: WorkStepType.Produce, buildingInstanceId: BuildingInstanceId, recipe: ProductionRecipe, durationMs: number }
 	| { type: WorkStepType.Plant, buildingInstanceId: BuildingInstanceId, nodeType: string, position: Position, plantTimeMs: number, growTimeMs: number, spoilTimeMs?: number, despawnTimeMs?: number }
 	| { type: WorkStepType.BuildRoad, jobId: RoadJobId, position: Position, roadType: RoadType, durationMs: number }
@@ -142,6 +148,7 @@ export type WorkAction =
 	| { type: WorkActionType.DeliverStorage, buildingInstanceId: BuildingInstanceId, itemType: ItemType, quantity: number, reservationId?: StorageReservationId, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.DeliverConstruction, buildingInstanceId: BuildingInstanceId, itemType: ItemType, quantity: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.HarvestNode, nodeId: ResourceNodeId, quantity: number, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.HuntNpc, npcId: NPCId, outputItemType: ItemType, quantity: number, wildlifeType?: string, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Produce, buildingInstanceId: BuildingInstanceId, recipe: ProductionRecipe, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Plant, buildingInstanceId: BuildingInstanceId, nodeType: string, position: Position, growTimeMs: number, spoilTimeMs?: number, despawnTimeMs?: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.ChangeProfession, profession: ProfessionType, setState?: import('../../Population/types').SettlerState }

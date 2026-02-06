@@ -3,6 +3,7 @@ import { ItemType } from '../Items/types'
 import type { ProfessionType } from '../Population/types'
 import type { ResourceNodeType } from '../ResourceNodes/types'
 import type { GroundType } from '../Map/types'
+import type { WorldMapLinkType } from '../WorldMap/types'
 import type { BuildingId, BuildingInstanceId, MapId, PlayerId } from '../ids'
 
 export type { BuildingId, BuildingInstanceId } from '../ids'
@@ -111,6 +112,7 @@ export interface BuildingDefinition {
 	priority?: number // Optional priority for logistics and job assignment (higher = more urgent)
 	isWarehouse?: boolean // Marks building as storage hub for overflow
 	isTradingPost?: boolean // Marks building as a trading post
+	tradeRouteType?: WorldMapLinkType // Marks building as a trade route hub (land or sea)
 	blocksOutgoing?: boolean // If true, items cannot be transported out by logistics
 	harvest?: {
 		nodeType: ResourceNodeType
@@ -127,6 +129,22 @@ export interface BuildingDefinition {
 		postPlantReturnWaitMs?: number
 		spoilTimeMs?: number
 		despawnTimeMs?: number
+	}
+	fishing?: {
+		nodeType: ResourceNodeType
+		radiusTiles: number
+		fishingTimeMs: number
+		minCatch: number
+		maxCatch: number
+		nodesPerEfficiency?: number
+		maxEfficiency?: number
+	}
+	hunting?: {
+		wildlifeType: string
+		radiusTiles: number
+		huntTimeMs: number
+		outputItemType: ItemType
+		quantity?: number
 	}
 	consumes?: Array<{
 		itemType: ItemType

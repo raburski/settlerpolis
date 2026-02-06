@@ -178,7 +178,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 		this.checkAllRoutines()
 	}
 
-	private getMapNPCs(mapId: string): NPC[] {
+	public getMapNPCs(mapId: string): NPC[] {
 		return Array.from(this.npcs.values()).filter(npc => npc.mapId === mapId && npc.active !== false)
 	}
 
@@ -221,6 +221,14 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	}
 
 	public addNPC(npc: NPC) {
+		if (npc.state === undefined) {
+			npc.state = NPCState.Idle
+		}
+
+		if (npc.active === undefined) {
+			npc.active = true
+		}
+
 		this.npcs.set(npc.id, npc)
 
 		// Register NPC with MovementManager
@@ -231,12 +239,25 @@ export class NPCManager extends BaseManager<NPCDeps> {
 			speed: npc.speed
 		}
 		this.managers.movement.registerEntity(movementEntity)
+
+		if (npc.active !== false) {
+			this.event.emit(Receiver.Group, NPCEvents.SC.Spawn, { npc }, npc.mapId)
+		}
 	}
 
 	public removeNPC(npcId: string) {
+		const npc = this.npcs.get(npcId)
+		if (!npc) {
+			return
+		}
+
 		// Unregister from MovementManager
 		this.managers.movement.unregisterEntity(npcId)
 		this.npcs.delete(npcId)
+
+		if (npc.active !== false) {
+			this.event.emit(Receiver.Group, NPCEvents.SC.Despawn, { npc }, npc.mapId)
+		}
 	}
 
 	public getNPC(npcId: string): NPC | undefined {

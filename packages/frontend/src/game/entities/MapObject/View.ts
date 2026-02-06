@@ -4,11 +4,27 @@ import type { MapObject } from '@rugged/game'
 import { ConstructionStage } from '@rugged/game'
 import { itemService } from '../../services/ItemService'
 import { buildingService } from '../../services/BuildingService'
+import { resourceNodeRenderService } from '../../services/ResourceNodeRenderService'
 import { EventBus } from '../../EventBus'
 import { UiEvents } from '../../uiEvents'
 import { Event } from '@rugged/game'
-import { AbstractMesh, Color3, Mesh, MeshBuilder, SceneLoader, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core'
+import {
+	AbstractMesh,
+	AnimationGroup,
+	AssetContainer,
+	Color3,
+	Mesh,
+	MeshBuilder,
+	SceneLoader,
+	Skeleton,
+	StandardMaterial,
+	TransformNode,
+	Vector3
+} from '@babylonjs/core'
 import '@babylonjs/loaders'
+
+const DEBUG_LOAD_TIMING = String(import.meta.env.VITE_DEBUG_LOAD_TIMING || '').toLowerCase() === 'true'
+const perfNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
 
 export class MapObjectView extends BaseEntityView {
 	private static debugBoundsEnabled = false
@@ -39,6 +55,9 @@ export class MapObjectView extends BaseEntityView {
 	private modelSrc: string | null = null
 	private modelFailedSrc: string | null = null
 	private modelLoading: Promise<void> | null = null
+	private modelInstanceRoots: TransformNode[] = []
+	private modelInstanceSkeletons: Skeleton[] = []
+	private modelInstanceAnimationGroups: AnimationGroup[] = []
 	private invisibleMaterial: StandardMaterial | null = null
 	private debugBoundsMesh: Mesh | null = null
 	private debugBoundsMaterial: StandardMaterial | null = null
@@ -46,6 +65,35 @@ export class MapObjectView extends BaseEntityView {
 	private debugRootMaterial: StandardMaterial | null = null
 	private debugLoggedNoBounds: boolean = false
 	private debugLoggedBounds: boolean = false
+	private resourceRenderUnsubscribe: (() => void) | null = null
+
+	private static modelContainerCache = new Map<string, Promise<AssetContainer>>()
+	private static failedModelSrcs = new Set<string>()
+	private static failedModelLogged = new Set<string>()
+	private static modelLoadStats = new Map<
+		string,
+		{ count: number; totalMs: number; lastLogAt: number; lastMs: number }
+	>()
+
+	private static async getModelContainer(
+		scene: import('@babylonjs/core').Scene,
+		modelSrc: string
+	): Promise<AssetContainer> {
+		const cached = MapObjectView.modelContainerCache.get(modelSrc)
+		if (cached) return cached
+		const { rootUrl, fileName } = splitAssetUrl(modelSrc)
+		const promise = SceneLoader.LoadAssetContainerAsync(rootUrl, fileName, scene)
+			.then((container) => {
+				container.removeAllFromScene()
+				return container
+			})
+			.catch((error) => {
+				MapObjectView.modelContainerCache.delete(modelSrc)
+				throw error
+			})
+		MapObjectView.modelContainerCache.set(modelSrc, promise)
+		return promise
+	}
 
 	constructor(scene: GameScene, mapObject: MapObject) {
 		const tileSize = scene.map?.tileWidth || 32
@@ -69,6 +117,12 @@ export class MapObjectView extends BaseEntityView {
 			this.applyEmoji()
 		})
 
+		if (mapObject.metadata?.resourceNode) {
+			this.resourceRenderUnsubscribe = resourceNodeRenderService.subscribe(() => {
+				this.applyEmoji()
+			})
+		}
+
 		this.applyEmoji()
 		this.setupCollision()
 		this.setupInteraction()
@@ -89,10 +143,28 @@ export class MapObjectView extends BaseEntityView {
 	}
 
 	private applyEmoji(): void {
+		if (this.mapObject.metadata?.resourceNode) {
+			const nodeType = this.mapObject.metadata?.resourceNodeType
+			const renderConfig = resourceNodeRenderService.getRender(nodeType)
+			if (
+				renderConfig?.render?.modelSrc &&
+				this.modelFailedSrc !== renderConfig.render.modelSrc &&
+				!MapObjectView.failedModelSrcs.has(renderConfig.render.modelSrc)
+			) {
+				this.applyInvisibleBase()
+				void this.loadRenderModel(renderConfig.render)
+				return
+			}
+		}
+
 		if (this.isBuilding && this.buildingStage === ConstructionStage.Completed) {
 			const buildingId = this.mapObject.metadata?.buildingId
 			const definition = buildingId ? buildingService.getBuildingDefinition(buildingId) : null
-			if (definition?.render?.modelSrc && this.modelFailedSrc !== definition.render.modelSrc) {
+			if (
+				definition?.render?.modelSrc &&
+				this.modelFailedSrc !== definition.render.modelSrc &&
+				!MapObjectView.failedModelSrcs.has(definition.render.modelSrc)
+			) {
 				this.applyInvisibleBase()
 				void this.loadRenderModel(definition.render)
 				return
@@ -132,6 +204,9 @@ export class MapObjectView extends BaseEntityView {
 			this.applyInvisibleBase()
 			return
 		}
+		if (MapObjectView.failedModelSrcs.has(render.modelSrc)) {
+			return
+		}
 		if (this.modelLoading) {
 			return
 		}
@@ -139,18 +214,41 @@ export class MapObjectView extends BaseEntityView {
 		this.modelSrc = render.modelSrc
 		try {
 			this.modelLoading = (async () => {
-				const { rootUrl, fileName } = splitAssetUrl(render.modelSrc)
+				const loadStart = DEBUG_LOAD_TIMING ? perfNow() : 0
 				const scene = this.scene.runtime.renderer.scene
 				if (this.isSceneDisposed()) return
-				const result = await SceneLoader.ImportMeshAsync('', rootUrl, fileName, scene)
-				if (this.isSceneDisposed()) {
-					result.meshes.forEach((mesh) => mesh.dispose(false, true))
-					return
-				}
+				const container = await MapObjectView.getModelContainer(scene, render.modelSrc)
+				if (this.isSceneDisposed()) return
+				const namePrefix = `map-object-model-${this.mapObject.id}`
+				const useInstancing = Boolean(this.mapObject.metadata?.resourceNode)
+				const instance = container.instantiateModelsToScene(
+					(name) => {
+						if (!name) return namePrefix
+						return `${namePrefix}-${name}`
+					},
+					false,
+					{ doNotInstantiate: !useInstancing }
+				)
 				this.modelRoot = new TransformNode(`map-object-model-${this.mapObject.id}`, scene)
 				this.modelPivot = new TransformNode(`map-object-model-pivot-${this.mapObject.id}`, scene)
 				this.modelPivot.parent = this.modelRoot
-				this.modelMeshes = result.meshes
+				this.modelInstanceRoots = (instance.rootNodes || []) as TransformNode[]
+				this.modelInstanceSkeletons = instance.skeletons || []
+				this.modelInstanceAnimationGroups = instance.animationGroups || []
+				const meshSet = new Set<AbstractMesh>()
+				this.modelInstanceRoots.forEach((node) => {
+					if (node.parent === null) {
+						node.parent = this.modelPivot
+					}
+					node.setEnabled(true)
+					if (node instanceof AbstractMesh) {
+						meshSet.add(node)
+					}
+					if ('getChildMeshes' in node && typeof node.getChildMeshes === 'function') {
+						node.getChildMeshes(false).forEach((mesh) => meshSet.add(mesh))
+					}
+				})
+				this.modelMeshes = Array.from(meshSet)
 				this.modelMeshes.forEach((mesh) => {
 					mesh.isPickable = false
 					mesh.isVisible = true
@@ -158,18 +256,6 @@ export class MapObjectView extends BaseEntityView {
 					mesh.setEnabled(true)
 					mesh.refreshBoundingInfo()
 					mesh.computeWorldMatrix(true)
-				})
-				// Ensure any top-level meshes or transform nodes follow the base mesh.
-				result.meshes.forEach((mesh) => {
-					if (mesh.parent === null) {
-						mesh.parent = this.modelPivot
-					}
-				})
-				result.transformNodes?.forEach((node) => {
-					if (node.parent === null) {
-						node.parent = this.modelPivot
-					}
-					node.setEnabled(true)
 				})
 				if (MapObjectView.debugBoundsEnabled && !this.debugLoggedBounds) {
 					const meshInfo = this.modelMeshes.map((mesh) => ({
@@ -182,7 +268,7 @@ export class MapObjectView extends BaseEntityView {
 						id: this.mapObject.id,
 						modelSrc: render.modelSrc,
 						meshCount: this.modelMeshes.length,
-						transformNodeCount: result.transformNodes?.length ?? 0,
+						transformNodeCount: this.modelInstanceRoots.length,
 						meshes: meshInfo
 					})
 					this.debugLoggedBounds = true
@@ -192,6 +278,36 @@ export class MapObjectView extends BaseEntityView {
 				this.applyModelTransform(render)
 				this.applyInvisibleBase()
 				this.applyDebugBounds()
+				if (DEBUG_LOAD_TIMING) {
+					const elapsed = perfNow() - loadStart
+					const stats = MapObjectView.modelLoadStats.get(render.modelSrc) || {
+						count: 0,
+						totalMs: 0,
+						lastLogAt: 0,
+						lastMs: 0
+					}
+					stats.count += 1
+					stats.totalMs += elapsed
+					stats.lastMs = elapsed
+					const now = perfNow()
+					const shouldLog =
+						stats.count === 1 ||
+						stats.count % 100 === 0 ||
+						elapsed > 50 ||
+						now - stats.lastLogAt > 2000
+					if (shouldLog) {
+						const avg = stats.totalMs / Math.max(1, stats.count)
+						console.info(
+							`[Perf] model-load src=${render.modelSrc} count=${stats.count} avg=${avg.toFixed(
+								1
+							)}ms last=${stats.lastMs.toFixed(1)}ms meshes=${this.modelMeshes.length} nodes=${
+								this.modelInstanceRoots.length
+							}`
+						)
+						stats.lastLogAt = now
+					}
+					MapObjectView.modelLoadStats.set(render.modelSrc, stats)
+				}
 				this.modelFailedSrc = null
 			})()
 			await this.modelLoading
@@ -199,7 +315,11 @@ export class MapObjectView extends BaseEntityView {
 			if (isSceneDisposedError(error)) {
 				return
 			}
-			console.warn('[MapObjectView] Failed to load model', render.modelSrc, error)
+			MapObjectView.failedModelSrcs.add(render.modelSrc)
+			if (!MapObjectView.failedModelLogged.has(render.modelSrc)) {
+				MapObjectView.failedModelLogged.add(render.modelSrc)
+				console.warn('[MapObjectView] Failed to load model', render.modelSrc, error)
+			}
 			this.disposeModel()
 			this.modelSrc = null
 			this.modelFailedSrc = render.modelSrc
@@ -257,9 +377,14 @@ export class MapObjectView extends BaseEntityView {
 		if (this.modelMeshes.length > 0) {
 			this.modelMeshes.forEach((mesh) => {
 				mesh.showBoundingBox = false
-				mesh.dispose(false, true)
 			})
 		}
+		this.modelInstanceAnimationGroups.forEach((group) => group.dispose())
+		this.modelInstanceAnimationGroups = []
+		this.modelInstanceSkeletons.forEach((skeleton) => skeleton.dispose())
+		this.modelInstanceSkeletons = []
+		this.modelInstanceRoots.forEach((node) => node.dispose())
+		this.modelInstanceRoots = []
 		this.modelMeshes = []
 		this.modelPivot?.dispose()
 		this.modelRoot?.dispose()
@@ -376,6 +501,7 @@ export class MapObjectView extends BaseEntityView {
 			this.staticRect = null
 		}
 		this.disposeModel()
+		this.resourceRenderUnsubscribe?.()
 		this.unsubscribe?.()
 		super.destroy()
 	}

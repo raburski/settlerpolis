@@ -4,12 +4,21 @@ import { useEventBus } from './hooks/useEventBus'
 import { useSlidingPanel } from './hooks/useSlidingPanel'
 import { UiEvents } from '../uiEvents'
 import { EventBus } from '../EventBus'
-import { getHighFidelity, setHighFidelity } from '../services/DisplaySettings'
+import {
+	getHighFidelity,
+	getScrollSensitivity,
+	getScrollSensitivityOptions,
+	setHighFidelity,
+	setScrollSensitivity
+} from '../services/DisplaySettings'
 
 export function Settings() {
 	const { isVisible, isExiting, toggle, close } = useSlidingPanel()
 	const initialHighFidelity = useMemo(() => getHighFidelity(), [])
+	const initialScrollSensitivity = useMemo(() => getScrollSensitivity(), [])
 	const [highFidelity, setHighFidelityState] = useState(initialHighFidelity)
+	const [scrollSensitivity, setScrollSensitivityState] = useState(initialScrollSensitivity)
+	const scrollOptions = useMemo(() => getScrollSensitivityOptions(), [])
 
 	useEventBus(UiEvents.Settings.Toggle, toggle)
 	useEventBus(UiEvents.Inventory.Toggle, close)
@@ -22,6 +31,11 @@ export function Settings() {
 		setHighFidelityState(enabled)
 		setHighFidelity(enabled)
 		EventBus.emit(UiEvents.Settings.HighFidelity, { enabled })
+	}
+	const handleScrollSensitivityChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+		const level = setScrollSensitivity(Number(event.target.value))
+		setScrollSensitivityState(level)
+		EventBus.emit(UiEvents.Settings.ScrollSensitivity, { level })
 	}
 
 	if (!isVisible && !isExiting) {
@@ -86,6 +100,26 @@ export function Settings() {
 									<option value="low">Low</option>
 									<option value="medium">Medium</option>
 									<option value="high">High</option>
+								</select>
+							</div>
+						</div>
+					</div>
+					<div className={styles.settingCard}>
+						<h3 className={styles.settingTitle}>Controls</h3>
+						<div className={styles.settingContent}>
+							<div className={styles.settingRow}>
+								<label htmlFor="scrollSensitivity">Scroll speed</label>
+								<select
+									id="scrollSensitivity"
+									className={styles.select}
+									value={scrollSensitivity}
+									onChange={handleScrollSensitivityChange}
+								>
+									{scrollOptions.map((option) => (
+										<option key={option.value} value={option.value}>
+											{option.label}
+										</option>
+									))}
 								</select>
 							</div>
 						</div>

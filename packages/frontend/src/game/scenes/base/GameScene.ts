@@ -25,6 +25,9 @@ import { itemService } from '../../services/ItemService'
 import { sceneManager } from '../../services/SceneManager'
 import type { GameRuntime } from '../../runtime/GameRuntime'
 import type { PointerState } from '../../input/InputManager'
+import { ResourceNodeBatcher } from '../../rendering/ResourceNodeBatcher'
+
+const DEBUG_LOAD_TIMING = String(import.meta.env.VITE_DEBUG_LOAD_TIMING || '').toLowerCase() === 'true'
 
 export abstract class GameScene extends MapScene {
 	public player: LocalPlayer | null = null
@@ -44,6 +47,31 @@ export abstract class GameScene extends MapScene {
 	public textDisplayService: TextDisplayService | null = null
 	protected npcProximityService: NPCProximityService
 	protected sceneData: any = {}
+	private cameraPanVelocity = { x: 0, y: 0 }
+	private resourceNodeBatcher: ResourceNodeBatcher | null = null
+	private resourceNodesDirty = false
+	private lastResourceCullCenter: { x: number; y: number } | null = null
+	private resourceNodeStreamTimer = 0
+	private resourceNodeChunkQueue: string[] = []
+	private resourceNodeChunkRequests: Set<string> = new Set()
+	private resourceNodeLoadedChunks: Set<string> = new Set()
+	private resourceNodeDesiredChunks: Set<string> = new Set()
+	private resourceNodeChunkNodes: Map<string, Set<string>> = new Map()
+	private resourceNodeIdToChunk: Map<string, string> = new Map()
+	private resourceNodeRequestId = 0
+	private resourceNodeDebugQueryLogs = 0
+	private resourceNodeDebugSyncLogs = 0
+	private readonly resourceNodeChunkSize = 32
+	private readonly resourceNodeChunkPadding = 1
+	private readonly resourceNodeStreamingAdditive = true
+	private readonly resourceNodeDisableCulling = true
+	private pendingMapObjectIds: string[] = []
+	private pendingMapObjects: Map<string, any> = new Map()
+	private mapObjectSpawnCount = 0
+	private mapObjectSpawnTimeMs = 0
+	private mapObjectSpawnBatched = 0
+	private mapObjectSpawnUnbatched = 0
+	private mapObjectSpawnLastFlush = 0
 	private readonly handleMapRightClick = (pointer: PointerState) => {
 		if (pointer.wasDrag || pointer.button !== 2) {
 			return
@@ -64,12 +92,25 @@ export abstract class GameScene extends MapScene {
 	}
 
 	protected initializeScene(): void {
+		const perfStart = DEBUG_LOAD_TIMING ? performance.now() : 0
+		let perfLast = perfStart
+		const mark = (label: string) => {
+			if (!DEBUG_LOAD_TIMING) return
+			const now = performance.now()
+			const delta = now - perfLast
+			const total = now - perfStart
+			perfLast = now
+			console.info(`[Perf] scene-init ${label} +${delta.toFixed(1)}ms total=${total.toFixed(1)}ms`)
+		}
+
 		super.initializeScene()
 		if (!this.map) return
+		mark('map ready')
 
 		this.keyboard = new Keyboard()
 		this.textDisplayService = new TextDisplayService(this)
 		this.npcProximityService.initialize()
+		mark('input+text')
 
 		const playerX = this.sceneData?.x || 100
 		const playerY = this.sceneData?.y || 300
@@ -78,16 +119,20 @@ export abstract class GameScene extends MapScene {
 
 		this.player = createLocalPlayer(this, playerX, playerY, playerService.playerId)
 		this.player.view.updatePosition(playerX, playerY)
+		mark('player')
 
 		this.setupMultiplayer()
+		mark('multiplayer handlers')
 
 		this.cameras.main.startFollow(this.player.view)
+		mark('camera follow')
 
 		this.portalManager = new PortalManager(this, this.player.view)
 		this.portalManager.setPortalActivatedCallback((portalData) => {
 			this.transitionToScene(portalData.target, portalData.targetX, portalData.targetY)
 		})
 		this.portalManager.processPortals(this.map)
+		mark('portals')
 
 		this.buildingPlacementManager = new BuildingPlacementManager(this)
 		this.workAreaSelectionManager = new WorkAreaSelectionManager(this)
@@ -95,9 +140,12 @@ export abstract class GameScene extends MapScene {
 		this.itemPlacementManager = new ItemPlacementManager(this, this.player.controller)
 		this.roadOverlay = new RoadOverlay(this, this.map.tileWidth)
 		this.fx = new FX(this)
+		this.resourceNodeBatcher = new ResourceNodeBatcher(this.runtime.renderer, this.map.tileWidth)
 		this.runtime.input.on('pointerup', this.handleMapRightClick)
+		mark('placements+fx')
 
 		EventBus.emit(UiEvents.Scene.Ready, { mapId: this.mapKey })
+		mark('scene ready emit')
 
 		if (!isTransition && !suppressAutoJoin) {
 			EventBus.emit(Event.Players.CS.Join, {
@@ -105,6 +153,7 @@ export abstract class GameScene extends MapScene {
 				mapId: this.mapKey,
 				appearance: {}
 			})
+			mark('auto join emit')
 		}
 	}
 
@@ -112,10 +161,13 @@ export abstract class GameScene extends MapScene {
 		super.update(deltaMs)
 		if (!this.assetsLoaded) return
 
+		this.processPendingMapObjects()
 		this.updateCameraFromKeyboard(deltaMs)
 		this.updateCameraRotationFromKeyboard()
+		this.updateCameraHomeFromKeyboard()
 		this.keyboard?.update()
 		this.portalManager?.update()
+		this.updateResourceNodeStreaming(deltaMs)
 
 		if (this.player) {
 			this.player.controller.update(deltaMs)
@@ -162,8 +214,10 @@ export abstract class GameScene extends MapScene {
 
 	private updateCameraFromKeyboard(deltaMs: number): void {
 		if (!this.keyboard) return
-		const speed = 900
+		const speed = 1100
 		const verticalMultiplier = 1.25
+		const accelFactor = 0.3
+		const decelFactor = 0.22
 		let moveX = 0
 		let moveY = 0
 
@@ -172,9 +226,6 @@ export abstract class GameScene extends MapScene {
 		if (this.keyboard.isMovingUp()) moveY += 1
 		if (this.keyboard.isMovingDown()) moveY -= 1
 
-		if (moveX === 0 && moveY === 0) return
-
-		const distance = (speed * deltaMs) / 1000
 		const camera = this.runtime.renderer.camera
 		const right = camera.getDirection(Vector3.Right())
 		const up = camera.getDirection(Vector3.Up())
@@ -185,11 +236,27 @@ export abstract class GameScene extends MapScene {
 		rightGround.normalize()
 		upGround.normalize()
 
+		const hasInput = moveX !== 0 || moveY !== 0
 		const inputLength = Math.hypot(moveX, moveY) || 1
 		const weightedX = moveX / inputLength
 		const weightedY = (moveY / inputLength) * verticalMultiplier
 		const delta = rightGround.scale(weightedX).add(upGround.scale(weightedY))
-		this.cameras.main.panBy(delta.x * distance, delta.z * distance)
+		const targetVelocityX = hasInput ? delta.x * speed : 0
+		const targetVelocityY = hasInput ? delta.z * speed : 0
+		const factor = hasInput ? accelFactor : decelFactor
+		const smoothing = 1 - Math.pow(1 - factor, deltaMs / 16.67)
+
+		this.cameraPanVelocity.x += (targetVelocityX - this.cameraPanVelocity.x) * smoothing
+		this.cameraPanVelocity.y += (targetVelocityY - this.cameraPanVelocity.y) * smoothing
+
+		if (!hasInput && Math.hypot(this.cameraPanVelocity.x, this.cameraPanVelocity.y) < 0.01) {
+			this.cameraPanVelocity.x = 0
+			this.cameraPanVelocity.y = 0
+			return
+		}
+
+		const distance = deltaMs / 1000
+		this.cameras.main.panBy(this.cameraPanVelocity.x * distance, this.cameraPanVelocity.y * distance)
 	}
 
 	private updateCameraRotationFromKeyboard(): void {
@@ -198,6 +265,13 @@ export abstract class GameScene extends MapScene {
 			this.cameras.main.rotateByDegrees(-90)
 		} else if (this.keyboard.isRotateRight()) {
 			this.cameras.main.rotateByDegrees(90)
+		}
+	}
+
+	private updateCameraHomeFromKeyboard(): void {
+		if (!this.keyboard) return
+		if (this.keyboard.isCameraHome()) {
+			this.cameras.main.recenterOnFollowTarget()
 		}
 	}
 
@@ -215,6 +289,7 @@ export abstract class GameScene extends MapScene {
 
 		EventBus.on(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn, this)
 		EventBus.on(Event.MapObjects.SC.Despawn, this.handleMapObjectDespawn, this)
+		EventBus.on(Event.ResourceNodes.SC.Sync, this.handleResourceNodesSync, this)
 
 		EventBus.on(Event.Buildings.SC.Placed, this.handleBuildingPlaced, this)
 		EventBus.on(Event.Buildings.SC.Progress, this.handleBuildingProgress, this)
@@ -309,22 +384,364 @@ export abstract class GameScene extends MapScene {
 	}
 
 	private handleMapObjectSpawn = (data: { object: any }) => {
-		if (data.object.mapId === this.mapKey) {
-			const existing = this.mapObjects.get(data.object.id)
-			if (existing) {
-				existing.controller.destroy()
-				this.mapObjects.delete(data.object.id)
+		if (data.object.mapId !== this.mapKey) return
+		const obj = data.object
+		if (obj?.metadata?.resourceNode) {
+			const chunkKey = this.getResourceNodeChunkForObject(obj)
+			const shouldRespectDesired = !this.resourceNodeStreamingAdditive && this.resourceNodeDesiredChunks.size > 0
+			if (chunkKey && shouldRespectDesired && !this.resourceNodeDesiredChunks.has(chunkKey)) {
+				return
 			}
-			const mapObject = createMapObject(this, data.object)
-			this.mapObjects.set(data.object.id, mapObject)
+			if (chunkKey) {
+				if (this.resourceNodeIdToChunk.has(obj.id)) {
+					return
+				}
+				this.trackResourceNodeChunk(obj.id, chunkKey)
+			}
 		}
+		const id = obj.id
+		if (!this.pendingMapObjects.has(id)) {
+			this.pendingMapObjectIds.push(id)
+		}
+		this.pendingMapObjects.set(id, obj)
 	}
 
 	private handleMapObjectDespawn = (data: { objectId: string }) => {
+		if (this.pendingMapObjects.has(data.objectId)) {
+			this.pendingMapObjects.delete(data.objectId)
+		}
+		const chunkKey = this.resourceNodeIdToChunk.get(data.objectId)
+		if (chunkKey) {
+			this.untrackResourceNodeChunk(data.objectId, chunkKey)
+		}
+		if (this.resourceNodeBatcher?.remove(data.objectId)) {
+			this.resourceNodesDirty = true
+		}
 		const mapObject = this.mapObjects.get(data.objectId)
 		if (mapObject) {
 			mapObject.controller.destroy()
 			this.mapObjects.delete(data.objectId)
+		}
+	}
+
+	private updateResourceNodeStreaming(deltaMs: number): void {
+		if (!this.resourceNodeBatcher || !this.map) return
+		this.resourceNodeStreamTimer += deltaMs
+		if (this.resourceNodeStreamTimer < 250) return
+		this.resourceNodeStreamTimer = 0
+
+		const tileSize = this.map.tileWidth || 32
+		const worldBounds = this.getVisibleWorldBounds(tileSize * 10)
+		if (!worldBounds) return
+		let minX = worldBounds.minX
+		let maxX = worldBounds.maxX
+		let minY = worldBounds.minY
+		let maxY = worldBounds.maxY
+		const mapWidthPx = this.map.widthInPixels
+		const mapHeightPx = this.map.heightInPixels
+		if (Number.isFinite(mapWidthPx) && Number.isFinite(mapHeightPx) && mapWidthPx > 0 && mapHeightPx > 0) {
+			minX = Math.max(0, Math.min(mapWidthPx, minX))
+			maxX = Math.max(0, Math.min(mapWidthPx, maxX))
+			minY = Math.max(0, Math.min(mapHeightPx, minY))
+			maxY = Math.max(0, Math.min(mapHeightPx, maxY))
+		}
+		if (minX > maxX || minY > maxY) return
+
+		const center = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 }
+		this.lastResourceCullCenter = center
+
+		const minTileX = Math.floor(minX / tileSize)
+		const maxTileX = Math.ceil(maxX / tileSize)
+		const minTileY = Math.floor(minY / tileSize)
+		const maxTileY = Math.ceil(maxY / tileSize)
+
+		const chunkSize = this.resourceNodeChunkSize
+		const minChunkX = Math.floor(minTileX / chunkSize) - this.resourceNodeChunkPadding
+		const maxChunkX = Math.floor(maxTileX / chunkSize) + this.resourceNodeChunkPadding
+		const minChunkY = Math.floor(minTileY / chunkSize) - this.resourceNodeChunkPadding
+		const maxChunkY = Math.floor(maxTileY / chunkSize) + this.resourceNodeChunkPadding
+
+		if (this.resourceNodeDisableCulling) {
+			this.resourceNodeBatcher.updateAll()
+		} else {
+			const visibleBounds = {
+				minX: minChunkX * chunkSize * tileSize,
+				minY: minChunkY * chunkSize * tileSize,
+				maxX: (maxChunkX + 1) * chunkSize * tileSize,
+				maxY: (maxChunkY + 1) * chunkSize * tileSize
+			}
+			this.resourceNodeBatcher.updateVisible(visibleBounds)
+		}
+		this.resourceNodesDirty = false
+
+		const desired = new Set<string>()
+		for (let cx = minChunkX; cx <= maxChunkX; cx += 1) {
+			for (let cy = minChunkY; cy <= maxChunkY; cy += 1) {
+				desired.add(`${cx},${cy}`)
+			}
+		}
+
+		this.resourceNodeDesiredChunks = desired
+
+		if (!this.resourceNodeStreamingAdditive) {
+			for (const key of this.resourceNodeLoadedChunks) {
+				if (!desired.has(key)) {
+					this.unloadResourceNodeChunk(key)
+				}
+			}
+		}
+
+		for (const key of Array.from(this.resourceNodeChunkRequests)) {
+			if (!desired.has(key)) {
+				this.resourceNodeChunkRequests.delete(key)
+			}
+		}
+
+		if (this.resourceNodeChunkQueue.length > 0) {
+			this.resourceNodeChunkQueue = this.resourceNodeChunkQueue.filter((key) => desired.has(key))
+		}
+
+		for (const key of desired) {
+			if (this.resourceNodeLoadedChunks.has(key)) continue
+			if (this.resourceNodeChunkRequests.has(key)) continue
+			this.resourceNodeChunkRequests.add(key)
+			this.resourceNodeChunkQueue.push(key)
+		}
+
+		let sent = 0
+		const maxPerTick = 4
+		while (sent < maxPerTick && this.resourceNodeChunkQueue.length > 0) {
+			const key = this.resourceNodeChunkQueue.shift()
+			if (!key) break
+			if (!desired.has(key)) {
+				this.resourceNodeChunkRequests.delete(key)
+				continue
+			}
+			const bounds = this.getResourceNodeChunkBounds(key)
+			if (!bounds) {
+				this.resourceNodeChunkRequests.delete(key)
+				continue
+			}
+			this.resourceNodeRequestId += 1
+			if (this.resourceNodeDebugQueryLogs < 5) {
+				console.info('[ResourceNodes] query', {
+					mapId: this.mapKey,
+					chunkKey: key,
+					bounds,
+					requestId: this.resourceNodeRequestId
+				})
+				this.resourceNodeDebugQueryLogs += 1
+			}
+			EventBus.emit(Event.ResourceNodes.CS.Query, {
+				mapId: this.mapKey,
+				bounds,
+				chunkKey: key,
+				requestId: this.resourceNodeRequestId
+			})
+			sent += 1
+		}
+	}
+
+	private processPendingMapObjects(): void {
+		if (this.pendingMapObjectIds.length === 0) return
+		const start = performance.now()
+		const maxDurationMs = 6
+		const maxPerFrame = 200
+		let processed = 0
+
+		while (this.pendingMapObjectIds.length > 0) {
+			if (processed >= maxPerFrame) break
+			if (performance.now() - start > maxDurationMs) break
+			const id = this.pendingMapObjectIds.shift()
+			if (!id) break
+			const obj = this.pendingMapObjects.get(id)
+			if (!obj) continue
+			this.pendingMapObjects.delete(id)
+
+			const perfStart = DEBUG_LOAD_TIMING ? performance.now() : 0
+			if (obj.mapId === this.mapKey) {
+				if (this.resourceNodeBatcher?.add(obj)) {
+					this.resourceNodesDirty = true
+					if (DEBUG_LOAD_TIMING) {
+						this.mapObjectSpawnBatched += 1
+					}
+				} else {
+					if (DEBUG_LOAD_TIMING) {
+						this.mapObjectSpawnUnbatched += 1
+					}
+					const existing = this.mapObjects.get(obj.id)
+					if (existing) {
+						existing.controller.destroy()
+						this.mapObjects.delete(obj.id)
+					}
+					const mapObject = createMapObject(this, obj)
+					this.mapObjects.set(obj.id, mapObject)
+				}
+			}
+			if (DEBUG_LOAD_TIMING) {
+				this.mapObjectSpawnCount += 1
+				this.mapObjectSpawnTimeMs += performance.now() - perfStart
+				this.flushMapObjectSpawnStats()
+			}
+			processed += 1
+		}
+
+		if (DEBUG_LOAD_TIMING && processed > 0 && this.pendingMapObjectIds.length > 0) {
+			console.info(`[Perf] map-objects pending=${this.pendingMapObjectIds.length}`)
+		}
+	}
+
+	private handleResourceNodesSync = (data: { mapId: string; nodes: any[]; chunkKey?: string }) => {
+		if (data.mapId !== this.mapKey) return
+		const shouldRespectDesired = !this.resourceNodeStreamingAdditive && this.resourceNodeDesiredChunks.size > 0
+		if (this.resourceNodeDebugSyncLogs < 5) {
+			const counts: Record<string, number> = {}
+			for (const node of data.nodes || []) {
+				const type = node?.metadata?.resourceNodeType || 'unknown'
+				counts[type] = (counts[type] || 0) + 1
+			}
+			console.info('[ResourceNodes] sync', {
+				mapId: data.mapId,
+				chunkKey: data.chunkKey,
+				count: data.nodes?.length ?? 0,
+				byType: counts
+			})
+			this.resourceNodeDebugSyncLogs += 1
+		}
+		const chunkKey = data.chunkKey
+		if (chunkKey && shouldRespectDesired && !this.resourceNodeDesiredChunks.has(chunkKey)) {
+			this.resourceNodeChunkRequests.delete(chunkKey)
+			return
+		}
+		if (chunkKey) {
+			this.resourceNodeLoadedChunks.add(chunkKey)
+			this.resourceNodeChunkRequests.delete(chunkKey)
+		}
+
+		let added = 0
+		data.nodes?.forEach((obj) => {
+			const key = chunkKey ?? this.getResourceNodeChunkForObject(obj)
+			if (key && shouldRespectDesired && !this.resourceNodeDesiredChunks.has(key)) {
+				return
+			}
+			if (key && this.resourceNodeIdToChunk.has(obj.id)) {
+				return
+			}
+			if (key) {
+				this.trackResourceNodeChunk(obj.id, key)
+			}
+			if (!this.pendingMapObjects.has(obj.id)) {
+				this.pendingMapObjectIds.push(obj.id)
+			}
+			this.pendingMapObjects.set(obj.id, obj)
+			added += 1
+		})
+		if (added > 0) {
+			this.resourceNodesDirty = true
+		}
+	}
+
+	private getResourceNodeChunkForObject(obj: { position: { x: number; y: number } } | null): string | null {
+		if (!obj || !this.map) return null
+		const tileSize = this.map.tileWidth || 32
+		const tileX = Math.floor(obj.position.x / tileSize)
+		const tileY = Math.floor(obj.position.y / tileSize)
+		return this.getResourceNodeChunkKey(tileX, tileY)
+	}
+
+	private getResourceNodeChunkKey(tileX: number, tileY: number): string {
+		const chunkX = Math.floor(tileX / this.resourceNodeChunkSize)
+		const chunkY = Math.floor(tileY / this.resourceNodeChunkSize)
+		return `${chunkX},${chunkY}`
+	}
+
+	private getResourceNodeChunkBounds(chunkKey: string): { minX: number; minY: number; maxX: number; maxY: number } | null {
+		const [rawX, rawY] = chunkKey.split(',')
+		const chunkX = Number(rawX)
+		const chunkY = Number(rawY)
+		if (!Number.isFinite(chunkX) || !Number.isFinite(chunkY)) return null
+		const minX = chunkX * this.resourceNodeChunkSize
+		const minY = chunkY * this.resourceNodeChunkSize
+		return {
+			minX,
+			minY,
+			maxX: minX + this.resourceNodeChunkSize - 1,
+			maxY: minY + this.resourceNodeChunkSize - 1
+		}
+	}
+
+	private trackResourceNodeChunk(objectId: string, chunkKey: string): void {
+		if (this.resourceNodeIdToChunk.has(objectId)) return
+		this.resourceNodeIdToChunk.set(objectId, chunkKey)
+		let set = this.resourceNodeChunkNodes.get(chunkKey)
+		if (!set) {
+			set = new Set()
+			this.resourceNodeChunkNodes.set(chunkKey, set)
+		}
+		set.add(objectId)
+	}
+
+	private untrackResourceNodeChunk(objectId: string, chunkKey: string): void {
+		this.resourceNodeIdToChunk.delete(objectId)
+		const set = this.resourceNodeChunkNodes.get(chunkKey)
+		if (!set) return
+		set.delete(objectId)
+		if (set.size === 0 && !this.resourceNodeLoadedChunks.has(chunkKey)) {
+			this.resourceNodeChunkNodes.delete(chunkKey)
+		}
+	}
+
+	private unloadResourceNodeChunk(chunkKey: string): void {
+		const ids = this.resourceNodeChunkNodes.get(chunkKey)
+		if (ids) {
+			ids.forEach((id) => {
+				this.resourceNodeIdToChunk.delete(id)
+				this.pendingMapObjects.delete(id)
+				this.resourceNodeBatcher?.remove(id)
+				const mapObject = this.mapObjects.get(id)
+				if (mapObject) {
+					mapObject.controller.destroy()
+					this.mapObjects.delete(id)
+				}
+			})
+		}
+		this.resourceNodeChunkNodes.delete(chunkKey)
+		this.resourceNodeLoadedChunks.delete(chunkKey)
+		this.resourceNodeChunkRequests.delete(chunkKey)
+		this.resourceNodesDirty = true
+	}
+
+	private getVisibleWorldBounds(padding: number): { minX: number; minY: number; maxX: number; maxY: number } | null {
+		const renderer = this.runtime.renderer
+		const width = renderer.engine.getRenderWidth()
+		const height = renderer.engine.getRenderHeight()
+		if (width <= 0 || height <= 0) return null
+
+		const corners = [
+			renderer.screenToWorld(0, 0),
+			renderer.screenToWorld(width, 0),
+			renderer.screenToWorld(width, height),
+			renderer.screenToWorld(0, height)
+		].filter(Boolean) as Vector3[]
+
+		if (corners.length === 0) return null
+		let minX = corners[0].x
+		let maxX = corners[0].x
+		let minY = corners[0].z
+		let maxY = corners[0].z
+		for (let i = 1; i < corners.length; i += 1) {
+			const point = corners[i]
+			minX = Math.min(minX, point.x)
+			maxX = Math.max(maxX, point.x)
+			minY = Math.min(minY, point.z)
+			maxY = Math.max(maxY, point.z)
+		}
+
+		return {
+			minX: minX - padding,
+			maxX: maxX + padding,
+			minY: minY - padding,
+			maxY: maxY + padding
 		}
 	}
 
@@ -381,22 +798,50 @@ export abstract class GameScene extends MapScene {
 
 	private handleRoadSync = (data: { mapId: string; tiles: RoadTile[] }) => {
 		if (!this.roadOverlay || data.mapId !== this.mapKey) return
+		const perfStart = DEBUG_LOAD_TIMING ? performance.now() : 0
 		this.roadOverlay.setTiles(data.tiles)
+		if (DEBUG_LOAD_TIMING) {
+			const elapsed = performance.now() - perfStart
+			console.info(
+				`[Perf] roads sync tiles=${data.tiles.length} time=${elapsed.toFixed(1)}ms map=${data.mapId}`
+			)
+		}
 	}
 
 	private handleRoadUpdated = (data: { mapId: string; tiles: RoadTile[] }) => {
 		if (!this.roadOverlay || data.mapId !== this.mapKey) return
+		const perfStart = DEBUG_LOAD_TIMING ? performance.now() : 0
 		this.roadOverlay.applyUpdates(data.tiles)
+		if (DEBUG_LOAD_TIMING) {
+			const elapsed = performance.now() - perfStart
+			console.info(
+				`[Perf] roads updated tiles=${data.tiles.length} time=${elapsed.toFixed(1)}ms map=${data.mapId}`
+			)
+		}
 	}
 
 	private handleRoadPendingSync = (data: { mapId: string; tiles: RoadTile[] }) => {
 		if (!this.roadOverlay || data.mapId !== this.mapKey) return
+		const perfStart = DEBUG_LOAD_TIMING ? performance.now() : 0
 		this.roadOverlay.setPendingTiles(data.tiles)
+		if (DEBUG_LOAD_TIMING) {
+			const elapsed = performance.now() - perfStart
+			console.info(
+				`[Perf] roads pending sync tiles=${data.tiles.length} time=${elapsed.toFixed(1)}ms map=${data.mapId}`
+			)
+		}
 	}
 
 	private handleRoadPendingUpdated = (data: { mapId: string; tiles: RoadTile[] }) => {
 		if (!this.roadOverlay || data.mapId !== this.mapKey) return
+		const perfStart = DEBUG_LOAD_TIMING ? performance.now() : 0
 		this.roadOverlay.applyPendingUpdates(data.tiles)
+		if (DEBUG_LOAD_TIMING) {
+			const elapsed = performance.now() - perfStart
+			console.info(
+				`[Perf] roads pending updated tiles=${data.tiles.length} time=${elapsed.toFixed(1)}ms map=${data.mapId}`
+			)
+		}
 	}
 
 	protected transitionToScene(targetScene: string, targetX: number = 0, targetY: number = 0) {
@@ -455,6 +900,22 @@ export abstract class GameScene extends MapScene {
 		this.roadOverlay?.destroy()
 		this.roadOverlay = null
 
+		this.resourceNodeBatcher?.dispose()
+		this.resourceNodeBatcher = null
+		this.resourceNodesDirty = false
+		this.lastResourceCullCenter = null
+		this.resourceNodeStreamTimer = 0
+		this.resourceNodeChunkQueue = []
+		this.resourceNodeChunkRequests.clear()
+		this.resourceNodeLoadedChunks.clear()
+		this.resourceNodeDesiredChunks.clear()
+		this.resourceNodeChunkNodes.clear()
+		this.resourceNodeIdToChunk.clear()
+		this.resourceNodeRequestId = 0
+		this.pendingMapObjectIds = []
+		this.pendingMapObjects.clear()
+		this.flushMapObjectSpawnStats(true)
+
 		EventBus.off(Event.Players.SC.Joined, this.handlePlayerJoined)
 		EventBus.off(Event.Players.SC.Left, this.handlePlayerLeft)
 		EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems)
@@ -465,11 +926,32 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(Event.NPC.SC.Despawn, this.handleNPCDespawn)
 		EventBus.off(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn)
 		EventBus.off(Event.MapObjects.SC.Despawn, this.handleMapObjectDespawn)
+		EventBus.off(Event.ResourceNodes.SC.Sync, this.handleResourceNodesSync)
 		EventBus.off(Event.Storage.SC.Spoilage, this.handleStorageSpoilage)
 		EventBus.off(Event.Roads.SC.Sync, this.handleRoadSync)
 		EventBus.off(Event.Roads.SC.Updated, this.handleRoadUpdated)
 		EventBus.off(Event.Roads.SC.PendingSync, this.handleRoadPendingSync)
 		EventBus.off(Event.Roads.SC.PendingUpdated, this.handleRoadPendingUpdated)
+	}
+
+	private flushMapObjectSpawnStats(force: boolean = false): void {
+		if (!DEBUG_LOAD_TIMING) return
+		const now = performance.now()
+		if (!force && this.mapObjectSpawnLastFlush > 0 && now - this.mapObjectSpawnLastFlush < 1000) {
+			return
+		}
+		if (this.mapObjectSpawnCount === 0) return
+		const avg = this.mapObjectSpawnTimeMs / Math.max(1, this.mapObjectSpawnCount)
+		console.info(
+			`[Perf] map-objects spawn count=${this.mapObjectSpawnCount} time=${this.mapObjectSpawnTimeMs.toFixed(
+				1
+			)}ms avg=${avg.toFixed(2)}ms batched=${this.mapObjectSpawnBatched} unbatched=${this.mapObjectSpawnUnbatched}`
+		)
+		this.mapObjectSpawnCount = 0
+		this.mapObjectSpawnTimeMs = 0
+		this.mapObjectSpawnBatched = 0
+		this.mapObjectSpawnUnbatched = 0
+		this.mapObjectSpawnLastFlush = now
 	}
 
 	destroy(): void {

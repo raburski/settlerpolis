@@ -5,6 +5,9 @@ import { CameraController } from '../../rendering/CameraController'
 import type { GameRuntime } from '../../runtime/GameRuntime'
 import type { AbstractMesh } from '@babylonjs/core'
 
+const SHOW_COLLISION_OVERLAY = String(import.meta.env.VITE_DEBUG_COLLISION || '').toLowerCase() === 'true'
+const DEBUG_LOAD_TIMING = String(import.meta.env.VITE_DEBUG_LOAD_TIMING || '').toLowerCase() === 'true'
+
 interface MapView {
 	key: string
 	tileWidth: number
@@ -52,6 +55,7 @@ export abstract class MapScene {
 		this.physics.clearStatics()
 		this.clearCollisionOverlay()
 		this.clearGroundTypeMeshes()
+		this.runtime.renderer.resetWaterSurface()
 	}
 
 	protected initializeScene(): void {
@@ -59,6 +63,17 @@ export abstract class MapScene {
 		if (!this.loadedMap) {
 			console.warn('[MapScene] Map data not available')
 			return
+		}
+
+		const perfStart = DEBUG_LOAD_TIMING ? performance.now() : 0
+		let perfLast = perfStart
+		const mark = (label: string) => {
+			if (!DEBUG_LOAD_TIMING) return
+			const now = performance.now()
+			const delta = now - perfLast
+			const total = now - perfStart
+			perfLast = now
+			console.info(`[Perf] map-init ${label} +${delta.toFixed(1)}ms total=${total.toFixed(1)}ms`)
 		}
 
 		const { data, collisionGrid, objectLayers } = this.loadedMap
@@ -92,14 +107,41 @@ export abstract class MapScene {
 		staticObjects.forEach((obj) => {
 			this.physics.addStaticRect({ x: obj.x, y: obj.y - obj.height, width: obj.width, height: obj.height })
 		})
+		mark('physics+statics')
 
-		this.runtime.renderer.createGround(`${data.key}-ground`, widthInPixels, heightInPixels)
+		const heightLayer = data.layers.find((layer) => layer.name === 'heightmap' && layer.type === 'tilelayer')
+		const hasHeightMap = Boolean(heightLayer?.data?.length)
+		this.runtime.renderer.resetWaterSurface()
+		this.runtime.renderer.createGround(`${data.key}-ground`, widthInPixels, heightInPixels, {
+			subdivisionsX: hasHeightMap ? data.width : 1,
+			subdivisionsY: hasHeightMap ? data.height : 1,
+			updatable: hasHeightMap
+		})
+		mark('ground mesh')
 		const groundLayer = data.layers.find((layer) => layer.name === 'ground' && layer.type === 'tilelayer')
 		if (groundLayer?.data?.length) {
 			this.runtime.renderer.resetGroundMaterial()
 			this.clearGroundTypeMeshes()
-			this.groundTypeMeshes = this.runtime.renderer.createGroundTypeMeshes({
+			void this.runtime.renderer.applyGroundPalette({
 				mapUrl: this.mapPath,
+				mapWidth: data.width,
+				mapHeight: data.height,
+				tileWidth: data.tileWidth,
+				tileHeight: data.tileHeight,
+				layer: groundLayer,
+				tilesets: data.tilesets,
+				heightLayer: heightLayer || undefined
+			})
+			if (hasHeightMap && heightLayer) {
+				this.runtime.renderer.applyGroundHeightMap({
+					mapWidth: data.width,
+					mapHeight: data.height,
+					tileWidth: data.tileWidth,
+					tileHeight: data.tileHeight,
+					layer: heightLayer
+				})
+			}
+			this.runtime.renderer.applyWaterSurface({
 				mapWidth: data.width,
 				mapHeight: data.height,
 				tileWidth: data.tileWidth,
@@ -107,20 +149,27 @@ export abstract class MapScene {
 				layer: groundLayer,
 				tilesets: data.tilesets
 			})
+			mark('ground materials')
 		} else {
 			this.runtime.renderer.resetGroundMaterial()
+			this.runtime.renderer.resetWaterSurface()
 		}
 		this.runtime.renderer.setCameraTarget(widthInPixels / 2, heightInPixels / 2)
 		this.runtime.renderer.logRenderState('map-init')
+		mark('camera target')
 
 		this.cameras.main.setBounds(0, 0, widthInPixels, heightInPixels)
+		mark('camera bounds')
 
 		this.clearCollisionOverlay()
-		this.collisionOverlay = this.runtime.renderer.createCollisionOverlay(
-			`${data.key}-collision`,
-			collisionGrid,
-			data.tileWidth
-		)
+		if (SHOW_COLLISION_OVERLAY) {
+			this.collisionOverlay = this.runtime.renderer.createCollisionOverlay(
+				`${data.key}-collision`,
+				collisionGrid,
+				data.tileWidth
+			)
+		}
+		mark('collision overlay')
 	}
 
 	private clearCollisionOverlay(): void {

@@ -30,6 +30,24 @@ interface GroundTilesConfig {
 	tileHeight: number
 	layer: MapLayer
 	tilesets: MapTileset[]
+	heightLayer?: MapLayer
+}
+
+interface GroundHeightConfig {
+	mapWidth: number
+	mapHeight: number
+	tileWidth: number
+	tileHeight: number
+	layer: MapLayer
+}
+
+interface WaterSurfaceConfig {
+	mapWidth: number
+	mapHeight: number
+	tileWidth: number
+	tileHeight: number
+	layer: MapLayer
+	tilesets: MapTileset[]
 }
 
 interface ContourSegment {
@@ -68,12 +86,32 @@ const GROUND_TYPE_COLORS: Record<GroundType, string> = {
 	mud: '#6f5a3c'
 }
 
+const MAP_SHADER_VERSION = 3
+
 const GROUND_SMOOTHING_ITERATIONS = 2
+const GROUND_SMOOTHING_PULL = 0.6
+const GROUND_HEIGHT_SCALE = 6
+const GROUND_HEIGHT_SHADE = 0.35
+const GROUND_HEIGHT_SUBDIVISIONS_MAX = 512
+const GROUND_MOUNTAIN_INDEX = GROUND_TYPE_ORDER.indexOf('mountain') + 1
+const GROUND_WATER_SHALLOW_INDEX = GROUND_TYPE_ORDER.indexOf('water_shallow') + 1
+const GROUND_WATER_DEEP_INDEX = GROUND_TYPE_ORDER.indexOf('water_deep') + 1
+const GROUND_MOUNTAIN_MIN_HEIGHT = 0.08
 const DEBUG_GROUND_CONTOURS = false
 const DEBUG_GROUND_CONTOUR_TYPE: GroundType | 'all' = 'all'
 const DEBUG_GROUND_CONTOUR_MAX_POINTS = 1200
 const DEBUG_VALIDATE_POLYGONS = true
 const DEBUG_SKIP_SELF_INTERSECTING_POLYGONS = true
+const WATER_LEVEL = 0.18
+const WATER_SHORE_FADE_TILES = 4
+const WATER_MESH_SUBDIVISIONS = 128
+const WATER_WAVE_SCALE = 0.7
+const WATER_WAVE_SPEED = 0.25
+const WATER_WAVE_HEIGHT = 0.18
+const WATER_WAVE_STRENGTH = 0.16
+const WATER_FOAM_STRENGTH = 0.3
+const WATER_ALPHA_MIN = 0.35
+const WATER_ALPHA_MAX = 0.92
 
 export class BabylonRenderer {
 	public readonly engine: Engine
@@ -88,11 +126,26 @@ export class BabylonRenderer {
 	private groundIndexTexture: DynamicTexture | null = null
 	private groundAtlasTexture: DynamicTexture | null = null
 	private groundPaletteTexture: DynamicTexture | null = null
+	private groundHeightTexture: DynamicTexture | null = null
+	private groundHeightFallbackTexture: DynamicTexture | null = null
+	private groundHeightData: number[] | null = null
+	private groundHeightConfig: { mapWidth: number; mapHeight: number; tileWidth: number; tileHeight: number } | null = null
+	private groundTypeGrid: Uint8Array | null = null
+	private groundTypeGridWidth = 0
+	private groundTypeGridHeight = 0
 	private groundShaderMaterial: ShaderMaterial | null = null
 	private groundPaletteMaterial: ShaderMaterial | null = null
 	private groundTypeMaterials: Map<number, StandardMaterial> = new Map()
 	private groundTypeSmoothMaterials: Map<number, StandardMaterial> = new Map()
 	private groundTilesRequest = 0
+	private waterMesh: Mesh | null = null
+	private waterMaterial: ShaderMaterial | null = null
+	private waterMaskTexture: DynamicTexture | null = null
+	private waterMaskFlags: Uint8Array | null = null
+	private waterMaskWidth = 0
+	private waterMaskHeight = 0
+	private waterTime = 0
+	private sharedBoxMeshes: Map<string, Mesh> = new Map()
 	private readonly baseRadius = 800
 	private readonly isoAlpha = Math.PI / 4
 	private readonly isoBeta = Math.acos(1 / Math.sqrt(3))
@@ -137,6 +190,7 @@ export class BabylonRenderer {
 	start(renderStep: (deltaMs: number) => void): void {
 		this.engine.runRenderLoop(() => {
 			const delta = this.engine.getDeltaTime()
+			this.updateWaterAnimation(delta)
 			renderStep(delta)
 			this.scene.render()
 		})
@@ -150,6 +204,7 @@ export class BabylonRenderer {
 
 	dispose(): void {
 		this.stop()
+		this.resetWaterSurface()
 		this.scene.dispose()
 		this.engine.dispose()
 	}
@@ -164,6 +219,14 @@ export class BabylonRenderer {
 		const ratio = this.highFidelityEnabled ? (window.devicePixelRatio || 1) : 1
 		this.fidelityScale = ratio
 		this.engine.setHardwareScalingLevel(1 / ratio)
+	}
+
+	private updateWaterAnimation(deltaMs: number): void {
+		if (!this.waterMaterial) return
+		const deltaSeconds = Math.max(0, deltaMs) / 1000
+		this.waterTime += deltaSeconds
+		this.waterMaterial.setFloat('time', this.waterTime)
+		this.waterMaterial.setVector3('cameraPosition', this.camera.position)
 	}
 
 	setCameraBounds(minX: number, minZ: number, maxX: number, maxZ: number): void {
@@ -195,6 +258,12 @@ export class BabylonRenderer {
 		this.highFidelityEnabled = enabled
 		this.applyHardwareScaling()
 		this.updateCameraOrtho()
+	}
+
+	setScrollWheelDeltaPercentage(value: number): void {
+		if (Number.isFinite(value) && value > 0) {
+			this.camera.wheelDeltaPercentage = value
+		}
 	}
 
 	fitCameraToMap(mapWidth: number, mapHeight: number): void {
@@ -274,6 +343,19 @@ export class BabylonRenderer {
 			this.groundPaletteTexture.dispose()
 			this.groundPaletteTexture = null
 		}
+		if (this.groundHeightTexture) {
+			this.groundHeightTexture.dispose()
+			this.groundHeightTexture = null
+		}
+		if (this.groundHeightFallbackTexture) {
+			this.groundHeightFallbackTexture.dispose()
+			this.groundHeightFallbackTexture = null
+		}
+		this.groundHeightData = null
+		this.groundHeightConfig = null
+		this.groundTypeGrid = null
+		this.groundTypeGridWidth = 0
+		this.groundTypeGridHeight = 0
 		if (this.groundTexture) {
 			this.groundTexture.dispose()
 			this.groundTexture = null
@@ -288,13 +370,50 @@ export class BabylonRenderer {
 		}
 	}
 
-	createGround(id: string, width: number, height: number): Mesh {
+	resetWaterSurface(): void {
+		if (this.waterMesh) {
+			this.waterMesh.dispose()
+			this.waterMesh = null
+		}
+		if (this.waterMaterial) {
+			this.waterMaterial.dispose()
+			this.waterMaterial = null
+		}
+		if (this.waterMaskTexture) {
+			this.waterMaskTexture.dispose()
+			this.waterMaskTexture = null
+		}
+		this.waterMaskFlags = null
+		this.waterMaskWidth = 0
+		this.waterMaskHeight = 0
+		this.waterTime = 0
+	}
+
+	createGround(
+		id: string,
+		width: number,
+		height: number,
+		options?: { subdivisionsX?: number; subdivisionsY?: number; updatable?: boolean }
+	): Mesh {
 		if (this.ground) {
 			this.ground.dispose()
 		}
+		const subdivisionsX = options?.subdivisionsX
+			? Math.max(1, Math.min(options.subdivisionsX, GROUND_HEIGHT_SUBDIVISIONS_MAX))
+			: undefined
+		const subdivisionsY = options?.subdivisionsY
+			? Math.max(1, Math.min(options.subdivisionsY, GROUND_HEIGHT_SUBDIVISIONS_MAX))
+			: undefined
 		this.ground = MeshBuilder.CreateGround(
 			id,
-			{ width, height, subdivisions: 1 },
+			{
+				width,
+				height,
+				subdivisions: 1,
+				subdivisionsX,
+				subdivisionsY,
+				updatable: options?.updatable
+			},
 			this.scene
 		)
 		this.ground.position.y = 0
@@ -309,12 +428,427 @@ export class BabylonRenderer {
 		return this.ground
 	}
 
+	applyGroundHeightMap(config: GroundHeightConfig): void {
+		const ground = this.ground
+		if (!ground) return
+		if (!config.layer?.data?.length) return
+
+		const mapWidth = Math.max(1, Math.floor(config.mapWidth))
+		const mapHeight = Math.max(1, Math.floor(config.mapHeight))
+		const totalTiles = mapWidth * mapHeight
+		const heightData = config.layer.data || []
+		if (heightData.length < totalTiles) return
+
+		const heightScale = Math.max(1, Math.floor(config.tileHeight)) * GROUND_HEIGHT_SCALE
+		const widthPx = Math.max(1, Math.floor(config.tileWidth)) * mapWidth
+		const heightPx = Math.max(1, Math.floor(config.tileHeight)) * mapHeight
+		const halfWidth = widthPx / 2
+		const halfHeight = heightPx / 2
+
+		const sampleHeight = (mapX: number, mapY: number) => {
+			const x = Math.max(0, Math.min(mapWidth - 1, mapX))
+			const y = Math.max(0, Math.min(mapHeight - 1, mapY))
+			const x0 = Math.floor(x)
+			const y0 = Math.floor(y)
+			const x1 = Math.min(mapWidth - 1, x0 + 1)
+			const y1 = Math.min(mapHeight - 1, y0 + 1)
+			const tx = x - x0
+			const ty = y - y0
+
+			let mask = 1
+			if (this.groundTypeGrid && this.groundTypeGridWidth === mapWidth && this.groundTypeGridHeight === mapHeight) {
+				const idx00 = y0 * mapWidth + x0
+				const idx10 = y0 * mapWidth + x1
+				const idx01 = y1 * mapWidth + x0
+				const idx11 = y1 * mapWidth + x1
+				const isMountain =
+					this.groundTypeGrid[idx00] === GROUND_MOUNTAIN_INDEX &&
+					this.groundTypeGrid[idx10] === GROUND_MOUNTAIN_INDEX &&
+					this.groundTypeGrid[idx01] === GROUND_MOUNTAIN_INDEX &&
+					this.groundTypeGrid[idx11] === GROUND_MOUNTAIN_INDEX
+				mask = isMountain ? 1 : 0
+			}
+			if (mask === 0) return 0
+
+			const h00 = heightData[y0 * mapWidth + x0] || 0
+			const h10 = heightData[y0 * mapWidth + x1] || 0
+			const h01 = heightData[y1 * mapWidth + x0] || 0
+			const h11 = heightData[y1 * mapWidth + x1] || 0
+
+			const h0 = h00 + (h10 - h00) * tx
+			const h1 = h01 + (h11 - h01) * tx
+			const h = h0 + (h1 - h0) * ty
+			let normalized = Math.max(0, Math.min(1, h / 255))
+			if (normalized < GROUND_MOUNTAIN_MIN_HEIGHT) {
+				normalized = GROUND_MOUNTAIN_MIN_HEIGHT
+			}
+			return normalized
+		}
+
+		const uvs = ground.getVerticesData('uv')
+		const tileWidth = Math.max(1, Math.floor(config.tileWidth))
+		const tileHeight = Math.max(1, Math.floor(config.tileHeight))
+
+		ground.updateMeshPositions((positions) => {
+			for (let i = 0; i < positions.length; i += 3) {
+				let mapX: number
+				let mapY: number
+				if (uvs && uvs.length >= ((i / 3) + 1) * 2) {
+					const uvIndex = (i / 3) * 2
+					const u = uvs[uvIndex]
+					const v = uvs[uvIndex + 1]
+					mapX = u * mapWidth
+					mapY = v * mapHeight
+				} else {
+					mapX = (positions[i] + halfWidth) / tileWidth
+					mapY = (positions[i + 2] + halfHeight) / tileHeight
+				}
+				positions[i + 1] = sampleHeight(mapX, mapY) * heightScale
+			}
+		}, true)
+
+		this.groundHeightData = heightData
+		this.groundHeightConfig = {
+			mapWidth,
+			mapHeight,
+			tileWidth,
+			tileHeight
+		}
+
+		ground.refreshBoundingInfo()
+	}
+
+	applyWaterSurface(config: WaterSurfaceConfig): void {
+		this.resetWaterSurface()
+		if (!config.layer?.data?.length) return
+
+		const mapWidth = Math.max(1, Math.floor(config.mapWidth))
+		const mapHeight = Math.max(1, Math.floor(config.mapHeight))
+		const widthPx = mapWidth * Math.max(1, Math.floor(config.tileWidth))
+		const heightPx = mapHeight * Math.max(1, Math.floor(config.tileHeight))
+		if (widthPx <= 0 || heightPx <= 0) return
+
+		const maskTexture = this.buildWaterMaskTexture(config.layer, mapWidth, mapHeight, config.tilesets)
+		if (!maskTexture) return
+
+		const subdivisionsX = Math.max(2, Math.min(WATER_MESH_SUBDIVISIONS, mapWidth))
+		const subdivisionsY = Math.max(2, Math.min(WATER_MESH_SUBDIVISIONS, mapHeight))
+		const water = MeshBuilder.CreateGround(
+			`water-surface-${mapWidth}x${mapHeight}`,
+			{ width: widthPx, height: heightPx, subdivisionsX, subdivisionsY },
+			this.scene
+		)
+		water.position.x = widthPx / 2
+		water.position.z = heightPx / 2
+		water.position.y = WATER_LEVEL
+		water.isPickable = false
+
+		const material = this.ensureWaterMaterial()
+		material.setTexture('maskSampler', maskTexture)
+		material.setVector2('mapSize', new Vector2(mapWidth, mapHeight))
+		material.setFloat('time', this.waterTime)
+		material.setVector3('cameraPosition', this.camera.position)
+		material.setColor3('shallowColor', Color3.FromHexString(GROUND_TYPE_COLORS.water_shallow))
+		material.setColor3('deepColor', Color3.FromHexString(GROUND_TYPE_COLORS.water_deep))
+		material.setFloat('waveScale', WATER_WAVE_SCALE)
+		material.setFloat('waveSpeed', WATER_WAVE_SPEED)
+		material.setFloat('waveHeight', WATER_WAVE_HEIGHT)
+		material.setFloat('waveStrength', WATER_WAVE_STRENGTH)
+		material.setFloat('foamStrength', WATER_FOAM_STRENGTH)
+		material.setFloat('alphaMin', WATER_ALPHA_MIN)
+		material.setFloat('alphaMax', WATER_ALPHA_MAX)
+
+		water.material = material
+		water.alphaIndex = 1
+		water.renderingGroupId = 0
+
+		this.waterMesh = water
+		this.waterMaterial = material
+		this.waterMaskTexture = maskTexture
+	}
+
+	getWaterFlagAtTile(tileX: number, tileY: number): boolean | null {
+		if (!this.waterMaskFlags || this.waterMaskWidth <= 0 || this.waterMaskHeight <= 0) return null
+		const x = Math.max(0, Math.min(this.waterMaskWidth - 1, Math.floor(tileX)))
+		const y = Math.max(0, Math.min(this.waterMaskHeight - 1, Math.floor(tileY)))
+		const idx = y * this.waterMaskWidth + x
+		return this.waterMaskFlags[idx] === 1
+	}
+
+	getGroundHeightAt(x: number, z: number): number {
+		if (!this.groundHeightData || !this.groundHeightConfig) return 0
+		const { mapWidth, mapHeight, tileWidth, tileHeight } = this.groundHeightConfig
+		if (!Number.isFinite(x) || !Number.isFinite(z)) return 0
+
+		const widthPx = mapWidth * tileWidth
+		const heightPx = mapHeight * tileHeight
+		const mapX = x / tileWidth
+		const mapY = z / tileHeight
+		const x0 = Math.max(0, Math.min(mapWidth - 1, Math.floor(mapX)))
+		const y0 = Math.max(0, Math.min(mapHeight - 1, Math.floor(mapY)))
+		const x1 = Math.min(mapWidth - 1, x0 + 1)
+		const y1 = Math.min(mapHeight - 1, y0 + 1)
+		const tx = Math.max(0, Math.min(1, mapX - x0))
+		const ty = Math.max(0, Math.min(1, mapY - y0))
+
+		if (this.groundTypeGrid && this.groundTypeGridWidth === mapWidth && this.groundTypeGridHeight === mapHeight) {
+			const idx00 = y0 * mapWidth + x0
+			const idx10 = y0 * mapWidth + x1
+			const idx01 = y1 * mapWidth + x0
+			const idx11 = y1 * mapWidth + x1
+			const isMountain =
+				this.groundTypeGrid[idx00] === GROUND_MOUNTAIN_INDEX &&
+				this.groundTypeGrid[idx10] === GROUND_MOUNTAIN_INDEX &&
+				this.groundTypeGrid[idx01] === GROUND_MOUNTAIN_INDEX &&
+				this.groundTypeGrid[idx11] === GROUND_MOUNTAIN_INDEX
+			if (!isMountain) return 0
+		}
+
+		const h00 = this.groundHeightData[y0 * mapWidth + x0] ?? 0
+		const h10 = this.groundHeightData[y0 * mapWidth + x1] ?? 0
+		const h01 = this.groundHeightData[y1 * mapWidth + x0] ?? 0
+		const h11 = this.groundHeightData[y1 * mapWidth + x1] ?? 0
+
+		const h0 = h00 + (h10 - h00) * tx
+		const h1 = h01 + (h11 - h01) * tx
+		const h = h0 + (h1 - h0) * ty
+		const normalized = Math.max(GROUND_MOUNTAIN_MIN_HEIGHT, Math.max(0, Math.min(255, h)) / 255)
+		return normalized * tileHeight * GROUND_HEIGHT_SCALE
+	}
+
+	getGroundHeightAtTile(tileX: number, tileY: number): number {
+		if (!this.groundHeightData || !this.groundHeightConfig) return 0
+		const { mapWidth, mapHeight, tileHeight } = this.groundHeightConfig
+		const x = Math.max(0, Math.min(mapWidth - 1, Math.floor(tileX)))
+		const y = Math.max(0, Math.min(mapHeight - 1, Math.floor(tileY)))
+		const idx = y * mapWidth + x
+		if (this.groundTypeGrid && this.groundTypeGridWidth === mapWidth && this.groundTypeGridHeight === mapHeight) {
+			if (this.groundTypeGrid[idx] !== GROUND_MOUNTAIN_INDEX) {
+				return 0
+			}
+		}
+		const h = this.groundHeightData[idx] ?? 0
+		const normalized = Math.max(GROUND_MOUNTAIN_MIN_HEIGHT, Math.max(0, Math.min(255, h)) / 255)
+		return normalized * tileHeight * GROUND_HEIGHT_SCALE
+	}
+
+	private buildGroundHeightTexture(layer: MapLayer, mapWidth: number, mapHeight: number): DynamicTexture | null {
+		const totalTiles = mapWidth * mapHeight
+		if (totalTiles <= 0) return null
+		const data = layer.data || []
+		if (data.length < totalTiles) return null
+
+		const heightTexture = new DynamicTexture(
+			'ground-height',
+			{ width: mapWidth, height: mapHeight },
+			this.scene,
+			false
+		)
+		heightTexture.wrapU = Texture.CLAMP_ADDRESSMODE
+		heightTexture.wrapV = Texture.CLAMP_ADDRESSMODE
+		heightTexture.updateSamplingMode(Texture.LINEAR_LINEAR)
+
+		const context = heightTexture.getContext()
+		const imageData = context.createImageData(mapWidth, mapHeight)
+		const pixels = imageData.data
+
+		for (let i = 0; i < totalTiles; i += 1) {
+			const value = data[i] ?? 0
+			const offset = i * 4
+			pixels[offset] = value
+			pixels[offset + 1] = value
+			pixels[offset + 2] = value
+			pixels[offset + 3] = 255
+		}
+
+		context.putImageData(imageData, 0, 0)
+		heightTexture.update(false)
+		return heightTexture
+	}
+
+	private buildWaterMaskTexture(
+		layer: MapLayer,
+		mapWidth: number,
+		mapHeight: number,
+		tilesets: MapTileset[]
+	): DynamicTexture | null {
+		const totalTiles = mapWidth * mapHeight
+		if (totalTiles <= 0) return null
+		const data = layer.data || []
+		if (data.length < totalTiles) return null
+
+		let typeGrid: ArrayLike<number> | null = null
+		if (
+			this.groundTypeGrid &&
+			this.groundTypeGridWidth === mapWidth &&
+			this.groundTypeGridHeight === mapHeight
+		) {
+			typeGrid = this.groundTypeGrid
+		} else {
+			typeGrid = this.buildGroundTypeGrid(layer, mapWidth, mapHeight, tilesets)
+		}
+		if (!typeGrid) return null
+
+		const waterFlags = new Uint8Array(totalTiles)
+		let waterCount = 0
+		for (let i = 0; i < totalTiles; i += 1) {
+			const typeIndex = typeGrid[i] || 0
+			if (typeIndex === GROUND_WATER_SHALLOW_INDEX || typeIndex === GROUND_WATER_DEEP_INDEX) {
+				waterFlags[i] = 1
+				waterCount += 1
+			}
+		}
+		if (waterCount === 0) return null
+
+		const shoreFactors = this.computeWaterShoreFactors(waterFlags, mapWidth, mapHeight)
+		this.waterMaskFlags = waterFlags
+		this.waterMaskWidth = mapWidth
+		this.waterMaskHeight = mapHeight
+
+		const maskTexture = new DynamicTexture(
+			`water-mask-${mapWidth}x${mapHeight}`,
+			{ width: mapWidth, height: mapHeight },
+			this.scene,
+			false
+		)
+		maskTexture.wrapU = Texture.CLAMP_ADDRESSMODE
+		maskTexture.wrapV = Texture.CLAMP_ADDRESSMODE
+		maskTexture.updateSamplingMode(Texture.NEAREST_NEAREST)
+
+		const context = maskTexture.getContext()
+		const imageData = context.createImageData(mapWidth, mapHeight)
+		const pixels = imageData.data
+
+		for (let i = 0; i < totalTiles; i += 1) {
+			const offset = i * 4
+			if (!waterFlags[i]) {
+				pixels[offset] = 0
+				pixels[offset + 1] = 0
+				pixels[offset + 2] = 0
+				pixels[offset + 3] = 255
+				continue
+			}
+			const typeIndex = typeGrid[i] || 0
+			const depth = typeIndex === GROUND_WATER_DEEP_INDEX ? 1 : 0.35
+			const shore = shoreFactors[i] ?? 0
+			pixels[offset] = Math.max(0, Math.min(255, Math.round(depth * 255)))
+			pixels[offset + 1] = Math.max(0, Math.min(255, Math.round(shore * 255)))
+			pixels[offset + 2] = 0
+			pixels[offset + 3] = 255
+		}
+
+		context.putImageData(imageData, 0, 0)
+		maskTexture.update(false)
+		return maskTexture
+	}
+
+	private computeWaterShoreFactors(waterFlags: Uint8Array, width: number, height: number): Float32Array {
+		const total = width * height
+		const distances = new Int32Array(total)
+		distances.fill(-1)
+		const queue = new Int32Array(total)
+		let head = 0
+		let tail = 0
+
+		for (let i = 0; i < total; i += 1) {
+			if (!waterFlags[i]) {
+				distances[i] = 0
+				queue[tail] = i
+				tail += 1
+			}
+		}
+
+		if (tail === 0) {
+			const filled = new Float32Array(total)
+			filled.fill(1)
+			return filled
+		}
+
+		while (head < tail) {
+			const idx = queue[head]
+			head += 1
+			const d = distances[idx]
+			const x = idx % width
+			const y = Math.floor(idx / width)
+
+			if (x > 0) {
+				const next = idx - 1
+				if (waterFlags[next] && distances[next] < 0) {
+					distances[next] = d + 1
+					queue[tail] = next
+					tail += 1
+				}
+			}
+			if (x + 1 < width) {
+				const next = idx + 1
+				if (waterFlags[next] && distances[next] < 0) {
+					distances[next] = d + 1
+					queue[tail] = next
+					tail += 1
+				}
+			}
+			if (y > 0) {
+				const next = idx - width
+				if (waterFlags[next] && distances[next] < 0) {
+					distances[next] = d + 1
+					queue[tail] = next
+					tail += 1
+				}
+			}
+			if (y + 1 < height) {
+				const next = idx + width
+				if (waterFlags[next] && distances[next] < 0) {
+					distances[next] = d + 1
+					queue[tail] = next
+					tail += 1
+				}
+			}
+		}
+
+		const shoreFactors = new Float32Array(total)
+		const fadeTiles = Math.max(1, WATER_SHORE_FADE_TILES)
+		for (let i = 0; i < total; i += 1) {
+			if (!waterFlags[i]) {
+				shoreFactors[i] = 0
+				continue
+			}
+			const dist = distances[i]
+			if (dist < 0) {
+				shoreFactors[i] = 1
+				continue
+			}
+			const edgeDist = Math.max(0, dist - 1)
+			shoreFactors[i] = Math.min(1, edgeDist / fadeTiles)
+		}
+
+		return shoreFactors
+	}
+
+	private ensureGroundHeightFallbackTexture(): DynamicTexture {
+		if (this.groundHeightFallbackTexture) return this.groundHeightFallbackTexture
+		const texture = new DynamicTexture('ground-height-fallback', { width: 1, height: 1 }, this.scene, false)
+		texture.wrapU = Texture.CLAMP_ADDRESSMODE
+		texture.wrapV = Texture.CLAMP_ADDRESSMODE
+		texture.updateSamplingMode(Texture.NEAREST_NEAREST)
+		const context = texture.getContext()
+		const imageData = context.createImageData(1, 1)
+		imageData.data[0] = 0
+		imageData.data[1] = 0
+		imageData.data[2] = 0
+		imageData.data[3] = 255
+		context.putImageData(imageData, 0, 0)
+		texture.update(false)
+		this.groundHeightFallbackTexture = texture
+		return texture
+	}
+
 	async applyGroundPalette(config: GroundTilesConfig): Promise<void> {
 		const ground = this.ground
 		if (!ground) return
 		if (!config.layer?.data?.length) return
 
 		const requestId = (this.groundTilesRequest += 1)
+		this.updateGroundTypeGrid(config.layer, config.mapWidth, config.mapHeight, config.tilesets)
 		const indexTexture = this.buildGroundIndexTextureFromLayer(
 			config.layer,
 			config.mapWidth,
@@ -340,6 +874,20 @@ export class BabylonRenderer {
 		}
 		material.setVector2('mapSize', new Vector2(config.mapWidth, config.mapHeight))
 		material.setFloat('macroStrength', 0.04)
+		material.setFloat('mountainIndex', GROUND_MOUNTAIN_INDEX)
+		material.setFloat('mountainMinHeight', GROUND_MOUNTAIN_MIN_HEIGHT)
+
+		const heightLayer = config.heightLayer
+		if (heightLayer?.data?.length) {
+			this.groundHeightTexture?.dispose()
+			this.groundHeightTexture = this.buildGroundHeightTexture(heightLayer, config.mapWidth, config.mapHeight)
+			const heightSampler = this.groundHeightTexture || this.ensureGroundHeightFallbackTexture()
+			material.setTexture('heightSampler', heightSampler)
+			material.setFloat('heightStrength', GROUND_HEIGHT_SHADE)
+		} else {
+			material.setTexture('heightSampler', this.ensureGroundHeightFallbackTexture())
+			material.setFloat('heightStrength', 0)
+		}
 		ground.material = material
 	}
 
@@ -425,12 +973,19 @@ export class BabylonRenderer {
 			}
 
 			const typeLabel = GROUND_TYPE_ORDER[typeIndex - 1]
-			const baseLoops = this.prepareContourLoops(polylines, typeIndex, typeLabel, 0, false)
-			if (baseLoops.length === 0) continue
-			const baseGroups = this.groupLoopsWithHoles(baseLoops)
+			const smoothingIterations = Math.max(0, GROUND_SMOOTHING_ITERATIONS)
+			const contourLoops = this.prepareContourLoops(
+				polylines,
+				typeIndex,
+				typeLabel,
+				smoothingIterations,
+				smoothingIterations > 0
+			)
+			if (contourLoops.length === 0) continue
+			const contourGroups = this.groupLoopsWithHoles(contourLoops)
 			const baseY = baseOffset + typeIndex * zOffsetStep
 			this.buildContourMeshes(
-				baseGroups,
+				contourGroups,
 				typeIndex,
 				baseY,
 				tileWidth,
@@ -438,28 +993,6 @@ export class BabylonRenderer {
 				meshes,
 				'base'
 			)
-
-			if (GROUND_SMOOTHING_ITERATIONS > 0) {
-				const smoothLoops = this.prepareContourLoops(
-					polylines,
-					typeIndex,
-					typeLabel,
-					GROUND_SMOOTHING_ITERATIONS,
-					true
-				)
-				if (smoothLoops.length > 0) {
-					const smoothGroups = this.groupLoopsWithHoles(smoothLoops)
-					this.buildContourMeshes(
-						smoothGroups,
-						typeIndex,
-						baseY + 0.002,
-						tileWidth,
-						tileHeight,
-						meshes,
-						'smooth'
-					)
-				}
-			}
 		}
 
 		if (meshes.length === 0) {
@@ -696,8 +1229,8 @@ export class BabylonRenderer {
 	}
 
 	private ensureGroundPaletteMaterial(): ShaderMaterial {
-		if (!Effect.ShadersStore['groundPaletteVertexShader']) {
-			Effect.ShadersStore['groundPaletteVertexShader'] = `
+		const shaderVersion = MAP_SHADER_VERSION
+		Effect.ShadersStore['groundPaletteVertexShader'] = `
 				precision highp float;
 				attribute vec3 position;
 				attribute vec2 uv;
@@ -708,16 +1241,18 @@ export class BabylonRenderer {
 					gl_Position = worldViewProjection * vec4(position, 1.0);
 				}
 			`
-		}
-		if (!Effect.ShadersStore['groundPaletteFragmentShader']) {
-			Effect.ShadersStore['groundPaletteFragmentShader'] = `
+		Effect.ShadersStore['groundPaletteFragmentShader'] = `
 				precision highp float;
 				varying vec2 vUV;
 				uniform sampler2D indexSampler;
 				uniform sampler2D paletteSampler;
+				uniform sampler2D heightSampler;
 				uniform vec2 mapSize;
 				uniform float paletteSize;
 				uniform float macroStrength;
+				uniform float heightStrength;
+				uniform float mountainIndex;
+				uniform float mountainMinHeight;
 
 				float decodeIndex(vec4 enc) {
 					return enc.r * 255.0 + enc.g * 65280.0 + enc.b * 16711680.0;
@@ -729,7 +1264,8 @@ export class BabylonRenderer {
 
 				void main(void) {
 					vec2 mapSizeSafe = max(mapSize, vec2(1.0));
-					vec2 tilePos = floor(vUV * mapSizeSafe);
+					vec2 uv = vUV;
+					vec2 tilePos = floor(uv * mapSizeSafe);
 					tilePos = min(tilePos, mapSizeSafe - 1.0);
 					vec2 indexUV = (tilePos + 0.5) / mapSizeSafe;
 					vec4 enc = texture2D(indexSampler, indexUV);
@@ -744,11 +1280,21 @@ export class BabylonRenderer {
 
 					float macro = hash(floor(tilePos / 6.0));
 					color.rgb *= mix(1.0 - macroStrength, 1.0 + macroStrength, macro);
+
+					if (heightStrength > 0.0) {
+						float heightValue = texture2D(heightSampler, indexUV).r;
+						float isMountain = 1.0 - step(0.5, abs(index - mountainIndex));
+						heightValue = mix(0.0, max(heightValue, mountainMinHeight), isMountain);
+						float shade = mix(1.0 - heightStrength, 1.0 + heightStrength, heightValue);
+						color.rgb *= shade;
+					}
 					gl_FragColor = color;
 				}
 			`
+		if (this.groundPaletteMaterial && this.groundPaletteMaterial.metadata?.shaderVersion !== shaderVersion) {
+			this.groundPaletteMaterial.dispose()
+			this.groundPaletteMaterial = null
 		}
-
 		if (!this.groundPaletteMaterial) {
 			this.groundPaletteMaterial = new ShaderMaterial(
 				'ground-palette-shader',
@@ -756,14 +1302,179 @@ export class BabylonRenderer {
 				{ vertex: 'groundPalette', fragment: 'groundPalette' },
 				{
 					attributes: ['position', 'uv'],
-					uniforms: ['worldViewProjection', 'mapSize', 'paletteSize', 'macroStrength'],
-					samplers: ['indexSampler', 'paletteSampler']
+					uniforms: [
+						'worldViewProjection',
+						'mapSize',
+						'paletteSize',
+						'macroStrength',
+						'heightStrength',
+						'mountainIndex',
+						'mountainMinHeight'
+					],
+					samplers: ['indexSampler', 'paletteSampler', 'heightSampler']
 				}
 			)
 			this.groundPaletteMaterial.backFaceCulling = true
+			this.groundPaletteMaterial.metadata = { shaderVersion }
 		}
 
 		return this.groundPaletteMaterial
+	}
+
+	private ensureWaterMaterial(): ShaderMaterial {
+		const shaderVersion = MAP_SHADER_VERSION
+		Effect.ShadersStore['waterSurfaceVertexShader'] = `
+				precision highp float;
+				attribute vec3 position;
+				attribute vec2 uv;
+				uniform mat4 world;
+				uniform mat4 worldViewProjection;
+				uniform vec2 mapSize;
+				uniform float time;
+				uniform float waveScale;
+				uniform float waveSpeed;
+				uniform float waveHeight;
+				varying vec2 vUV;
+				varying vec3 vPositionW;
+
+				float wavePattern(vec2 uv, float t) {
+					float waveA = sin(uv.x * waveScale + t * waveSpeed);
+					float waveB = cos(uv.y * waveScale * 0.9 - t * waveSpeed * 1.1);
+					float waveC = sin((uv.x + uv.y) * waveScale * 0.7 + t * waveSpeed * 0.7);
+					float detail = sin(uv.x * waveScale * 2.3 + t * waveSpeed * 1.8) * cos(uv.y * waveScale * 2.1 - t * waveSpeed * 1.6);
+					return (waveA + waveB * 0.8 + waveC * 0.6 + detail * 0.7) / 3.1;
+				}
+				void main(void) {
+					vUV = uv;
+					vec2 mapSizeSafe = max(mapSize, vec2(1.0));
+					vec2 tileUV = vUV * mapSizeSafe;
+					float wave = wavePattern(tileUV, time);
+					float eps = 0.5;
+					float waveX = wavePattern(tileUV + vec2(eps, 0.0), time);
+					float waveY = wavePattern(tileUV + vec2(0.0, eps), time);
+					float dhdx = (waveX - wave) * waveHeight / eps;
+					float dhdy = (waveY - wave) * waveHeight / eps;
+					vec3 normal = normalize(vec3(-dhdx, 1.0, -dhdy));
+
+					vec3 displaced = position + vec3(0.0, wave * waveHeight, 0.0);
+					vec4 worldPos = world * vec4(displaced, 1.0);
+					vPositionW = worldPos.xyz;
+					gl_Position = worldViewProjection * vec4(displaced, 1.0);
+				}
+			`
+		Effect.ShadersStore['waterSurfaceFragmentShader'] = `
+				precision highp float;
+				varying vec2 vUV;
+				varying vec3 vPositionW;
+				uniform sampler2D maskSampler;
+				uniform vec2 mapSize;
+				uniform vec3 shallowColor;
+				uniform vec3 deepColor;
+				uniform float time;
+				uniform float waveScale;
+				uniform float waveSpeed;
+				uniform float waveHeight;
+				uniform float waveStrength;
+				uniform float foamStrength;
+				uniform float alphaMin;
+				uniform float alphaMax;
+				uniform vec3 cameraPosition;
+
+				float wavePattern(vec2 uv, float t) {
+					float waveA = sin(uv.x * waveScale + t * waveSpeed);
+					float waveB = cos(uv.y * waveScale * 0.9 - t * waveSpeed * 1.1);
+					float waveC = sin((uv.x + uv.y) * waveScale * 0.7 + t * waveSpeed * 0.7);
+					float detail = sin(uv.x * waveScale * 2.3 + t * waveSpeed * 1.8) * cos(uv.y * waveScale * 2.1 - t * waveSpeed * 1.6);
+					return (waveA + waveB * 0.8 + waveC * 0.6 + detail * 0.7) / 3.1;
+				}
+
+				void main(void) {
+					vec2 mapSizeSafe = max(mapSize, vec2(1.0));
+					vec2 uv = vUV;
+					vec2 tilePos = floor(uv * mapSizeSafe);
+					tilePos = min(tilePos, mapSizeSafe - 1.0);
+					vec2 maskUV = (tilePos + 0.5) / mapSizeSafe;
+					vec4 mask = texture2D(maskSampler, maskUV);
+					float depth = mask.r;
+					float shore = mask.g;
+					if (depth < 0.01) {
+						discard;
+					}
+
+					float shoreBlend = smoothstep(0.0, 1.0, shore);
+					vec2 tileUV = uv * mapSizeSafe;
+					float wave = wavePattern(tileUV, time);
+					float ripple = sin((tileUV.x - tileUV.y) * waveScale * 1.6 - time * waveSpeed * 1.3);
+					wave = wave + ripple * 0.45;
+
+					float depthBlend = clamp(depth + (1.0 - shoreBlend) * -0.25, 0.0, 1.0);
+					vec3 base = mix(shallowColor, deepColor, depthBlend);
+					base = mix(shallowColor, base, shoreBlend);
+					base += wave * waveStrength;
+
+					float eps = 0.35;
+					float waveX = wavePattern(tileUV + vec2(eps, 0.0), time);
+					float waveY = wavePattern(tileUV + vec2(0.0, eps), time);
+					float dhdx = (waveX - wave) * waveHeight / eps;
+					float dhdy = (waveY - wave) * waveHeight / eps;
+					vec3 normal = normalize(vec3(-dhdx, 1.0, -dhdy));
+					vec3 lightDir = normalize(vec3(-0.3, 1.0, 0.25));
+					vec3 viewDir = normalize(cameraPosition - vPositionW);
+					float diff = clamp(dot(normal, lightDir), 0.0, 1.0);
+					float spec = pow(clamp(dot(normalize(lightDir + viewDir), normal), 0.0, 1.0), 30.0);
+					float fresnel = pow(1.0 - clamp(dot(normal, viewDir), 0.0, 1.0), 3.0);
+
+					float crest = smoothstep(0.35, 0.9, abs(wave));
+					float shoreFoam = (1.0 - shoreBlend) * (0.65 + 0.35 * sin(time * 0.9 + tileUV.x * 2.0 + tileUV.y * 1.6));
+					float foam = shoreFoam + crest * 0.5;
+					base += vec3(foam) * foamStrength;
+					base += diff * 0.05;
+					base += spec * 0.35;
+					base = mix(base, vec3(0.9, 0.95, 1.0), fresnel * 0.25);
+
+					float alpha = mix(alphaMin, alphaMax, shoreBlend);
+					alpha = clamp(alpha, 0.0, 1.0);
+					gl_FragColor = vec4(base, alpha);
+				}
+			`
+		if (this.waterMaterial && this.waterMaterial.metadata?.shaderVersion !== shaderVersion) {
+			this.waterMaterial.dispose()
+			this.waterMaterial = null
+		}
+		if (!this.waterMaterial) {
+			this.waterMaterial = new ShaderMaterial(
+				'water-surface-shader',
+				this.scene,
+				{ vertex: 'waterSurface', fragment: 'waterSurface' },
+				{
+					attributes: ['position', 'uv'],
+					uniforms: [
+						'world',
+						'worldViewProjection',
+						'mapSize',
+						'time',
+						'waveScale',
+						'waveSpeed',
+						'waveHeight',
+						'waveStrength',
+						'foamStrength',
+						'alphaMin',
+						'alphaMax',
+						'cameraPosition',
+						'shallowColor',
+						'deepColor'
+					],
+					samplers: ['maskSampler']
+				}
+			)
+			this.waterMaterial.backFaceCulling = true
+			this.waterMaterial.alphaMode = Engine.ALPHA_COMBINE
+			this.waterMaterial.disableDepthWrite = true
+			this.waterMaterial.needDepthPrePass = false
+			this.waterMaterial.metadata = { shaderVersion }
+		}
+
+		return this.waterMaterial
 	}
 
 	private buildGroundAtlas(
@@ -914,7 +1625,7 @@ export class BabylonRenderer {
 		}
 
 		context.putImageData(imageData, 0, 0)
-		indexTexture.update()
+		indexTexture.update(false)
 		return indexTexture
 	}
 
@@ -959,8 +1670,27 @@ export class BabylonRenderer {
 		}
 
 		context.putImageData(imageData, 0, 0)
-		indexTexture.update()
+		indexTexture.update(false)
 		return indexTexture
+	}
+
+	private updateGroundTypeGrid(layer: MapLayer, mapWidth: number, mapHeight: number, tilesets: MapTileset[]): void {
+		const totalTiles = mapWidth * mapHeight
+		if (totalTiles <= 0) return
+		const data = layer.data || []
+		if (data.length < totalTiles) return
+		const sortedTilesets = tilesets
+			.filter((tileset) => typeof tileset.firstGid === 'number')
+			.sort((a, b) => a.firstGid - b.firstGid)
+		const grid = new Uint8Array(totalTiles)
+		for (let i = 0; i < totalTiles; i += 1) {
+			const rawGid = data[i] || 0
+			const gid = rawGid & 0x1fffffff
+			grid[i] = this.getGroundTypeIndex(gid, sortedTilesets)
+		}
+		this.groundTypeGrid = grid
+		this.groundTypeGridWidth = mapWidth
+		this.groundTypeGridHeight = mapHeight
 	}
 
 	private buildGroundPaletteTexture(
@@ -1272,19 +2002,12 @@ export class BabylonRenderer {
 		const endIter = requireExact ? startIter : 0
 		for (let iter = startIter; iter >= endIter; iter -= 1) {
 			const smoothed = iter > 0 ? this.chaikinSmooth2D(points, closed, iter) : points
-			const cleaned = this.dropDuplicatePoints(smoothed, closed)
+			let cleaned = this.dropDuplicatePoints(smoothed, closed)
 			if (cleaned.length < 3) continue
 			if (basePolygon && iter > 0) {
-				let inside = true
-				for (const point of cleaned) {
-					if (!this.isPointInsideOrOnPolygon(point, basePolygon, 1e-3)) {
-						inside = false
-						break
-					}
-				}
-				if (!inside) {
-					continue
-				}
+				cleaned = this.pullPointsTowardPolygon(cleaned, basePolygon, GROUND_SMOOTHING_PULL)
+				cleaned = this.dropDuplicatePoints(cleaned, closed)
+				if (cleaned.length < 3) continue
 			}
 			if (DEBUG_VALIDATE_POLYGONS) {
 				const validationPoints = this.sampleContourPoints(
@@ -1551,6 +2274,68 @@ export class BabylonRenderer {
 		return dx * dx + dy * dy
 	}
 
+	private closestPointOnSegment(
+		point: { x: number; y: number },
+		a: { x: number; y: number },
+		b: { x: number; y: number }
+	): { x: number; y: number } {
+		const abx = b.x - a.x
+		const aby = b.y - a.y
+		const abLenSq = abx * abx + aby * aby
+		if (abLenSq === 0) {
+			return { x: a.x, y: a.y }
+		}
+		let t = ((point.x - a.x) * abx + (point.y - a.y) * aby) / abLenSq
+		t = Math.max(0, Math.min(1, t))
+		return { x: a.x + abx * t, y: a.y + aby * t }
+	}
+
+	private closestPointOnPolygon(
+		point: { x: number; y: number },
+		polygon: { x: number; y: number }[]
+	): { x: number; y: number } {
+		let closest = polygon[0]
+		let bestDist = Infinity
+		for (let i = 0; i < polygon.length; i += 1) {
+			const a = polygon[i]
+			const b = polygon[(i + 1) % polygon.length]
+			const candidate = this.closestPointOnSegment(point, a, b)
+			const dx = point.x - candidate.x
+			const dy = point.y - candidate.y
+			const dist = dx * dx + dy * dy
+			if (dist < bestDist) {
+				bestDist = dist
+				closest = candidate
+			}
+		}
+		return closest
+	}
+
+	private pullPointsTowardPolygon(
+		points: { x: number; y: number }[],
+		polygon: { x: number; y: number }[],
+		pullStrength: number
+	): { x: number; y: number }[] {
+		const pull = Math.max(0, Math.min(1, pullStrength))
+		const adjusted: { x: number; y: number }[] = []
+		for (const point of points) {
+			const nearest = this.closestPointOnPolygon(point, polygon)
+			if (!this.isPointInsideOrOnPolygon(point, polygon, 1e-4)) {
+				adjusted.push(nearest)
+				continue
+			}
+			if (pull > 0) {
+				adjusted.push({
+					x: point.x + (nearest.x - point.x) * pull,
+					y: point.y + (nearest.y - point.y) * pull
+				})
+			} else {
+				adjusted.push(point)
+			}
+		}
+		return adjusted
+	}
+
 	private isSelfIntersecting(points: { x: number; y: number }[]): boolean {
 		const count = points.length
 		if (count < 4) return false
@@ -1758,12 +2543,52 @@ export class BabylonRenderer {
 		return mesh
 	}
 
+	createBoxInstance(
+		id: string,
+		size: { width: number; length: number; height: number },
+		style?: { emoji?: string; tint?: string }
+	): AbstractMesh {
+		const materialKey = style?.emoji ? `emoji:${style.emoji}` : style?.tint ? `tint:${style.tint}` : 'plain'
+		const key = `${size.width}x${size.length}x${size.height}|${materialKey}`
+		let base = this.sharedBoxMeshes.get(key)
+		if (!base) {
+			base = MeshBuilder.CreateBox(
+				`box-base-${key}`,
+				{ width: size.width, height: size.height, depth: size.length },
+				this.scene
+			)
+			base.isVisible = false
+			base.isPickable = false
+			if (style?.emoji) {
+				this.placeholderFactory.applyEmoji(base, style.emoji)
+			} else if (style?.tint) {
+				this.placeholderFactory.applyTint(base, style.tint)
+			}
+			this.sharedBoxMeshes.set(key, base)
+		}
+		const instance = base.createInstance(id)
+		instance.isPickable = false
+		return instance
+	}
+
 	setMeshPosition(mesh: AbstractMesh, x: number, y: number, z: number): void {
 		mesh.position.set(x, y, z)
 	}
 
 	setMeshRotation(mesh: AbstractMesh, x: number, y: number, z: number): void {
 		mesh.rotation.set(x, y, z)
+	}
+
+	getGroundTypeNameAtTile(tileX: number, tileY: number): string | null {
+		if (!this.groundTypeGrid) return null
+		const width = this.groundTypeGridWidth
+		const height = this.groundTypeGridHeight
+		if (width <= 0 || height <= 0) return null
+		const x = Math.max(0, Math.min(width - 1, Math.floor(tileX)))
+		const y = Math.max(0, Math.min(height - 1, Math.floor(tileY)))
+		const index = this.groundTypeGrid[y * width + x] || 0
+		if (index <= 0) return null
+		return GROUND_TYPE_ORDER[index - 1] || null
 	}
 
 	applyEmoji(mesh: AbstractMesh, emoji: string): void {
@@ -1811,6 +2636,62 @@ export class BabylonRenderer {
 
 	setPickable(mesh: AbstractMesh, pickable: boolean): void {
 		mesh.isPickable = pickable
+	}
+
+	getRenderStats(): {
+		fps: number
+		meshes: number
+		activeMeshes: number
+		instances: number
+		thinInstances: number
+		groups: {
+			mapObjects: number
+			collision: number
+			roads: number
+			resourceNodes: number
+		}
+	} {
+		const meshes = this.scene.meshes.length
+		let activeMeshes = meshes
+		if (typeof this.scene.getActiveMeshes === 'function') {
+			try {
+				activeMeshes = this.scene.getActiveMeshes().length
+			} catch {
+				activeMeshes = meshes
+			}
+		}
+
+		let instances = 0
+		let thinInstances = 0
+		let mapObjects = 0
+		let collision = 0
+		let roads = 0
+		let resourceNodes = 0
+		for (const mesh of this.scene.meshes) {
+			const name = mesh.name || ''
+			if (name.startsWith('map-object-')) {
+				mapObjects += 1
+			} else if (name.includes('-collision')) {
+				collision += 1
+			} else if (name.startsWith('road-')) {
+				roads += 1
+			} else if (name.startsWith('resource-node-')) {
+				resourceNodes += 1
+			}
+			if (mesh instanceof Mesh) {
+				instances += mesh.instances?.length ?? 0
+				thinInstances += mesh.thinInstanceCount ?? 0
+			}
+		}
+
+		return {
+			fps: this.engine.getFps(),
+			meshes,
+			activeMeshes,
+			instances,
+			thinInstances,
+			groups: { mapObjects, collision, roads, resourceNodes }
+		}
 	}
 
 	screenToWorld(pointerX: number, pointerY: number): Vector3 | null {

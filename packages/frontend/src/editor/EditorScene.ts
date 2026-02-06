@@ -19,7 +19,7 @@ import {
 	Vector3
 } from '@babylonjs/core'
 import '@babylonjs/loaders'
-import { getHighFidelity } from '../game/services/DisplaySettings'
+import { getHighFidelity, getScrollSensitivityWheelDelta } from '../game/services/DisplaySettings'
 import { IsometricRotation } from '../shared/IsometricRotation'
 
 export interface StorageSlot {
@@ -65,6 +65,7 @@ export class EditorScene {
 	private assetTransform: TransformNode | null = null
 	private assetPivot: TransformNode | null = null
 	private assetMeshes: AbstractMesh[] = []
+	private assetLoadToken = 0
 	private assetOpacity = 1
 	private readonly assetMaterials = new Map<Material, { alpha: number; transparencyMode?: number | null }>()
 	private pickHandler: GridPickHandler | null = null
@@ -102,7 +103,7 @@ export class EditorScene {
 		this.camera.attachControl(canvas, true)
 		this.camera.inputs.removeByType('ArcRotateCameraPointersInput')
 		this.camera.mode = ArcRotateCamera.ORTHOGRAPHIC_CAMERA
-		this.camera.wheelDeltaPercentage = 0.01
+		this.camera.wheelDeltaPercentage = getScrollSensitivityWheelDelta()
 		this.camera.minZ = 0.1
 		this.camera.maxZ = 2000
 		this.camera.alpha = this.isoRotation.getAlphaForStep()
@@ -139,6 +140,7 @@ export class EditorScene {
 	dispose(): void {
 		window.removeEventListener('resize', this.handleResize)
 		this.engine.stopRenderLoop()
+		this.assetLoadToken += 1
 		this.disposeAsset()
 		this.storageSlotMeshes.forEach((mesh) => mesh.dispose())
 		this.storageSlotMeshes = []
@@ -215,10 +217,18 @@ export class EditorScene {
 	}
 
 	async loadAsset(url: string): Promise<void> {
+		const loadToken = (this.assetLoadToken += 1)
 		this.disposeAsset()
 		if (!url) return
 		const { rootUrl, fileName } = splitAssetUrl(url)
 		const result = await SceneLoader.ImportMeshAsync('', rootUrl, fileName, this.scene)
+		if (loadToken !== this.assetLoadToken) {
+			result.meshes.forEach((mesh) => mesh.dispose(false, true))
+			result.transformNodes?.forEach((node) => node.dispose())
+			result.skeletons?.forEach((skeleton) => skeleton.dispose())
+			result.animationGroups?.forEach((group) => group.dispose())
+			return
+		}
 		this.assetTransform = new TransformNode('asset-transform', this.scene)
 		this.assetPivot = new TransformNode('asset-pivot', this.scene)
 		this.assetPivot.parent = this.assetTransform

@@ -253,8 +253,21 @@ export class ContentLoader {
 			this.resourceNodes.loadDefinitions(this.content.resourceNodeDefinitions)
 		}
 
-		if (this.content.resourceNodes && this.content.resourceNodes.length > 0) {
-			this.resourceNodes.spawnNodes(this.content.resourceNodes)
+		const mapResourceNodes: import('../ResourceNodes/types').ResourceNodeSpawn[] = []
+		const mapIdsWithNodes = new Set<string>()
+		for (const mapId of this.map.getMapIds()) {
+			const mapData = this.map.getMap(mapId)
+			if (mapData?.resourceNodes && mapData.resourceNodes.length > 0) {
+				mapIdsWithNodes.add(mapId)
+				mapResourceNodes.push(...mapData.resourceNodes)
+			}
+		}
+
+		const contentNodes = (this.content.resourceNodes || []).filter(node => !mapIdsWithNodes.has(node.mapId))
+		const nodesToSpawn = [...contentNodes, ...mapResourceNodes]
+
+		if (nodesToSpawn.length > 0) {
+			this.resourceNodes.spawnNodes(nodesToSpawn)
 		}
 
 		this.resourceNodes.rebuildBlockingCollision()

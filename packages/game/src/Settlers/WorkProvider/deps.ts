@@ -10,6 +10,8 @@ import type { MapObjectsManager } from '../../MapObjects'
 import type { ReservationSystem } from '../../Reservation'
 import type { RoadManager } from '../../Roads'
 import type { SimulationManager } from '../../Simulation'
+import type { NPCManager } from '../../NPC'
+import type { WildlifeManager } from '../../Wildlife'
 
 export interface WorkProviderDeps {
 	buildings: BuildingManager
@@ -24,4 +26,6 @@ export interface WorkProviderDeps {
 	reservations: ReservationSystem
 	roads: RoadManager
 	simulation: SimulationManager
+	npc: NPCManager
+	wildlife: WildlifeManager
 }

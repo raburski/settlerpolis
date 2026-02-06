@@ -1,4 +1,4 @@
-import { ItemMetadata, ItemCategory } from '@rugged/game'
+import { ItemMetadata, ItemCategory, ProfessionType } from '@rugged/game'
 import { ItemType } from './types'
 
 export default {
@@ -6,6 +6,7 @@ export default {
 	name: 'Crossbow',
 	emoji: '🏹',
 	description: 'A ranged weapon for defense',
-	category: ItemCategory.Material,
-	stackable: false
+	category: ItemCategory.Tool,
+	stackable: false,
+	changesProfession: ProfessionType.Hunter
 } as ItemMetadata

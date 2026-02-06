@@ -451,6 +451,118 @@
       ]
     },
     {
+      "id": "fishers_hut",
+      "name": "Fishers Hut",
+      "description": "Catches fish from nearby shores",
+      "category": "food",
+      "icon": "\ud83c\udfa3",
+      "sprite": {
+        "foundation": "building_foundation",
+        "completed": "woodcutter_hut"
+      },
+      "footprint": {
+        "width": 2,
+        "height": 2
+      },
+      "constructionTime": 12,
+      "costs": [
+        {
+          "itemType": "logs",
+          "quantity": 1
+        },
+        {
+          "itemType": "stone",
+          "quantity": 1
+        }
+      ],
+      "requiredProfession": "fisher",
+      "workerSlots": 1,
+      "fishing": {
+        "nodeType": "fish",
+        "radiusTiles": 8,
+        "fishingTimeMs": 4000,
+        "minCatch": 1,
+        "maxCatch": 4,
+        "nodesPerEfficiency": 4,
+        "maxEfficiency": 1
+      },
+      "storageSlots": [
+        {
+          "itemType": "fish",
+          "offset": {
+            "x": 2,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "hunter_cabin",
+      "name": "Hunter Cabin",
+      "description": "Hunts deer in nearby forests and processes meat",
+      "category": "food",
+      "icon": "\ud83c\udff9",
+      "sprite": {
+        "foundation": "building_foundation",
+        "completed": "woodcutter_hut"
+      },
+      "footprint": {
+        "width": 2,
+        "height": 2
+      },
+      "constructionTime": 14,
+      "costs": [
+        {
+          "itemType": "logs",
+          "quantity": 1
+        },
+        {
+          "itemType": "stone",
+          "quantity": 1
+        }
+      ],
+      "requiredProfession": "hunter",
+      "workerSlots": 2,
+      "hunting": {
+        "wildlifeType": "deer",
+        "radiusTiles": 8,
+        "huntTimeMs": 3500,
+        "outputItemType": "deer",
+        "quantity": 1
+      },
+      "productionRecipe": {
+        "inputs": [
+          {
+            "itemType": "deer",
+            "quantity": 1
+          }
+        ],
+        "outputs": [
+          {
+            "itemType": "deer_meat",
+            "quantity": 2
+          }
+        ],
+        "productionTime": 4
+      },
+      "storageSlots": [
+        {
+          "itemType": "deer",
+          "offset": {
+            "x": 2,
+            "y": 0
+          }
+        },
+        {
+          "itemType": "deer_meat",
+          "offset": {
+            "x": 2,
+            "y": 1
+          }
+        }
+      ]
+    },
+    {
       "id": "forester_hut",
       "name": "Forester Hut",
       "description": "Plants new trees to sustain nearby forests",
@@ -729,6 +841,65 @@
           "itemType": "planks",
           "offset": {
             "x": 3,
+            "y": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "charcoal_kiln",
+      "name": "Charcoal Kiln",
+      "description": "Burns logs into charcoal",
+      "category": "industry",
+      "icon": "\ud83d\udd25",
+      "sprite": {
+        "foundation": "building_foundation",
+        "completed": "sawmill"
+      },
+      "footprint": {
+        "width": 2,
+        "height": 2
+      },
+      "constructionTime": 16,
+      "costs": [
+        {
+          "itemType": "logs",
+          "quantity": 2
+        },
+        {
+          "itemType": "stone",
+          "quantity": 1
+        }
+      ],
+      "requiredProfession": "woodcutter",
+      "workerSlots": 1,
+      "productionRecipe": {
+        "inputs": [
+          {
+            "itemType": "logs",
+            "quantity": 4
+          }
+        ],
+        "outputs": [
+          {
+            "itemType": "coal",
+            "quantity": 1
+          }
+        ],
+        "productionTime": 12
+      },
+      "storageSlots": [
+        {
+          "itemType": "logs",
+          "offset": {
+            "x": 2,
+            "y": 0
+          }
+        },
+        {
+          "itemType": "coal",
+          "offset": {
+            "x": 2,
             "y": 1
           }
         }
@@ -1646,6 +1817,77 @@
         "charter:market-town"
       ],
       "isTradingPost": true,
+      "tradeRouteType": "land",
+      "storageSlots": [
+        {
+          "itemType": "*",
+          "maxQuantity": 20,
+          "role": "incoming",
+          "offset": {
+            "x": 1,
+            "y": 1
+          }
+        },
+        {
+          "itemType": "*",
+          "maxQuantity": 20,
+          "role": "outgoing",
+          "offset": {
+            "x": 2,
+            "y": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "trading_port",
+      "name": "Trading Port",
+      "description": "A harbor for sea trade routes and coastal shipments",
+      "category": "infrastructure",
+      "icon": "⚓",
+      "sprite": {
+        "foundation": "building_foundation",
+        "completed": "storehouse"
+      },
+      "render": {
+        "modelSrc": "/assets/library/agora.glb",
+        "transform": {
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1.6,
+            "y": 1.6,
+            "z": 1.6
+          },
+          "elevation": 0
+        }
+      },
+      "footprint": {
+        "width": 3,
+        "height": 3
+      },
+      "constructionTime": 18,
+      "costs": [
+        {
+          "itemType": "logs",
+          "quantity": 2
+        },
+        {
+          "itemType": "planks",
+          "quantity": 2
+        },
+        {
+          "itemType": "stone",
+          "quantity": 2
+        }
+      ],
+      "unlockFlags": [
+        "charter:market-town"
+      ],
+      "tradeRouteType": "sea",
       "storageSlots": [
         {
           "itemType": "*",

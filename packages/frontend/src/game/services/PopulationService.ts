@@ -17,9 +17,11 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Metallurgist]: 0,
 			[ProfessionType.Farmer]: 0,
+			[ProfessionType.Fisher]: 0,
 			[ProfessionType.Miller]: 0,
 			[ProfessionType.Baker]: 0,
-			[ProfessionType.Vendor]: 0
+			[ProfessionType.Vendor]: 0,
+			[ProfessionType.Hunter]: 0
 		},
 		byProfessionActive: {
 			[ProfessionType.Carrier]: 0,
@@ -28,9 +30,11 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Metallurgist]: 0,
 			[ProfessionType.Farmer]: 0,
+			[ProfessionType.Fisher]: 0,
 			[ProfessionType.Miller]: 0,
 			[ProfessionType.Baker]: 0,
-			[ProfessionType.Vendor]: 0
+			[ProfessionType.Vendor]: 0,
+			[ProfessionType.Hunter]: 0
 		},
 		idleCount: 0,
 		workingCount: 0,

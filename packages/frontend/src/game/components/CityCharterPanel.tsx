@@ -3,7 +3,13 @@ import { EventBus } from '../EventBus'
 import { Event } from '@rugged/game'
 import { cityCharterService } from '../services/CityCharterService'
 import { buildingService } from '../services/BuildingService'
-import type { BuildingDefinition, CityCharterStateData, CityCharterTier } from '@rugged/game'
+import { itemService } from '../services/ItemService'
+import type {
+	BuildingDefinition,
+	CityCharterRequirementStatus,
+	CityCharterStateData,
+	CityCharterTier
+} from '@rugged/game'
 import { UiEvents } from '../uiEvents'
 import styles from './CityCharterPanel.module.css'
 
@@ -36,6 +42,63 @@ const formatBuffValue = (value: number | undefined) => {
 	return `${sign}${value}%`
 }
 
+type RequirementEntry = {
+	key: string
+	label: string
+	progress: string
+	met: boolean
+	icon: string
+}
+
+const buildRequirementEntries = (
+	requirements: CityCharterRequirementStatus | undefined,
+	buildingIndex: Map<string, BuildingDefinition>
+): RequirementEntry[] => {
+	if (!requirements) {
+		return []
+	}
+
+	const entries: RequirementEntry[] = []
+
+	if (requirements.population) {
+		entries.push({
+			key: 'population',
+			label: 'Population',
+			progress: `${requirements.population.current}/${requirements.population.required}`,
+			met: requirements.population.met,
+			icon: 'P'
+		})
+	}
+
+	if (requirements.buildings && requirements.buildings.length > 0) {
+		for (const entry of requirements.buildings) {
+			const definition = buildingIndex.get(entry.buildingId)
+			entries.push({
+				key: `building:${entry.buildingId}`,
+				label: definition?.name || entry.buildingId,
+				progress: `${entry.current}/${entry.required}`,
+				met: entry.met,
+				icon: definition?.icon || 'B'
+			})
+		}
+	}
+
+	if (requirements.resources && requirements.resources.length > 0) {
+		for (const entry of requirements.resources) {
+			const meta = itemService.getItemType(entry.itemType)
+			entries.push({
+				key: `resource:${entry.itemType}`,
+				label: meta?.name || entry.itemType,
+				progress: `${entry.current}/${entry.required}`,
+				met: entry.met,
+				icon: meta?.emoji || meta?.icon || 'R'
+			})
+		}
+	}
+
+	return entries
+}
+
 export const CityCharterPanel = ({ isVisible, onClose, anchorRect }: CityCharterPanelProps) => {
 	const [state, setState] = useState<CityCharterStateData | null>(
 		cityCharterService.getState()
@@ -48,6 +111,7 @@ export const CityCharterPanel = ({ isVisible, onClose, anchorRect }: CityCharter
 	const [buildingDefinitions, setBuildingDefinitions] = useState<BuildingDefinition[]>(
 		buildingService.getAllBuildingDefinitions()
 	)
+	const [itemVersion, setItemVersion] = useState(0)
 	const pendingStateRef = useRef<CityCharterStateData | null>(null)
 	const stateRef = useRef<CityCharterStateData | null>(state)
 	const animationPhaseRef = useRef<'idle' | 'shift'>(animationPhase)
@@ -59,6 +123,13 @@ export const CityCharterPanel = ({ isVisible, onClose, anchorRect }: CityCharter
 	useEffect(() => {
 		animationPhaseRef.current = animationPhase
 	}, [animationPhase])
+
+	useEffect(() => {
+		const unsubscribe = itemService.onUpdate(() => {
+			setItemVersion((version) => version + 1)
+		})
+		return unsubscribe
+	}, [])
 
 	useEffect(() => {
 		const handleUpdate = (data: CityCharterStateData) => {
@@ -168,6 +239,53 @@ export const CityCharterPanel = ({ isVisible, onClose, anchorRect }: CityCharter
 	const futureBuffs = futureTier?.buffs || []
 	const nextClaimable = Boolean(displayState?.isEligibleForNext && displayState?.nextTier)
 	const futureClaimable = Boolean(transition?.to.isEligibleForNext && futureTier)
+	const buildingIndex = useMemo(() => {
+		const index = new Map<string, BuildingDefinition>()
+		for (const definition of buildingDefinitions) {
+			index.set(definition.id, definition)
+		}
+		return index
+	}, [buildingDefinitions])
+	const currentRequirements = useMemo(
+		() => buildRequirementEntries(displayState?.currentRequirements, buildingIndex),
+		[displayState?.currentRequirements, buildingIndex, itemVersion]
+	)
+	const nextRequirements = useMemo(
+		() => buildRequirementEntries(displayState?.nextRequirements, buildingIndex),
+		[displayState?.nextRequirements, buildingIndex, itemVersion]
+	)
+	const futureRequirements = useMemo(
+		() => buildRequirementEntries(transition?.to.nextRequirements, buildingIndex),
+		[transition?.to.nextRequirements, buildingIndex, itemVersion]
+	)
+
+	const renderRequirements = (
+		requirements: CityCharterRequirementStatus | undefined,
+		entries: RequirementEntry[],
+		emptyLabel: string
+	) => {
+		if (!requirements) {
+			return <div className={styles.emptyState}>{emptyLabel}</div>
+		}
+		if (entries.length === 0) {
+			return <div className={styles.emptyState}>None.</div>
+		}
+		return (
+			<ul className={styles.requirementList}>
+				{entries.map((entry) => (
+					<li key={entry.key} className={styles.requirementItem} data-met={entry.met}>
+						<span className={styles.requirementLeft}>
+							<span className={styles.requirementIcon}>{entry.icon}</span>
+							<span className={styles.requirementLabel} title={entry.label}>
+								{entry.label}
+							</span>
+						</span>
+						<span className={styles.requirementProgress}>{entry.progress}</span>
+					</li>
+				))}
+			</ul>
+		)
+	}
 
 	if (!isVisible) {
 		return null
@@ -197,6 +315,14 @@ export const CityCharterPanel = ({ isVisible, onClose, anchorRect }: CityCharter
 								>
 									<div className={styles.panelLabel}>Current Tier</div>
 									<div className={styles.panelName}>{displayState.currentTier.name}</div>
+									<div className={styles.panelSection}>
+										<div className={styles.sectionTitle}>Requirements</div>
+										{renderRequirements(
+											displayState.currentRequirements,
+											currentRequirements,
+											'None.'
+										)}
+									</div>
 									<div className={styles.panelSection}>
 										<div className={styles.sectionTitle}>Unlocks</div>
 										{currentUnlocks.length === 0 ? (
@@ -247,6 +373,18 @@ export const CityCharterPanel = ({ isVisible, onClose, anchorRect }: CityCharter
 								>
 									<div className={styles.panelLabel}>Next Tier</div>
 									<div className={styles.panelName}>{displayState.nextTier?.name ?? '—'}</div>
+									<div className={styles.panelSection}>
+										<div className={styles.sectionTitle}>Requirements</div>
+										{displayState.nextTier ? (
+											renderRequirements(
+												displayState.nextRequirements,
+												nextRequirements,
+												'None.'
+											)
+										) : (
+											<div className={styles.emptyState}>No further tiers.</div>
+										)}
+									</div>
 									<div className={styles.panelSection}>
 										<div className={styles.sectionTitle}>Unlocks</div>
 										{displayState.nextTier ? (
@@ -314,6 +452,18 @@ export const CityCharterPanel = ({ isVisible, onClose, anchorRect }: CityCharter
 									>
 										<div className={styles.panelLabel}>Next Tier</div>
 										<div className={styles.panelName}>{futureTier?.name ?? '—'}</div>
+										<div className={styles.panelSection}>
+											<div className={styles.sectionTitle}>Requirements</div>
+											{futureTier ? (
+												renderRequirements(
+													transition?.to.nextRequirements,
+													futureRequirements,
+													'None.'
+												)
+											) : (
+												<div className={styles.emptyState}>No further tiers.</div>
+											)}
+										</div>
 										<div className={styles.panelSection}>
 											<div className={styles.sectionTitle}>Unlocks</div>
 											{futureTier ? (

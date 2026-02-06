@@ -1,0 +1,62 @@
+{
+  "resourceNodeRenders": [
+    {
+      "id": "tree",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      },
+      "render": {
+        "modelSrc": "/assets/library/tree1.glb",
+        "transform": {
+          "scale": {
+            "x": 2,
+            "y": 2,
+            "z": 2
+          },
+          "elevation": -0.1
+        }
+      }
+    },
+    {
+      "id": "fish",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      },
+      "render": {
+        "modelSrc": "/assets/library/fish1_small.glb",
+        "transform": {
+          "elevation": -0.5
+        }
+      }
+    },
+    {
+      "id": "stone_deposit",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      },
+      "render": {
+        "modelSrc": "/assets/library/rock1.glb"
+      }
+    },
+    {
+      "id": "wheat_crop",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      },
+      "render": {
+        "modelSrc": "/assets/library/wheat1.glb",
+        "transform": {
+          "scale": {
+            "x": 0.6,
+            "y": 0.6,
+            "z": 0.6
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,5 +1,8 @@
 export enum ItemType {
 	Rabbit = 'rabbit',
+	Deer = 'deer',
+	DeerMeat = 'deer_meat',
+	Fish = 'fish',
 	Carrot = 'carrot',
 	Logs = 'logs',
 	Tree = 'tree',
@@ -22,6 +25,7 @@ export enum ItemType {
 	BuildingFoundation = 'building_foundation',
 	Hammer = 'hammer',
 	Axe = 'axe',
+	FishingRod = 'fishing_rod',
 	Pickaxe = 'pickaxe',
 	Cart = 'cart',
 	Tombstone = 'tombstone'

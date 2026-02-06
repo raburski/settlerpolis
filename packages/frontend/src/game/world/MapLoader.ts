@@ -2,6 +2,7 @@ export interface MapLayer {
 	name: string
 	type: string
 	data?: number[]
+	encoding?: string
 	objects?: any[]
 	width?: number
 	height?: number
@@ -37,13 +38,46 @@ export interface LoadedMap {
 	objectLayers: Map<string, any[]>
 }
 
+const DEBUG_LOAD_TIMING = String(import.meta.env.VITE_DEBUG_LOAD_TIMING || '').toLowerCase() === 'true'
+const perfNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
+
+const decodeRle = (encoded: number[], total: number): number[] => {
+	const decoded = new Array<number>(total)
+	let offset = 0
+	for (let i = 0; i < encoded.length; i += 2) {
+		if (offset >= total) break
+		const value = encoded[i] ?? 0
+		const count = encoded[i + 1] ?? 0
+		if (count <= 0) continue
+		const end = Math.min(total, offset + count)
+		decoded.fill(value, offset, end)
+		offset = end
+	}
+	if (offset < total) {
+		decoded.fill(0, offset)
+	}
+	return decoded
+}
+
+const decodeLayerData = (layers: MapLayer[], width: number, height: number) => {
+	const total = width * height
+	for (const layer of layers) {
+		if (layer.type !== 'tilelayer' || layer.encoding !== 'rle' || !Array.isArray(layer.data)) continue
+		layer.data = decodeRle(layer.data, total)
+		delete (layer as any).encoding
+	}
+}
+
 export class MapLoader {
 	async load(mapKey: string, mapUrl: string): Promise<LoadedMap> {
+		const perfStart = DEBUG_LOAD_TIMING ? perfNow() : 0
 		const response = await fetch(mapUrl)
 		if (!response.ok) {
 			throw new Error(`Failed to load map ${mapKey} from ${mapUrl}`)
 		}
+		const afterFetch = DEBUG_LOAD_TIMING ? perfNow() : 0
 		const json = await response.json()
+		const afterParse = DEBUG_LOAD_TIMING ? perfNow() : 0
 		const tilesets: MapTileset[] = (json.tilesets || [])
 			.filter((tileset: any) => Boolean(tileset?.image))
 			.map((tileset: any) => ({
@@ -69,6 +103,9 @@ export class MapLoader {
 			tilesets
 		}
 
+		decodeLayerData(data.layers, data.width, data.height)
+		const afterDecode = DEBUG_LOAD_TIMING ? perfNow() : 0
+
 		const collisionLayer = data.layers.find((layer) => layer.name === 'collision' && layer.type === 'tilelayer')
 		const collisionGrid = this.buildCollisionGrid(collisionLayer, data.width, data.height)
 		const objectLayers = new Map<string, any[]>()
@@ -76,6 +113,18 @@ export class MapLoader {
 			if (layer.type === 'objectgroup') {
 				objectLayers.set(layer.name, layer.objects || [])
 			}
+		}
+
+		if (DEBUG_LOAD_TIMING) {
+			const fetchMs = afterFetch - perfStart
+			const parseMs = afterParse - afterFetch
+			const decodeMs = afterDecode - afterParse
+			const totalMs = afterDecode - perfStart
+			console.info(
+				`[Perf] map-load key=${mapKey} fetch=${fetchMs.toFixed(1)}ms parse=${parseMs.toFixed(
+					1
+				)}ms decode=${decodeMs.toFixed(1)}ms total=${totalMs.toFixed(1)}ms`
+			)
 		}
 
 		return { data, collisionGrid, objectLayers }

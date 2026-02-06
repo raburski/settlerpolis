@@ -97,6 +97,7 @@ export const worldMap: WorldMapData = {
 	],
 	links: [
 		{ fromId: 'home', toId: 'stonewatch', type: 'land' },
+		{ fromId: 'home', toId: 'stonewatch', type: 'sea' },
 		{ fromId: 'home', toId: 'sunken-ruins', type: 'land' },
 		{ fromId: 'stonewatch', toId: 'highridge', type: 'land' }
 	]

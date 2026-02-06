@@ -1,6 +1,27 @@
 import { Receiver, EventManager, Event, EventClient, EventCallback, LifecycleCallback } from '@rugged/game'
 import { NetworkEventManager } from "./NetworkManager"
 
+const DEBUG_LOAD_TIMING = String(import.meta.env.VITE_DEBUG_LOAD_TIMING || '').toLowerCase() === 'true'
+const perfNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
+
+const clonePayload = (data: any, event: string) => {
+	if (data === undefined) return undefined
+	if (!DEBUG_LOAD_TIMING) {
+		const raw = JSON.stringify(data)
+		if (raw === undefined) return undefined
+		return JSON.parse(raw)
+	}
+	const start = perfNow()
+	const raw = JSON.stringify(data)
+	if (raw === undefined) return undefined
+	const cloned = JSON.parse(raw)
+	const elapsed = perfNow() - start
+	if (elapsed > 4 || raw.length > 200000) {
+		console.info(`[Perf] local-clone event=${event} size=${raw.length} time=${elapsed.toFixed(1)}ms`)
+	}
+	return cloned
+}
+
 class LocalEventClient implements EventClient {
 	private _currentGroup: string = 'GLOBAL'
 
@@ -130,12 +151,12 @@ export class LocalManager {
 		// Create two event managers with different client IDs
 		this.client = new LocalEventManager('client', (to, event, data, groupName) => {
 			// When client emits, forward to server
-			(this.server as LocalEventManager).handleIncomingMessage(to, event, data ? JSON.parse(JSON.stringify(data)) : undefined)
+			;(this.server as LocalEventManager).handleIncomingMessage(to, event, clonePayload(data, event))
 		}, silentLogs)
 
 		this.server = new LocalEventManager('server', (to, event, data, groupName) => {
 			// When server emits, forward to client
-			(this.client as LocalEventManager).handleIncomingMessage(to, event, data ? JSON.parse(JSON.stringify(data)) : undefined)
+			;(this.client as LocalEventManager).handleIncomingMessage(to, event, clonePayload(data, event))
 		}, silentLogs)
 	}
 } 

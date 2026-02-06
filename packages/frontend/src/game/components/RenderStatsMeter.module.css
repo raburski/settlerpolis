@@ -1,0 +1,36 @@
+@import './variables.module.css';
+
+.meter {
+	position: fixed;
+	left: var(--spacing-md);
+	top: calc(var(--top-bar-height, 64px) + var(--spacing-sm));
+	min-width: 140px;
+	padding: var(--spacing-sm);
+	background: rgba(16, 16, 16, 0.85);
+	border: 2px solid #2c1810;
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.6);
+	color: #e5e7eb;
+	font-family: 'Press Start 2P', monospace;
+	font-size: 0.5rem;
+	pointer-events: none;
+	z-index: var(--z-index-modal);
+}
+
+.title {
+	font-size: 0.45rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: #fbbf24;
+	margin-bottom: var(--spacing-xs);
+}
+
+.row {
+	display: flex;
+	justify-content: space-between;
+	gap: var(--spacing-sm);
+	line-height: 1.4;
+}
+
+.label {
+	opacity: 0.75;
+}

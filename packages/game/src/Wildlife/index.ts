@@ -2,12 +2,19 @@ import { BaseManager } from '../Managers'
 import type { MapManager } from '../Map'
 import type { MapData } from '../Map/types'
 import type { MapObjectsManager } from '../MapObjects'
+import type { NPCManager } from '../NPC'
+import { NPCEvents } from '../NPC/events'
+import { NPCState, type NPC } from '../NPC/types'
 import type { ResourceNodesManager } from '../ResourceNodes'
+import type { ResourceNodeSpawn } from '../ResourceNodes/types'
 import { EventManager } from '../events'
 import { Logger } from '../Logs'
 import { SimulationEvents } from '../Simulation/events'
+import { Receiver } from '../Receiver'
 import { Position } from '../types'
 import type { SimulationTickData } from '../Simulation/types'
+import { v4 as uuidv4 } from 'uuid'
+import { WildlifeEvents } from './events'
 
 interface ForestMask {
 	width: number
@@ -21,6 +28,15 @@ interface ForestDensityData {
 	prefixSum: Int32Array
 	radius: number
 	windowSize: number
+}
+
+interface DeerNodeState {
+	mapId: string
+	tileX: number
+	tileY: number
+	position: Position
+	npcIds: Set<string>
+	pendingRespawns: number[]
 }
 
 export interface ForestSpawnPoint {
@@ -38,12 +54,20 @@ export interface ForestSpawnConfig {
 	maxSpawnPoints: number
 	verifyIntervalMs: number
 	requireFullWindow: boolean
+	migrationRadiusTiles: number
+	migrationMinDensityGain: number
+	roamIntervalMs: number
+	roamRadiusTiles: number
+	roamChance: number
+	maxNpcsPerNode: number
+	npcRespawnMs: number
 }
 
 export interface WildlifeDeps {
 	map: MapManager
 	mapObjects: MapObjectsManager
 	resourceNodes: ResourceNodesManager
+	npc: NPCManager
 }
 
 const DEFAULT_FOREST_CONFIG: ForestSpawnConfig = {
@@ -53,15 +77,30 @@ const DEFAULT_FOREST_CONFIG: ForestSpawnConfig = {
 	minDistanceTiles: 6,
 	maxSpawnPoints: 4,
 	verifyIntervalMs: 60000,
-	requireFullWindow: true
+	requireFullWindow: true,
+	migrationRadiusTiles: 2,
+	migrationMinDensityGain: 0.01,
+	roamIntervalMs: 8000,
+	roamRadiusTiles: 3,
+	roamChance: 0.7,
+	maxNpcsPerNode: 2,
+	npcRespawnMs: 60000
 }
+
+const DEER_NODE_TYPE = 'deer'
+const DEER_NPC_SPEED = 90
 
 export class WildlifeManager extends BaseManager<WildlifeDeps> {
 	private forestConfig: ForestSpawnConfig
 	private forestMasks = new Map<string, ForestMask>()
 	private forestDensity = new Map<string, ForestDensityData>()
 	private deerSpawnPoints = new Map<string, ForestSpawnPoint[]>()
+	private deerNodeKeysByMap = new Map<string, Set<string>>()
+	private deerNodeStates = new Map<string, DeerNodeState>()
+	private deerNpcToNodeKey = new Map<string, string>()
 	private verifyElapsedMs = 0
+	private roamElapsedMs = 0
+	private simulationTimeMs = 0
 
 	constructor(
 		managers: WildlifeDeps,
@@ -76,11 +115,25 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 
 	private setupEventHandlers(): void {
 		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+			this.simulationTimeMs = data.nowMs
+			this.processDeerRespawns()
+		})
+		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			if (this.forestConfig.verifyIntervalMs <= 0) return
 			this.verifyElapsedMs += data.deltaMs
 			if (this.verifyElapsedMs < this.forestConfig.verifyIntervalMs) return
 			this.verifyElapsedMs = 0
 			this.verifyForestSpawnPoints()
+		})
+		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+			if (this.forestConfig.roamIntervalMs <= 0) return
+			this.roamElapsedMs += data.deltaMs
+			if (this.roamElapsedMs < this.forestConfig.roamIntervalMs) return
+			this.roamElapsedMs = 0
+			this.roamDeer()
+		})
+		this.event.on(WildlifeEvents.SS.DeerKilled, (data: { npcId: string }) => {
+			this.handleDeerKilled(data.npcId)
 		})
 	}
 
@@ -116,17 +169,22 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 				this.forestMasks.delete(mapId)
 				this.forestDensity.delete(mapId)
 				this.deerSpawnPoints.set(mapId, [])
+				this.managers.resourceNodes.removeNodesByType(mapId, DEER_NODE_TYPE)
+				this.syncDeerNpcsForMap(mapId, [])
 				continue
 			}
 
 			this.forestMasks.set(mapId, mask)
 			const density = this.buildForestDensity(mask)
 			this.forestDensity.set(mapId, density)
-			const invalid = spawns.some(spawn => !this.isSpawnPointValid(mapId, mapData, mask, density, spawn))
-			if (!invalid) continue
+			const migrated = this.migrateSpawnPoints(mapId, mapData, mask, density, spawns)
+			const changed = this.haveSpawnPointsChanged(spawns, migrated)
+			this.deerSpawnPoints.set(mapId, migrated)
+			if (!changed) continue
 
-			this.logger.debug(`[WildlifeManager] Regenerating deer spawns for ${mapId} (forest changed)`) 
-			this.generateForestSpawnsForMap(mapId)
+			this.logger.debug(`[WildlifeManager] Migrating deer spawns for ${mapId} (forest changed)`)
+			this.syncDeerNodesForMap(mapId, migrated)
+			this.syncDeerNpcsForMap(mapId, migrated)
 		}
 	}
 
@@ -140,6 +198,8 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 			this.forestMasks.delete(mapId)
 			this.forestDensity.delete(mapId)
 			this.deerSpawnPoints.set(mapId, [])
+			this.managers.resourceNodes.removeNodesByType(mapId, DEER_NODE_TYPE)
+			this.syncDeerNpcsForMap(mapId, [])
 			return
 		}
 
@@ -149,8 +209,430 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 
 		const spawns = this.selectSpawnPoints(mapId, mapData, mask, density)
 		this.deerSpawnPoints.set(mapId, spawns)
+		this.syncDeerNodesForMap(mapId, spawns)
+		this.syncDeerNpcsForMap(mapId, spawns)
 
 		this.logger.log(`[WildlifeManager] Generated ${spawns.length} deer spawn points for ${mapId}`)
+	}
+
+	private syncDeerNodesForMap(mapId: string, spawns: ForestSpawnPoint[]): void {
+		this.managers.resourceNodes.removeNodesByType(mapId, DEER_NODE_TYPE)
+		if (spawns.length === 0) return
+
+		const deerSpawns: ResourceNodeSpawn[] = spawns.map(spawn => ({
+			nodeType: DEER_NODE_TYPE,
+			mapId,
+			position: { x: spawn.tileX, y: spawn.tileY },
+			tileBased: true
+		}))
+
+		this.managers.resourceNodes.spawnNodes(deerSpawns)
+	}
+
+	private syncDeerNpcsForMap(mapId: string, spawns: ForestSpawnPoint[]): void {
+		const desiredKeys = new Set<string>()
+		const maxNpcsPerNode = Math.max(0, this.forestConfig.maxNpcsPerNode)
+
+		for (const spawn of spawns) {
+			const key = this.getDeerNodeKey(mapId, spawn.tileX, spawn.tileY)
+			desiredKeys.add(key)
+			let state = this.deerNodeStates.get(key)
+			if (!state) {
+				state = {
+					mapId,
+					tileX: spawn.tileX,
+					tileY: spawn.tileY,
+					position: { ...spawn.position },
+					npcIds: new Set<string>(),
+					pendingRespawns: []
+				}
+				this.deerNodeStates.set(key, state)
+				if (maxNpcsPerNode > 0) {
+					this.spawnDeerNpcsForNode(state, maxNpcsPerNode)
+				}
+			} else {
+				state.tileX = spawn.tileX
+				state.tileY = spawn.tileY
+				state.position = { ...spawn.position }
+			}
+		}
+
+		const existingKeys = this.deerNodeKeysByMap.get(mapId) || new Set<string>()
+		for (const key of existingKeys) {
+			if (!desiredKeys.has(key)) {
+				this.removeDeerNode(key)
+			}
+		}
+
+		this.deerNodeKeysByMap.set(mapId, desiredKeys)
+
+		for (const key of desiredKeys) {
+			const state = this.deerNodeStates.get(key)
+			if (!state) continue
+			this.trimDeerNpcsForNode(state, maxNpcsPerNode)
+		}
+	}
+
+	private getDeerNodeKey(mapId: string, tileX: number, tileY: number): string {
+		return `${mapId}:${tileX}:${tileY}`
+	}
+
+	private spawnDeerNpcsForNode(state: DeerNodeState, count: number): void {
+		const maxNpcsPerNode = Math.max(0, this.forestConfig.maxNpcsPerNode)
+		for (let i = 0; i < count; i += 1) {
+			if (state.npcIds.size >= maxNpcsPerNode) {
+				break
+			}
+			this.spawnDeerNpcForNode(state)
+		}
+	}
+
+	private spawnDeerNpcForNode(state: DeerNodeState): void {
+		const maxNpcsPerNode = Math.max(0, this.forestConfig.maxNpcsPerNode)
+		if (state.npcIds.size >= maxNpcsPerNode) {
+			return
+		}
+
+		const nodeKey = this.getDeerNodeKey(state.mapId, state.tileX, state.tileY)
+		const npc: NPC = {
+			id: uuidv4(),
+			name: 'Deer',
+			position: { ...state.position },
+			mapId: state.mapId,
+			speed: DEER_NPC_SPEED,
+			state: NPCState.Idle,
+			active: true,
+			interactable: false,
+			attributes: {
+				wildlifeType: 'deer',
+				deerNodeKey: nodeKey,
+				emoji: '🦌'
+			}
+		}
+
+		this.managers.npc.addNPC(npc)
+		state.npcIds.add(npc.id)
+		this.deerNpcToNodeKey.set(npc.id, nodeKey)
+	}
+
+	private trimDeerNpcsForNode(state: DeerNodeState, maxNpcsPerNode: number): void {
+		if (maxNpcsPerNode <= 0) {
+			for (const npcId of Array.from(state.npcIds)) {
+				this.despawnDeerNpc(npcId, false)
+			}
+			state.pendingRespawns = []
+			return
+		}
+
+		while (state.npcIds.size > maxNpcsPerNode) {
+			const npcId = state.npcIds.values().next().value
+			if (!npcId) break
+			this.despawnDeerNpc(npcId, false)
+		}
+
+		const maxPending = Math.max(0, maxNpcsPerNode - state.npcIds.size)
+		if (state.pendingRespawns.length > maxPending) {
+			state.pendingRespawns = state.pendingRespawns.slice(0, maxPending)
+		}
+	}
+
+	private removeDeerNode(nodeKey: string): void {
+		const state = this.deerNodeStates.get(nodeKey)
+		if (!state) return
+
+		for (const npcId of Array.from(state.npcIds)) {
+			this.despawnDeerNpc(npcId, false)
+		}
+
+		this.deerNodeStates.delete(nodeKey)
+	}
+
+	private despawnDeerNpc(npcId: string, scheduleRespawn: boolean): void {
+		const nodeKey = this.deerNpcToNodeKey.get(npcId)
+		const state = nodeKey ? this.deerNodeStates.get(nodeKey) : undefined
+
+		if (state) {
+			state.npcIds.delete(npcId)
+			if (scheduleRespawn) {
+				this.scheduleDeerRespawn(state)
+			}
+		}
+
+		this.deerNpcToNodeKey.delete(npcId)
+		this.managers.npc.removeNPC(npcId)
+	}
+
+	private scheduleDeerRespawn(state: DeerNodeState): void {
+		const maxNpcsPerNode = Math.max(0, this.forestConfig.maxNpcsPerNode)
+		if (maxNpcsPerNode <= 0) return
+
+		const currentTotal = state.npcIds.size + state.pendingRespawns.length
+		if (currentTotal >= maxNpcsPerNode) return
+
+		const respawnAt = this.simulationTimeMs + Math.max(0, this.forestConfig.npcRespawnMs)
+		state.pendingRespawns.push(respawnAt)
+	}
+
+	private processDeerRespawns(): void {
+		const now = this.simulationTimeMs
+		const maxNpcsPerNode = Math.max(0, this.forestConfig.maxNpcsPerNode)
+
+		for (const state of this.deerNodeStates.values()) {
+			if (maxNpcsPerNode <= 0) {
+				this.trimDeerNpcsForNode(state, maxNpcsPerNode)
+				continue
+			}
+
+			const maxPending = Math.max(0, maxNpcsPerNode - state.npcIds.size)
+			if (state.pendingRespawns.length > maxPending) {
+				state.pendingRespawns = state.pendingRespawns.slice(0, maxPending)
+			}
+
+			if (state.pendingRespawns.length === 0) continue
+
+			const remaining: number[] = []
+			let availableSlots = maxNpcsPerNode - state.npcIds.size
+
+			for (const respawnAt of state.pendingRespawns) {
+				if (respawnAt > now) {
+					remaining.push(respawnAt)
+					continue
+				}
+				if (availableSlots <= 0) {
+					remaining.push(respawnAt)
+					continue
+				}
+				this.spawnDeerNpcForNode(state)
+				availableSlots -= 1
+			}
+
+			state.pendingRespawns = remaining
+		}
+	}
+
+	private handleDeerKilled(npcId: string): void {
+		this.despawnDeerNpc(npcId, true)
+	}
+
+	public reportDeerKilled(npcId: string): void {
+		this.handleDeerKilled(npcId)
+	}
+
+	private migrateSpawnPoints(
+		mapId: string,
+		mapData: MapData,
+		mask: ForestMask,
+		density: ForestDensityData,
+		spawns: ForestSpawnPoint[]
+	): ForestSpawnPoint[] {
+		if (spawns.length === 0) return []
+
+		const minDistance = Math.max(0, this.forestConfig.minDistanceTiles)
+		const minDistanceSq = minDistance * minDistance
+		const sorted = [...spawns].sort((a, b) => b.density - a.density)
+		const migrated: ForestSpawnPoint[] = []
+
+		for (const spawn of sorted) {
+			const currentDensity = this.getDensityAt(spawn.tileX, spawn.tileY, density)
+			const currentValid = this.isSpawnPointValid(mapId, mapData, mask, density, spawn)
+			const candidates = this.getMigrationCandidates(mapId, mapData, mask, density, spawn, currentDensity, currentValid)
+			let chosen: ForestSpawnPoint | null = null
+
+			for (const candidate of candidates) {
+				if (this.isTooClose(candidate, migrated, minDistanceSq)) continue
+				chosen = candidate
+				break
+			}
+
+			if (!chosen && currentValid && !this.isTooClose(spawn, migrated, minDistanceSq)) {
+				chosen = this.toSpawnPoint(mapData, spawn.tileX, spawn.tileY, currentDensity)
+			}
+
+			if (chosen) {
+				migrated.push(chosen)
+			}
+		}
+
+		if (migrated.length < this.forestConfig.maxSpawnPoints) {
+			const fallback = this.selectSpawnPoints(mapId, mapData, mask, density)
+			for (const candidate of fallback) {
+				if (migrated.length >= this.forestConfig.maxSpawnPoints) break
+				if (this.isTooClose(candidate, migrated, minDistanceSq)) continue
+				migrated.push(candidate)
+			}
+		}
+
+		return migrated
+	}
+
+	private getMigrationCandidates(
+		mapId: string,
+		mapData: MapData,
+		mask: ForestMask,
+		density: ForestDensityData,
+		spawn: ForestSpawnPoint,
+		currentDensity: number,
+		currentValid: boolean
+	): ForestSpawnPoint[] {
+		const radius = Math.max(1, this.forestConfig.migrationRadiusTiles)
+		const minDensity = this.forestConfig.minDensity
+		const minGain = this.forestConfig.migrationMinDensityGain
+		const candidates: Array<{ x: number; y: number; density: number; distSq: number }> = []
+
+		for (let dy = -radius; dy <= radius; dy += 1) {
+			for (let dx = -radius; dx <= radius; dx += 1) {
+				if (dx === 0 && dy === 0) continue
+				const tileX = spawn.tileX + dx
+				const tileY = spawn.tileY + dy
+				if (tileX < 0 || tileY < 0 || tileX >= mask.width || tileY >= mask.height) continue
+				const index = tileY * mask.width + tileX
+				if (mask.mask[index] === 0) continue
+				if (this.isCollisionTile(mapData, tileX, tileY)) continue
+				if (!this.canSpawnAt(mapId, mapData, tileX, tileY)) continue
+
+				const tileDensity = this.getDensityAt(tileX, tileY, density)
+				if (tileDensity < minDensity) continue
+				if (currentValid && tileDensity < currentDensity + minGain) continue
+
+				candidates.push({
+					x: tileX,
+					y: tileY,
+					density: tileDensity,
+					distSq: dx * dx + dy * dy
+				})
+			}
+		}
+
+		candidates.sort((a, b) => {
+			if (b.density !== a.density) return b.density - a.density
+			return a.distSq - b.distSq
+		})
+
+		return candidates.map(candidate =>
+			this.toSpawnPoint(mapData, candidate.x, candidate.y, candidate.density)
+		)
+	}
+
+	private toSpawnPoint(mapData: MapData, tileX: number, tileY: number, density: number): ForestSpawnPoint {
+		const tileWidth = mapData.tiledMap.tilewidth
+		const tileHeight = mapData.tiledMap.tileheight
+		return {
+			position: {
+				x: tileX * tileWidth + tileWidth / 2,
+				y: tileY * tileHeight + tileHeight / 2
+			},
+			tileX,
+			tileY,
+			density
+		}
+	}
+
+	private isTooClose(candidate: ForestSpawnPoint, existing: ForestSpawnPoint[], minDistanceSq: number): boolean {
+		for (const spawn of existing) {
+			const dx = spawn.tileX - candidate.tileX
+			const dy = spawn.tileY - candidate.tileY
+			if ((dx * dx + dy * dy) < minDistanceSq) {
+				return true
+			}
+		}
+		return false
+	}
+
+	private haveSpawnPointsChanged(prev: ForestSpawnPoint[], next: ForestSpawnPoint[]): boolean {
+		if (prev.length !== next.length) return true
+		const prevKeys = prev.map(spawn => `${spawn.tileX}:${spawn.tileY}`).sort()
+		const nextKeys = next.map(spawn => `${spawn.tileX}:${spawn.tileY}`).sort()
+		for (let i = 0; i < prevKeys.length; i += 1) {
+			if (prevKeys[i] !== nextKeys[i]) return true
+		}
+		return false
+	}
+
+	private roamDeer(): void {
+		for (const [mapId, nodeKeys] of this.deerNodeKeysByMap.entries()) {
+			if (nodeKeys.size === 0) continue
+
+			const mapData = this.managers.map.getMap(mapId)
+			if (!mapData) continue
+			const mask = this.forestMasks.get(mapId)
+			const density = this.forestDensity.get(mapId)
+			if (!mask || !density) continue
+
+			for (const key of nodeKeys) {
+				const state = this.deerNodeStates.get(key)
+				if (!state || state.npcIds.size === 0) continue
+				const homeDensity = this.getDensityAt(state.tileX, state.tileY, density)
+				const home: ForestSpawnPoint = {
+					position: { ...state.position },
+					tileX: state.tileX,
+					tileY: state.tileY,
+					density: homeDensity
+				}
+
+				for (const npcId of state.npcIds) {
+					const npc = this.managers.npc.getNPC(npcId)
+					if (!npc || npc.attributes?.reservedBy) {
+						continue
+					}
+					if (Math.random() > this.forestConfig.roamChance) continue
+					const target = this.findRoamTarget(mapId, mapData, mask, density, home)
+					if (!target) continue
+					this.event.emit(Receiver.All, NPCEvents.SS.Go, { npcId, position: target })
+				}
+			}
+		}
+	}
+
+	private findRoamTarget(
+		mapId: string,
+		mapData: MapData,
+		mask: ForestMask,
+		density: ForestDensityData,
+		spawn: ForestSpawnPoint
+	): Position | null {
+		const radius = Math.max(1, this.forestConfig.roamRadiusTiles)
+		const minDensity = this.forestConfig.minDensity
+		const candidates: Array<{ x: number; y: number; density: number }> = []
+
+		for (let dy = -radius; dy <= radius; dy += 1) {
+			for (let dx = -radius; dx <= radius; dx += 1) {
+				if (dx === 0 && dy === 0) continue
+				const tileX = spawn.tileX + dx
+				const tileY = spawn.tileY + dy
+				if (tileX < 0 || tileY < 0 || tileX >= mask.width || tileY >= mask.height) continue
+				const index = tileY * mask.width + tileX
+				if (mask.mask[index] === 0) continue
+				if (this.isCollisionTile(mapData, tileX, tileY)) continue
+				if (!this.canSpawnAt(mapId, mapData, tileX, tileY)) continue
+
+				const tileDensity = this.getDensityAt(tileX, tileY, density)
+				if (tileDensity < minDensity) continue
+				candidates.push({ x: tileX, y: tileY, density: tileDensity })
+			}
+		}
+
+		if (candidates.length === 0) return null
+
+		let totalDensity = 0
+		for (const candidate of candidates) {
+			totalDensity += candidate.density
+		}
+		let pick = Math.random() * totalDensity
+		let chosen = candidates[0]
+		for (const candidate of candidates) {
+			pick -= candidate.density
+			if (pick <= 0) {
+				chosen = candidate
+				break
+			}
+		}
+
+		const tileWidth = mapData.tiledMap.tilewidth
+		const tileHeight = mapData.tiledMap.tileheight
+		return {
+			x: chosen.x * tileWidth + tileWidth / 2,
+			y: chosen.y * tileHeight + tileHeight / 2
+		}
 	}
 
 	private buildForestMask(mapId: string, mapData: MapData): ForestMask | null {

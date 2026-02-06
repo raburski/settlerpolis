@@ -22,9 +22,11 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Metallurgist]: 0,
 			[ProfessionType.Farmer]: 0,
+			[ProfessionType.Fisher]: 0,
 			[ProfessionType.Miller]: 0,
 			[ProfessionType.Baker]: 0,
-			[ProfessionType.Vendor]: 0
+			[ProfessionType.Vendor]: 0,
+			[ProfessionType.Hunter]: 0
 		},
 		byProfessionActive: {
 			[ProfessionType.Carrier]: 0,
@@ -33,9 +35,11 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Metallurgist]: 0,
 			[ProfessionType.Farmer]: 0,
+			[ProfessionType.Fisher]: 0,
 			[ProfessionType.Miller]: 0,
 			[ProfessionType.Baker]: 0,
-			[ProfessionType.Vendor]: 0
+			[ProfessionType.Vendor]: 0,
+			[ProfessionType.Hunter]: 0
 		},
 		idleCount: 0,
 		workingCount: 0,
@@ -51,9 +55,11 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 		[ProfessionType.Miner]: 0,
 		[ProfessionType.Metallurgist]: 0,
 		[ProfessionType.Farmer]: 0,
+		[ProfessionType.Fisher]: 0,
 		[ProfessionType.Miller]: 0,
 		[ProfessionType.Baker]: 0,
-		[ProfessionType.Vendor]: 0
+		[ProfessionType.Vendor]: 0,
+		[ProfessionType.Hunter]: 0
 	})
 
 	useEffect(() => {
@@ -82,9 +88,11 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 				[ProfessionType.Miner]: 0,
 				[ProfessionType.Metallurgist]: 0,
 				[ProfessionType.Farmer]: 0,
+				[ProfessionType.Fisher]: 0,
 				[ProfessionType.Miller]: 0,
 				[ProfessionType.Baker]: 0,
-				[ProfessionType.Vendor]: 0
+				[ProfessionType.Vendor]: 0,
+				[ProfessionType.Hunter]: 0
 			}
 			populationService.getSettlers().forEach(settler => {
 				if (settler.state === SettlerState.Idle) {
@@ -126,9 +134,11 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 		[ProfessionType.Miner]: 'Miner',
 		[ProfessionType.Metallurgist]: 'Metallurgist',
 		[ProfessionType.Farmer]: 'Farmer',
+		[ProfessionType.Fisher]: 'Fisher',
 		[ProfessionType.Miller]: 'Miller',
 		[ProfessionType.Baker]: 'Baker',
-		[ProfessionType.Vendor]: 'Vendor'
+		[ProfessionType.Vendor]: 'Vendor',
+		[ProfessionType.Hunter]: 'Hunter'
 	}
 
 	const professionIcons: Record<ProfessionType, string> = {
@@ -138,9 +148,11 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 		[ProfessionType.Miner]: '⛏️',
 		[ProfessionType.Metallurgist]: '⚒️',
 		[ProfessionType.Farmer]: '🌾',
+		[ProfessionType.Fisher]: '🎣',
 		[ProfessionType.Miller]: '🌬️',
 		[ProfessionType.Baker]: '🥖',
-		[ProfessionType.Vendor]: '🛍️'
+		[ProfessionType.Vendor]: '🛍️',
+		[ProfessionType.Hunter]: '🏹'
 	}
 
 	const handleRequestToolPickup = (profession: ProfessionType) => {

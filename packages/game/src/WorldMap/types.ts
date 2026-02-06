@@ -25,10 +25,12 @@ export type WorldMapNode = {
 	tradeOffers?: WorldMapNodeTradeOffer[]
 }
 
+export type WorldMapLinkType = 'land' | 'sea'
+
 export type WorldMapLink = {
 	fromId: string
 	toId: string
-	type: 'land'
+	type: WorldMapLinkType
 	distance?: number
 }
 

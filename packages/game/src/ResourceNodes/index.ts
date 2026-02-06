@@ -5,9 +5,8 @@ import type { MapManager } from '../Map'
 import type { ItemsManager } from '../Items'
 import { Item } from '../Items/types'
 import { Position } from '../types'
-import { ResourceNodeDefinition, ResourceNodeInstance, ResourceNodeSpawn } from './types'
+import { ResourceNodeDefinition, ResourceNodeInstance, ResourceNodeSpawn, ResourceNodeBounds, ResourceNodesQueryData } from './types'
 import type { MapObject } from '../MapObjects/types'
-import type { PlayerJoinData, PlayerTransitionData } from '../Players/types'
 import { Logger } from '../Logs'
 import { calculateDistance } from '../utils'
 import { BaseManager } from '../Managers'
@@ -45,12 +44,8 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			this.processNodeDecay()
 		})
 
-		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
-			this.sendNodesToClient(client, data.mapId)
-		})
-
-		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
-			this.sendNodesToClient(client, data.mapId)
+		this.event.on<ResourceNodesQueryData>(Event.ResourceNodes.CS.Query, (data, client) => {
+			this.handleResourceNodeQuery(data, client)
 		})
 	}
 
@@ -136,6 +131,36 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		this.logger.log(`[ResourceNodesManager] Spawned ${this.nodes.size} resource nodes`)
 	}
 
+	public removeNodesByType(mapId: string, nodeType: string): void {
+		if (!mapId || !nodeType) {
+			return
+		}
+
+		const def = this.definitions.get(nodeType)
+		const toRemove: ResourceNodeInstance[] = []
+		for (const node of this.nodes.values()) {
+			if (node.mapId !== mapId) continue
+			if (node.nodeType !== nodeType) continue
+			toRemove.push(node)
+		}
+
+		if (toRemove.length === 0) {
+			return
+		}
+
+		for (const node of toRemove) {
+			if (node.mapObjectId) {
+				this.managers.mapObjects.removeObjectById(node.mapObjectId, node.mapId)
+			}
+			if (def) {
+				this.updateCollisionForNode(node, def, false)
+			}
+			this.nodes.delete(node.id)
+		}
+
+		this.rebuildBlockingCollision(mapId)
+	}
+
 	public getNode(nodeId: string): ResourceNodeInstance | undefined {
 		return this.nodes.get(nodeId)
 	}
@@ -210,13 +235,24 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		node.reservedBy = undefined
 
 		if (node.remainingHarvests <= 0) {
+			if (def.regenTimeMs && def.regenTimeMs > 0) {
+				if (node.mapObjectId) {
+					this.managers.mapObjects.removeObjectById(node.mapObjectId, node.mapId)
+				}
+				this.updateCollisionForNode(node, def, false)
+				node.mapObjectId = undefined
+				node.matureAtMs = this.simulationTimeMs + def.regenTimeMs
+				node.isSpoiled = false
+				node.remainingHarvests = 0
+				return {
+					id: uuidv4(),
+					itemType: def.outputItemType
+				}
+			}
 			if (node.mapObjectId) {
 				this.managers.mapObjects.removeObjectById(node.mapObjectId, node.mapId)
 			}
-			const def = this.definitions.get(node.nodeType)
-			if (def) {
-				this.updateCollisionForNode(node, def, false)
-			}
+			this.updateCollisionForNode(node, def, false)
 			this.nodes.delete(node.id)
 		}
 
@@ -338,6 +374,25 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		}
 
 		for (const node of this.nodes.values()) {
+			if (node.remainingHarvests <= 0) {
+				const def = this.definitions.get(node.nodeType)
+				if (def?.regenTimeMs && def.regenTimeMs > 0 && node.matureAtMs !== undefined && this.simulationTimeMs >= node.matureAtMs) {
+					const nextHarvests = Math.max(1, def.maxHarvests)
+					node.remainingHarvests = nextHarvests
+					node.matureAtMs = 0
+					node.isSpoiled = false
+					const mapObject = this.spawnNodeMapObject(node, def)
+					if (mapObject) {
+						node.mapObjectId = mapObject.id
+						this.updateCollisionForNode(node, def, true)
+					} else {
+						node.remainingHarvests = 0
+						node.matureAtMs = this.simulationTimeMs + def.regenTimeMs
+					}
+				}
+				continue
+			}
+
 			if (node.isSpoiled || node.spoilAtMs === undefined) {
 				// skip spoil check
 			} else if (this.simulationTimeMs >= node.spoilAtMs) {
@@ -361,6 +416,35 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			}
 			this.nodes.delete(node.id)
 		}
+	}
+
+	private spawnNodeMapObject(node: ResourceNodeInstance, def: ResourceNodeDefinition): MapObject | null {
+		const item: Item = {
+			id: uuidv4(),
+			itemType: def.nodeItemType
+		}
+
+		const fakeClient: EventClient = {
+			id: WORLD_PLAYER_ID,
+			currentGroup: node.mapId,
+			emit: (receiver, event, data, target) => {
+				this.event.emit(receiver, event, data, target)
+			},
+			setGroup: () => {
+				// No-op for fake client
+			}
+		}
+
+		return this.managers.mapObjects.placeObject(WORLD_PLAYER_ID, {
+			position: node.position,
+			item,
+			metadata: {
+				resourceNode: true,
+				resourceNodeId: node.id,
+				resourceNodeType: def.id,
+				remainingHarvests: node.remainingHarvests
+			}
+		}, fakeClient)
 	}
 
 	private updateCollisionForNode(node: ResourceNodeInstance, def: ResourceNodeDefinition, blocked: boolean): void {
@@ -431,6 +515,9 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 
 	private restoreMissingMapObjects(): void {
 		for (const node of this.nodes.values()) {
+			if (node.remainingHarvests <= 0) {
+				continue
+			}
 			const def = this.definitions.get(node.nodeType)
 			if (!def) {
 				this.logger.warn(`[ResourceNodesManager] Missing definition for node type ${node.nodeType} during restore`)
@@ -496,19 +583,58 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		return mapObject
 	}
 
+	private handleResourceNodeQuery(data: ResourceNodesQueryData, client: EventClient): void {
+		const mapId = data.mapId || client.currentGroup
+		const bounds = data.bounds
+		if (!bounds) return
+		const nodes = this.collectNodesInBounds(mapId, bounds)
+		client.emit(Receiver.Sender, Event.ResourceNodes.SC.Sync, {
+			mapId,
+			nodes,
+			requestId: data.requestId,
+			chunkKey: data.chunkKey
+		})
+	}
+
+	private collectNodesInBounds(mapId: string, bounds: ResourceNodeBounds): MapObject[] {
+		const results: MapObject[] = []
+		for (const node of this.nodes.values()) {
+			if (node.mapId !== mapId) continue
+			if (!this.shouldSyncNode(node)) continue
+
+			const tileX = Math.floor(node.position.x / TILE_SIZE)
+			const tileY = Math.floor(node.position.y / TILE_SIZE)
+			if (tileX < bounds.minX || tileX > bounds.maxX || tileY < bounds.minY || tileY > bounds.maxY) {
+				continue
+			}
+
+			const def = this.definitions.get(node.nodeType)
+			if (!def) {
+				this.logger.warn(`[ResourceNodesManager] Missing definition for node type ${node.nodeType} when syncing to client`)
+				continue
+			}
+
+			const mapObject = this.ensureNodeMapObject(node, def)
+			if (!mapObject) continue
+			results.push(mapObject)
+		}
+		return results
+	}
+
+	private shouldSyncNode(node: ResourceNodeInstance): boolean {
+		if (node.remainingHarvests <= 0) return false
+		if (node.isSpoiled) return false
+		if (!this.isNodeMature(node)) return false
+		return true
+	}
+
 	private sendNodesToClient(client: EventClient, mapId?: string): void {
 		const targetMap = mapId || client.currentGroup
 		for (const node of this.nodes.values()) {
 			if (node.mapId !== targetMap) {
 				continue
 			}
-			if (node.remainingHarvests <= 0) {
-				continue
-			}
-			if (node.isSpoiled) {
-				continue
-			}
-			if (!this.isNodeMature(node)) {
+			if (!this.shouldSyncNode(node)) {
 				continue
 			}
 

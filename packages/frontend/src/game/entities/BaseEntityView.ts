@@ -26,7 +26,8 @@ export class BaseEntityView {
 	setPosition(x: number, y: number): void {
 		this.x = x
 		this.y = y
-		this.scene.runtime.renderer.setMeshPosition(this.mesh, x, this.height / 2, y)
+		const groundOffset = this.scene.runtime.renderer.getGroundHeightAt(x, y)
+		this.scene.runtime.renderer.setMeshPosition(this.mesh, x, this.height / 2 + groundOffset, y)
 		if (this.body) {
 			this.body.x = x
 			this.body.y = y
