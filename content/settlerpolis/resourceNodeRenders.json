@@ -6,17 +6,44 @@
         "width": 1,
         "height": 1
       },
-      "render": {
-        "modelSrc": "/assets/library/tree1.glb",
-        "transform": {
-          "scale": {
-            "x": 2,
-            "y": 2,
-            "z": 2
-          },
-          "elevation": -0.1
+      "renders": [
+        {
+          "modelSrc": "/assets/library/tree1.glb",
+          "weight": 1,
+          "transform": {
+            "scale": {
+              "x": 2,
+              "y": 2,
+              "z": 2
+            },
+            "elevation": -0.1
+          }
+        },
+        {
+          "modelSrc": "/assets/library/tree2.glb",
+          "weight": 1,
+          "transform": {
+            "scale": {
+              "x": 2,
+              "y": 2,
+              "z": 2
+            },
+            "elevation": -0.2
+          }
+        },
+        {
+          "modelSrc": "/assets/library/tree3.glb",
+          "weight": 1,
+          "transform": {
+            "scale": {
+              "x": 2,
+              "y": 2,
+              "z": 2
+            },
+            "elevation": -0.3
+          }
         }
-      }
+      ]
     },
     {
       "id": "fish",

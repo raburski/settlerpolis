@@ -455,20 +455,34 @@ export class BabylonRenderer {
 			const tx = x - x0
 			const ty = y - y0
 
-			let mask = 1
+			let expected: 'mountain' | 'water' | null = null
 			if (this.groundTypeGrid && this.groundTypeGridWidth === mapWidth && this.groundTypeGridHeight === mapHeight) {
 				const idx00 = y0 * mapWidth + x0
 				const idx10 = y0 * mapWidth + x1
 				const idx01 = y1 * mapWidth + x0
 				const idx11 = y1 * mapWidth + x1
+				const type00 = this.groundTypeGrid[idx00]
+				const type10 = this.groundTypeGrid[idx10]
+				const type01 = this.groundTypeGrid[idx01]
+				const type11 = this.groundTypeGrid[idx11]
 				const isMountain =
-					this.groundTypeGrid[idx00] === GROUND_MOUNTAIN_INDEX &&
-					this.groundTypeGrid[idx10] === GROUND_MOUNTAIN_INDEX &&
-					this.groundTypeGrid[idx01] === GROUND_MOUNTAIN_INDEX &&
-					this.groundTypeGrid[idx11] === GROUND_MOUNTAIN_INDEX
-				mask = isMountain ? 1 : 0
+					type00 === GROUND_MOUNTAIN_INDEX &&
+					type10 === GROUND_MOUNTAIN_INDEX &&
+					type01 === GROUND_MOUNTAIN_INDEX &&
+					type11 === GROUND_MOUNTAIN_INDEX
+				const isWater =
+					(type00 === GROUND_WATER_SHALLOW_INDEX || type00 === GROUND_WATER_DEEP_INDEX) &&
+					(type10 === GROUND_WATER_SHALLOW_INDEX || type10 === GROUND_WATER_DEEP_INDEX) &&
+					(type01 === GROUND_WATER_SHALLOW_INDEX || type01 === GROUND_WATER_DEEP_INDEX) &&
+					(type11 === GROUND_WATER_SHALLOW_INDEX || type11 === GROUND_WATER_DEEP_INDEX)
+				if (isMountain) {
+					expected = 'mountain'
+				} else if (isWater) {
+					expected = 'water'
+				} else {
+					return 0
+				}
 			}
-			if (mask === 0) return 0
 
 			const h00 = heightData[y0 * mapWidth + x0] || 0
 			const h10 = heightData[y0 * mapWidth + x1] || 0
@@ -478,11 +492,15 @@ export class BabylonRenderer {
 			const h0 = h00 + (h10 - h00) * tx
 			const h1 = h01 + (h11 - h01) * tx
 			const h = h0 + (h1 - h0) * ty
-			let normalized = Math.max(0, Math.min(1, h / 255))
-			if (normalized < GROUND_MOUNTAIN_MIN_HEIGHT) {
+			if (h === 0) return 0
+			if (expected === 'mountain' && h < 0) return 0
+			if (expected === 'water' && h > 0) return 0
+			const sign = h < 0 ? -1 : 1
+			let normalized = Math.max(0, Math.min(1, Math.abs(h) / 255))
+			if (sign > 0 && normalized < GROUND_MOUNTAIN_MIN_HEIGHT) {
 				normalized = GROUND_MOUNTAIN_MIN_HEIGHT
 			}
-			return normalized
+			return normalized * sign
 		}
 
 		const uvs = ground.getVerticesData('uv')
@@ -591,17 +609,33 @@ export class BabylonRenderer {
 		const tx = Math.max(0, Math.min(1, mapX - x0))
 		const ty = Math.max(0, Math.min(1, mapY - y0))
 
+		let expected: 'mountain' | 'water' | null = null
 		if (this.groundTypeGrid && this.groundTypeGridWidth === mapWidth && this.groundTypeGridHeight === mapHeight) {
 			const idx00 = y0 * mapWidth + x0
 			const idx10 = y0 * mapWidth + x1
 			const idx01 = y1 * mapWidth + x0
 			const idx11 = y1 * mapWidth + x1
+			const type00 = this.groundTypeGrid[idx00]
+			const type10 = this.groundTypeGrid[idx10]
+			const type01 = this.groundTypeGrid[idx01]
+			const type11 = this.groundTypeGrid[idx11]
 			const isMountain =
-				this.groundTypeGrid[idx00] === GROUND_MOUNTAIN_INDEX &&
-				this.groundTypeGrid[idx10] === GROUND_MOUNTAIN_INDEX &&
-				this.groundTypeGrid[idx01] === GROUND_MOUNTAIN_INDEX &&
-				this.groundTypeGrid[idx11] === GROUND_MOUNTAIN_INDEX
-			if (!isMountain) return 0
+				type00 === GROUND_MOUNTAIN_INDEX &&
+				type10 === GROUND_MOUNTAIN_INDEX &&
+				type01 === GROUND_MOUNTAIN_INDEX &&
+				type11 === GROUND_MOUNTAIN_INDEX
+			const isWater =
+				(type00 === GROUND_WATER_SHALLOW_INDEX || type00 === GROUND_WATER_DEEP_INDEX) &&
+				(type10 === GROUND_WATER_SHALLOW_INDEX || type10 === GROUND_WATER_DEEP_INDEX) &&
+				(type01 === GROUND_WATER_SHALLOW_INDEX || type01 === GROUND_WATER_DEEP_INDEX) &&
+				(type11 === GROUND_WATER_SHALLOW_INDEX || type11 === GROUND_WATER_DEEP_INDEX)
+			if (isMountain) {
+				expected = 'mountain'
+			} else if (isWater) {
+				expected = 'water'
+			} else {
+				return 0
+			}
 		}
 
 		const h00 = this.groundHeightData[y0 * mapWidth + x0] ?? 0
@@ -612,8 +646,15 @@ export class BabylonRenderer {
 		const h0 = h00 + (h10 - h00) * tx
 		const h1 = h01 + (h11 - h01) * tx
 		const h = h0 + (h1 - h0) * ty
-		const normalized = Math.max(GROUND_MOUNTAIN_MIN_HEIGHT, Math.max(0, Math.min(255, h)) / 255)
-		return normalized * tileHeight * GROUND_HEIGHT_SCALE
+		if (h === 0) return 0
+		if (expected === 'mountain' && h < 0) return 0
+		if (expected === 'water' && h > 0) return 0
+		const sign = h < 0 ? -1 : 1
+		let normalized = Math.max(0, Math.min(255, Math.abs(h))) / 255
+		if (sign > 0) {
+			normalized = Math.max(GROUND_MOUNTAIN_MIN_HEIGHT, normalized)
+		}
+		return normalized * tileHeight * GROUND_HEIGHT_SCALE * sign
 	}
 
 	getGroundHeightAtTile(tileX: number, tileY: number): number {
@@ -622,14 +663,27 @@ export class BabylonRenderer {
 		const x = Math.max(0, Math.min(mapWidth - 1, Math.floor(tileX)))
 		const y = Math.max(0, Math.min(mapHeight - 1, Math.floor(tileY)))
 		const idx = y * mapWidth + x
+		let expected: 'mountain' | 'water' | null = null
 		if (this.groundTypeGrid && this.groundTypeGridWidth === mapWidth && this.groundTypeGridHeight === mapHeight) {
-			if (this.groundTypeGrid[idx] !== GROUND_MOUNTAIN_INDEX) {
+			const type = this.groundTypeGrid[idx]
+			if (type === GROUND_MOUNTAIN_INDEX) {
+				expected = 'mountain'
+			} else if (type === GROUND_WATER_SHALLOW_INDEX || type === GROUND_WATER_DEEP_INDEX) {
+				expected = 'water'
+			} else {
 				return 0
 			}
 		}
 		const h = this.groundHeightData[idx] ?? 0
-		const normalized = Math.max(GROUND_MOUNTAIN_MIN_HEIGHT, Math.max(0, Math.min(255, h)) / 255)
-		return normalized * tileHeight * GROUND_HEIGHT_SCALE
+		if (h === 0) return 0
+		if (expected === 'mountain' && h < 0) return 0
+		if (expected === 'water' && h > 0) return 0
+		const sign = h < 0 ? -1 : 1
+		let normalized = Math.max(0, Math.min(255, Math.abs(h))) / 255
+		if (sign > 0) {
+			normalized = Math.max(GROUND_MOUNTAIN_MIN_HEIGHT, normalized)
+		}
+		return normalized * tileHeight * GROUND_HEIGHT_SCALE * sign
 	}
 
 	private buildGroundHeightTexture(layer: MapLayer, mapWidth: number, mapHeight: number): DynamicTexture | null {

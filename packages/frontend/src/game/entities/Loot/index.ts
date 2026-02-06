@@ -9,7 +9,7 @@ export type Loot = {
 }
 
 export function createLoot(scene: GameScene, item: DroppedItem, player: { x: number; y: number }): Loot {
-	const view = new LootView(scene, item.position.x, item.position.y, item.itemType, item.quantity)
+	const view = new LootView(scene, item.position.x, item.position.y, item.itemType, item.id, item.quantity)
 	const controller = new LootController(view, item.id, player)
 	return { view, controller }
 }

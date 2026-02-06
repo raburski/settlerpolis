@@ -1,6 +1,7 @@
 import {
 	AbstractMesh,
 	ArcRotateCamera,
+	AssetContainer,
 	Color3,
 	Color4,
 	DynamicTexture,
@@ -28,6 +29,14 @@ export interface StorageSlot {
 	hidden?: boolean
 	maxQuantity?: number
 	emoji?: string
+	render?: {
+		modelSrc: string
+		transform?: {
+			rotation?: { x: number; y: number; z: number }
+			scale?: { x: number; y: number; z: number }
+			elevation?: number
+		}
+	}
 }
 
 export interface EditorPlacement {
@@ -75,6 +84,10 @@ export class EditorScene {
 	private storageSlotMaterials: Map<string, StandardMaterial> = new Map()
 	private emojiSlotMaterials: Map<string, StandardMaterial> = new Map()
 	private emojiSlotTextures: Map<string, DynamicTexture> = new Map()
+	private storageSlotModelRoots: TransformNode[] = []
+	private storageSlotLoadToken = 0
+	private static slotModelContainerCache = new Map<string, Promise<AssetContainer>>()
+	private static slotModelFailedSrcs = new Set<string>()
 	private accessTileMeshes: Mesh[] = []
 	private blockedTileMeshes: Mesh[] = []
 	private entryMarker: Mesh | null = null
@@ -144,6 +157,8 @@ export class EditorScene {
 		this.disposeAsset()
 		this.storageSlotMeshes.forEach((mesh) => mesh.dispose())
 		this.storageSlotMeshes = []
+		this.storageSlotModelRoots.forEach((root) => root.dispose())
+		this.storageSlotModelRoots = []
 		this.storageSlotMaterials.forEach((material) => material.dispose())
 		this.storageSlotMaterials.clear()
 		this.emojiSlotMaterials.forEach((material) => material.dispose())
@@ -405,6 +420,9 @@ export class EditorScene {
 	private updateStorageSlots(slots: StorageSlot[], origin: { x: number; y: number }): void {
 		this.storageSlotMeshes.forEach((mesh) => mesh.dispose())
 		this.storageSlotMeshes = []
+		this.storageSlotModelRoots.forEach((root) => root.dispose())
+		this.storageSlotModelRoots = []
+		const loadToken = (this.storageSlotLoadToken += 1)
 		if (!slots || slots.length === 0) return
 		slots.forEach((slot, index) => {
 			if (!slot.offset) {
@@ -413,29 +431,129 @@ export class EditorScene {
 			const centerX = (origin.x + slot.offset.x + 0.5) * TILE_SIZE
 			const centerZ = (origin.y + slot.offset.y + 0.5) * TILE_SIZE
 			const isHidden = Boolean(slot.hidden)
-			if (slot.emoji) {
-				const plane = MeshBuilder.CreatePlane(
-					`editor-storage-slot-${index}`,
-					{ size: 0.75 },
-					this.scene
-				)
-				plane.position.set(centerX, 0.14, centerZ)
-				plane.isPickable = false
-				plane.billboardMode = Mesh.BILLBOARDMODE_ALL
-				plane.material = this.getEmojiMaterial(slot.emoji, isHidden)
-				this.storageSlotMeshes.push(plane)
+			if (slot.render?.modelSrc) {
+				void this.loadStorageSlotModel(slot, index, centerX, centerZ, isHidden, loadToken)
 				return
 			}
-			const mesh = MeshBuilder.CreateBox(
+			this.addStorageSlotFallback(slot, index, centerX, centerZ, isHidden)
+		})
+	}
+
+	private addStorageSlotFallback(
+		slot: StorageSlot,
+		index: number,
+		centerX: number,
+		centerZ: number,
+		isHidden: boolean
+	): void {
+		if (slot.emoji) {
+			const plane = MeshBuilder.CreatePlane(
 				`editor-storage-slot-${index}`,
-				{ width: 0.75, height: 0.18, depth: 0.75 },
+				{ size: 0.75 },
 				this.scene
 			)
-			mesh.position.set(centerX, 0.12, centerZ)
-			mesh.isPickable = false
-			mesh.material = this.getSlotMaterial(slot.itemType || 'slot', isHidden)
-			this.storageSlotMeshes.push(mesh)
-		})
+			plane.position.set(centerX, 0.14, centerZ)
+			plane.isPickable = false
+			plane.billboardMode = Mesh.BILLBOARDMODE_ALL
+			plane.material = this.getEmojiMaterial(slot.emoji, isHidden)
+			this.storageSlotMeshes.push(plane)
+			return
+		}
+		const mesh = MeshBuilder.CreateBox(
+			`editor-storage-slot-${index}`,
+			{ width: 0.75, height: 0.18, depth: 0.75 },
+			this.scene
+		)
+		mesh.position.set(centerX, 0.12, centerZ)
+		mesh.isPickable = false
+		mesh.material = this.getSlotMaterial(slot.itemType || 'slot', isHidden)
+		this.storageSlotMeshes.push(mesh)
+	}
+
+	private async loadStorageSlotModel(
+		slot: StorageSlot,
+		index: number,
+		centerX: number,
+		centerZ: number,
+		isHidden: boolean,
+		loadToken: number
+	): Promise<void> {
+		const render = slot.render
+		if (!render?.modelSrc) return
+		if (EditorScene.slotModelFailedSrcs.has(render.modelSrc)) {
+			this.addStorageSlotFallback(slot, index, centerX, centerZ, isHidden)
+			return
+		}
+		try {
+			const container = await EditorScene.getSlotModelContainer(this.scene, render.modelSrc)
+			if (loadToken !== this.storageSlotLoadToken) return
+			if (this.scene.isDisposed()) return
+			const rootName = `editor-storage-slot-model-${index}`
+			const root = new TransformNode(rootName, this.scene)
+			const pivot = new TransformNode(`${rootName}-pivot`, this.scene)
+			pivot.parent = root
+			const instance = container.instantiateModelsToScene(
+				(name) => {
+					if (!name) return rootName
+					return `${rootName}-${name}`
+				},
+				false
+			)
+			const meshSet = new Set<AbstractMesh>()
+			instance.rootNodes.forEach((node) => {
+				if (node.parent === null) {
+					node.parent = pivot
+				}
+				node.setEnabled(true)
+				if (node instanceof AbstractMesh) {
+					meshSet.add(node)
+				}
+				if ('getChildMeshes' in node && typeof node.getChildMeshes === 'function') {
+					node.getChildMeshes(false).forEach((mesh) => meshSet.add(mesh))
+				}
+			})
+			const meshes = Array.from(meshSet)
+			meshes.forEach((mesh) => {
+				mesh.isPickable = false
+				mesh.isVisible = true
+				mesh.visibility = isHidden ? 0.45 : 1
+			})
+			const bounds = getBounds(meshes)
+			if (bounds) {
+				const center = bounds.min.add(bounds.max).scale(0.5)
+				pivot.position = new Vector3(-center.x, -bounds.min.y, -center.z)
+			}
+			const transform = render.transform || {}
+			const rotation = transform.rotation ?? { x: 0, y: 0, z: 0 }
+			const scale = transform.scale ?? { x: 1, y: 1, z: 1 }
+			const elevation = transform.elevation ?? 0
+			root.position.set(centerX, 0.12 + elevation, centerZ)
+			root.rotation.set(rotation.x ?? 0, rotation.y ?? 0, rotation.z ?? 0)
+			root.scaling.set(scale.x ?? 1, scale.y ?? 1, scale.z ?? 1)
+			this.storageSlotModelRoots.push(root)
+		} catch (error) {
+			void error
+			EditorScene.slotModelFailedSrcs.add(render.modelSrc)
+			if (loadToken !== this.storageSlotLoadToken) return
+			this.addStorageSlotFallback(slot, index, centerX, centerZ, isHidden)
+		}
+	}
+
+	private static async getSlotModelContainer(scene: Scene, modelSrc: string): Promise<AssetContainer> {
+		const cached = EditorScene.slotModelContainerCache.get(modelSrc)
+		if (cached) return cached
+		const { rootUrl, fileName } = splitAssetUrl(modelSrc)
+		const promise = SceneLoader.LoadAssetContainerAsync(rootUrl, fileName, scene)
+			.then((container) => {
+				container.removeAllFromScene()
+				return container
+			})
+			.catch((error) => {
+				EditorScene.slotModelContainerCache.delete(modelSrc)
+				throw error
+			})
+		EditorScene.slotModelContainerCache.set(modelSrc, promise)
+		return promise
 	}
 
 	private getEmojiMaterial(emoji: string, hidden: boolean): StandardMaterial {

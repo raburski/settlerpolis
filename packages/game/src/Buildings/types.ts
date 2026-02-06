@@ -78,6 +78,15 @@ export interface BuildingDefinition {
 			elevation?: number
 		}
 	}
+	renders?: Array<{
+		modelSrc: string
+		weight?: number
+		transform?: {
+			rotation?: { x: number; y: number; z: number }
+			scale?: { x: number; y: number; z: number }
+			elevation?: number
+		}
+	}>
 	storageSlots?: import('../Storage/types').StorageSlotDefinition[]
 	storagePreservation?: import('../Storage/types').StoragePreservation
 	footprint: {

@@ -290,6 +290,41 @@
 	box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.35);
 }
 
+.variantCard {
+	position: relative;
+	padding-right: 34px;
+	cursor: pointer;
+}
+
+.variantCardActive {
+	border-color: var(--dialog-border-accent);
+	box-shadow: 0 0 0 2px rgba(255, 205, 110, 0.35), 3px 3px 0 rgba(0, 0, 0, 0.35);
+}
+
+.variantRemoveButton {
+	position: absolute;
+	top: var(--spacing-sm);
+	right: var(--spacing-sm);
+	width: 24px;
+	height: 24px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: var(--dialog-border-radius);
+	border: 2px solid rgba(120, 106, 92, 0.6);
+	background: rgba(20, 16, 12, 0.8);
+	color: var(--dialog-text);
+	cursor: pointer;
+	font-size: 0.7rem;
+	line-height: 1;
+	padding: 0;
+}
+
+.variantRemoveButton:hover {
+	border-color: #f59e9e;
+	box-shadow: 0 0 0 2px rgba(245, 158, 158, 0.5);
+}
+
 .slotRow {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
