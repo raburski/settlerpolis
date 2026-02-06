@@ -49,4 +49,30 @@ export interface ItemTypeRequest {
 export interface ItemTypeResponse {
 	itemType: ItemType
 	meta: ItemMetadata | null
-} 
+}
+
+export interface ItemRenderDefinition {
+	id: ItemType
+	footprint?: {
+		width: number
+		height?: number
+		length?: number
+	}
+	render?: {
+		modelSrc: string
+		transform?: {
+			rotation?: { x: number; y: number; z: number }
+			scale?: { x: number; y: number; z: number }
+			elevation?: number
+		}
+	}
+	renders?: Array<{
+		modelSrc: string
+		weight?: number
+		transform?: {
+			rotation?: { x: number; y: number; z: number }
+			scale?: { x: number; y: number; z: number }
+			elevation?: number
+		}
+	}>
+}

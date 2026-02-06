@@ -1,0 +1,133 @@
+{
+  "itemRenders": [
+    {
+      "id": "logs",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      },
+      "render": {
+        "modelSrc": "/assets/library/logs1.glb",
+        "transform": {
+          "scale": {
+            "x": 0.5,
+            "y": 0.5,
+            "z": 0.5
+          }
+        }
+      }
+    },
+    {
+      "id": "stone",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      },
+      "render": {
+        "modelSrc": "/assets/library/stones1.glb",
+        "transform": {
+          "scale": {
+            "x": 0.5,
+            "y": 0.5,
+            "z": 0.5
+          }
+        }
+      }
+    },
+    {
+      "id": "axe",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      },
+      "render": {
+        "modelSrc": "/assets/library/axe1.glb",
+        "transform": {
+          "rotation": {
+            "x": -1.5707963267948966,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 0.4,
+            "y": 0.4,
+            "z": 0.4
+          }
+        }
+      }
+    },
+    {
+      "id": "bread",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      },
+      "render": {
+        "modelSrc": "/assets/library/bread1.glb",
+        "transform": {
+          "scale": {
+            "x": 0.5,
+            "y": 0.5,
+            "z": 0.5
+          }
+        }
+      }
+    },
+    {
+      "id": "planks",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      },
+      "render": {
+        "modelSrc": "/assets/library/planks1..glb",
+        "transform": {
+          "scale": {
+            "x": 0.5,
+            "y": 0.5,
+            "z": 0.5
+          }
+        }
+      }
+    },
+    {
+      "id": "hammer",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      },
+      "render": {
+        "modelSrc": "/assets/library/hammer1.glb",
+        "transform": {
+          "scale": {
+            "x": 0.4,
+            "y": 0.4,
+            "z": 0.4
+          }
+        }
+      }
+    },
+    {
+      "id": "pickaxe",
+      "footprint": {
+        "width": 1,
+        "height": 1
+      },
+      "render": {
+        "modelSrc": "/assets/library/pickaxe1.glb",
+        "transform": {
+          "rotation": {
+            "x": 1.5707963267948966,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 0.4,
+            "y": 0.4,
+            "z": 0.4
+          }
+        }
+      }
+    }
+  ]
+}

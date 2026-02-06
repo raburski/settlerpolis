@@ -34,6 +34,15 @@ export interface ResourceNodeRenderDefinition {
 			elevation?: number
 		}
 	}
+	renders?: Array<{
+		modelSrc: string
+		weight?: number
+		transform?: {
+			rotation?: { x: number; y: number; z: number }
+			scale?: { x: number; y: number; z: number }
+			elevation?: number
+		}
+	}>
 }
 
 export interface ResourceNodeSpawn {

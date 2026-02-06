@@ -27,6 +27,11 @@ class ResourceNodeRenderService {
 		return this.renders.get(id) ?? null
 	}
 
+	getRenderModel(id: string | undefined | null, seedKey?: string | number): ResourceNodeRenderModel | null {
+		const definition = this.getRender(id)
+		return resolveResourceNodeRender(definition, seedKey)
+	}
+
 	subscribe(listener: Listener): () => void {
 		this.listeners.add(listener)
 		return () => {
@@ -69,3 +74,70 @@ class ResourceNodeRenderService {
 }
 
 export const resourceNodeRenderService = new ResourceNodeRenderService()
+
+type ResourceNodeRenderModel = {
+	modelSrc: string
+	transform?: {
+		rotation?: { x: number; y: number; z: number }
+		scale?: { x: number; y: number; z: number }
+		elevation?: number
+	}
+	weight?: number
+}
+
+function resolveResourceNodeRender(
+	definition: ResourceNodeRenderDefinition | null,
+	seedKey?: string | number
+): ResourceNodeRenderModel | null {
+	if (!definition) return null
+	const variants = Array.isArray(definition.renders)
+		? definition.renders.filter((entry) => Boolean(entry?.modelSrc))
+		: []
+	if (variants.length > 0) {
+		if (variants.length === 1) {
+			return variants[0]
+		}
+		const weights = variants.map((entry) => normalizeWeight(entry.weight))
+		const totalWeight = weights.reduce((sum, weight) => sum + weight, 0)
+		if (totalWeight <= 0) {
+			return variants[0]
+		}
+		const target = getSeededFraction(seedKey) * totalWeight
+		let cursor = 0
+		for (let i = 0; i < variants.length; i += 1) {
+			cursor += weights[i]
+			if (target <= cursor) {
+				return variants[i]
+			}
+		}
+		return variants[variants.length - 1]
+	}
+	if (definition.render?.modelSrc) {
+		return definition.render
+	}
+	return null
+}
+
+function normalizeWeight(weight?: number): number {
+	if (typeof weight !== 'number' || !Number.isFinite(weight)) return 1
+	if (weight <= 0) return 0
+	return weight
+}
+
+function getSeededFraction(seedKey?: string | number): number {
+	if (seedKey === undefined || seedKey === null) {
+		return Math.random()
+	}
+	const seed = typeof seedKey === 'string' ? seedKey : String(seedKey)
+	const hash = fnv1a(seed)
+	return hash / 0x100000000
+}
+
+function fnv1a(input: string): number {
+	let hash = 0x811c9dc5
+	for (let i = 0; i < input.length; i += 1) {
+		hash ^= input.charCodeAt(i)
+		hash = Math.imul(hash, 0x01000193)
+	}
+	return hash >>> 0
+}

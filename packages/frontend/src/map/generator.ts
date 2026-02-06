@@ -45,7 +45,7 @@ export interface MapResourceNode {
 
 export interface MapGenResult {
 	tiles: Uint16Array
-	heightMap: Uint8Array
+	heightMap: Int16Array
 	stats: Record<GroundType, number>
 	width: number
 	height: number
@@ -89,6 +89,10 @@ const COAST_DROP = 0.38
 const COAST_EDGE_TILES = 10
 const COAST_EDGE_SEA_OFFSET = 0.02
 const COAST_MOUNTAIN_PUSH = 0.09
+const MOUNTAIN_ERODE_PASSES = 1
+const MOUNTAIN_EDGE_NEIGHBORS_MIN = 5
+const MOUNTAIN_RIDGE_KEEP = 0.9
+const MOUNTAIN_HEIGHT_KEEP = 0.92
 const MOUNTAIN_HEIGHT_RIDGE_WEIGHT = 0.92
 const MOUNTAIN_HEIGHT_SOFTEN = 0.85
 const ROCK_CHANCE = 0.016
@@ -102,16 +106,38 @@ const LAKE_MAX_TILES = 1200
 const LAKE_EDGE_BUFFER = 6
 const LAKE_WATER_BUFFER = 4
 const LAKE_MOUNTAIN_BUFFER = 3
-const FOREST_COVERAGE = 0.1
 const FOREST_CLUSTER_FRACTION = 0.78
 const FOREST_CLUSTER_MIN = 6
 const FOREST_CLUSTER_MAX = 14
 const FOREST_MIN_CLUSTER = 80
+const FOREST_MIN_SPACING = 1.5
 const FOREST_START_BUFFER = 10
 const FOREST_WATER_BUFFER = 2
 const FOREST_MOUNTAIN_BUFFER = 3
 const FOREST_ROCK_BUFFER = 2
 const FOREST_SAND_BUFFER = 1
+const FOREST_DENSITY_FREQ = 0.0038
+const FOREST_DENSITY_OCTAVES = 2
+const FOREST_DENSITY_POWER = 2.0
+const FOREST_DENSITY_ALLOWED_PERCENTILE = 1
+const FOREST_DENSITY_SEED_PERCENTILE = 0.78
+const FOREST_DENSITY_SCATTER_PERCENTILE = 1
+const FOREST_DENSITY_CLUSTER_MIN_CHANCE = 0.45
+const FOREST_DENSITY_CLUSTER_MAX_CHANCE = 0.97
+const FOREST_DENSITY_SCATTER_MIN_CHANCE = 0.18
+const FOREST_DENSITY_SCATTER_MAX_CHANCE = 0.7
+const FOREST_HOTSPOT_COUNT_MIN = 6
+const FOREST_HOTSPOT_COUNT_MAX = 12
+const FOREST_HOTSPOT_RADIUS_MIN = 34
+const FOREST_HOTSPOT_RADIUS_MAX = 140
+const FOREST_HOTSPOT_WEIGHT_MIN = 0.5
+const FOREST_HOTSPOT_WEIGHT_MAX = 1
+const FOREST_CLEARING_COUNT_MIN = 100
+const FOREST_CLEARING_COUNT_MAX = 220
+const FOREST_CLEARING_SIZE_MIN = 100
+const FOREST_CLEARING_SIZE_MAX = 400
+const FOREST_CLEARING_MIN_SEPARATION = 18
+const FOREST_CLEARING_EDGE_BUFFER = 6
 const DEER_DENSITY_RADIUS_TILES = 3
 const DEER_MIN_DENSITY = 0.08
 const DEER_MIN_DISTANCE_TILES = 6
@@ -323,22 +349,34 @@ const encodeRle = (data: ArrayLike<number>): number[] => {
 	return encoded
 }
 
-const buildMountainHeightMap = (
+const buildTerrainHeightMap = (
 	tiles: Uint16Array,
 	width: number,
 	height: number,
 	heightValues: Float32Array,
 	ridgeValues: Float32Array,
+	waterDepthValues: Float32Array,
 	mountainBias: number
-): Uint8Array => {
-	const heightMap = new Uint8Array(width * height)
+): Int16Array => {
+	const heightMap = new Int16Array(width * height)
 	const mountainHeights = new Float32Array(width * height)
+	const waterHeights = new Float32Array(width * height)
 	let maxMountainHeight = 0
+	let maxWaterDepth = 0
 
 	for (let y = 0; y < height; y += 1) {
 		for (let x = 0; x < width; x += 1) {
 			const idx = y * width + x
-			if (TYPE_BY_GID[tiles[idx]] !== 'mountain') continue
+			const type = TYPE_BY_GID[tiles[idx]]
+			if (type === 'water_shallow' || type === 'water_deep') {
+				const depth = waterDepthValues[idx] ?? 0
+				if (depth > 0) {
+					waterHeights[idx] = depth
+					if (depth > maxWaterDepth) maxWaterDepth = depth
+				}
+				continue
+			}
+			if (type !== 'mountain') continue
 
 			const westEdge = COAST_SIDES.west
 				? clamp((COAST_EDGE_TILES - x) / COAST_EDGE_TILES, 0, 1)
@@ -368,16 +406,24 @@ const buildMountainHeightMap = (
 		}
 	}
 
-	if (maxMountainHeight <= 0) {
-		return heightMap
+	if (maxMountainHeight > 0) {
+		for (let i = 0; i < mountainHeights.length; i += 1) {
+			const raw = mountainHeights[i]
+			if (raw <= 0) continue
+			const normalized = clamp(raw / maxMountainHeight, 0, 1)
+			const eased = Math.pow(fade(normalized), MOUNTAIN_HEIGHT_SOFTEN)
+			heightMap[i] = Math.round(eased * 255)
+		}
 	}
 
-	for (let i = 0; i < mountainHeights.length; i += 1) {
-		const raw = mountainHeights[i]
-		if (raw <= 0) continue
-		const normalized = clamp(raw / maxMountainHeight, 0, 1)
-		const eased = Math.pow(fade(normalized), MOUNTAIN_HEIGHT_SOFTEN)
-		heightMap[i] = Math.round(eased * 255)
+	if (maxWaterDepth > 0) {
+		for (let i = 0; i < waterHeights.length; i += 1) {
+			const raw = waterHeights[i]
+			if (raw <= 0) continue
+			const normalized = clamp(raw / maxWaterDepth, 0, 1)
+			const eased = Math.pow(fade(normalized), MOUNTAIN_HEIGHT_SOFTEN)
+			heightMap[i] = -Math.round(eased * 255)
+		}
 	}
 
 	return heightMap
@@ -585,18 +631,224 @@ const isForestCandidate = (
 	return true
 }
 
+const buildForestDensityMap = (width: number, height: number, seed: number) => {
+	const map = new Float32Array(width * height)
+	for (let y = 0; y < height; y += 1) {
+		for (let x = 0; x < width; x += 1) {
+			const density = fbm(x, y, seed, FOREST_DENSITY_OCTAVES, FOREST_DENSITY_FREQ, 2, 0.55)
+			map[y * width + x] = clamp(density, 0, 1)
+		}
+	}
+
+	const hotspotCount = Math.max(
+		FOREST_HOTSPOT_COUNT_MIN,
+		Math.round(
+			lerp(
+				FOREST_HOTSPOT_COUNT_MIN,
+				FOREST_HOTSPOT_COUNT_MAX,
+				hash2D(5, 17, seed + 41)
+			)
+		)
+	)
+
+	for (let i = 0; i < hotspotCount; i += 1) {
+		const hx = Math.floor(hash2D(i, 71, seed + 73) * width)
+		const hy = Math.floor(hash2D(i, 97, seed + 89) * height)
+		const radius = Math.round(
+			lerp(FOREST_HOTSPOT_RADIUS_MIN, FOREST_HOTSPOT_RADIUS_MAX, hash2D(i, 113, seed + 127))
+		)
+		const weight = lerp(
+			FOREST_HOTSPOT_WEIGHT_MIN,
+			FOREST_HOTSPOT_WEIGHT_MAX,
+			hash2D(i, 131, seed + 149)
+		)
+		const rSq = radius * radius
+		const minX = Math.max(0, hx - radius)
+		const maxX = Math.min(width - 1, hx + radius)
+		const minY = Math.max(0, hy - radius)
+		const maxY = Math.min(height - 1, hy + radius)
+		for (let y = minY; y <= maxY; y += 1) {
+			for (let x = minX; x <= maxX; x += 1) {
+				const dx = x - hx
+				const dy = y - hy
+				const distSq = dx * dx + dy * dy
+				if (distSq > rSq) continue
+				const falloff = 1 - Math.sqrt(distSq) / radius
+				const influence = falloff * falloff * weight
+				const index = y * width + x
+				if (influence > map[index]) {
+					map[index] = influence
+				}
+			}
+		}
+	}
+
+	for (let i = 0; i < map.length; i += 1) {
+		map[i] = Math.pow(clamp(map[i], 0, 1), FOREST_DENSITY_POWER)
+	}
+
+	return map
+}
+
+const getForestDensity = (map: Float32Array, width: number, x: number, y: number) =>
+	map[y * width + x] ?? 0
+
+const applyForestClearingsToNodes = (
+	nodes: MapResourceNode[],
+	tiles: Uint16Array,
+	width: number,
+	height: number,
+	seed: number,
+	spawn: { x: number; y: number } | null,
+	densityMap: Float32Array,
+	densityThreshold: number
+) => {
+	if (nodes.length === 0) return nodes
+
+	const clearingCount = Math.max(
+		FOREST_CLEARING_COUNT_MIN,
+		Math.round(
+			lerp(
+				FOREST_CLEARING_COUNT_MIN,
+				FOREST_CLEARING_COUNT_MAX,
+				hash2D(7, 23, seed + 181)
+			)
+		)
+	)
+	const centers: { x: number; y: number }[] = []
+	const minSepSq = FOREST_CLEARING_MIN_SEPARATION * FOREST_CLEARING_MIN_SEPARATION
+	const edgeBuffer = FOREST_CLEARING_EDGE_BUFFER
+	let tries = 0
+	const maxTries = clearingCount * 160
+
+	while (centers.length < clearingCount && tries < maxTries) {
+		const cx = Math.floor(hash2D(tries, 193, seed + 197) * width)
+		const cy = Math.floor(hash2D(tries, 211, seed + 223) * height)
+		tries += 1
+		if (cx < edgeBuffer || cy < edgeBuffer || cx >= width - edgeBuffer || cy >= height - edgeBuffer) {
+			continue
+		}
+		if (!isForestCandidate(tiles, width, height, cx, cy, spawn)) continue
+		const density = getForestDensity(densityMap, width, cx, cy)
+		if (!isForestDensityAllowed(density, densityThreshold)) continue
+		let tooClose = false
+		for (const center of centers) {
+			const dx = cx - center.x
+			const dy = cy - center.y
+			if (dx * dx + dy * dy < minSepSq) {
+				tooClose = true
+				break
+			}
+		}
+		if (tooClose) continue
+		centers.push({ x: cx, y: cy })
+	}
+
+	const clearingMask = new Uint8Array(width * height)
+
+	for (let i = 0; i < centers.length; i += 1) {
+		const center = centers[i]
+		const targetSize = Math.round(
+			lerp(
+				FOREST_CLEARING_SIZE_MIN,
+				FOREST_CLEARING_SIZE_MAX,
+				hash2D(i, 229, seed + 239)
+			)
+		)
+		const frontier: { x: number; y: number }[] = [center]
+		const visited = new Uint8Array(width * height)
+		let cleared = 0
+
+		while (frontier.length > 0 && cleared < targetSize) {
+			const pick = Math.floor(
+				hash2D(frontier.length, cleared, seed + 601 + i * 37) * frontier.length
+			)
+			const current = frontier.splice(pick, 1)[0]
+			const index = current.y * width + current.x
+			if (visited[index]) continue
+			visited[index] = 1
+			if (!isForestCandidate(tiles, width, height, current.x, current.y, spawn)) continue
+			const density = getForestDensity(densityMap, width, current.x, current.y)
+			if (!isForestDensityAllowed(density, densityThreshold)) continue
+
+			clearingMask[index] = 1
+			cleared += 1
+
+			const jitter = hash2D(current.x, current.y, seed + 907 + i * 13)
+			const offsets = jitter < 0.5 ? neighborOffsets8 : [...neighborOffsets8].reverse()
+			for (const offset of offsets) {
+				const nx = current.x + offset.x
+				const ny = current.y + offset.y
+				if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue
+				const nextIndex = ny * width + nx
+				if (visited[nextIndex]) continue
+				frontier.push({ x: nx, y: ny })
+			}
+		}
+	}
+
+	return nodes.filter((node) => !clearingMask[node.position.y * width + node.position.x])
+}
+
+const computeForestDensityThresholds = (
+	tiles: Uint16Array,
+	width: number,
+	height: number,
+	spawn: { x: number; y: number } | null,
+	densityMap: Float32Array
+) => {
+	const values: number[] = []
+	for (let y = 0; y < height; y += 1) {
+		for (let x = 0; x < width; x += 1) {
+			if (!isForestCandidate(tiles, width, height, x, y, spawn)) continue
+			values.push(getForestDensity(densityMap, width, x, y))
+		}
+	}
+	if (values.length === 0) {
+		return { allowed: 1, seed: 1, scatter: 1 }
+	}
+	values.sort((a, b) => a - b)
+	const pickTop = (fraction: number) => {
+		const index = Math.max(0, Math.min(values.length - 1, Math.floor((1 - fraction) * (values.length - 1))))
+		return values[index]
+	}
+	const allowed = pickTop(FOREST_DENSITY_ALLOWED_PERCENTILE)
+	const seed = Math.max(allowed, pickTop(FOREST_DENSITY_SEED_PERCENTILE))
+	const scatter = Math.min(allowed, pickTop(FOREST_DENSITY_SCATTER_PERCENTILE))
+	return { allowed, seed, scatter }
+}
+
+const isForestDensityAllowed = (density: number, threshold: number) => density >= threshold
+
+const getForestDensityChance = (
+	density: number,
+	threshold: number,
+	minChance: number,
+	maxChance: number
+) => {
+	if (density <= threshold) return 0
+	const t = clamp((density - threshold) / Math.max(1e-6, 1 - threshold), 0, 1)
+	return lerp(minChance, maxChance, t)
+}
+
 const findForestSeed = (
 	tiles: Uint16Array,
 	width: number,
 	height: number,
 	seed: number,
 	spawn: { x: number; y: number } | null,
-	maxTries: number
+	maxTries: number,
+	densityMap: Float32Array,
+	densityThreshold: number
 ): { x: number; y: number } | null => {
 	for (let i = 0; i < maxTries; i += 1) {
 		const nx = Math.floor(hash2D(i, 149, seed) * width)
 		const ny = Math.floor(hash2D(i, 163, seed) * height)
 		if (isForestCandidate(tiles, width, height, nx, ny, spawn)) {
+			const density = getForestDensity(densityMap, width, nx, ny)
+			if (!isForestDensityAllowed(density, densityThreshold)) {
+				continue
+			}
 			return { x: nx, y: ny }
 		}
 	}
@@ -611,7 +863,9 @@ const growForestCluster = (
 	targetCount: number,
 	occupied: Uint8Array,
 	spawn: { x: number; y: number } | null,
-	start: { x: number; y: number }
+	start: { x: number; y: number },
+	densityMap: Float32Array,
+	densityThreshold: number
 ): { x: number; y: number }[] => {
 	if (targetCount <= 0) return []
 	const visited = new Uint8Array(tiles.length)
@@ -623,6 +877,8 @@ const growForestCluster = (
 	const startIndex = start.y * width + start.x
 	if (occupied[startIndex]) return []
 	if (!isForestCandidate(tiles, width, height, start.x, start.y, spawn)) return []
+	const startDensity = getForestDensity(densityMap, width, start.x, start.y)
+	if (!isForestDensityAllowed(startDensity, densityThreshold)) return []
 
 	visited[startIndex] = 1
 	occupied[startIndex] = 1
@@ -646,8 +902,16 @@ const growForestCluster = (
 
 			const dist = current.dist + 1
 			const distFactor = clamp(1 - dist / maxDist, 0, 1)
+			const density = getForestDensity(densityMap, width, nx, ny)
+			if (!isForestDensityAllowed(density, densityThreshold)) continue
 			const noise = hash2D(nx, ny, seed + 71)
-			const chance = 0.35 + distFactor * 0.5
+			const densityChance = getForestDensityChance(
+				density,
+				densityThreshold,
+				FOREST_DENSITY_CLUSTER_MIN_CHANCE,
+				FOREST_DENSITY_CLUSTER_MAX_CHANCE
+			)
+			const chance = Math.min(0.99, (0.2 + distFactor * 0.7) * densityChance)
 			if (noise > chance) continue
 
 			occupied[index] = 1
@@ -668,12 +932,16 @@ const generateForestNodes = (
 	stats: Record<GroundType, number>,
 	spawn: { x: number; y: number } | null
 ): MapResourceNode[] => {
-	const totalTiles = width * height
-	const nonMountain = totalTiles - (stats.mountain ?? 0)
-	if (nonMountain <= 0) return []
+	const densityMap = buildForestDensityMap(width, height, seed + 119)
+	const densityThresholds = computeForestDensityThresholds(tiles, width, height, spawn, densityMap)
+	const candidates: { x: number; y: number; density: number }[] = []
 
-	const targetTotal = Math.max(0, Math.round(nonMountain * FOREST_COVERAGE))
-	if (targetTotal === 0) return []
+	for (let y = 0; y < height; y += 1) {
+		for (let x = 0; x < width; x += 1) {
+			if (!isForestCandidate(tiles, width, height, x, y, spawn)) continue
+			candidates.push({ x, y, density: getForestDensity(densityMap, width, x, y) })
+		}
+	}
 
 	const clusterCount = Math.max(
 		FOREST_CLUSTER_MIN,
@@ -682,17 +950,38 @@ const generateForestNodes = (
 
 	const occupied = new Uint8Array(tiles.length)
 	const nodes: MapResourceNode[] = []
-	let remaining = targetTotal
-	let clusteredRemaining = Math.round(targetTotal * FOREST_CLUSTER_FRACTION)
+
+	for (const candidate of candidates) {
+		const chance = lerp(
+			FOREST_DENSITY_SCATTER_MIN_CHANCE,
+			FOREST_DENSITY_SCATTER_MAX_CHANCE,
+			candidate.density
+		)
+		if (hash2D(candidate.x, candidate.y, seed + 575) < chance) {
+			const index = candidate.y * width + candidate.x
+			occupied[index] = 1
+			nodes.push({ nodeType: 'tree', position: { x: candidate.x, y: candidate.y }, tileBased: true })
+		}
+	}
+	let clusteredRemaining = Math.round(nodes.length * FOREST_CLUSTER_FRACTION)
 
 	for (let cluster = 0; cluster < clusterCount && clusteredRemaining > 0; cluster += 1) {
 		const clustersLeft = clusterCount - cluster
 		const noise = hash2D(cluster, 19, seed + 303)
 		const clusterTarget = Math.max(
 			FOREST_MIN_CLUSTER,
-			Math.floor((clusteredRemaining / clustersLeft) * lerp(0.75, 1.35, noise))
+			Math.floor((clusteredRemaining / clustersLeft) * lerp(0.55, 1.15, noise))
 		)
-		const seedSpot = findForestSeed(tiles, width, height, seed + 401 + cluster * 17, spawn, 260)
+		const seedSpot = findForestSeed(
+			tiles,
+			width,
+			height,
+			seed + 401 + cluster * 17,
+			spawn,
+			260,
+			densityMap,
+			densityThresholds.seed
+		)
 		if (!seedSpot) continue
 		const positions = growForestCluster(
 			tiles,
@@ -702,38 +991,29 @@ const generateForestNodes = (
 			Math.min(clusterTarget, clusteredRemaining),
 			occupied,
 			spawn,
-			seedSpot
+			seedSpot,
+			densityMap,
+			densityThresholds.allowed
 		)
 		for (const pos of positions) {
 			nodes.push({ nodeType: 'tree', position: pos, tileBased: true })
 		}
 		clusteredRemaining -= positions.length
-		remaining -= positions.length
 	}
 
-	if (remaining > 0) {
-		let tries = 0
-		const maxTries = remaining * 12
-		while (remaining > 0 && tries < maxTries) {
-			const nx = Math.floor(hash2D(tries, 211, seed + 701) * width)
-			const ny = Math.floor(hash2D(tries, 227, seed + 709) * height)
-			const index = ny * width + nx
-			if (!occupied[index] && isForestCandidate(tiles, width, height, nx, ny, spawn)) {
-				const noise = hash2D(nx, ny, seed + 811)
-				if (noise < 0.55) {
-					occupied[index] = 1
-					nodes.push({ nodeType: 'tree', position: { x: nx, y: ny }, tileBased: true })
-					remaining -= 1
-				}
-			}
-			tries += 1
-		}
-	}
-
-	return nodes
+	return applyForestClearingsToNodes(
+		nodes,
+		tiles,
+		width,
+		height,
+		seed + 859,
+		spawn,
+		densityMap,
+		densityThresholds.allowed
+	)
 }
 
-const buildForestMask = (nodes: MapResourceNode[], width: number, height: number) => {
+const buildResourceMask = (nodes: MapResourceNode[], width: number, height: number) => {
 	const mask = new Uint8Array(width * height)
 	for (const node of nodes) {
 		const x = node.position.x
@@ -742,6 +1022,67 @@ const buildForestMask = (nodes: MapResourceNode[], width: number, height: number
 		mask[y * width + x] = 1
 	}
 	return mask
+}
+
+const buildForestMask = (nodes: MapResourceNode[], width: number, height: number) =>
+	buildResourceMask(nodes, width, height)
+
+const ensureResourceSpacing = (
+	nodes: MapResourceNode[],
+	width: number,
+	height: number,
+	radius = 1
+): MapResourceNode[] => {
+	if (nodes.length <= 1) return nodes
+	const mask = new Uint8Array(width * height)
+	const kept: MapResourceNode[] = []
+	for (const node of nodes) {
+		const x = node.position.x
+		const y = node.position.y
+		if (x < 0 || y < 0 || x >= width || y >= height) continue
+		if (hasNearbyResource(mask, width, height, x, y, radius)) {
+			continue
+		}
+		mask[y * width + x] = 1
+		kept.push(node)
+	}
+	return kept
+}
+
+const hasNearbyResource = (
+	mask: Uint8Array | null | undefined,
+	width: number,
+	height: number,
+	x: number,
+	y: number,
+	radius: number
+) => {
+	if (!mask) return false
+	const index = y * width + x
+	if (mask[index]) return true
+	const limit = Math.ceil(radius)
+	const radiusSq = radius * radius
+	for (let dy = -limit; dy <= limit; dy += 1) {
+		for (let dx = -limit; dx <= limit; dx += 1) {
+			if (dx === 0 && dy === 0) continue
+			if (dx * dx + dy * dy > radiusSq) continue
+			const nx = x + dx
+			const ny = y + dy
+			if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue
+			if (mask[ny * width + nx]) return true
+		}
+	}
+	return false
+}
+
+const hasAdjacentResource = (
+	mask: Uint8Array | null | undefined,
+	width: number,
+	height: number,
+	x: number,
+	y: number
+) => {
+	return hasNearbyResource(mask, width, height, x, y, 1)
 }
 
 const buildForestDensity = (mask: Uint8Array, width: number, height: number, radius: number) => {
@@ -866,7 +1207,8 @@ const generateFishNodes = (
 	width: number,
 	height: number,
 	seed: number,
-	lakeMask: Uint8Array
+	lakeMask: Uint8Array,
+	avoidMask?: Uint8Array | null
 ): MapResourceNode[] => {
 	const lakeIndices: number[] = []
 	for (let i = 0; i < lakeMask.length; i += 1) {
@@ -905,7 +1247,7 @@ const generateFishNodes = (
 		const pick = lakeIndices[Math.floor(hash2D(tries, 331, seed) * lakeIndices.length)]
 		const x = pick % width
 		const y = Math.floor(pick / width)
-		if (!fishMask[pick] && !isFishNearby(x, y)) {
+		if (!fishMask[pick] && !isFishNearby(x, y) && !hasAdjacentResource(avoidMask, width, height, x, y)) {
 			fishMask[pick] = 1
 			nodes.push({ nodeType: 'fish', position: { x, y }, tileBased: true })
 			placed += 1
@@ -1011,7 +1353,8 @@ const growStoneCluster = (
 	seed: number,
 	targetCount: number,
 	occupied: Uint8Array,
-	startIndex: number
+	startIndex: number,
+	blockedMask?: Uint8Array | null
 ): { x: number; y: number }[] => {
 	if (targetCount <= 0) return []
 	const visited = new Uint8Array(tiles.length)
@@ -1024,7 +1367,7 @@ const growStoneCluster = (
 		if (currentIndex == null) break
 		const cx = currentIndex % width
 		const cy = Math.floor(currentIndex / width)
-		if (!occupied[currentIndex]) {
+		if (!occupied[currentIndex] && !hasAdjacentResource(blockedMask, width, height, cx, cy)) {
 			occupied[currentIndex] = 1
 			positions.push({ x: cx, y: cy })
 			if (positions.length >= targetCount) break
@@ -1050,7 +1393,8 @@ const generateStoneNodes = (
 	width: number,
 	height: number,
 	seed: number,
-	spawn: { x: number; y: number } | null
+	spawn: { x: number; y: number } | null,
+	avoidMask?: Uint8Array | null
 ): MapResourceNode[] => {
 	const rockIndices: number[] = []
 	for (let i = 0; i < tiles.length; i += 1) {
@@ -1082,7 +1426,8 @@ const generateStoneNodes = (
 				seed + 67,
 				clusterTarget,
 				occupied,
-				seedIndex
+				seedIndex,
+				avoidMask
 			)
 			for (const pos of positions) {
 				nodes.push({ nodeType: 'stone_deposit', position: pos, tileBased: true })
@@ -1110,7 +1455,8 @@ const generateStoneNodes = (
 			seed + 83 + attempts * 11,
 			Math.min(clusterTarget, remaining),
 			occupied,
-			seedIndex
+			seedIndex,
+			avoidMask
 		)
 		for (const pos of positions) {
 			nodes.push({ nodeType: 'stone_deposit', position: pos, tileBased: true })
@@ -1432,6 +1778,7 @@ export const generateMap = (config: MapGenConfig): MapGenResult => {
 	const tiles = new Uint16Array(width * height)
 	const heightValues = new Float32Array(width * height)
 	const ridgeValues = new Float32Array(width * height)
+	const waterDepthValues = new Float32Array(width * height)
 
 	const seedBase = hashString(config.seed || 'settlerpolis')
 	const heightSeed = seedBase + 11
@@ -1450,7 +1797,7 @@ export const generateMap = (config: MapGenConfig): MapGenResult => {
 
 	const baseScale = lerp(0.9, 2.6, roughness01)
 	const detailScale = lerp(1.6, 4.4, roughness01)
-	const ridgeWeight = lerp(0.2, 0.38, roughness01)
+const ridgeWeight = lerp(0.12, 0.26, roughness01)
 	const widthInv = 1 / width
 	const heightInv = 1 / height
 
@@ -1498,17 +1845,20 @@ export const generateMap = (config: MapGenConfig): MapGenResult => {
 				1
 			)
 
-			const mountainLevel = 0.82 - mountainBias * 0.12 + edgeFalloff * COAST_MOUNTAIN_PUSH
-			const mountainRidge = 0.8 - mountainBias * 0.08 + edgeFalloff * (COAST_MOUNTAIN_PUSH * 0.8)
+			const mountainLevel = 0.89 - mountainBias * 0.06 + edgeFalloff * (COAST_MOUNTAIN_PUSH * 0.45)
+			const mountainRidge = 0.89 - mountainBias * 0.05 + edgeFalloff * (COAST_MOUNTAIN_PUSH * 0.4)
 			const beachLevel = seaLevel + 0.035
 			const mudMoisture = 0.74 + (1 - grassBias) * 0.06
 			const mudHeight = seaLevel + 0.12
 			const dirtMoisture = 0.38 - grassBias * 0.18
 			const sandMoisture = 0.28 - grassBias * 0.1
 
+			const idx = y * width + x
+			const depth = seaLevel - lakeHeight + edgeFalloff * 0.08
+			waterDepthValues[idx] = depth
+
 			let type: GroundType
 			if (lakeHeight < seaLevel) {
-				const depth = seaLevel - lakeHeight + edgeFalloff * 0.08
 				const deepThreshold = 0.07 - edgeFalloff * 0.05
 				type = depth > deepThreshold ? 'water_deep' : 'water_shallow'
 			} else if (heightValue > mountainLevel || ridgeNoise > mountainRidge) {
@@ -1523,7 +1873,6 @@ export const generateMap = (config: MapGenConfig): MapGenResult => {
 				type = 'grass'
 			}
 
-			const idx = y * width + x
 			tiles[idx] = GID_BY_TYPE[type]
 			heightValues[idx] = heightValue
 			ridgeValues[idx] = ridgeNoise
@@ -1533,6 +1882,33 @@ export const generateMap = (config: MapGenConfig): MapGenResult => {
 				maxHeightIndex = idx
 			}
 		}
+	}
+
+	for (let pass = 0; pass < MOUNTAIN_ERODE_PASSES; pass += 1) {
+		const nextTiles = new Uint16Array(tiles)
+		for (let y = 0; y < height; y += 1) {
+			for (let x = 0; x < width; x += 1) {
+				const idx = y * width + x
+				if (tiles[idx] !== GID_BY_TYPE.mountain) continue
+				let neighbors = 0
+				for (const offset of neighborOffsets8) {
+					const nx = x + offset.x
+					const ny = y + offset.y
+					if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue
+					if (tiles[ny * width + nx] === GID_BY_TYPE.mountain) {
+						neighbors += 1
+					}
+				}
+				if (
+					neighbors < MOUNTAIN_EDGE_NEIGHBORS_MIN &&
+					ridgeValues[idx] < MOUNTAIN_RIDGE_KEEP &&
+					heightValues[idx] < MOUNTAIN_HEIGHT_KEEP
+				) {
+					nextTiles[idx] = GID_BY_TYPE.rock
+				}
+			}
+		}
+		tiles.set(nextTiles)
 	}
 
 	const lakeAreaScale = clamp((width * height) / (512 * 512), 0.6, 1.8)
@@ -1828,21 +2204,35 @@ export const generateMap = (config: MapGenConfig): MapGenResult => {
 		stats = computeStats(tiles)
 	}
 
-	const heightMap = buildMountainHeightMap(
+	const heightMap = buildTerrainHeightMap(
 		tiles,
 		width,
 		height,
 		heightValues,
 		ridgeValues,
+		waterDepthValues,
 		mountainBias
 	)
 
-	const forestNodes = generateForestNodes(tiles, width, height, seedBase + 1201, stats, spawn)
-	const resourceNodes = [
-		...forestNodes,
-		...generateFishNodes(tiles, width, height, seedBase + 1301, lakeMask),
-		...generateStoneNodes(tiles, width, height, seedBase + 1401, spawn)
-	]
+	const forestNodes = ensureResourceSpacing(
+		generateForestNodes(tiles, width, height, seedBase + 1201, stats, spawn),
+		width,
+		height,
+		FOREST_MIN_SPACING
+	)
+	const forestMask = buildResourceMask(forestNodes, width, height)
+	const fishNodes = generateFishNodes(tiles, width, height, seedBase + 1301, lakeMask, forestMask)
+	const fishMask = buildResourceMask(fishNodes, width, height)
+	const blockedMask = new Uint8Array(forestMask.length)
+	for (let i = 0; i < blockedMask.length; i += 1) {
+		blockedMask[i] = forestMask[i] || fishMask[i] ? 1 : 0
+	}
+	const stoneNodes = ensureResourceSpacing(
+		generateStoneNodes(tiles, width, height, seedBase + 1401, spawn, blockedMask),
+		width,
+		height
+	)
+	const resourceNodes = [...forestNodes, ...fishNodes, ...stoneNodes]
 	const deerSpawns = generateDeerSpawns(forestNodes, width, height)
 
 	return {

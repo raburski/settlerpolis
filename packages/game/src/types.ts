@@ -1,4 +1,4 @@
-import { ItemMetadata } from './Items/types'
+import { ItemMetadata, ItemRenderDefinition } from './Items/types'
 import { Quest } from './Quest/types'
 import { AffinitySentiments } from './Affinity/types'
 import { Cutscene } from './Cutscene/types'
@@ -60,6 +60,7 @@ export interface GameContent {
 	resourceNodeDefinitions?: ResourceNodeDefinition[]
 	resourceNodes?: ResourceNodeSpawn[]
 	resourceNodeRenders?: ResourceNodeRenderDefinition[]
+	itemRenders?: ItemRenderDefinition[]
 }
 
 export interface Position {

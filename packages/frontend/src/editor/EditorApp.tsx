@@ -6,6 +6,24 @@ type Vec2 = { x: number; y: number }
 
 type Vec3 = { x: number; y: number; z: number }
 
+type ResourceNodeRenderVariant = {
+	modelSrc: string
+	weight?: number
+	transform?: {
+		rotation?: Vec3
+		scale?: Vec3
+		elevation?: number
+	}
+}
+
+type ResourceNodeRenderVariantState = {
+	modelSrc: string
+	weight: number
+	rotationDeg: Vec3
+	scale: Vec3
+	elevation: number
+}
+
 type ResourceNodeRenderDefinition = {
 	id: string
 	footprint?: { width: number; height?: number; length?: number }
@@ -17,6 +35,57 @@ type ResourceNodeRenderDefinition = {
 			elevation?: number
 		}
 	}
+	renders?: ResourceNodeRenderVariant[]
+}
+
+type ItemRenderVariant = {
+	modelSrc: string
+	weight?: number
+	transform?: {
+		rotation?: Vec3
+		scale?: Vec3
+		elevation?: number
+	}
+}
+
+type ItemRenderVariantState = {
+	modelSrc: string
+	weight: number
+	rotationDeg: Vec3
+	scale: Vec3
+	elevation: number
+}
+
+type ItemRenderDefinition = {
+	id: string
+	footprint?: { width: number; height?: number; length?: number }
+	render?: {
+		modelSrc?: string
+		transform?: {
+			rotation?: Vec3
+			scale?: Vec3
+			elevation?: number
+		}
+	}
+	renders?: ItemRenderVariant[]
+}
+
+type BuildingRenderVariant = {
+	modelSrc: string
+	weight?: number
+	transform?: {
+		rotation?: Vec3
+		scale?: Vec3
+		elevation?: number
+	}
+}
+
+type BuildingRenderVariantState = {
+	modelSrc: string
+	weight: number
+	rotationDeg: Vec3
+	scale: Vec3
+	elevation: number
 }
 
 const DEFAULT_ASSET_ID = 'building_model'
@@ -27,7 +96,7 @@ const content = contentModules[`../../../../content/${CONTENT_FOLDER}/index.ts`]
 
 export function EditorApp() {
 	const sceneRef = useRef<EditorScene | null>(null)
-	const [editorMode, setEditorMode] = useState<'building' | 'resource'>('building')
+	const [editorMode, setEditorMode] = useState<'building' | 'resource' | 'item'>('building')
 	const [assetId, setAssetId] = useState(DEFAULT_ASSET_ID)
 	const [assetPath, setAssetPath] = useState(DEFAULT_ASSET_PATH)
 	const [footprint, setFootprint] = useState({ width: 2, length: 2 })
@@ -47,16 +116,25 @@ export function EditorApp() {
 	const [resourceScale, setResourceScale] = useState<Vec3>({ x: 1, y: 1, z: 1 })
 	const [resourceElevation, setResourceElevation] = useState(0)
 	const [resourceLoadError, setResourceLoadError] = useState<string | null>(null)
+	const [itemAssetPath, setItemAssetPath] = useState(DEFAULT_ASSET_PATH)
+	const [itemFootprint, setItemFootprint] = useState({ width: 1, length: 1 })
+	const [itemPosition, setItemPosition] = useState<Vec2>({ x: 0, y: 0 })
+	const [itemRotationDeg, setItemRotationDeg] = useState<Vec3>({ x: 0, y: 0, z: 0 })
+	const [itemScale, setItemScale] = useState<Vec3>({ x: 1, y: 1, z: 1 })
+	const [itemElevation, setItemElevation] = useState(0)
+	const [itemLoadError, setItemLoadError] = useState<string | null>(null)
 	const [showHelp, setShowHelp] = useState(false)
 	const [pickMode, setPickMode] = useState<'position' | 'entry' | 'center' | 'access' | 'blocked'>('position')
 	const [assetOptions, setAssetOptions] = useState<string[]>([])
 	const [assetIndexError, setAssetIndexError] = useState<string | null>(null)
 	const [selectedAsset, setSelectedAsset] = useState('')
 	const [selectedResourceAsset, setSelectedResourceAsset] = useState('')
+	const [selectedItemAsset, setSelectedItemAsset] = useState('')
 	const [assetOpen, setAssetOpen] = useState(false)
 	const [selectedBuildingId, setSelectedBuildingId] = useState('')
 	const [definitionDraft, setDefinitionDraft] = useState<Record<string, any> | null>(null)
 	const [selectedResourceId, setSelectedResourceId] = useState('')
+	const [selectedItemId, setSelectedItemId] = useState('')
 	const [storageSlots, setStorageSlots] = useState<StorageSlot[]>([])
 	const [storageOpen, setStorageOpen] = useState(false)
 	const [footprintOpen, setFootprintOpen] = useState(false)
@@ -72,13 +150,24 @@ export function EditorApp() {
 	const [resourceFileStatus, setResourceFileStatus] = useState('')
 	const [resourceRenderDefinitions, setResourceRenderDefinitions] = useState<ResourceNodeRenderDefinition[]>([])
 	const [resourceRenderError, setResourceRenderError] = useState<string | null>(null)
+	const [resourceModelVariants, setResourceModelVariants] = useState<ResourceNodeRenderVariantState[]>([])
+	const [activeResourceVariantIndex, setActiveResourceVariantIndex] = useState<number | null>(null)
+	const [itemFileHandle, setItemFileHandle] = useState<FileSystemFileHandle | null>(null)
+	const [itemFileStatus, setItemFileStatus] = useState('')
+	const [itemRenderDefinitions, setItemRenderDefinitions] = useState<ItemRenderDefinition[]>([])
+	const [itemRenderError, setItemRenderError] = useState<string | null>(null)
+	const [itemModelVariants, setItemModelVariants] = useState<ItemRenderVariantState[]>([])
+	const [activeItemVariantIndex, setActiveItemVariantIndex] = useState<number | null>(null)
+	const [buildingModelVariants, setBuildingModelVariants] = useState<BuildingRenderVariantState[]>([])
+	const [activeBuildingVariantIndex, setActiveBuildingVariantIndex] = useState<number | null>(null)
 	const hasDefinition = Boolean(definitionDraft)
 	const supportsFilePicker = typeof window !== 'undefined' && 'showOpenFilePicker' in window
 	const isBuildingMode = editorMode === 'building'
 	const isResourceMode = editorMode === 'resource'
-	const activeFootprint = isResourceMode ? resourceFootprint : footprint
-	const activePosition = isResourceMode ? resourcePosition : position
-	const activeLoadError = isResourceMode ? resourceLoadError : loadError
+	const isItemMode = editorMode === 'item'
+	const activeFootprint = isResourceMode ? resourceFootprint : isItemMode ? itemFootprint : footprint
+	const activePosition = isResourceMode ? resourcePosition : isItemMode ? itemPosition : position
+	const activeLoadError = isResourceMode ? resourceLoadError : isItemMode ? itemLoadError : loadError
 
 	const buildingDefinitions = useMemo(() => {
 		const definitions = (content as { buildings?: Array<Record<string, any>> })?.buildings
@@ -113,6 +202,29 @@ export function EditorApp() {
 		return map
 	}, [itemOptions])
 
+	const itemRenderMap = useMemo(() => {
+		const map = new Map<string, ItemRenderDefinition>()
+		itemRenderDefinitions.forEach((definition) => {
+			if (definition?.id) {
+				map.set(definition.id, definition)
+			}
+		})
+		return map
+	}, [itemRenderDefinitions])
+
+	const previewStorageSlots = useMemo(() => {
+		if (itemRenderMap.size === 0) {
+			return storageSlots
+		}
+		return storageSlots.map((slot) => {
+			const definition = itemRenderMap.get(slot.itemType)
+			if (!definition) return slot
+			const render = resolveItemPreviewRender(definition)
+			if (!render) return slot
+			return { ...slot, render }
+		})
+	}, [itemRenderMap, storageSlots])
+
 	const handleSceneReady = useCallback((scene: EditorScene | null) => {
 		sceneRef.current = scene
 		setSceneReady(Boolean(scene))
@@ -135,6 +247,10 @@ export function EditorApp() {
 		scene.setPickHandler((gridPosition) => {
 			if (isResourceMode) {
 				setResourcePosition(gridPosition)
+				return
+			}
+			if (isItemMode) {
+				setItemPosition(gridPosition)
 				return
 			}
 			if (pickMode === 'entry') {
@@ -171,7 +287,7 @@ export function EditorApp() {
 			}
 			setPosition(gridPosition)
 		})
-	}, [isResourceMode, pickMode, position.x, position.y, toggleTileOffset])
+	}, [isItemMode, isResourceMode, pickMode, position.x, position.y, toggleTileOffset])
 
 	const rotationRad = useMemo(
 		() => ({
@@ -189,6 +305,15 @@ export function EditorApp() {
 			z: toRadians(resourceRotationDeg.z)
 		}),
 		[resourceRotationDeg]
+	)
+
+	const itemRotationRad = useMemo(
+		() => ({
+			x: toRadians(itemRotationDeg.x),
+			y: toRadians(itemRotationDeg.y),
+			z: toRadians(itemRotationDeg.z)
+		}),
+		[itemRotationDeg]
 	)
 
 	useEffect(() => {
@@ -225,31 +350,51 @@ export function EditorApp() {
 				blockedTiles: []
 			}
 		}
+		if (isItemMode) {
+			return {
+				footprint: itemFootprint,
+				position: itemPosition,
+				rotation: itemRotationRad,
+				scale: itemScale,
+				elevation: itemElevation,
+				storageSlots: [],
+				entryPoint: null,
+				centerPoint: null,
+				accessTiles: [],
+				blockedTiles: []
+			}
+		}
 		return {
 			footprint,
 			position,
 			rotation: rotationRad,
 			scale,
 			elevation,
-			storageSlots,
+			storageSlots: previewStorageSlots,
 			entryPoint,
 			centerPoint,
 			accessTiles,
 			blockedTiles
 		}
 	}, [
+		isItemMode,
 		isResourceMode,
+		itemElevation,
+		itemFootprint,
+		itemPosition,
+		itemRotationRad,
+		itemScale,
+		resourceElevation,
 		resourceFootprint,
 		resourcePosition,
 		resourceRotationRad,
 		resourceScale,
-		resourceElevation,
 		footprint,
 		position,
 		rotationRad,
 		scale,
 		elevation,
-		storageSlots,
+		previewStorageSlots,
 		entryPoint,
 		centerPoint,
 		accessTiles,
@@ -261,10 +406,10 @@ export function EditorApp() {
 	}, [placement])
 
 	useEffect(() => {
-		if (isResourceMode && pickMode !== 'position') {
+		if ((isResourceMode || isItemMode) && pickMode !== 'position') {
 			setPickMode('position')
 		}
-	}, [isResourceMode, pickMode])
+	}, [isItemMode, isResourceMode, pickMode])
 
 	const isAutoTransparent = isEditingFields || pickMode === 'entry' || pickMode === 'center'
 	const isTransparent = manualTransparent || isAutoTransparent
@@ -310,14 +455,46 @@ export function EditorApp() {
 		}
 	}, [resourceAssetPath])
 
+	const handleLoadItemAsset = useCallback(async (nextPath?: string) => {
+		const normalized = normalizeAssetPath(nextPath ?? itemAssetPath)
+		setItemAssetPath(normalized)
+		if (!normalized) {
+			setItemLoadError(null)
+			await sceneRef.current?.loadAsset('')
+			return
+		}
+		if (!sceneRef.current) return
+		try {
+			setItemLoadError(null)
+			await sceneRef.current.loadAsset(normalized)
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Failed to load asset'
+			setItemLoadError(message)
+		}
+	}, [itemAssetPath])
+
 	useEffect(() => {
 		if (!sceneReady) return
 		if (isResourceMode) {
 			void handleLoadResourceAsset(resourceAssetPath)
-		} else {
-			void handleLoadAsset(assetPath)
+			return
 		}
-	}, [assetPath, handleLoadAsset, handleLoadResourceAsset, isResourceMode, resourceAssetPath, sceneReady])
+		if (isItemMode) {
+			void handleLoadItemAsset(itemAssetPath)
+			return
+		}
+		void handleLoadAsset(assetPath)
+	}, [
+		assetPath,
+		handleLoadAsset,
+		handleLoadItemAsset,
+		handleLoadResourceAsset,
+		isItemMode,
+		isResourceMode,
+		itemAssetPath,
+		resourceAssetPath,
+		sceneReady
+	])
 
 	const handleAddStorageSlot = useCallback(() => {
 		const defaultItem = itemOptions[0]?.id || ''
@@ -331,6 +508,438 @@ export function EditorApp() {
 			}
 		])
 	}, [itemEmojiMap, itemOptions])
+
+	const handleAddBuildingVariant = useCallback(() => {
+		const nextVariant: BuildingRenderVariantState = {
+			modelSrc: '',
+			weight: 1,
+			rotationDeg: { x: 0, y: 0, z: 0 },
+			scale: { x: 1, y: 1, z: 1 },
+			elevation: 0
+		}
+		const next = [...buildingModelVariants, nextVariant]
+		setBuildingModelVariants(next)
+		setActiveBuildingVariantIndex(next.length - 1)
+		setSelectedAsset('')
+		setAssetPath('')
+	}, [buildingModelVariants])
+
+	const updateBuildingVariant = useCallback(
+		(index: number, updates: Partial<BuildingRenderVariantState>) => {
+			setBuildingModelVariants((prev) =>
+				prev.map((entry, entryIndex) => {
+					if (entryIndex !== index) return entry
+					return { ...entry, ...updates }
+				})
+			)
+		},
+		[]
+	)
+
+	const selectBuildingVariant = useCallback(
+		(index: number) => {
+			const variant = buildingModelVariants[index]
+			if (!variant) return
+			setActiveBuildingVariantIndex(index)
+			setRotationDeg(variant.rotationDeg)
+			setScale(variant.scale)
+			setElevation(variant.elevation)
+			const modelSrc = variant.modelSrc || ''
+			setAssetPath(modelSrc)
+			if (modelSrc) {
+				if (assetOptions.includes(modelSrc)) {
+					setSelectedAsset(modelSrc)
+				} else {
+					setSelectedAsset('')
+				}
+				void handleLoadAsset(modelSrc)
+			} else {
+				setSelectedAsset('')
+			}
+		},
+		[assetOptions, buildingModelVariants, handleLoadAsset]
+	)
+
+	const removeBuildingVariant = useCallback(
+		(index: number) => {
+			const next = buildingModelVariants.filter((_, entryIndex) => entryIndex !== index)
+			setBuildingModelVariants(next)
+			if (next.length === 0) {
+				setActiveBuildingVariantIndex(null)
+				setSelectedAsset('')
+				setRotationDeg({ x: 0, y: 0, z: 0 })
+				setScale({ x: 1, y: 1, z: 1 })
+				setElevation(0)
+				void handleLoadAsset('')
+				return
+			}
+			if (activeBuildingVariantIndex === null) {
+				setActiveBuildingVariantIndex(null)
+				return
+			}
+			let nextIndex = activeBuildingVariantIndex
+			if (index === activeBuildingVariantIndex) {
+				nextIndex = Math.min(activeBuildingVariantIndex, next.length - 1)
+			} else if (index < activeBuildingVariantIndex) {
+				nextIndex = Math.max(0, activeBuildingVariantIndex - 1)
+			}
+			setActiveBuildingVariantIndex(nextIndex)
+			const variant = next[nextIndex]
+			if (variant) {
+				setRotationDeg(variant.rotationDeg)
+				setScale(variant.scale)
+				setElevation(variant.elevation)
+				const modelSrc = variant.modelSrc || ''
+				setAssetPath(modelSrc)
+				if (modelSrc) {
+					if (assetOptions.includes(modelSrc)) {
+						setSelectedAsset(modelSrc)
+					} else {
+						setSelectedAsset('')
+					}
+					void handleLoadAsset(modelSrc)
+				} else {
+					setSelectedAsset('')
+				}
+			}
+		},
+		[
+			activeBuildingVariantIndex,
+			assetOptions,
+			buildingModelVariants,
+			handleLoadAsset
+		]
+	)
+
+	const updateActiveBuildingRotation = useCallback(
+		(updates: Partial<Vec3>) => {
+			if (activeBuildingVariantIndex === null) {
+				setRotationDeg((prev) => ({ ...prev, ...updates }))
+				return
+			}
+			setRotationDeg((prev) => {
+				const next = { ...prev, ...updates }
+				updateBuildingVariant(activeBuildingVariantIndex, { rotationDeg: next })
+				return next
+			})
+		},
+		[activeBuildingVariantIndex, updateBuildingVariant]
+	)
+
+	const updateActiveBuildingScale = useCallback(
+		(updates: Partial<Vec3>) => {
+			if (activeBuildingVariantIndex === null) {
+				setScale((prev) => ({ ...prev, ...updates }))
+				return
+			}
+			setScale((prev) => {
+				const next = { ...prev, ...updates }
+				updateBuildingVariant(activeBuildingVariantIndex, { scale: next })
+				return next
+			})
+		},
+		[activeBuildingVariantIndex, updateBuildingVariant]
+	)
+
+	const updateActiveBuildingElevation = useCallback(
+		(value: number) => {
+			if (activeBuildingVariantIndex === null) {
+				setElevation(value)
+				return
+			}
+			setElevation(value)
+			updateBuildingVariant(activeBuildingVariantIndex, { elevation: value })
+		},
+		[activeBuildingVariantIndex, updateBuildingVariant]
+	)
+
+	const handleAddResourceVariant = useCallback(() => {
+		const nextVariant: ResourceNodeRenderVariantState = {
+			modelSrc: '',
+			weight: 1,
+			rotationDeg: { x: 0, y: 0, z: 0 },
+			scale: { x: 1, y: 1, z: 1 },
+			elevation: 0
+		}
+		const next = [...resourceModelVariants, nextVariant]
+		setResourceModelVariants(next)
+		setActiveResourceVariantIndex(next.length - 1)
+		setSelectedResourceAsset('')
+		setResourceAssetPath('')
+	}, [resourceModelVariants])
+
+	const updateResourceVariant = useCallback(
+		(index: number, updates: Partial<ResourceNodeRenderVariantState>) => {
+			setResourceModelVariants((prev) =>
+				prev.map((entry, entryIndex) => {
+					if (entryIndex !== index) return entry
+					return { ...entry, ...updates }
+				})
+			)
+		},
+		[]
+	)
+
+	const selectResourceVariant = useCallback(
+		(index: number) => {
+			const variant = resourceModelVariants[index]
+			if (!variant) return
+			setActiveResourceVariantIndex(index)
+			setResourceRotationDeg(variant.rotationDeg)
+			setResourceScale(variant.scale)
+			setResourceElevation(variant.elevation)
+			const modelSrc = variant.modelSrc || ''
+			setResourceAssetPath(modelSrc)
+			if (modelSrc) {
+				if (assetOptions.includes(modelSrc)) {
+					setSelectedResourceAsset(modelSrc)
+				} else {
+					setSelectedResourceAsset('')
+				}
+				void handleLoadResourceAsset(modelSrc)
+			} else {
+				setSelectedResourceAsset('')
+			}
+		},
+		[assetOptions, handleLoadResourceAsset, resourceModelVariants]
+	)
+
+	const removeResourceVariant = useCallback(
+		(index: number) => {
+			const next = resourceModelVariants.filter((_, entryIndex) => entryIndex !== index)
+			setResourceModelVariants(next)
+			if (next.length === 0) {
+				setActiveResourceVariantIndex(null)
+				setSelectedResourceAsset('')
+				setResourceRotationDeg({ x: 0, y: 0, z: 0 })
+				setResourceScale({ x: 1, y: 1, z: 1 })
+				setResourceElevation(0)
+				void handleLoadResourceAsset('')
+				return
+			}
+			if (activeResourceVariantIndex === null) {
+				setActiveResourceVariantIndex(null)
+				return
+			}
+			let nextIndex = activeResourceVariantIndex
+			if (index === activeResourceVariantIndex) {
+				nextIndex = Math.min(activeResourceVariantIndex, next.length - 1)
+			} else if (index < activeResourceVariantIndex) {
+				nextIndex = Math.max(0, activeResourceVariantIndex - 1)
+			}
+			setActiveResourceVariantIndex(nextIndex)
+			const variant = next[nextIndex]
+			if (variant) {
+				setResourceRotationDeg(variant.rotationDeg)
+				setResourceScale(variant.scale)
+				setResourceElevation(variant.elevation)
+				const modelSrc = variant.modelSrc || ''
+				setResourceAssetPath(modelSrc)
+				if (modelSrc) {
+					if (assetOptions.includes(modelSrc)) {
+						setSelectedResourceAsset(modelSrc)
+					} else {
+						setSelectedResourceAsset('')
+					}
+					void handleLoadResourceAsset(modelSrc)
+				} else {
+					setSelectedResourceAsset('')
+				}
+			}
+		},
+		[
+			activeResourceVariantIndex,
+			assetOptions,
+			handleLoadResourceAsset,
+			resourceModelVariants
+		]
+	)
+
+	const updateActiveResourceRotation = useCallback(
+		(updates: Partial<Vec3>) => {
+			if (activeResourceVariantIndex === null) {
+				setResourceRotationDeg((prev) => ({ ...prev, ...updates }))
+				return
+			}
+			setResourceRotationDeg((prev) => {
+				const next = { ...prev, ...updates }
+				updateResourceVariant(activeResourceVariantIndex, { rotationDeg: next })
+				return next
+			})
+		},
+		[activeResourceVariantIndex, updateResourceVariant]
+	)
+
+	const updateActiveResourceScale = useCallback(
+		(updates: Partial<Vec3>) => {
+			if (activeResourceVariantIndex === null) {
+				setResourceScale((prev) => ({ ...prev, ...updates }))
+				return
+			}
+			setResourceScale((prev) => {
+				const next = { ...prev, ...updates }
+				updateResourceVariant(activeResourceVariantIndex, { scale: next })
+				return next
+			})
+		},
+		[activeResourceVariantIndex, updateResourceVariant]
+	)
+
+	const updateActiveResourceElevation = useCallback(
+		(value: number) => {
+			if (activeResourceVariantIndex === null) {
+				setResourceElevation(value)
+				return
+			}
+			setResourceElevation(value)
+			updateResourceVariant(activeResourceVariantIndex, { elevation: value })
+		},
+		[activeResourceVariantIndex, updateResourceVariant]
+	)
+
+	const handleAddItemVariant = useCallback(() => {
+		const nextVariant: ItemRenderVariantState = {
+			modelSrc: '',
+			weight: 1,
+			rotationDeg: { x: 0, y: 0, z: 0 },
+			scale: { x: 1, y: 1, z: 1 },
+			elevation: 0
+		}
+		const next = [...itemModelVariants, nextVariant]
+		setItemModelVariants(next)
+		setActiveItemVariantIndex(next.length - 1)
+		setSelectedItemAsset('')
+		setItemAssetPath('')
+	}, [itemModelVariants])
+
+	const updateItemVariant = useCallback(
+		(index: number, updates: Partial<ItemRenderVariantState>) => {
+			setItemModelVariants((prev) =>
+				prev.map((entry, entryIndex) => {
+					if (entryIndex !== index) return entry
+					return { ...entry, ...updates }
+				})
+			)
+		},
+		[]
+	)
+
+	const selectItemVariant = useCallback(
+		(index: number) => {
+			const variant = itemModelVariants[index]
+			if (!variant) return
+			setActiveItemVariantIndex(index)
+			setItemRotationDeg(variant.rotationDeg)
+			setItemScale(variant.scale)
+			setItemElevation(variant.elevation)
+			const modelSrc = variant.modelSrc || ''
+			setItemAssetPath(modelSrc)
+			if (modelSrc) {
+				if (assetOptions.includes(modelSrc)) {
+					setSelectedItemAsset(modelSrc)
+				} else {
+					setSelectedItemAsset('')
+				}
+				void handleLoadItemAsset(modelSrc)
+			} else {
+				setSelectedItemAsset('')
+			}
+		},
+		[assetOptions, handleLoadItemAsset, itemModelVariants]
+	)
+
+	const removeItemVariant = useCallback(
+		(index: number) => {
+			const next = itemModelVariants.filter((_, entryIndex) => entryIndex !== index)
+			setItemModelVariants(next)
+			if (next.length === 0) {
+				setActiveItemVariantIndex(null)
+				setSelectedItemAsset('')
+				setItemRotationDeg({ x: 0, y: 0, z: 0 })
+				setItemScale({ x: 1, y: 1, z: 1 })
+				setItemElevation(0)
+				void handleLoadItemAsset('')
+				return
+			}
+			if (activeItemVariantIndex === null) {
+				setActiveItemVariantIndex(null)
+				return
+			}
+			let nextIndex = activeItemVariantIndex
+			if (index === activeItemVariantIndex) {
+				nextIndex = Math.min(activeItemVariantIndex, next.length - 1)
+			} else if (index < activeItemVariantIndex) {
+				nextIndex = Math.max(0, activeItemVariantIndex - 1)
+			}
+			setActiveItemVariantIndex(nextIndex)
+			const variant = next[nextIndex]
+			if (variant) {
+				setItemRotationDeg(variant.rotationDeg)
+				setItemScale(variant.scale)
+				setItemElevation(variant.elevation)
+				const modelSrc = variant.modelSrc || ''
+				setItemAssetPath(modelSrc)
+				if (modelSrc) {
+					if (assetOptions.includes(modelSrc)) {
+						setSelectedItemAsset(modelSrc)
+					} else {
+						setSelectedItemAsset('')
+					}
+					void handleLoadItemAsset(modelSrc)
+				} else {
+					setSelectedItemAsset('')
+				}
+			}
+		},
+		[
+			activeItemVariantIndex,
+			assetOptions,
+			handleLoadItemAsset,
+			itemModelVariants
+		]
+	)
+
+	const updateActiveItemRotation = useCallback(
+		(updates: Partial<Vec3>) => {
+			if (activeItemVariantIndex === null) {
+				setItemRotationDeg((prev) => ({ ...prev, ...updates }))
+				return
+			}
+			setItemRotationDeg((prev) => {
+				const next = { ...prev, ...updates }
+				updateItemVariant(activeItemVariantIndex, { rotationDeg: next })
+				return next
+			})
+		},
+		[activeItemVariantIndex, updateItemVariant]
+	)
+
+	const updateActiveItemScale = useCallback(
+		(updates: Partial<Vec3>) => {
+			if (activeItemVariantIndex === null) {
+				setItemScale((prev) => ({ ...prev, ...updates }))
+				return
+			}
+			setItemScale((prev) => {
+				const next = { ...prev, ...updates }
+				updateItemVariant(activeItemVariantIndex, { scale: next })
+				return next
+			})
+		},
+		[activeItemVariantIndex, updateItemVariant]
+	)
+
+	const updateActiveItemElevation = useCallback(
+		(value: number) => {
+			if (activeItemVariantIndex === null) {
+				setItemElevation(value)
+				return
+			}
+			setItemElevation(value)
+			updateItemVariant(activeItemVariantIndex, { elevation: value })
+		},
+		[activeItemVariantIndex, updateItemVariant]
+	)
 
 	const updateStorageSlot = useCallback((index: number, updates: Partial<StorageSlot>) => {
 		setStorageSlots((prev) =>
@@ -398,33 +1007,68 @@ export function EditorApp() {
 		const length = Number(footprintDef.height ?? footprintDef.length) || 1
 		setFootprint({ width, length })
 		setAssetId(draft.id || DEFAULT_ASSET_ID)
-		const render = draft.render || {}
-		const modelSrc = render.modelSrc || ''
-		setAssetPath(modelSrc)
-		if (modelSrc) {
-			if (assetOptions.includes(modelSrc)) {
-				setSelectedAsset(modelSrc)
+		const buildVariantState = (variant: BuildingRenderVariant): BuildingRenderVariantState => {
+			const transform = variant.transform || {}
+			const rotation = transform.rotation || { x: 0, y: 0, z: 0 }
+			return {
+				modelSrc: variant.modelSrc,
+				weight: typeof variant.weight === 'number' && Number.isFinite(variant.weight) ? variant.weight : 1,
+				rotationDeg: {
+					x: toDegrees(rotation.x || 0),
+					y: toDegrees(rotation.y || 0),
+					z: toDegrees(rotation.z || 0)
+				},
+				scale: {
+					x: transform.scale?.x ?? 1,
+					y: transform.scale?.y ?? 1,
+					z: transform.scale?.z ?? 1
+				},
+				elevation: transform.elevation ?? 0
+			}
+		}
+		const renderVariants = Array.isArray(draft.renders)
+			? draft.renders.filter((variant) => Boolean(variant?.modelSrc))
+			: []
+		const legacyRender = draft.render?.modelSrc
+			? [
+					{
+						modelSrc: draft.render.modelSrc,
+						weight: 1,
+						transform: draft.render.transform
+					}
+				]
+			: []
+		const nextVariants = (renderVariants.length > 0 ? renderVariants : legacyRender).map(buildVariantState)
+		setBuildingModelVariants(nextVariants)
+		if (nextVariants.length > 0) {
+			const first = nextVariants[0]
+			setActiveBuildingVariantIndex(0)
+			setRotationDeg(first.rotationDeg)
+			setScale(first.scale)
+			setElevation(first.elevation)
+			const modelSrc = first.modelSrc || ''
+			setAssetPath(modelSrc)
+			if (modelSrc) {
+				if (assetOptions.includes(modelSrc)) {
+					setSelectedAsset(modelSrc)
+				} else {
+					setSelectedAsset('')
+				}
+				void handleLoadAsset(modelSrc)
 			} else {
 				setSelectedAsset('')
+				setAssetOpen(true)
 			}
-			void handleLoadAsset(modelSrc)
 		} else {
+			setActiveBuildingVariantIndex(null)
+			setRotationDeg({ x: 0, y: 0, z: 0 })
+			setScale({ x: 1, y: 1, z: 1 })
+			setElevation(0)
+			setAssetPath('')
 			setSelectedAsset('')
 			setAssetOpen(true)
+			void handleLoadAsset('')
 		}
-		const transform = render.transform || {}
-		const rotation = transform.rotation || { x: 0, y: 0, z: 0 }
-		setRotationDeg({
-			x: toDegrees(rotation.x || 0),
-			y: toDegrees(rotation.y || 0),
-			z: toDegrees(rotation.z || 0)
-		})
-		setScale({
-			x: transform.scale?.x ?? 1,
-			y: transform.scale?.y ?? 1,
-			z: transform.scale?.z ?? 1
-		})
-		setElevation(transform.elevation ?? 0)
 		const entry = draft.entryPoint ?? draft.entry ?? null
 		if (entry && typeof entry === 'object') {
 			setEntryPoint({
@@ -489,18 +1133,28 @@ export function EditorApp() {
 			setStorageSlots([])
 			setAccessTiles([])
 			setBlockedTiles([])
+			setBuildingModelVariants([])
+			setActiveBuildingVariantIndex(null)
+			setAssetPath('')
+			setSelectedAsset('')
+			setRotationDeg({ x: 0, y: 0, z: 0 })
+			setScale({ x: 1, y: 1, z: 1 })
+			setElevation(0)
+			void handleLoadAsset('')
 			return
 		}
 		const draft = cloneDefinition(definition)
 		setDefinitionDraft(draft)
 		applyDefinitionToEditor(draft)
-	}, [applyDefinitionToEditor])
+	}, [applyDefinitionToEditor, handleLoadAsset])
 
 	const applyResourceRenderToEditor = useCallback((draft: ResourceNodeRenderDefinition | null) => {
 		if (!draft) {
 			setResourceFootprint({ width: 1, length: 1 })
 			setResourceAssetPath('')
 			setSelectedResourceAsset('')
+			setResourceModelVariants([])
+			setActiveResourceVariantIndex(null)
 			setResourceRotationDeg({ x: 0, y: 0, z: 0 })
 			setResourceScale({ x: 1, y: 1, z: 1 })
 			setResourceElevation(0)
@@ -510,33 +1164,45 @@ export function EditorApp() {
 		const width = Number(footprintDef.width) || 1
 		const length = Number(footprintDef.height ?? footprintDef.length) || 1
 		setResourceFootprint({ width, length })
-		const render = draft.render || {}
-		const modelSrc = render.modelSrc || ''
-		setResourceAssetPath(modelSrc)
-		if (modelSrc) {
-			if (assetOptions.includes(modelSrc)) {
-				setSelectedResourceAsset(modelSrc)
-			} else {
-				setSelectedResourceAsset('')
+		const buildVariantState = (variant: ResourceNodeRenderVariant): ResourceNodeRenderVariantState => {
+			const transform = variant.transform || {}
+			const rotation = transform.rotation || { x: 0, y: 0, z: 0 }
+			return {
+				modelSrc: variant.modelSrc,
+				weight: typeof variant.weight === 'number' && Number.isFinite(variant.weight) ? variant.weight : 1,
+				rotationDeg: {
+					x: toDegrees(rotation.x || 0),
+					y: toDegrees(rotation.y || 0),
+					z: toDegrees(rotation.z || 0)
+				},
+				scale: {
+					x: transform.scale?.x ?? 1,
+					y: transform.scale?.y ?? 1,
+					z: transform.scale?.z ?? 1
+				},
+				elevation: transform.elevation ?? 0
 			}
-			void handleLoadResourceAsset(modelSrc)
-		} else {
-			setSelectedResourceAsset('')
-			setAssetOpen(true)
 		}
-		const transform = render.transform || {}
-		const rotation = transform.rotation || { x: 0, y: 0, z: 0 }
-		setResourceRotationDeg({
-			x: toDegrees(rotation.x || 0),
-			y: toDegrees(rotation.y || 0),
-			z: toDegrees(rotation.z || 0)
-		})
-		setResourceScale({
-			x: transform.scale?.x ?? 1,
-			y: transform.scale?.y ?? 1,
-			z: transform.scale?.z ?? 1
-		})
-		setResourceElevation(transform.elevation ?? 0)
+		const renderVariants = Array.isArray(draft.renders)
+			? draft.renders.filter((variant) => Boolean(variant?.modelSrc))
+			: []
+		const legacyRender = draft.render?.modelSrc
+			? [
+					{
+						modelSrc: draft.render.modelSrc,
+						weight: 1,
+						transform: draft.render.transform
+					}
+				]
+			: []
+		const nextVariants = (renderVariants.length > 0 ? renderVariants : legacyRender).map(buildVariantState)
+		setResourceModelVariants(nextVariants)
+		setActiveResourceVariantIndex(null)
+		setResourceAssetPath('')
+		setSelectedResourceAsset('')
+		setResourceRotationDeg({ x: 0, y: 0, z: 0 })
+		setResourceScale({ x: 1, y: 1, z: 1 })
+		setResourceElevation(0)
 	}, [assetOptions, handleLoadResourceAsset])
 
 	const loadResourceRender = useCallback((definitionId: string) => {
@@ -551,6 +1217,115 @@ export function EditorApp() {
 		}
 	}, [applyResourceRenderToEditor, resourceRenderDefinitions])
 
+	const applyItemRenderToEditor = useCallback((draft: ItemRenderDefinition | null) => {
+		if (!draft) {
+			setItemFootprint({ width: 1, length: 1 })
+			setItemAssetPath('')
+			setSelectedItemAsset('')
+			setItemModelVariants([])
+			setActiveItemVariantIndex(null)
+			setItemRotationDeg({ x: 0, y: 0, z: 0 })
+			setItemScale({ x: 1, y: 1, z: 1 })
+			setItemElevation(0)
+			return
+		}
+		const footprintDef = draft.footprint || {}
+		const width = Number(footprintDef.width) || 1
+		const length = Number(footprintDef.height ?? footprintDef.length) || 1
+		setItemFootprint({ width, length })
+		const buildVariantState = (variant: ItemRenderVariant): ItemRenderVariantState => {
+			const transform = variant.transform || {}
+			const rotation = transform.rotation || { x: 0, y: 0, z: 0 }
+			return {
+				modelSrc: variant.modelSrc,
+				weight: typeof variant.weight === 'number' && Number.isFinite(variant.weight) ? variant.weight : 1,
+				rotationDeg: {
+					x: toDegrees(rotation.x || 0),
+					y: toDegrees(rotation.y || 0),
+					z: toDegrees(rotation.z || 0)
+				},
+				scale: {
+					x: transform.scale?.x ?? 1,
+					y: transform.scale?.y ?? 1,
+					z: transform.scale?.z ?? 1
+				},
+				elevation: transform.elevation ?? 0
+			}
+		}
+		const renderVariants = Array.isArray(draft.renders)
+			? draft.renders.filter((variant) => Boolean(variant?.modelSrc))
+			: []
+		const legacyRender = draft.render?.modelSrc
+			? [
+					{
+						modelSrc: draft.render.modelSrc,
+						weight: 1,
+						transform: draft.render.transform
+					}
+				]
+			: []
+		const nextVariants = (renderVariants.length > 0 ? renderVariants : legacyRender).map(buildVariantState)
+		setItemModelVariants(nextVariants)
+		setActiveItemVariantIndex(null)
+		setItemAssetPath('')
+		setSelectedItemAsset('')
+		setItemRotationDeg({ x: 0, y: 0, z: 0 })
+		setItemScale({ x: 1, y: 1, z: 1 })
+		setItemElevation(0)
+	}, [assetOptions, handleLoadItemAsset])
+
+	const loadItemRender = useCallback((definitionId: string) => {
+		if (!definitionId) {
+			applyItemRenderToEditor(null)
+			return
+		}
+		const draft = itemRenderDefinitions.find((definition) => definition.id === definitionId) || null
+		applyItemRenderToEditor(draft)
+		if (!draft) {
+			setAssetOpen(true)
+		}
+	}, [applyItemRenderToEditor, itemRenderDefinitions])
+
+	const buildingRenderOutput = useMemo(() => {
+		const variants =
+			buildingModelVariants.length > 0
+				? buildingModelVariants.filter((variant) => Boolean(variant.modelSrc))
+				: assetPath
+					? [
+							{
+								modelSrc: assetPath,
+								weight: 1,
+								rotationDeg,
+								scale,
+								elevation
+							}
+						]
+					: []
+		if (variants.length === 0) return null
+		const normalizedVariants = variants.map((variant) => {
+			const rotationRad = {
+				x: toRadians(variant.rotationDeg.x),
+				y: toRadians(variant.rotationDeg.y),
+				z: toRadians(variant.rotationDeg.z)
+			}
+			const transformOverrides = buildTransform(rotationRad, variant.scale, variant.elevation)
+			return {
+				modelSrc: variant.modelSrc,
+				weight: variant.weight,
+				transform: transformOverrides ?? undefined
+			}
+		})
+		if (normalizedVariants.length === 1 && (normalizedVariants[0].weight ?? 1) === 1) {
+			return {
+				render: {
+					modelSrc: normalizedVariants[0].modelSrc,
+					transform: normalizedVariants[0].transform
+				}
+			}
+		}
+		return { renders: normalizedVariants }
+	}, [assetPath, buildingModelVariants, elevation, rotationDeg, scale])
+
 	const definitionOutput = useMemo(() => {
 		if (!definitionDraft) return null
 		return mergeDefinitionWithEditor(definitionDraft, {
@@ -563,12 +1338,40 @@ export function EditorApp() {
 			entryPoint,
 			centerPoint,
 			accessTiles,
-			blockedTiles
+			blockedTiles,
+			renderOutput: buildingRenderOutput
 		})
-	}, [assetPath, definitionDraft, elevation, footprint, rotationRad, scale, storageSlots, entryPoint, centerPoint, accessTiles, blockedTiles])
+	}, [
+		assetPath,
+		buildingRenderOutput,
+		definitionDraft,
+		elevation,
+		footprint,
+		rotationRad,
+		scale,
+		storageSlots,
+		entryPoint,
+		centerPoint,
+		accessTiles,
+		blockedTiles
+	])
 
 	const resourceRenderOutput = useMemo(() => {
 		if (!selectedResourceId) return null
+		const variants =
+			resourceModelVariants.length > 0
+				? resourceModelVariants.filter((variant) => Boolean(variant.modelSrc))
+				: resourceAssetPath
+					? [
+							{
+								modelSrc: resourceAssetPath,
+								weight: 1,
+								rotationDeg: resourceRotationDeg,
+								scale: resourceScale,
+								elevation: resourceElevation
+							}
+						]
+					: []
 		const output: ResourceNodeRenderDefinition = {
 			id: selectedResourceId,
 			footprint: {
@@ -576,17 +1379,98 @@ export function EditorApp() {
 				height: resourceFootprint.length
 			}
 		}
-		if (resourceAssetPath) {
-			const transformOverrides = buildTransform(resourceRotationRad, resourceScale, resourceElevation)
-			output.render = {
-				modelSrc: resourceAssetPath
-			}
-			if (transformOverrides) {
-				output.render.transform = transformOverrides
+		if (variants.length > 0) {
+			const normalizedVariants = variants.map((variant) => {
+				const rotationRad = {
+					x: toRadians(variant.rotationDeg.x),
+					y: toRadians(variant.rotationDeg.y),
+					z: toRadians(variant.rotationDeg.z)
+				}
+				const transformOverrides = buildTransform(rotationRad, variant.scale, variant.elevation)
+				return {
+					modelSrc: variant.modelSrc,
+					weight: variant.weight,
+					transform: transformOverrides ?? undefined
+				}
+			})
+			if (normalizedVariants.length === 1 && (normalizedVariants[0].weight ?? 1) === 1) {
+				output.render = {
+					modelSrc: normalizedVariants[0].modelSrc,
+					transform: normalizedVariants[0].transform
+				}
+			} else {
+				output.renders = normalizedVariants
 			}
 		}
 		return output
-	}, [resourceAssetPath, resourceElevation, resourceFootprint.length, resourceFootprint.width, resourceRotationRad, resourceScale, selectedResourceId])
+	}, [
+		resourceAssetPath,
+		resourceElevation,
+		resourceFootprint.length,
+		resourceFootprint.width,
+		resourceModelVariants,
+		resourceRotationDeg,
+		resourceScale,
+		selectedResourceId
+	])
+
+	const itemRenderOutput = useMemo(() => {
+		if (!selectedItemId) return null
+		const variants =
+			itemModelVariants.length > 0
+				? itemModelVariants.filter((variant) => Boolean(variant.modelSrc))
+				: itemAssetPath
+					? [
+							{
+								modelSrc: itemAssetPath,
+								weight: 1,
+								rotationDeg: itemRotationDeg,
+								scale: itemScale,
+								elevation: itemElevation
+							}
+						]
+					: []
+		const output: ItemRenderDefinition = {
+			id: selectedItemId,
+			footprint: {
+				width: itemFootprint.width,
+				height: itemFootprint.length
+			}
+		}
+		if (variants.length > 0) {
+			const normalizedVariants = variants.map((variant) => {
+				const rotationRad = {
+					x: toRadians(variant.rotationDeg.x),
+					y: toRadians(variant.rotationDeg.y),
+					z: toRadians(variant.rotationDeg.z)
+				}
+				const transformOverrides = buildTransform(rotationRad, variant.scale, variant.elevation)
+				return {
+					modelSrc: variant.modelSrc,
+					weight: variant.weight,
+					transform: transformOverrides ?? undefined
+				}
+			})
+			if (normalizedVariants.length === 1 && (normalizedVariants[0].weight ?? 1) === 1) {
+				output.render = {
+					modelSrc: normalizedVariants[0].modelSrc,
+					transform: normalizedVariants[0].transform
+				}
+			} else {
+				output.renders = normalizedVariants
+			}
+		}
+		return output
+	}, [
+		itemAssetPath,
+		itemElevation,
+		itemFootprint.length,
+		itemFootprint.width,
+		itemModelVariants,
+		itemRotationDeg,
+		itemScale,
+		selectedItemId
+	])
 
 	useEffect(() => {
 		if (!resourceRenderOutput || !resourceRenderOutput.id) return
@@ -603,6 +1487,22 @@ export function EditorApp() {
 			return nextList
 		})
 	}, [resourceRenderOutput])
+
+	useEffect(() => {
+		if (!itemRenderOutput || !itemRenderOutput.id) return
+		setItemRenderDefinitions((prev) => {
+			const existingIndex = prev.findIndex((entry) => entry.id === itemRenderOutput.id)
+			if (existingIndex === -1) {
+				if (!isItemRenderMeaningful(itemRenderOutput)) {
+					return prev
+				}
+				return [...prev, itemRenderOutput]
+			}
+			const nextList = [...prev]
+			nextList[existingIndex] = itemRenderOutput
+			return nextList
+		})
+	}, [itemRenderOutput])
 
 	useEffect(() => {
 		const loadIndex = async () => {
@@ -652,6 +1552,33 @@ export function EditorApp() {
 	}, [])
 
 	useEffect(() => {
+		const loadItemRenders = async () => {
+			try {
+				setItemRenderError(null)
+				const response = await fetch('/assets/item-renders.json', { cache: 'no-cache' })
+				if (!response.ok) {
+					setItemRenderDefinitions([])
+					return
+				}
+				const data = await response.json()
+				if (Array.isArray(data)) {
+					setItemRenderDefinitions(data)
+					return
+				}
+				if (Array.isArray(data?.itemRenders)) {
+					setItemRenderDefinitions(data.itemRenders)
+					return
+				}
+				setItemRenderError('Item render config has unexpected format.')
+			} catch (error) {
+				void error
+				setItemRenderDefinitions([])
+			}
+		}
+		void loadItemRenders()
+	}, [])
+
+	useEffect(() => {
 		if (!assetPath) return
 		if (!assetOptions.includes(assetPath)) return
 		if (selectedAsset === assetPath) return
@@ -659,11 +1586,113 @@ export function EditorApp() {
 	}, [assetOptions, assetPath, selectedAsset])
 
 	useEffect(() => {
+		if (!isBuildingMode) return
+		if (!assetPath) return
+		if (activeBuildingVariantIndex === null) return
+		setBuildingModelVariants((prev) => {
+			if (prev.length === 0) {
+				return [
+					{
+						modelSrc: assetPath,
+						weight: 1,
+						rotationDeg,
+						scale,
+						elevation
+					}
+				]
+			}
+			const index = Math.min(Math.max(activeBuildingVariantIndex, 0), prev.length - 1)
+			const target = prev[index]
+			if (target?.modelSrc === assetPath) {
+				return prev
+			}
+			return prev.map((variant, variantIndex) =>
+				variantIndex === index ? { ...variant, modelSrc: assetPath } : variant
+			)
+		})
+	}, [activeBuildingVariantIndex, assetPath, elevation, isBuildingMode, rotationDeg, scale])
+
+	useEffect(() => {
 		if (!resourceAssetPath) return
 		if (!assetOptions.includes(resourceAssetPath)) return
 		if (selectedResourceAsset === resourceAssetPath) return
 		setSelectedResourceAsset(resourceAssetPath)
 	}, [assetOptions, resourceAssetPath, selectedResourceAsset])
+
+	useEffect(() => {
+		if (!itemAssetPath) return
+		if (!assetOptions.includes(itemAssetPath)) return
+		if (selectedItemAsset === itemAssetPath) return
+		setSelectedItemAsset(itemAssetPath)
+	}, [assetOptions, itemAssetPath, selectedItemAsset])
+
+	useEffect(() => {
+		if (!isResourceMode) return
+		if (!resourceAssetPath) return
+		if (activeResourceVariantIndex === null) return
+		setResourceModelVariants((prev) => {
+			if (prev.length === 0) {
+				return [
+					{
+						modelSrc: resourceAssetPath,
+						weight: 1,
+						rotationDeg: resourceRotationDeg,
+						scale: resourceScale,
+						elevation: resourceElevation
+					}
+				]
+			}
+			const index = Math.min(Math.max(activeResourceVariantIndex, 0), prev.length - 1)
+			const target = prev[index]
+			if (target?.modelSrc === resourceAssetPath) {
+				return prev
+			}
+			return prev.map((variant, variantIndex) =>
+				variantIndex === index ? { ...variant, modelSrc: resourceAssetPath } : variant
+			)
+		})
+	}, [
+		activeResourceVariantIndex,
+		isResourceMode,
+		resourceAssetPath,
+		resourceElevation,
+		resourceRotationDeg,
+		resourceScale
+	])
+
+	useEffect(() => {
+		if (!isItemMode) return
+		if (!itemAssetPath) return
+		if (activeItemVariantIndex === null) return
+		setItemModelVariants((prev) => {
+			if (prev.length === 0) {
+				return [
+					{
+						modelSrc: itemAssetPath,
+						weight: 1,
+						rotationDeg: itemRotationDeg,
+						scale: itemScale,
+						elevation: itemElevation
+					}
+				]
+			}
+			const index = Math.min(Math.max(activeItemVariantIndex, 0), prev.length - 1)
+			const target = prev[index]
+			if (target?.modelSrc === itemAssetPath) {
+				return prev
+			}
+			return prev.map((variant, variantIndex) =>
+				variantIndex === index ? { ...variant, modelSrc: itemAssetPath } : variant
+			)
+		})
+	}, [
+		activeItemVariantIndex,
+		isItemMode,
+		itemAssetPath,
+		itemElevation,
+		itemRotationDeg,
+		itemScale
+	])
 
 	useEffect(() => {
 		if (itemEmojiMap.size === 0) return
@@ -940,6 +1969,140 @@ export function EditorApp() {
 		supportsFilePicker
 	])
 
+	const buildItemRenderList = useCallback(
+		(nextDefinition: ItemRenderDefinition) => {
+			const existingIndex = itemRenderDefinitions.findIndex((entry) => entry.id === nextDefinition.id)
+			if (existingIndex >= 0) {
+				return itemRenderDefinitions.map((entry, index) =>
+					index === existingIndex ? nextDefinition : entry
+				)
+			}
+			return [...itemRenderDefinitions, nextDefinition]
+		},
+		[itemRenderDefinitions]
+	)
+
+	const downloadItemRenderFile = useCallback((payload: unknown) => {
+		const blob = new Blob([JSON.stringify(payload, null, 2) + '\n'], { type: 'application/json' })
+		const url = URL.createObjectURL(blob)
+		const anchor = document.createElement('a')
+		anchor.href = url
+		anchor.download = 'itemRenders.json'
+		anchor.click()
+		URL.revokeObjectURL(url)
+	}, [])
+
+	const handlePickItemFile = useCallback(async (): Promise<FileSystemFileHandle | null> => {
+		if (!('showOpenFilePicker' in window)) {
+			setItemFileStatus('File picker not supported in this browser.')
+			return null
+		}
+		try {
+			const [handle] = await window.showOpenFilePicker({
+				multiple: false,
+				types: [
+					{
+						description: 'Item render JSON',
+						accept: { 'application/json': ['.json'] }
+					}
+				]
+			})
+			if (handle) {
+				setItemFileHandle(handle)
+				setItemFileStatus(`Linked ${handle.name}`)
+				return handle
+			}
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') {
+				return null
+			}
+			setItemFileStatus('Failed to pick file.')
+		}
+		return null
+	}, [])
+
+	const handleSaveItemRenderFile = useCallback(async () => {
+		if (!itemRenderOutput || !itemRenderOutput.id) {
+			setItemFileStatus('Select an item first.')
+			return
+		}
+
+		if (!supportsFilePicker) {
+			const renderList = buildItemRenderList(itemRenderOutput)
+			downloadItemRenderFile({ itemRenders: renderList })
+			setItemFileStatus('Downloaded itemRenders.json. Replace content/settlerpolis/itemRenders.json')
+			return
+		}
+
+		let handle = itemFileHandle
+		if (!handle) {
+			handle = await handlePickItemFile()
+		}
+		if (!handle) {
+			return
+		}
+
+		try {
+			const permission = await handle.requestPermission({ mode: 'readwrite' })
+			if (permission !== 'granted') {
+				setItemFileStatus('Write permission denied.')
+				return
+			}
+			const file = await handle.getFile()
+			const text = await file.text()
+			const parsed = JSON.parse(text)
+			let renderList: ItemRenderDefinition[] = []
+			let wrapObject: Record<string, any> | null = null
+			let wrapKey: 'itemRenders' | null = null
+			let useArrayPayload = false
+
+			if (Array.isArray(parsed)) {
+				renderList = parsed
+				useArrayPayload = true
+			} else if (parsed && Array.isArray(parsed.itemRenders)) {
+				renderList = parsed.itemRenders
+				wrapObject = parsed
+				wrapKey = 'itemRenders'
+			} else {
+				setItemFileStatus('Invalid itemRenders.json format.')
+				return
+			}
+
+			const nextDefinition = itemRenderOutput
+			const existingIndex = renderList.findIndex((entry) => entry.id === nextDefinition.id)
+			const updatedList =
+				existingIndex >= 0
+					? renderList.map((entry, index) => (index === existingIndex ? nextDefinition : entry))
+					: [...renderList, nextDefinition]
+
+			let payload: unknown
+			if (wrapObject) {
+				const key = wrapKey ?? 'itemRenders'
+				payload = { ...wrapObject, [key]: updatedList }
+			} else if (useArrayPayload) {
+				payload = updatedList
+			} else {
+				payload = { itemRenders: updatedList }
+			}
+
+			const writable = await handle.createWritable()
+			await writable.write(JSON.stringify(payload, null, 2) + '\n')
+			await writable.close()
+			setItemFileStatus(`Saved ${nextDefinition.id}`)
+			setItemRenderDefinitions(buildItemRenderList(nextDefinition))
+		} catch (error) {
+			void error
+			setItemFileStatus('Failed to save file.')
+		}
+	}, [
+		buildItemRenderList,
+		downloadItemRenderFile,
+		handlePickItemFile,
+		itemFileHandle,
+		itemRenderOutput,
+		supportsFilePicker
+	])
+
 	return (
 		<div className={styles.editorApp}>
 			<div className={styles.sidebar}>
@@ -972,6 +2135,13 @@ export function EditorApp() {
 					>
 						Resources
 					</button>
+					<button
+						className={`${styles.tabButton} ${isItemMode ? styles.tabButtonActive : ''}`}
+						type="button"
+						onClick={() => setEditorMode('item')}
+					>
+						Items
+					</button>
 				</div>
 				{showHelp && (
 					<section className={styles.helpPanel}>
@@ -985,6 +2155,7 @@ export function EditorApp() {
 							<li>Set width/length (grid tiles) and transforms.</li>
 							<li>Save updates to buildings.json from the definition panel.</li>
 							<li>Use the Resources tab to save resourceNodeRenders.json.</li>
+							<li>Use the Items tab to save itemRenders.json.</li>
 						</ul>
 					</section>
 				)}
@@ -1033,6 +2204,100 @@ export function EditorApp() {
 					</section>
 				)}
 
+				{isBuildingMode && hasDefinition && (
+					<section className={styles.section}>
+						<div className={styles.sectionHeader}>Building models</div>
+						<div className={styles.inlineRow}>
+							<button
+								className={styles.secondaryButton}
+								type="button"
+								onClick={handleAddBuildingVariant}
+							>
+								Add asset
+							</button>
+						</div>
+						{buildingModelVariants.length === 0 ? (
+							<p className={styles.helperText}>No models selected yet.</p>
+						) : (
+							<div className={styles.tileList}>
+								{buildingModelVariants.map((variant, index) => (
+									<div
+										className={`${styles.slotCard} ${styles.variantCard} ${
+											index === activeBuildingVariantIndex ? styles.variantCardActive : ''
+										}`}
+										key={`${variant.modelSrc || 'model'}-${index}`}
+										onClick={() => selectBuildingVariant(index)}
+										onFocusCapture={() => selectBuildingVariant(index)}
+									>
+										<div className={styles.slotRow}>
+											<label className={styles.field}>
+												<span>Model</span>
+												<select
+													value={variant.modelSrc}
+													onChange={(event) => {
+														const next = event.target.value
+														const current = buildingModelVariants[index]
+														setActiveBuildingVariantIndex(index)
+														if (current) {
+															setRotationDeg(current.rotationDeg)
+															setScale(current.scale)
+															setElevation(current.elevation)
+														}
+														updateBuildingVariant(index, { modelSrc: next })
+														setAssetPath(next)
+														if (next) {
+															if (assetOptions.includes(next)) {
+																setSelectedAsset(next)
+															} else {
+																setSelectedAsset('')
+															}
+															void handleLoadAsset(next)
+														} else {
+															setSelectedAsset('')
+														}
+													}}
+												>
+													<option value="">Select an asset...</option>
+													{assetOptions.map((asset) => (
+														<option key={asset} value={asset}>
+															{asset}
+														</option>
+													))}
+												</select>
+											</label>
+											<label className={styles.field}>
+												<span>Weight</span>
+												<input
+													type="number"
+													step="0.1"
+													min="0"
+													value={Number.isFinite(variant.weight) ? variant.weight : 1}
+													onChange={(event) =>
+														updateBuildingVariant(index, {
+															weight: toNumber(event.target.value, variant.weight ?? 1)
+														})
+													}
+												/>
+											</label>
+											<button
+												className={styles.variantRemoveButton}
+												type="button"
+												aria-label="Remove model"
+												onClick={(event) => {
+													event.stopPropagation()
+													removeBuildingVariant(index)
+												}}
+											>
+												🗑
+											</button>
+										</div>
+									</div>
+								))}
+							</div>
+						)}
+					</section>
+				)}
+
 				{isResourceMode && (
 					<section className={styles.section}>
 						<div className={styles.sectionHeader}>Resource render</div>
@@ -1059,12 +2324,6 @@ export function EditorApp() {
 							<p className={styles.helperText}>No resource nodes found in content.</p>
 						)}
 						{resourceRenderError && <p className={styles.error}>{resourceRenderError}</p>}
-						{resourceDefinitions.length > 0 && (
-							<p className={styles.helperText}>
-								Load a resource node, then adjust the footprint and render settings below. Saving updates
-								resourceNodeRenders.json.
-							</p>
-						)}
 						{resourceRenderOutput && (
 							<div className={styles.inlineRow}>
 								{supportsFilePicker && (
@@ -1076,6 +2335,236 @@ export function EditorApp() {
 									{supportsFilePicker ? 'Save to file' : 'Download resourceNodeRenders.json'}
 								</button>
 								{resourceFileStatus && <span className={styles.status}>{resourceFileStatus}</span>}
+							</div>
+						)}
+					</section>
+				)}
+
+				{isResourceMode && (
+					<section className={styles.section}>
+						<div className={styles.sectionHeader}>Resource models</div>
+						<div className={styles.inlineRow}>
+							<button
+								className={styles.secondaryButton}
+								type="button"
+								onClick={handleAddResourceVariant}
+							>
+								Add asset
+							</button>
+						</div>
+						{resourceModelVariants.length === 0 ? (
+							<p className={styles.helperText}>No models selected yet.</p>
+						) : (
+							<div className={styles.tileList}>
+								{resourceModelVariants.map((variant, index) => (
+									<div
+										className={`${styles.slotCard} ${styles.variantCard} ${
+											index === activeResourceVariantIndex ? styles.variantCardActive : ''
+										}`}
+										key={`${variant.modelSrc || 'model'}-${index}`}
+										onClick={() => selectResourceVariant(index)}
+										onFocusCapture={() => selectResourceVariant(index)}
+									>
+										<div className={styles.slotRow}>
+											<label className={styles.field}>
+												<span>Model</span>
+												<select
+													value={variant.modelSrc}
+													onChange={(event) => {
+														const next = event.target.value
+														const current = resourceModelVariants[index]
+														setActiveResourceVariantIndex(index)
+														if (current) {
+															setResourceRotationDeg(current.rotationDeg)
+															setResourceScale(current.scale)
+															setResourceElevation(current.elevation)
+														}
+														updateResourceVariant(index, { modelSrc: next })
+														setResourceAssetPath(next)
+														if (next) {
+															if (assetOptions.includes(next)) {
+																setSelectedResourceAsset(next)
+															} else {
+																setSelectedResourceAsset('')
+															}
+															void handleLoadResourceAsset(next)
+														} else {
+															setSelectedResourceAsset('')
+														}
+													}}
+												>
+													<option value="">Select an asset...</option>
+													{assetOptions.map((asset) => (
+														<option key={asset} value={asset}>
+															{asset}
+														</option>
+													))}
+												</select>
+											</label>
+											<label className={styles.field}>
+												<span>Weight</span>
+												<input
+													type="number"
+													step="0.1"
+													min="0"
+													value={Number.isFinite(variant.weight) ? variant.weight : 1}
+													onChange={(event) =>
+														updateResourceVariant(index, {
+															weight: toNumber(event.target.value, variant.weight ?? 1)
+														})
+													}
+												/>
+											</label>
+											<button
+												className={styles.variantRemoveButton}
+												type="button"
+												aria-label="Remove model"
+												onClick={(event) => {
+													event.stopPropagation()
+													removeResourceVariant(index)
+												}}
+											>
+												🗑
+											</button>
+										</div>
+									</div>
+								))}
+							</div>
+						)}
+					</section>
+				)}
+
+				{isItemMode && (
+					<section className={styles.section}>
+						<div className={styles.sectionHeader}>Item render</div>
+						{itemOptions.length > 0 ? (
+							<label className={styles.field}>
+								<span>Item</span>
+								<select
+									value={selectedItemId}
+									onChange={(event) => {
+										const next = event.target.value
+										setSelectedItemId(next)
+										loadItemRender(next)
+									}}
+								>
+									<option value="">Select an item...</option>
+									{itemOptions.map((item) => (
+										<option key={item.id} value={item.id}>
+											{item.emoji ? `${item.emoji} ` : ''}{item.label}
+										</option>
+									))}
+								</select>
+							</label>
+						) : (
+							<p className={styles.helperText}>No items found in content.</p>
+						)}
+						{itemRenderError && <p className={styles.error}>{itemRenderError}</p>}
+						{itemRenderOutput && (
+							<div className={styles.inlineRow}>
+								{supportsFilePicker && (
+									<button className={styles.secondaryButton} type="button" onClick={handlePickItemFile}>
+										Choose itemRenders.json
+									</button>
+								)}
+								<button className={styles.primaryButton} type="button" onClick={handleSaveItemRenderFile}>
+									{supportsFilePicker ? 'Save to file' : 'Download itemRenders.json'}
+								</button>
+								{itemFileStatus && <span className={styles.status}>{itemFileStatus}</span>}
+							</div>
+						)}
+					</section>
+				)}
+
+				{isItemMode && (
+					<section className={styles.section}>
+						<div className={styles.sectionHeader}>Item models</div>
+						<div className={styles.inlineRow}>
+							<button
+								className={styles.secondaryButton}
+								type="button"
+								onClick={handleAddItemVariant}
+							>
+								Add asset
+							</button>
+						</div>
+						{itemModelVariants.length === 0 ? (
+							<p className={styles.helperText}>No models selected yet.</p>
+						) : (
+							<div className={styles.tileList}>
+								{itemModelVariants.map((variant, index) => (
+									<div
+										className={`${styles.slotCard} ${styles.variantCard} ${
+											index === activeItemVariantIndex ? styles.variantCardActive : ''
+										}`}
+										key={`${variant.modelSrc || 'model'}-${index}`}
+										onClick={() => selectItemVariant(index)}
+										onFocusCapture={() => selectItemVariant(index)}
+									>
+										<div className={styles.slotRow}>
+											<label className={styles.field}>
+												<span>Model</span>
+												<select
+													value={variant.modelSrc}
+													onChange={(event) => {
+														const next = event.target.value
+														const current = itemModelVariants[index]
+														setActiveItemVariantIndex(index)
+														if (current) {
+															setItemRotationDeg(current.rotationDeg)
+															setItemScale(current.scale)
+															setItemElevation(current.elevation)
+														}
+														updateItemVariant(index, { modelSrc: next })
+														setItemAssetPath(next)
+														if (next) {
+															if (assetOptions.includes(next)) {
+																setSelectedItemAsset(next)
+															} else {
+																setSelectedItemAsset('')
+															}
+															void handleLoadItemAsset(next)
+														} else {
+															setSelectedItemAsset('')
+														}
+													}}
+												>
+													<option value="">Select an asset...</option>
+													{assetOptions.map((asset) => (
+														<option key={asset} value={asset}>
+															{asset}
+														</option>
+													))}
+												</select>
+											</label>
+											<label className={styles.field}>
+												<span>Weight</span>
+												<input
+													type="number"
+													step="0.1"
+													min="0"
+													value={Number.isFinite(variant.weight) ? variant.weight : 1}
+													onChange={(event) =>
+														updateItemVariant(index, {
+															weight: toNumber(event.target.value, variant.weight ?? 1)
+														})
+													}
+												/>
+											</label>
+											<button
+												className={styles.variantRemoveButton}
+												type="button"
+												aria-label="Remove model"
+												onClick={(event) => {
+													event.stopPropagation()
+													removeItemVariant(index)
+												}}
+											>
+												🗑
+											</button>
+										</div>
+									</div>
+								))}
 							</div>
 						)}
 					</section>
@@ -1099,7 +2588,7 @@ export function EditorApp() {
 								<label className={styles.field}>
 									<span>Asset library</span>
 									<select
-										value={isResourceMode ? selectedResourceAsset : selectedAsset}
+										value={isResourceMode ? selectedResourceAsset : isItemMode ? selectedItemAsset : selectedAsset}
 										onChange={(event) => {
 											const next = event.target.value
 											if (isResourceMode) {
@@ -1109,6 +2598,16 @@ export function EditorApp() {
 													void handleLoadResourceAsset(next)
 												} else {
 													void handleLoadResourceAsset('')
+												}
+												return
+											}
+											if (isItemMode) {
+												setSelectedItemAsset(next)
+												setItemAssetPath(next)
+												if (next) {
+													void handleLoadItemAsset(next)
+												} else {
+													void handleLoadItemAsset('')
 												}
 												return
 											}
@@ -1182,10 +2681,15 @@ export function EditorApp() {
 														...prev,
 														width: toInteger(event.target.value, prev.width)
 													}))
-												: setFootprint((prev) => ({
-														...prev,
-														width: toInteger(event.target.value, prev.width)
-													}))
+												: isItemMode
+													? setItemFootprint((prev) => ({
+															...prev,
+															width: toInteger(event.target.value, prev.width)
+														}))
+													: setFootprint((prev) => ({
+															...prev,
+															width: toInteger(event.target.value, prev.width)
+														}))
 										}
 									/>
 								</label>
@@ -1202,10 +2706,15 @@ export function EditorApp() {
 														...prev,
 														length: toInteger(event.target.value, prev.length)
 													}))
-												: setFootprint((prev) => ({
-														...prev,
-														length: toInteger(event.target.value, prev.length)
-													}))
+												: isItemMode
+													? setItemFootprint((prev) => ({
+															...prev,
+															length: toInteger(event.target.value, prev.length)
+														}))
+													: setFootprint((prev) => ({
+															...prev,
+															length: toInteger(event.target.value, prev.length)
+														}))
 										}
 									/>
 								</label>
@@ -1223,10 +2732,15 @@ export function EditorApp() {
 														...prev,
 														x: toNumber(event.target.value, prev.x)
 													}))
-												: setPosition((prev) => ({
-														...prev,
-														x: toNumber(event.target.value, prev.x)
-													}))
+												: isItemMode
+													? setItemPosition((prev) => ({
+															...prev,
+															x: toNumber(event.target.value, prev.x)
+														}))
+													: setPosition((prev) => ({
+															...prev,
+															x: toNumber(event.target.value, prev.x)
+														}))
 										}
 									/>
 								</label>
@@ -1242,10 +2756,15 @@ export function EditorApp() {
 														...prev,
 														y: toNumber(event.target.value, prev.y)
 													}))
-												: setPosition((prev) => ({
-														...prev,
-														y: toNumber(event.target.value, prev.y)
-													}))
+												: isItemMode
+													? setItemPosition((prev) => ({
+															...prev,
+															y: toNumber(event.target.value, prev.y)
+														}))
+													: setPosition((prev) => ({
+															...prev,
+															y: toNumber(event.target.value, prev.y)
+														}))
 										}
 									/>
 								</label>
@@ -1477,137 +2996,229 @@ export function EditorApp() {
 					</div>
 					{transformOpen && (
 						<>
-							<div className={styles.gridRow}>
-								<label className={styles.field}>
-									<span>Rotate X (deg)</span>
-									<input
-										type="number"
-										step="1"
-										value={isResourceMode ? resourceRotationDeg.x : rotationDeg.x}
-										onChange={(event) =>
-											isResourceMode
-												? setResourceRotationDeg((prev) => ({
-														...prev,
-														x: toNumber(event.target.value, prev.x)
-													}))
-												: setRotationDeg((prev) => ({
-														...prev,
-														x: toNumber(event.target.value, prev.x)
-													}))
-										}
-									/>
-								</label>
-								<label className={styles.field}>
-									<span>Rotate Y (deg)</span>
-									<input
-										type="number"
-										step="1"
-										value={isResourceMode ? resourceRotationDeg.y : rotationDeg.y}
-										onChange={(event) =>
-											isResourceMode
-												? setResourceRotationDeg((prev) => ({
-														...prev,
-														y: toNumber(event.target.value, prev.y)
-													}))
-												: setRotationDeg((prev) => ({
-														...prev,
-														y: toNumber(event.target.value, prev.y)
-													}))
-										}
-									/>
-								</label>
-								<label className={styles.field}>
-									<span>Rotate Z (deg)</span>
-									<input
-										type="number"
-										step="1"
-										value={isResourceMode ? resourceRotationDeg.z : rotationDeg.z}
-										onChange={(event) =>
-											isResourceMode
-												? setResourceRotationDeg((prev) => ({
-														...prev,
-														z: toNumber(event.target.value, prev.z)
-													}))
-												: setRotationDeg((prev) => ({
-														...prev,
-														z: toNumber(event.target.value, prev.z)
-													}))
-										}
-									/>
-								</label>
-							</div>
-							<div className={styles.gridRow}>
-								<label className={styles.field}>
-									<span>Scale X</span>
-									<input
-										type="number"
-										step="0.05"
-										value={isResourceMode ? resourceScale.x : scale.x}
-										onChange={(event) =>
-											isResourceMode
-												? setResourceScale((prev) => ({
-														...prev,
-														x: toNumber(event.target.value, prev.x)
-													}))
-												: setScale((prev) => ({
-														...prev,
-														x: toNumber(event.target.value, prev.x)
-													}))
-										}
-									/>
-								</label>
-								<label className={styles.field}>
-									<span>Scale Y</span>
-									<input
-										type="number"
-										step="0.05"
-										value={isResourceMode ? resourceScale.y : scale.y}
-										onChange={(event) =>
-											isResourceMode
-												? setResourceScale((prev) => ({
-														...prev,
-														y: toNumber(event.target.value, prev.y)
-													}))
-												: setScale((prev) => ({
-														...prev,
-														y: toNumber(event.target.value, prev.y)
-													}))
-										}
-									/>
-								</label>
-								<label className={styles.field}>
-									<span>Scale Z</span>
-									<input
-										type="number"
-										step="0.05"
-										value={isResourceMode ? resourceScale.z : scale.z}
-										onChange={(event) =>
-											isResourceMode
-												? setResourceScale((prev) => ({
-														...prev,
-														z: toNumber(event.target.value, prev.z)
-													}))
-												: setScale((prev) => ({
-														...prev,
-														z: toNumber(event.target.value, prev.z)
-													}))
-										}
-									/>
-								</label>
-							</div>
-							<label className={styles.field}>
-								<span>Elevation (Y)</span>
-								<input
-									type="number"
-									step="0.1"
-									value={isResourceMode ? resourceElevation : elevation}
-									onChange={(event) =>
-										isResourceMode
-											? setResourceElevation(toNumber(event.target.value, resourceElevation))
-											: setElevation(toNumber(event.target.value, elevation))
-									}
-								/>
-							</label>
+							{isResourceMode &&
+								(activeResourceVariantIndex === null ||
+									!resourceModelVariants[activeResourceVariantIndex]?.modelSrc) && (
+									<p className={styles.helperText}>Select a resource model to edit its transform.</p>
+								)}
+							{isItemMode &&
+								(activeItemVariantIndex === null || !itemModelVariants[activeItemVariantIndex]?.modelSrc) && (
+									<p className={styles.helperText}>Select an item model to edit its transform.</p>
+								)}
+							{isBuildingMode &&
+								buildingModelVariants.length > 0 &&
+								(activeBuildingVariantIndex === null ||
+									!buildingModelVariants[activeBuildingVariantIndex]?.modelSrc) && (
+									<p className={styles.helperText}>Select a building model to edit its transform.</p>
+								)}
+							{(isBuildingMode &&
+								(buildingModelVariants.length === 0 ||
+									(activeBuildingVariantIndex !== null &&
+										buildingModelVariants[activeBuildingVariantIndex]?.modelSrc))) ||
+							(isResourceMode &&
+								activeResourceVariantIndex !== null &&
+								resourceModelVariants[activeResourceVariantIndex]?.modelSrc) ||
+							(isItemMode &&
+								activeItemVariantIndex !== null &&
+								itemModelVariants[activeItemVariantIndex]?.modelSrc) ? (
+								<>
+									{isResourceMode && activeResourceVariantIndex !== null && (
+										<p className={styles.helperText}>
+											Editing transform for model {activeResourceVariantIndex + 1}:{' '}
+											{resourceModelVariants[activeResourceVariantIndex]?.modelSrc || 'unset'}
+										</p>
+									)}
+									{isItemMode && activeItemVariantIndex !== null && (
+										<p className={styles.helperText}>
+											Editing transform for model {activeItemVariantIndex + 1}:{' '}
+											{itemModelVariants[activeItemVariantIndex]?.modelSrc || 'unset'}
+										</p>
+									)}
+									{isBuildingMode && activeBuildingVariantIndex !== null && (
+										<p className={styles.helperText}>
+											Editing transform for model {activeBuildingVariantIndex + 1}:{' '}
+											{buildingModelVariants[activeBuildingVariantIndex]?.modelSrc || 'unset'}
+										</p>
+									)}
+									<div className={styles.gridRow}>
+										<label className={styles.field}>
+											<span>Rotate X (deg)</span>
+											<input
+												type="number"
+												step="1"
+												value={isResourceMode ? resourceRotationDeg.x : isItemMode ? itemRotationDeg.x : rotationDeg.x}
+												onChange={(event) =>
+													isResourceMode
+														? updateActiveResourceRotation({
+																x: toNumber(event.target.value, resourceRotationDeg.x)
+															})
+														: isItemMode
+															? updateActiveItemRotation({
+																	x: toNumber(event.target.value, itemRotationDeg.x)
+																})
+															: isBuildingMode
+																? updateActiveBuildingRotation({
+																		x: toNumber(event.target.value, rotationDeg.x)
+																	})
+																: setRotationDeg((prev) => ({
+																		...prev,
+																		x: toNumber(event.target.value, prev.x)
+																	}))
+												}
+											/>
+										</label>
+										<label className={styles.field}>
+											<span>Rotate Y (deg)</span>
+											<input
+												type="number"
+												step="1"
+												value={isResourceMode ? resourceRotationDeg.y : isItemMode ? itemRotationDeg.y : rotationDeg.y}
+												onChange={(event) =>
+													isResourceMode
+														? updateActiveResourceRotation({
+																y: toNumber(event.target.value, resourceRotationDeg.y)
+															})
+														: isItemMode
+															? updateActiveItemRotation({
+																	y: toNumber(event.target.value, itemRotationDeg.y)
+																})
+															: isBuildingMode
+																? updateActiveBuildingRotation({
+																		y: toNumber(event.target.value, rotationDeg.y)
+																	})
+																: setRotationDeg((prev) => ({
+																		...prev,
+																		y: toNumber(event.target.value, prev.y)
+																	}))
+												}
+											/>
+										</label>
+										<label className={styles.field}>
+											<span>Rotate Z (deg)</span>
+											<input
+												type="number"
+												step="1"
+												value={isResourceMode ? resourceRotationDeg.z : isItemMode ? itemRotationDeg.z : rotationDeg.z}
+												onChange={(event) =>
+													isResourceMode
+														? updateActiveResourceRotation({
+																z: toNumber(event.target.value, resourceRotationDeg.z)
+															})
+														: isItemMode
+															? updateActiveItemRotation({
+																	z: toNumber(event.target.value, itemRotationDeg.z)
+																})
+															: isBuildingMode
+																? updateActiveBuildingRotation({
+																		z: toNumber(event.target.value, rotationDeg.z)
+																	})
+																: setRotationDeg((prev) => ({
+																		...prev,
+																		z: toNumber(event.target.value, prev.z)
+																	}))
+												}
+											/>
+										</label>
+									</div>
+									<div className={styles.gridRow}>
+										<label className={styles.field}>
+											<span>Scale X</span>
+											<input
+												type="number"
+												step="0.05"
+												value={isResourceMode ? resourceScale.x : isItemMode ? itemScale.x : scale.x}
+												onChange={(event) =>
+													isResourceMode
+														? updateActiveResourceScale({
+																x: toNumber(event.target.value, resourceScale.x)
+															})
+														: isItemMode
+															? updateActiveItemScale({
+																	x: toNumber(event.target.value, itemScale.x)
+																})
+															: isBuildingMode
+																? updateActiveBuildingScale({
+																		x: toNumber(event.target.value, scale.x)
+																	})
+																: setScale((prev) => ({
+																		...prev,
+																		x: toNumber(event.target.value, prev.x)
+																	}))
+												}
+											/>
+										</label>
+										<label className={styles.field}>
+											<span>Scale Y</span>
+											<input
+												type="number"
+												step="0.05"
+												value={isResourceMode ? resourceScale.y : isItemMode ? itemScale.y : scale.y}
+												onChange={(event) =>
+													isResourceMode
+														? updateActiveResourceScale({
+																y: toNumber(event.target.value, resourceScale.y)
+															})
+														: isItemMode
+															? updateActiveItemScale({
+																	y: toNumber(event.target.value, itemScale.y)
+																})
+															: isBuildingMode
+																? updateActiveBuildingScale({
+																		y: toNumber(event.target.value, scale.y)
+																	})
+																: setScale((prev) => ({
+																		...prev,
+																		y: toNumber(event.target.value, prev.y)
+																	}))
+												}
+											/>
+										</label>
+										<label className={styles.field}>
+											<span>Scale Z</span>
+											<input
+												type="number"
+												step="0.05"
+												value={isResourceMode ? resourceScale.z : isItemMode ? itemScale.z : scale.z}
+												onChange={(event) =>
+													isResourceMode
+														? updateActiveResourceScale({
+																z: toNumber(event.target.value, resourceScale.z)
+															})
+														: isItemMode
+															? updateActiveItemScale({
+																	z: toNumber(event.target.value, itemScale.z)
+																})
+															: isBuildingMode
+																? updateActiveBuildingScale({
+																		z: toNumber(event.target.value, scale.z)
+																	})
+																: setScale((prev) => ({
+																		...prev,
+																		z: toNumber(event.target.value, prev.z)
+																	}))
+												}
+											/>
+										</label>
+									</div>
+									<label className={styles.field}>
+										<span>Elevation (Y)</span>
+										<input
+											type="number"
+											step="0.1"
+											value={isResourceMode ? resourceElevation : isItemMode ? itemElevation : elevation}
+											onChange={(event) =>
+												isResourceMode
+													? updateActiveResourceElevation(toNumber(event.target.value, resourceElevation))
+													: isItemMode
+														? updateActiveItemElevation(toNumber(event.target.value, itemElevation))
+														: isBuildingMode
+															? updateActiveBuildingElevation(toNumber(event.target.value, elevation))
+															: setElevation(toNumber(event.target.value, elevation))
+											}
+										/>
+									</label>
+								</>
+							) : null}
 						</>
 					)}
 				</section>
@@ -1854,6 +3465,25 @@ function mergeDefinitionWithEditor(
 		centerPoint: Vec2 | null
 		accessTiles: Vec2[]
 		blockedTiles: Vec2[]
+		renderOutput?: {
+			render?: {
+				modelSrc: string
+				transform?: {
+					rotation?: { x: number; y: number; z: number }
+					scale?: { x: number; y: number; z: number }
+					elevation?: number
+				}
+			}
+			renders?: Array<{
+				modelSrc: string
+				weight?: number
+				transform?: {
+					rotation?: { x: number; y: number; z: number }
+					scale?: { x: number; y: number; z: number }
+					elevation?: number
+				}
+			}>
+		} | null
 	}
 ): Record<string, any> {
 	const next = cloneDefinition(definition)
@@ -1864,17 +3494,34 @@ function mergeDefinitionWithEditor(
 		height: editor.footprint.length,
 		length: editor.footprint.length
 	}
-	const render = next.render || {}
-	if (editor.assetPath || render.modelSrc) {
-		const transformOverrides = buildTransform(editor.rotation, editor.scale, editor.elevation)
-		next.render = {
-			...render,
-			modelSrc: editor.assetPath || render.modelSrc
+	if (Object.prototype.hasOwnProperty.call(editor, 'renderOutput')) {
+		const renderOutput = editor.renderOutput
+		if (renderOutput?.render?.modelSrc) {
+			next.render = {
+				modelSrc: renderOutput.render.modelSrc,
+				transform: renderOutput.render.transform
+			}
+		} else if (next.render) {
+			delete next.render
 		}
-		if (transformOverrides) {
-			next.render.transform = transformOverrides
-		} else {
-			delete next.render.transform
+		if (renderOutput?.renders && renderOutput.renders.length > 0) {
+			next.renders = renderOutput.renders
+		} else if (next.renders) {
+			delete next.renders
+		}
+	} else {
+		const render = next.render || {}
+		if (editor.assetPath || render.modelSrc) {
+			const transformOverrides = buildTransform(editor.rotation, editor.scale, editor.elevation)
+			next.render = {
+				...render,
+				modelSrc: editor.assetPath || render.modelSrc
+			}
+			if (transformOverrides) {
+				next.render.transform = transformOverrides
+			} else {
+				delete next.render.transform
+			}
 		}
 	}
 	const normalizedSlots = normalizeStorageSlots(editor.storageSlots)
@@ -2005,6 +3652,29 @@ function normalizeTileOffsets(tiles: Vec2[]): Array<{ x: number; y: number }> {
 	return normalized
 }
 
+function resolveItemPreviewRender(
+	definition: ItemRenderDefinition | null
+): { modelSrc: string; transform?: { rotation?: Vec3; scale?: Vec3; elevation?: number } } | null {
+	if (!definition) return null
+	const variants = Array.isArray(definition.renders)
+		? definition.renders.filter((variant) => Boolean(variant?.modelSrc))
+		: []
+	if (variants.length > 0) {
+		const variant = variants[0]
+		return {
+			modelSrc: variant.modelSrc,
+			transform: variant.transform
+		}
+	}
+	if (definition.render?.modelSrc) {
+		return {
+			modelSrc: definition.render.modelSrc,
+			transform: definition.render.transform
+		}
+	}
+	return null
+}
+
 function isResourceRenderMeaningful(definition: ResourceNodeRenderDefinition): boolean {
 	const footprint = definition.footprint
 	const width = Number(footprint?.width ?? 1)
@@ -2013,6 +3683,22 @@ function isResourceRenderMeaningful(definition: ResourceNodeRenderDefinition): b
 		Number.isFinite(width) &&
 		Number.isFinite(length) &&
 		(Math.round(width) !== 1 || Math.round(length) !== 1)
-	const hasRender = Boolean(definition.render?.modelSrc)
+	const hasRender =
+		Boolean(definition.render?.modelSrc) ||
+		(Array.isArray(definition.renders) && definition.renders.some((variant) => Boolean(variant?.modelSrc)))
+	return hasRender || hasFootprint
+}
+
+function isItemRenderMeaningful(definition: ItemRenderDefinition): boolean {
+	const footprint = definition.footprint
+	const width = Number(footprint?.width ?? 1)
+	const length = Number(footprint?.height ?? footprint?.length ?? 1)
+	const hasFootprint =
+		Number.isFinite(width) &&
+		Number.isFinite(length) &&
+		(Math.round(width) !== 1 || Math.round(length) !== 1)
+	const hasRender =
+		Boolean(definition.render?.modelSrc) ||
+		(Array.isArray(definition.renders) && definition.renders.some((variant) => Boolean(variant?.modelSrc)))
 	return hasRender || hasFootprint
 }

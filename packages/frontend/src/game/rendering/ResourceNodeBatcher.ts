@@ -102,32 +102,37 @@ export class ResourceNodeBatcher {
 		if (!object?.metadata?.resourceNode) return false
 		this.objectsById.set(object.id, object)
 		const nodeType = object?.metadata?.resourceNodeType
-		const renderConfig = resourceNodeRenderService.isLoaded() ? resourceNodeRenderService.getRender(nodeType) : null
-		if (renderConfig?.render?.modelSrc) {
-			const render = renderConfig.render
+		const render = resourceNodeRenderService.isLoaded()
+			? resourceNodeRenderService.getRenderModel(nodeType, object.id)
+			: null
+		if (render?.modelSrc) {
 			const modelKey = this.getModelBatchKey(render)
 			if (ResourceNodeBatcher.failedModelSrcs.has(render.modelSrc)) {
 				return this.addEmojiNode(object)
 			}
 			if (ResourceNodeBatcher.unsupportedModelSrcs.has(render.modelSrc)) {
-				return this.addEmojiNode(object)
-			}
-			this.ensureModelBatch(modelKey, render)
-			if (this.idToBatchKey.has(object.id)) return true
-			const elevation = this.getNodeElevation(object, render)
-			this.idToBatchKey.set(object.id, modelKey)
-			this.trackBatchId(modelKey, object.id)
-			this.worker?.postMessage({
-				type: 'add',
-				key: modelKey,
-				id: object.id,
-				x: object.position.x,
-				y: object.position.y,
-				rotation: typeof object.rotation === 'number' ? object.rotation : 0,
-				elevation
-			})
-			return true
+			return this.addEmojiNode(object)
 		}
+		this.ensureModelBatch(modelKey, render)
+		if (this.idToBatchKey.has(object.id)) return true
+		const elevation = this.getNodeElevation(object, render)
+		const scale = getSeededScale(object.id)
+		const rotationOffset = getSeededRotation(object.id)
+		const rotation = (typeof object.rotation === 'number' ? object.rotation : 0) + rotationOffset
+		this.idToBatchKey.set(object.id, modelKey)
+		this.trackBatchId(modelKey, object.id)
+		this.worker?.postMessage({
+			type: 'add',
+			key: modelKey,
+			id: object.id,
+			x: object.position.x,
+			y: object.position.y,
+			rotation,
+			elevation,
+			scale
+		})
+		return true
+	}
 
 		return this.addEmojiNode(object)
 	}
@@ -197,8 +202,8 @@ export class ResourceNodeBatcher {
 		for (const [id, obj] of this.objectsById.entries()) {
 			if (!obj?.metadata?.resourceNode) continue
 			const nodeType = obj.metadata?.resourceNodeType
-			const renderConfig = resourceNodeRenderService.getRender(nodeType)
-			if (!renderConfig?.render?.modelSrc) continue
+			const render = resourceNodeRenderService.getRenderModel(nodeType, id)
+			if (!render?.modelSrc) continue
 			const key = this.idToBatchKey.get(id)
 			if (!key || key.startsWith('emoji:') || key.startsWith('pending-emoji:')) {
 				toUpgrade.push(obj)
@@ -348,7 +353,8 @@ export class ResourceNodeBatcher {
 				y: (renderConfig.transform?.scale?.y ?? 1) * this.tileSize,
 				z: (renderConfig.transform?.scale?.z ?? 1) * this.tileSize
 			},
-			baseYOffset: 0
+			baseYOffset: 0,
+			pivotOffset: { x: 0, y: 0, z: 0 }
 		})
 
 		const promise = this.loadModelBatch(batchKey, renderConfig)
@@ -443,11 +449,30 @@ export class ResourceNodeBatcher {
 			const scaleX = (scale.x ?? 1) * this.tileSize
 			const scaleY = (scale.y ?? 1) * this.tileSize
 			const scaleZ = (scale.z ?? 1) * this.tileSize
+			let pivotOffset = new Vector3(0, 0, 0)
 			if (bounds) {
 				const center = bounds.min.add(bounds.max).scale(0.5)
-				pivot.position = new Vector3(-center.x * scaleX, -bounds.min.y * scaleY, -center.z * scaleZ)
+				pivotOffset = new Vector3(-center.x * scaleX, -bounds.min.y * scaleY, -center.z * scaleZ)
+				pivot.position.copyFrom(pivotOffset)
 			}
 			root.position = new Vector3(-BASE_OFFSET, -BASE_OFFSET, -BASE_OFFSET)
+
+			this.worker?.postMessage({
+				type: 'config',
+				key: batchKey,
+				baseRotation: {
+					x: renderConfig.transform?.rotation?.x ?? 0,
+					y: renderConfig.transform?.rotation?.y ?? 0,
+					z: renderConfig.transform?.rotation?.z ?? 0
+				},
+				scale: {
+					x: (renderConfig.transform?.scale?.x ?? 1) * this.tileSize,
+					y: (renderConfig.transform?.scale?.y ?? 1) * this.tileSize,
+					z: (renderConfig.transform?.scale?.z ?? 1) * this.tileSize
+				},
+				baseYOffset: 0,
+				pivotOffset: { x: pivotOffset.x, y: pivotOffset.y, z: pivotOffset.z }
+			})
 
 			return {
 				type: 'model',
@@ -608,4 +633,28 @@ function getBounds(meshes: AbstractMesh[]): { min: Vector3; max: Vector3 } | nul
 		found = true
 	})
 	return found ? { min, max } : null
+}
+
+function getSeededScale(seedKey: string | number): number {
+	const fraction = getSeededFractionWithSalt(seedKey, 'scale')
+	return 0.8 + 0.4 * fraction
+}
+
+function getSeededRotation(seedKey: string | number): number {
+	const fraction = getSeededFractionWithSalt(seedKey, 'rotation')
+	return fraction * Math.PI * 2
+}
+
+function getSeededFractionWithSalt(seedKey: string | number, salt: string): number {
+	const hash = fnv1a(`${seedKey}:${salt}`)
+	return hash / 0x100000000
+}
+
+function fnv1a(input: string): number {
+	let hash = 0x811c9dc5
+	for (let i = 0; i < input.length; i += 1) {
+		hash ^= input.charCodeAt(i)
+		hash = Math.imul(hash, 0x01000193)
+	}
+	return hash >>> 0
 }

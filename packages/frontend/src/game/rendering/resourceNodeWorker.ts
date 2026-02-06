@@ -2,7 +2,7 @@ type Bounds = { minX: number; minY: number; maxX: number; maxY: number }
 
 type WorkerMessage =
 	| { type: 'init'; tileHalf: number; baseOffset: number }
-	| { type: 'add'; key: string; id: string; x: number; y: number; rotation: number; elevation: number }
+	| { type: 'add'; key: string; id: string; x: number; y: number; rotation: number; elevation: number; scale?: number }
 	| { type: 'remove'; key: string; id: string }
 	| { type: 'update'; requestId: number; bounds: Bounds }
 	| {
@@ -11,9 +11,10 @@ type WorkerMessage =
 			baseRotation?: { x?: number; y?: number; z?: number }
 			scale?: { x?: number; y?: number; z?: number }
 			baseYOffset?: number
+			pivotOffset?: { x?: number; y?: number; z?: number }
 	  }
 
-type Node = { id: string; x: number; y: number; rotation: number; elevation: number }
+type Node = { id: string; x: number; y: number; rotation: number; elevation: number; scale: number }
 
 type Batch = {
 	nodes: Node[]
@@ -34,6 +35,9 @@ type BatchConfig = {
 	sy: number
 	sz: number
 	baseYOffset: number
+	px: number
+	py: number
+	pz: number
 }
 
 let tileHalf = 16
@@ -66,7 +70,10 @@ const getConfig = (key: string): BatchConfig => {
 			sx: 1,
 			sy: 1,
 			sz: 1,
-			baseYOffset: tileHalf
+			baseYOffset: tileHalf,
+			px: 0,
+			py: 0,
+			pz: 0
 		}
 		configs.set(key, config)
 	}
@@ -75,7 +82,12 @@ const getConfig = (key: string): BatchConfig => {
 
 const setConfig = (
 	key: string,
-	options: { baseRotation?: { x?: number; y?: number; z?: number }; scale?: { x?: number; y?: number; z?: number }; baseYOffset?: number }
+	options: {
+		baseRotation?: { x?: number; y?: number; z?: number }
+		scale?: { x?: number; y?: number; z?: number }
+		baseYOffset?: number
+		pivotOffset?: { x?: number; y?: number; z?: number }
+	}
 ): void => {
 	const rot = options.baseRotation || {}
 	const rx = rot.x ?? 0
@@ -101,6 +113,7 @@ const setConfig = (
 	const b22 = cy * cx
 
 	const scale = options.scale || {}
+	const pivot = options.pivotOffset || {}
 	const config: BatchConfig = {
 		b00,
 		b01,
@@ -114,7 +127,10 @@ const setConfig = (
 		sx: scale.x ?? 1,
 		sy: scale.y ?? 1,
 		sz: scale.z ?? 1,
-		baseYOffset: options.baseYOffset ?? tileHalf
+		baseYOffset: options.baseYOffset ?? tileHalf,
+		px: pivot.x ?? 0,
+		py: pivot.y ?? 0,
+		pz: pivot.z ?? 0
 	}
 	configs.set(key, config)
 }
@@ -163,6 +179,8 @@ const buildMatrices = (key: string, batch: Batch, bounds: Bounds): { matrices: F
 		const cy = node.y + tileHalf
 		if (cx < bounds.minX || cx > bounds.maxX || cy < bounds.minY || cy > bounds.maxY) continue
 		const rotation = typeof node.rotation === 'number' ? node.rotation : 0
+		const scale = Number.isFinite(node.scale) ? node.scale : 1
+		const offsetFactor = scale - 1
 		const cos = Math.cos(rotation)
 		const sin = Math.sin(rotation)
 		const r00 = config.b00 * cos + config.b02 * sin
@@ -174,21 +192,21 @@ const buildMatrices = (key: string, batch: Batch, bounds: Bounds): { matrices: F
 		const r20 = config.b20 * cos + config.b22 * sin
 		const r21 = config.b21
 		const r22 = -config.b20 * sin + config.b22 * cos
-		matrices[offset++] = r00 * config.sx
-		matrices[offset++] = r01 * config.sy
-		matrices[offset++] = r02 * config.sz
+		matrices[offset++] = r00 * config.sx * scale
+		matrices[offset++] = r01 * config.sy * scale
+		matrices[offset++] = r02 * config.sz * scale
 		matrices[offset++] = 0
-		matrices[offset++] = r10 * config.sx
-		matrices[offset++] = r11 * config.sy
-		matrices[offset++] = r12 * config.sz
+		matrices[offset++] = r10 * config.sx * scale
+		matrices[offset++] = r11 * config.sy * scale
+		matrices[offset++] = r12 * config.sz * scale
 		matrices[offset++] = 0
-		matrices[offset++] = r20 * config.sx
-		matrices[offset++] = r21 * config.sy
-		matrices[offset++] = r22 * config.sz
+		matrices[offset++] = r20 * config.sx * scale
+		matrices[offset++] = r21 * config.sy * scale
+		matrices[offset++] = r22 * config.sz * scale
 		matrices[offset++] = 0
-		matrices[offset++] = cx + baseOffset
-		matrices[offset++] = config.baseYOffset + node.elevation + baseOffset
-		matrices[offset++] = cy + baseOffset
+		matrices[offset++] = cx + baseOffset + config.px * offsetFactor
+		matrices[offset++] = config.baseYOffset + node.elevation + baseOffset + config.py * offsetFactor
+		matrices[offset++] = cy + baseOffset + config.pz * offsetFactor
 		matrices[offset++] = 1
 	}
 	return { matrices, count: visibleCount }
@@ -207,7 +225,8 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
 			setConfig(data.key, {
 				baseRotation: data.baseRotation,
 				scale: data.scale,
-				baseYOffset: data.baseYOffset
+				baseYOffset: data.baseYOffset,
+				pivotOffset: data.pivotOffset
 			})
 			return
 		case 'add':
@@ -216,7 +235,8 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
 				x: data.x,
 				y: data.y,
 				rotation: data.rotation,
-				elevation: data.elevation
+				elevation: data.elevation,
+				scale: typeof data.scale === 'number' && Number.isFinite(data.scale) ? data.scale : 1
 			})
 			return
 		case 'remove':
