@@ -68,10 +68,12 @@ const mapsAssetsDir = path.join(contentDir, 'maps');
 const npcsAssetsDir = path.join(contentDir, 'npcs');
 const itemsAssetsDir = path.join(contentDir, 'items');
 const libraryAssetsDir = path.join(contentDir, 'assets');
+const resourceRenderSource = path.join(contentDir, 'resourceNodeRenders.json');
 const mapsTargetDir = path.join(frontendDir, 'public/assets/maps');
 const npcsTargetDir = path.join(frontendDir, 'public/assets/npcs');
 const itemsTargetDir = path.join(frontendDir, 'public/assets/items');
 const libraryTargetDir = path.join(frontendDir, 'public/assets/library');
+const resourceRenderTarget = path.join(frontendDir, 'public/assets/resource-node-renders.json');
 const assetIndexTarget = path.join(frontendDir, 'public/assets/asset-index.json');
 
 // Create target directories if they don't exist
@@ -202,6 +204,13 @@ function copyAssetLibrary(sourceDir, targetDir, extensions, publicPath, indexEnt
 	const assetIndexEntries = [];
 	console.log(`Copying asset library from ${libraryAssetsDir} to ${libraryTargetDir}`);
 	copyAssetLibrary(libraryAssetsDir, libraryTargetDir, assetExtensions, '/assets/library', assetIndexEntries);
+
+	if (fs.existsSync(resourceRenderSource)) {
+		fs.copyFileSync(resourceRenderSource, resourceRenderTarget);
+		console.log(`Copied resource node render config to ${resourceRenderTarget}`);
+	} else {
+		console.warn(`Resource node render config not found at ${resourceRenderSource}`);
+	}
 
 	const assetIndex = {
 		generatedAt: new Date().toISOString(),

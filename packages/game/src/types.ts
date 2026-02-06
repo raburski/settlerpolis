@@ -10,7 +10,7 @@ import { DialogueTreePartial } from './Dialogue/types'
 import { TiledMap } from "./types"
 import { BuildingDefinition } from './Buildings/types'
 import { ProfessionDefinition, ProfessionToolDefinition } from './Population/types'
-import { ResourceNodeDefinition, ResourceNodeSpawn } from './ResourceNodes/types'
+import { ResourceNodeDefinition, ResourceNodeRenderDefinition, ResourceNodeSpawn } from './ResourceNodes/types'
 import type { CityCharterContent } from './CityCharter/types'
 import type { ItemType } from './Items/types'
 import type { ProfessionType } from './Population/types'
@@ -59,6 +59,7 @@ export interface GameContent {
 	startingPopulation?: StartingPopulation[] // Settlers to spawn at player start location
 	resourceNodeDefinitions?: ResourceNodeDefinition[]
 	resourceNodes?: ResourceNodeSpawn[]
+	resourceNodeRenders?: ResourceNodeRenderDefinition[]
 }
 
 export interface Position {

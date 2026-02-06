@@ -5,9 +5,8 @@ import type { MapManager } from '../Map'
 import type { ItemsManager } from '../Items'
 import { Item } from '../Items/types'
 import { Position } from '../types'
-import { ResourceNodeDefinition, ResourceNodeInstance, ResourceNodeSpawn } from './types'
+import { ResourceNodeDefinition, ResourceNodeInstance, ResourceNodeSpawn, ResourceNodeBounds, ResourceNodesQueryData } from './types'
 import type { MapObject } from '../MapObjects/types'
-import type { PlayerJoinData, PlayerTransitionData } from '../Players/types'
 import { Logger } from '../Logs'
 import { calculateDistance } from '../utils'
 import { BaseManager } from '../Managers'
@@ -45,12 +44,8 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			this.processNodeDecay()
 		})
 
-		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
-			this.sendNodesToClient(client, data.mapId)
-		})
-
-		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
-			this.sendNodesToClient(client, data.mapId)
+		this.event.on<ResourceNodesQueryData>(Event.ResourceNodes.CS.Query, (data, client) => {
+			this.handleResourceNodeQuery(data, client)
 		})
 	}
 
@@ -588,19 +583,58 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		return mapObject
 	}
 
+	private handleResourceNodeQuery(data: ResourceNodesQueryData, client: EventClient): void {
+		const mapId = data.mapId || client.currentGroup
+		const bounds = data.bounds
+		if (!bounds) return
+		const nodes = this.collectNodesInBounds(mapId, bounds)
+		client.emit(Receiver.Sender, Event.ResourceNodes.SC.Sync, {
+			mapId,
+			nodes,
+			requestId: data.requestId,
+			chunkKey: data.chunkKey
+		})
+	}
+
+	private collectNodesInBounds(mapId: string, bounds: ResourceNodeBounds): MapObject[] {
+		const results: MapObject[] = []
+		for (const node of this.nodes.values()) {
+			if (node.mapId !== mapId) continue
+			if (!this.shouldSyncNode(node)) continue
+
+			const tileX = Math.floor(node.position.x / TILE_SIZE)
+			const tileY = Math.floor(node.position.y / TILE_SIZE)
+			if (tileX < bounds.minX || tileX > bounds.maxX || tileY < bounds.minY || tileY > bounds.maxY) {
+				continue
+			}
+
+			const def = this.definitions.get(node.nodeType)
+			if (!def) {
+				this.logger.warn(`[ResourceNodesManager] Missing definition for node type ${node.nodeType} when syncing to client`)
+				continue
+			}
+
+			const mapObject = this.ensureNodeMapObject(node, def)
+			if (!mapObject) continue
+			results.push(mapObject)
+		}
+		return results
+	}
+
+	private shouldSyncNode(node: ResourceNodeInstance): boolean {
+		if (node.remainingHarvests <= 0) return false
+		if (node.isSpoiled) return false
+		if (!this.isNodeMature(node)) return false
+		return true
+	}
+
 	private sendNodesToClient(client: EventClient, mapId?: string): void {
 		const targetMap = mapId || client.currentGroup
 		for (const node of this.nodes.values()) {
 			if (node.mapId !== targetMap) {
 				continue
 			}
-			if (node.remainingHarvests <= 0) {
-				continue
-			}
-			if (node.isSpoiled) {
-				continue
-			}
-			if (!this.isNodeMature(node)) {
+			if (!this.shouldSyncNode(node)) {
 				continue
 			}
 

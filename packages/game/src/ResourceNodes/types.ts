@@ -1,6 +1,7 @@
 import { Position } from '../types'
 import { ItemType } from '../Items/types'
 import type { MapId, ResourceNodeId, MapObjectId } from '../ids'
+import type { MapObject } from '../MapObjects/types'
 
 export type { ResourceNodeId } from '../ids'
 
@@ -16,6 +17,23 @@ export interface ResourceNodeDefinition {
 	maxHarvests: number // Number of harvest actions before depletion
 	regenTimeMs?: number // Time in ms before depleted nodes regenerate
 	blocksMovement?: boolean
+}
+
+export interface ResourceNodeRenderDefinition {
+	id: ResourceNodeType
+	footprint?: {
+		width: number
+		height?: number
+		length?: number
+	}
+	render?: {
+		modelSrc: string
+		transform?: {
+			rotation?: { x: number; y: number; z: number }
+			scale?: { x: number; y: number; z: number }
+			elevation?: number
+		}
+	}
 }
 
 export interface ResourceNodeSpawn {
@@ -38,4 +56,25 @@ export interface ResourceNodeInstance {
 	spoilAtMs?: number
 	despawnAtMs?: number
 	isSpoiled?: boolean
+}
+
+export interface ResourceNodeBounds {
+	minX: number
+	minY: number
+	maxX: number
+	maxY: number
+}
+
+export interface ResourceNodesQueryData {
+	mapId: MapId
+	bounds: ResourceNodeBounds
+	requestId?: number
+	chunkKey?: string
+}
+
+export interface ResourceNodesSyncData {
+	mapId: MapId
+	nodes: MapObject[]
+	requestId?: number
+	chunkKey?: string
 }

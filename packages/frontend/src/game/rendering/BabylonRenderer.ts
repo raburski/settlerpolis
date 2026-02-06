@@ -41,6 +41,15 @@ interface GroundHeightConfig {
 	layer: MapLayer
 }
 
+interface WaterSurfaceConfig {
+	mapWidth: number
+	mapHeight: number
+	tileWidth: number
+	tileHeight: number
+	layer: MapLayer
+	tilesets: MapTileset[]
+}
+
 interface ContourSegment {
 	startX: number
 	startY: number
@@ -77,18 +86,32 @@ const GROUND_TYPE_COLORS: Record<GroundType, string> = {
 	mud: '#6f5a3c'
 }
 
+const MAP_SHADER_VERSION = 3
+
 const GROUND_SMOOTHING_ITERATIONS = 2
 const GROUND_SMOOTHING_PULL = 0.6
 const GROUND_HEIGHT_SCALE = 6
 const GROUND_HEIGHT_SHADE = 0.35
 const GROUND_HEIGHT_SUBDIVISIONS_MAX = 512
 const GROUND_MOUNTAIN_INDEX = GROUND_TYPE_ORDER.indexOf('mountain') + 1
+const GROUND_WATER_SHALLOW_INDEX = GROUND_TYPE_ORDER.indexOf('water_shallow') + 1
+const GROUND_WATER_DEEP_INDEX = GROUND_TYPE_ORDER.indexOf('water_deep') + 1
 const GROUND_MOUNTAIN_MIN_HEIGHT = 0.08
 const DEBUG_GROUND_CONTOURS = false
 const DEBUG_GROUND_CONTOUR_TYPE: GroundType | 'all' = 'all'
 const DEBUG_GROUND_CONTOUR_MAX_POINTS = 1200
 const DEBUG_VALIDATE_POLYGONS = true
 const DEBUG_SKIP_SELF_INTERSECTING_POLYGONS = true
+const WATER_LEVEL = 0.18
+const WATER_SHORE_FADE_TILES = 4
+const WATER_MESH_SUBDIVISIONS = 128
+const WATER_WAVE_SCALE = 0.7
+const WATER_WAVE_SPEED = 0.25
+const WATER_WAVE_HEIGHT = 0.18
+const WATER_WAVE_STRENGTH = 0.16
+const WATER_FOAM_STRENGTH = 0.3
+const WATER_ALPHA_MIN = 0.35
+const WATER_ALPHA_MAX = 0.92
 
 export class BabylonRenderer {
 	public readonly engine: Engine
@@ -115,6 +138,13 @@ export class BabylonRenderer {
 	private groundTypeMaterials: Map<number, StandardMaterial> = new Map()
 	private groundTypeSmoothMaterials: Map<number, StandardMaterial> = new Map()
 	private groundTilesRequest = 0
+	private waterMesh: Mesh | null = null
+	private waterMaterial: ShaderMaterial | null = null
+	private waterMaskTexture: DynamicTexture | null = null
+	private waterMaskFlags: Uint8Array | null = null
+	private waterMaskWidth = 0
+	private waterMaskHeight = 0
+	private waterTime = 0
 	private sharedBoxMeshes: Map<string, Mesh> = new Map()
 	private readonly baseRadius = 800
 	private readonly isoAlpha = Math.PI / 4
@@ -160,6 +190,7 @@ export class BabylonRenderer {
 	start(renderStep: (deltaMs: number) => void): void {
 		this.engine.runRenderLoop(() => {
 			const delta = this.engine.getDeltaTime()
+			this.updateWaterAnimation(delta)
 			renderStep(delta)
 			this.scene.render()
 		})
@@ -173,6 +204,7 @@ export class BabylonRenderer {
 
 	dispose(): void {
 		this.stop()
+		this.resetWaterSurface()
 		this.scene.dispose()
 		this.engine.dispose()
 	}
@@ -187,6 +219,14 @@ export class BabylonRenderer {
 		const ratio = this.highFidelityEnabled ? (window.devicePixelRatio || 1) : 1
 		this.fidelityScale = ratio
 		this.engine.setHardwareScalingLevel(1 / ratio)
+	}
+
+	private updateWaterAnimation(deltaMs: number): void {
+		if (!this.waterMaterial) return
+		const deltaSeconds = Math.max(0, deltaMs) / 1000
+		this.waterTime += deltaSeconds
+		this.waterMaterial.setFloat('time', this.waterTime)
+		this.waterMaterial.setVector3('cameraPosition', this.camera.position)
 	}
 
 	setCameraBounds(minX: number, minZ: number, maxX: number, maxZ: number): void {
@@ -330,6 +370,25 @@ export class BabylonRenderer {
 		}
 	}
 
+	resetWaterSurface(): void {
+		if (this.waterMesh) {
+			this.waterMesh.dispose()
+			this.waterMesh = null
+		}
+		if (this.waterMaterial) {
+			this.waterMaterial.dispose()
+			this.waterMaterial = null
+		}
+		if (this.waterMaskTexture) {
+			this.waterMaskTexture.dispose()
+			this.waterMaskTexture = null
+		}
+		this.waterMaskFlags = null
+		this.waterMaskWidth = 0
+		this.waterMaskHeight = 0
+		this.waterTime = 0
+	}
+
 	createGround(
 		id: string,
 		width: number,
@@ -439,10 +498,10 @@ export class BabylonRenderer {
 					const u = uvs[uvIndex]
 					const v = uvs[uvIndex + 1]
 					mapX = u * mapWidth
-					mapY = (1 - v) * mapHeight
+					mapY = v * mapHeight
 				} else {
 					mapX = (positions[i] + halfWidth) / tileWidth
-					mapY = (halfHeight - positions[i + 2]) / tileHeight
+					mapY = (positions[i + 2] + halfHeight) / tileHeight
 				}
 				positions[i + 1] = sampleHeight(mapX, mapY) * heightScale
 			}
@@ -459,6 +518,63 @@ export class BabylonRenderer {
 		ground.refreshBoundingInfo()
 	}
 
+	applyWaterSurface(config: WaterSurfaceConfig): void {
+		this.resetWaterSurface()
+		if (!config.layer?.data?.length) return
+
+		const mapWidth = Math.max(1, Math.floor(config.mapWidth))
+		const mapHeight = Math.max(1, Math.floor(config.mapHeight))
+		const widthPx = mapWidth * Math.max(1, Math.floor(config.tileWidth))
+		const heightPx = mapHeight * Math.max(1, Math.floor(config.tileHeight))
+		if (widthPx <= 0 || heightPx <= 0) return
+
+		const maskTexture = this.buildWaterMaskTexture(config.layer, mapWidth, mapHeight, config.tilesets)
+		if (!maskTexture) return
+
+		const subdivisionsX = Math.max(2, Math.min(WATER_MESH_SUBDIVISIONS, mapWidth))
+		const subdivisionsY = Math.max(2, Math.min(WATER_MESH_SUBDIVISIONS, mapHeight))
+		const water = MeshBuilder.CreateGround(
+			`water-surface-${mapWidth}x${mapHeight}`,
+			{ width: widthPx, height: heightPx, subdivisionsX, subdivisionsY },
+			this.scene
+		)
+		water.position.x = widthPx / 2
+		water.position.z = heightPx / 2
+		water.position.y = WATER_LEVEL
+		water.isPickable = false
+
+		const material = this.ensureWaterMaterial()
+		material.setTexture('maskSampler', maskTexture)
+		material.setVector2('mapSize', new Vector2(mapWidth, mapHeight))
+		material.setFloat('time', this.waterTime)
+		material.setVector3('cameraPosition', this.camera.position)
+		material.setColor3('shallowColor', Color3.FromHexString(GROUND_TYPE_COLORS.water_shallow))
+		material.setColor3('deepColor', Color3.FromHexString(GROUND_TYPE_COLORS.water_deep))
+		material.setFloat('waveScale', WATER_WAVE_SCALE)
+		material.setFloat('waveSpeed', WATER_WAVE_SPEED)
+		material.setFloat('waveHeight', WATER_WAVE_HEIGHT)
+		material.setFloat('waveStrength', WATER_WAVE_STRENGTH)
+		material.setFloat('foamStrength', WATER_FOAM_STRENGTH)
+		material.setFloat('alphaMin', WATER_ALPHA_MIN)
+		material.setFloat('alphaMax', WATER_ALPHA_MAX)
+
+		water.material = material
+		water.alphaIndex = 1
+		water.renderingGroupId = 0
+
+		this.waterMesh = water
+		this.waterMaterial = material
+		this.waterMaskTexture = maskTexture
+	}
+
+	getWaterFlagAtTile(tileX: number, tileY: number): boolean | null {
+		if (!this.waterMaskFlags || this.waterMaskWidth <= 0 || this.waterMaskHeight <= 0) return null
+		const x = Math.max(0, Math.min(this.waterMaskWidth - 1, Math.floor(tileX)))
+		const y = Math.max(0, Math.min(this.waterMaskHeight - 1, Math.floor(tileY)))
+		const idx = y * this.waterMaskWidth + x
+		return this.waterMaskFlags[idx] === 1
+	}
+
 	getGroundHeightAt(x: number, z: number): number {
 		if (!this.groundHeightData || !this.groundHeightConfig) return 0
 		const { mapWidth, mapHeight, tileWidth, tileHeight } = this.groundHeightConfig
@@ -467,7 +583,7 @@ export class BabylonRenderer {
 		const widthPx = mapWidth * tileWidth
 		const heightPx = mapHeight * tileHeight
 		const mapX = x / tileWidth
-		const mapY = (heightPx - z) / tileHeight
+		const mapY = z / tileHeight
 		const x0 = Math.max(0, Math.min(mapWidth - 1, Math.floor(mapX)))
 		const y0 = Math.max(0, Math.min(mapHeight - 1, Math.floor(mapY)))
 		const x1 = Math.min(mapWidth - 1, x0 + 1)
@@ -546,8 +662,166 @@ export class BabylonRenderer {
 		}
 
 		context.putImageData(imageData, 0, 0)
-		heightTexture.update()
+		heightTexture.update(false)
 		return heightTexture
+	}
+
+	private buildWaterMaskTexture(
+		layer: MapLayer,
+		mapWidth: number,
+		mapHeight: number,
+		tilesets: MapTileset[]
+	): DynamicTexture | null {
+		const totalTiles = mapWidth * mapHeight
+		if (totalTiles <= 0) return null
+		const data = layer.data || []
+		if (data.length < totalTiles) return null
+
+		let typeGrid: ArrayLike<number> | null = null
+		if (
+			this.groundTypeGrid &&
+			this.groundTypeGridWidth === mapWidth &&
+			this.groundTypeGridHeight === mapHeight
+		) {
+			typeGrid = this.groundTypeGrid
+		} else {
+			typeGrid = this.buildGroundTypeGrid(layer, mapWidth, mapHeight, tilesets)
+		}
+		if (!typeGrid) return null
+
+		const waterFlags = new Uint8Array(totalTiles)
+		let waterCount = 0
+		for (let i = 0; i < totalTiles; i += 1) {
+			const typeIndex = typeGrid[i] || 0
+			if (typeIndex === GROUND_WATER_SHALLOW_INDEX || typeIndex === GROUND_WATER_DEEP_INDEX) {
+				waterFlags[i] = 1
+				waterCount += 1
+			}
+		}
+		if (waterCount === 0) return null
+
+		const shoreFactors = this.computeWaterShoreFactors(waterFlags, mapWidth, mapHeight)
+		this.waterMaskFlags = waterFlags
+		this.waterMaskWidth = mapWidth
+		this.waterMaskHeight = mapHeight
+
+		const maskTexture = new DynamicTexture(
+			`water-mask-${mapWidth}x${mapHeight}`,
+			{ width: mapWidth, height: mapHeight },
+			this.scene,
+			false
+		)
+		maskTexture.wrapU = Texture.CLAMP_ADDRESSMODE
+		maskTexture.wrapV = Texture.CLAMP_ADDRESSMODE
+		maskTexture.updateSamplingMode(Texture.NEAREST_NEAREST)
+
+		const context = maskTexture.getContext()
+		const imageData = context.createImageData(mapWidth, mapHeight)
+		const pixels = imageData.data
+
+		for (let i = 0; i < totalTiles; i += 1) {
+			const offset = i * 4
+			if (!waterFlags[i]) {
+				pixels[offset] = 0
+				pixels[offset + 1] = 0
+				pixels[offset + 2] = 0
+				pixels[offset + 3] = 255
+				continue
+			}
+			const typeIndex = typeGrid[i] || 0
+			const depth = typeIndex === GROUND_WATER_DEEP_INDEX ? 1 : 0.35
+			const shore = shoreFactors[i] ?? 0
+			pixels[offset] = Math.max(0, Math.min(255, Math.round(depth * 255)))
+			pixels[offset + 1] = Math.max(0, Math.min(255, Math.round(shore * 255)))
+			pixels[offset + 2] = 0
+			pixels[offset + 3] = 255
+		}
+
+		context.putImageData(imageData, 0, 0)
+		maskTexture.update(false)
+		return maskTexture
+	}
+
+	private computeWaterShoreFactors(waterFlags: Uint8Array, width: number, height: number): Float32Array {
+		const total = width * height
+		const distances = new Int32Array(total)
+		distances.fill(-1)
+		const queue = new Int32Array(total)
+		let head = 0
+		let tail = 0
+
+		for (let i = 0; i < total; i += 1) {
+			if (!waterFlags[i]) {
+				distances[i] = 0
+				queue[tail] = i
+				tail += 1
+			}
+		}
+
+		if (tail === 0) {
+			const filled = new Float32Array(total)
+			filled.fill(1)
+			return filled
+		}
+
+		while (head < tail) {
+			const idx = queue[head]
+			head += 1
+			const d = distances[idx]
+			const x = idx % width
+			const y = Math.floor(idx / width)
+
+			if (x > 0) {
+				const next = idx - 1
+				if (waterFlags[next] && distances[next] < 0) {
+					distances[next] = d + 1
+					queue[tail] = next
+					tail += 1
+				}
+			}
+			if (x + 1 < width) {
+				const next = idx + 1
+				if (waterFlags[next] && distances[next] < 0) {
+					distances[next] = d + 1
+					queue[tail] = next
+					tail += 1
+				}
+			}
+			if (y > 0) {
+				const next = idx - width
+				if (waterFlags[next] && distances[next] < 0) {
+					distances[next] = d + 1
+					queue[tail] = next
+					tail += 1
+				}
+			}
+			if (y + 1 < height) {
+				const next = idx + width
+				if (waterFlags[next] && distances[next] < 0) {
+					distances[next] = d + 1
+					queue[tail] = next
+					tail += 1
+				}
+			}
+		}
+
+		const shoreFactors = new Float32Array(total)
+		const fadeTiles = Math.max(1, WATER_SHORE_FADE_TILES)
+		for (let i = 0; i < total; i += 1) {
+			if (!waterFlags[i]) {
+				shoreFactors[i] = 0
+				continue
+			}
+			const dist = distances[i]
+			if (dist < 0) {
+				shoreFactors[i] = 1
+				continue
+			}
+			const edgeDist = Math.max(0, dist - 1)
+			shoreFactors[i] = Math.min(1, edgeDist / fadeTiles)
+		}
+
+		return shoreFactors
 	}
 
 	private ensureGroundHeightFallbackTexture(): DynamicTexture {
@@ -563,7 +837,7 @@ export class BabylonRenderer {
 		imageData.data[2] = 0
 		imageData.data[3] = 255
 		context.putImageData(imageData, 0, 0)
-		texture.update()
+		texture.update(false)
 		this.groundHeightFallbackTexture = texture
 		return texture
 	}
@@ -955,8 +1229,8 @@ export class BabylonRenderer {
 	}
 
 	private ensureGroundPaletteMaterial(): ShaderMaterial {
-		if (!Effect.ShadersStore['groundPaletteVertexShader']) {
-			Effect.ShadersStore['groundPaletteVertexShader'] = `
+		const shaderVersion = MAP_SHADER_VERSION
+		Effect.ShadersStore['groundPaletteVertexShader'] = `
 				precision highp float;
 				attribute vec3 position;
 				attribute vec2 uv;
@@ -967,9 +1241,7 @@ export class BabylonRenderer {
 					gl_Position = worldViewProjection * vec4(position, 1.0);
 				}
 			`
-		}
-		if (!Effect.ShadersStore['groundPaletteFragmentShader']) {
-			Effect.ShadersStore['groundPaletteFragmentShader'] = `
+		Effect.ShadersStore['groundPaletteFragmentShader'] = `
 				precision highp float;
 				varying vec2 vUV;
 				uniform sampler2D indexSampler;
@@ -992,7 +1264,8 @@ export class BabylonRenderer {
 
 				void main(void) {
 					vec2 mapSizeSafe = max(mapSize, vec2(1.0));
-					vec2 tilePos = floor(vUV * mapSizeSafe);
+					vec2 uv = vUV;
+					vec2 tilePos = floor(uv * mapSizeSafe);
 					tilePos = min(tilePos, mapSizeSafe - 1.0);
 					vec2 indexUV = (tilePos + 0.5) / mapSizeSafe;
 					vec4 enc = texture2D(indexSampler, indexUV);
@@ -1018,8 +1291,10 @@ export class BabylonRenderer {
 					gl_FragColor = color;
 				}
 			`
+		if (this.groundPaletteMaterial && this.groundPaletteMaterial.metadata?.shaderVersion !== shaderVersion) {
+			this.groundPaletteMaterial.dispose()
+			this.groundPaletteMaterial = null
 		}
-
 		if (!this.groundPaletteMaterial) {
 			this.groundPaletteMaterial = new ShaderMaterial(
 				'ground-palette-shader',
@@ -1040,9 +1315,166 @@ export class BabylonRenderer {
 				}
 			)
 			this.groundPaletteMaterial.backFaceCulling = true
+			this.groundPaletteMaterial.metadata = { shaderVersion }
 		}
 
 		return this.groundPaletteMaterial
+	}
+
+	private ensureWaterMaterial(): ShaderMaterial {
+		const shaderVersion = MAP_SHADER_VERSION
+		Effect.ShadersStore['waterSurfaceVertexShader'] = `
+				precision highp float;
+				attribute vec3 position;
+				attribute vec2 uv;
+				uniform mat4 world;
+				uniform mat4 worldViewProjection;
+				uniform vec2 mapSize;
+				uniform float time;
+				uniform float waveScale;
+				uniform float waveSpeed;
+				uniform float waveHeight;
+				varying vec2 vUV;
+				varying vec3 vPositionW;
+
+				float wavePattern(vec2 uv, float t) {
+					float waveA = sin(uv.x * waveScale + t * waveSpeed);
+					float waveB = cos(uv.y * waveScale * 0.9 - t * waveSpeed * 1.1);
+					float waveC = sin((uv.x + uv.y) * waveScale * 0.7 + t * waveSpeed * 0.7);
+					float detail = sin(uv.x * waveScale * 2.3 + t * waveSpeed * 1.8) * cos(uv.y * waveScale * 2.1 - t * waveSpeed * 1.6);
+					return (waveA + waveB * 0.8 + waveC * 0.6 + detail * 0.7) / 3.1;
+				}
+				void main(void) {
+					vUV = uv;
+					vec2 mapSizeSafe = max(mapSize, vec2(1.0));
+					vec2 tileUV = vUV * mapSizeSafe;
+					float wave = wavePattern(tileUV, time);
+					float eps = 0.5;
+					float waveX = wavePattern(tileUV + vec2(eps, 0.0), time);
+					float waveY = wavePattern(tileUV + vec2(0.0, eps), time);
+					float dhdx = (waveX - wave) * waveHeight / eps;
+					float dhdy = (waveY - wave) * waveHeight / eps;
+					vec3 normal = normalize(vec3(-dhdx, 1.0, -dhdy));
+
+					vec3 displaced = position + vec3(0.0, wave * waveHeight, 0.0);
+					vec4 worldPos = world * vec4(displaced, 1.0);
+					vPositionW = worldPos.xyz;
+					gl_Position = worldViewProjection * vec4(displaced, 1.0);
+				}
+			`
+		Effect.ShadersStore['waterSurfaceFragmentShader'] = `
+				precision highp float;
+				varying vec2 vUV;
+				varying vec3 vPositionW;
+				uniform sampler2D maskSampler;
+				uniform vec2 mapSize;
+				uniform vec3 shallowColor;
+				uniform vec3 deepColor;
+				uniform float time;
+				uniform float waveScale;
+				uniform float waveSpeed;
+				uniform float waveHeight;
+				uniform float waveStrength;
+				uniform float foamStrength;
+				uniform float alphaMin;
+				uniform float alphaMax;
+				uniform vec3 cameraPosition;
+
+				float wavePattern(vec2 uv, float t) {
+					float waveA = sin(uv.x * waveScale + t * waveSpeed);
+					float waveB = cos(uv.y * waveScale * 0.9 - t * waveSpeed * 1.1);
+					float waveC = sin((uv.x + uv.y) * waveScale * 0.7 + t * waveSpeed * 0.7);
+					float detail = sin(uv.x * waveScale * 2.3 + t * waveSpeed * 1.8) * cos(uv.y * waveScale * 2.1 - t * waveSpeed * 1.6);
+					return (waveA + waveB * 0.8 + waveC * 0.6 + detail * 0.7) / 3.1;
+				}
+
+				void main(void) {
+					vec2 mapSizeSafe = max(mapSize, vec2(1.0));
+					vec2 uv = vUV;
+					vec2 tilePos = floor(uv * mapSizeSafe);
+					tilePos = min(tilePos, mapSizeSafe - 1.0);
+					vec2 maskUV = (tilePos + 0.5) / mapSizeSafe;
+					vec4 mask = texture2D(maskSampler, maskUV);
+					float depth = mask.r;
+					float shore = mask.g;
+					if (depth < 0.01) {
+						discard;
+					}
+
+					float shoreBlend = smoothstep(0.0, 1.0, shore);
+					vec2 tileUV = uv * mapSizeSafe;
+					float wave = wavePattern(tileUV, time);
+					float ripple = sin((tileUV.x - tileUV.y) * waveScale * 1.6 - time * waveSpeed * 1.3);
+					wave = wave + ripple * 0.45;
+
+					float depthBlend = clamp(depth + (1.0 - shoreBlend) * -0.25, 0.0, 1.0);
+					vec3 base = mix(shallowColor, deepColor, depthBlend);
+					base = mix(shallowColor, base, shoreBlend);
+					base += wave * waveStrength;
+
+					float eps = 0.35;
+					float waveX = wavePattern(tileUV + vec2(eps, 0.0), time);
+					float waveY = wavePattern(tileUV + vec2(0.0, eps), time);
+					float dhdx = (waveX - wave) * waveHeight / eps;
+					float dhdy = (waveY - wave) * waveHeight / eps;
+					vec3 normal = normalize(vec3(-dhdx, 1.0, -dhdy));
+					vec3 lightDir = normalize(vec3(-0.3, 1.0, 0.25));
+					vec3 viewDir = normalize(cameraPosition - vPositionW);
+					float diff = clamp(dot(normal, lightDir), 0.0, 1.0);
+					float spec = pow(clamp(dot(normalize(lightDir + viewDir), normal), 0.0, 1.0), 30.0);
+					float fresnel = pow(1.0 - clamp(dot(normal, viewDir), 0.0, 1.0), 3.0);
+
+					float crest = smoothstep(0.35, 0.9, abs(wave));
+					float shoreFoam = (1.0 - shoreBlend) * (0.65 + 0.35 * sin(time * 0.9 + tileUV.x * 2.0 + tileUV.y * 1.6));
+					float foam = shoreFoam + crest * 0.5;
+					base += vec3(foam) * foamStrength;
+					base += diff * 0.05;
+					base += spec * 0.35;
+					base = mix(base, vec3(0.9, 0.95, 1.0), fresnel * 0.25);
+
+					float alpha = mix(alphaMin, alphaMax, shoreBlend);
+					alpha = clamp(alpha, 0.0, 1.0);
+					gl_FragColor = vec4(base, alpha);
+				}
+			`
+		if (this.waterMaterial && this.waterMaterial.metadata?.shaderVersion !== shaderVersion) {
+			this.waterMaterial.dispose()
+			this.waterMaterial = null
+		}
+		if (!this.waterMaterial) {
+			this.waterMaterial = new ShaderMaterial(
+				'water-surface-shader',
+				this.scene,
+				{ vertex: 'waterSurface', fragment: 'waterSurface' },
+				{
+					attributes: ['position', 'uv'],
+					uniforms: [
+						'world',
+						'worldViewProjection',
+						'mapSize',
+						'time',
+						'waveScale',
+						'waveSpeed',
+						'waveHeight',
+						'waveStrength',
+						'foamStrength',
+						'alphaMin',
+						'alphaMax',
+						'cameraPosition',
+						'shallowColor',
+						'deepColor'
+					],
+					samplers: ['maskSampler']
+				}
+			)
+			this.waterMaterial.backFaceCulling = true
+			this.waterMaterial.alphaMode = Engine.ALPHA_COMBINE
+			this.waterMaterial.disableDepthWrite = true
+			this.waterMaterial.needDepthPrePass = false
+			this.waterMaterial.metadata = { shaderVersion }
+		}
+
+		return this.waterMaterial
 	}
 
 	private buildGroundAtlas(
@@ -1193,7 +1625,7 @@ export class BabylonRenderer {
 		}
 
 		context.putImageData(imageData, 0, 0)
-		indexTexture.update()
+		indexTexture.update(false)
 		return indexTexture
 	}
 
@@ -1238,7 +1670,7 @@ export class BabylonRenderer {
 		}
 
 		context.putImageData(imageData, 0, 0)
-		indexTexture.update()
+		indexTexture.update(false)
 		return indexTexture
 	}
 
@@ -2145,6 +2577,18 @@ export class BabylonRenderer {
 
 	setMeshRotation(mesh: AbstractMesh, x: number, y: number, z: number): void {
 		mesh.rotation.set(x, y, z)
+	}
+
+	getGroundTypeNameAtTile(tileX: number, tileY: number): string | null {
+		if (!this.groundTypeGrid) return null
+		const width = this.groundTypeGridWidth
+		const height = this.groundTypeGridHeight
+		if (width <= 0 || height <= 0) return null
+		const x = Math.max(0, Math.min(width - 1, Math.floor(tileX)))
+		const y = Math.max(0, Math.min(height - 1, Math.floor(tileY)))
+		const index = this.groundTypeGrid[y * width + x] || 0
+		if (index <= 0) return null
+		return GROUND_TYPE_ORDER[index - 1] || null
 	}
 
 	applyEmoji(mesh: AbstractMesh, emoji: string): void {

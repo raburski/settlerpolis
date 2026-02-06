@@ -65,6 +65,7 @@ export class EditorScene {
 	private assetTransform: TransformNode | null = null
 	private assetPivot: TransformNode | null = null
 	private assetMeshes: AbstractMesh[] = []
+	private assetLoadToken = 0
 	private assetOpacity = 1
 	private readonly assetMaterials = new Map<Material, { alpha: number; transparencyMode?: number | null }>()
 	private pickHandler: GridPickHandler | null = null
@@ -139,6 +140,7 @@ export class EditorScene {
 	dispose(): void {
 		window.removeEventListener('resize', this.handleResize)
 		this.engine.stopRenderLoop()
+		this.assetLoadToken += 1
 		this.disposeAsset()
 		this.storageSlotMeshes.forEach((mesh) => mesh.dispose())
 		this.storageSlotMeshes = []
@@ -215,10 +217,18 @@ export class EditorScene {
 	}
 
 	async loadAsset(url: string): Promise<void> {
+		const loadToken = (this.assetLoadToken += 1)
 		this.disposeAsset()
 		if (!url) return
 		const { rootUrl, fileName } = splitAssetUrl(url)
 		const result = await SceneLoader.ImportMeshAsync('', rootUrl, fileName, this.scene)
+		if (loadToken !== this.assetLoadToken) {
+			result.meshes.forEach((mesh) => mesh.dispose(false, true))
+			result.transformNodes?.forEach((node) => node.dispose())
+			result.skeletons?.forEach((skeleton) => skeleton.dispose())
+			result.animationGroups?.forEach((group) => group.dispose())
+			return
+		}
 		this.assetTransform = new TransformNode('asset-transform', this.scene)
 		this.assetPivot = new TransformNode('asset-pivot', this.scene)
 		this.assetPivot.parent = this.assetTransform

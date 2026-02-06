@@ -18,7 +18,7 @@ export const cityCharters: CityCharterContent = {
 			level: 2,
 			name: 'Market Town',
 			requirements: {
-				population: 6
+				population: 15
 			},
 			unlockFlags: ['charter:market-town'],
 			buffs: []

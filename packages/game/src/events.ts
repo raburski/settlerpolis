@@ -29,6 +29,7 @@ import { WildlifeEvents } from './Wildlife/events'
 import { CityCharterEvents } from './CityCharter/events'
 import { TradeEvents } from './Trade/events'
 import { ReputationEvents } from './Reputation/events'
+import { ResourceNodesEvents } from './ResourceNodes/events'
 import type { PlayerJoinData, PlayerTransitionData, PlayerMoveData, EquipItemData, UnequipItemData, PlayerPlaceData } from './Players/types'
 import type { ChatMessageData, ChatSystemMessageData } from './Chat/types'
 import type { InventoryData, DropItemData, PickUpItemData, ConsumeItemData, MoveItemData, AddItemData, RemoveByTypePayload } from './Inventory/types'
@@ -59,6 +60,7 @@ import type { MoveTargetType } from './Movement/types'
 import type { CityCharterClaimRequest, CityCharterStateRequest, CityCharterStateData, CityCharterUnlockFlagsUpdated } from './CityCharter/types'
 import type { TradeRouteSelection, TradeRouteCancelled, TradeRouteListData, TradeRouteUpdatedData, TradeShipmentStartedData, TradeShipmentArrivedData } from './Trade/types'
 import type { ReputationUpdatedData } from './Reputation/types'
+import type { ResourceNodesQueryData, ResourceNodesSyncData } from './ResourceNodes/types'
 import type {
 	BuildingId,
 	BuildingInstanceId,
@@ -152,6 +154,9 @@ export type EventPayloads = Record<string, unknown> & {
 	[MapObjectsEvents.CS.Remove]: RemoveObjectData
 	[MapObjectsEvents.SC.Spawn]: SpawnObjectData
 	[MapObjectsEvents.SC.Despawn]: DespawnObjectData
+
+	[ResourceNodesEvents.CS.Query]: ResourceNodesQueryData
+	[ResourceNodesEvents.SC.Sync]: ResourceNodesSyncData
 
 	[FlagsEvents.SS.SetFlag]: SetFlagData
 	[FlagsEvents.SS.UnsetFlag]: UnsetFlagData
@@ -347,7 +352,8 @@ export const Event = {
 	Wildlife: WildlifeEvents,
 	CityCharter: CityCharterEvents,
 	Trade: TradeEvents,
-	Reputation: ReputationEvents
+	Reputation: ReputationEvents,
+	ResourceNodes: ResourceNodesEvents
 } as const
 
 export default Event 

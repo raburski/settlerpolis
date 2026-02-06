@@ -38,6 +38,9 @@ export interface LoadedMap {
 	objectLayers: Map<string, any[]>
 }
 
+const DEBUG_LOAD_TIMING = String(import.meta.env.VITE_DEBUG_LOAD_TIMING || '').toLowerCase() === 'true'
+const perfNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
+
 const decodeRle = (encoded: number[], total: number): number[] => {
 	const decoded = new Array<number>(total)
 	let offset = 0
@@ -67,11 +70,14 @@ const decodeLayerData = (layers: MapLayer[], width: number, height: number) => {
 
 export class MapLoader {
 	async load(mapKey: string, mapUrl: string): Promise<LoadedMap> {
+		const perfStart = DEBUG_LOAD_TIMING ? perfNow() : 0
 		const response = await fetch(mapUrl)
 		if (!response.ok) {
 			throw new Error(`Failed to load map ${mapKey} from ${mapUrl}`)
 		}
+		const afterFetch = DEBUG_LOAD_TIMING ? perfNow() : 0
 		const json = await response.json()
+		const afterParse = DEBUG_LOAD_TIMING ? perfNow() : 0
 		const tilesets: MapTileset[] = (json.tilesets || [])
 			.filter((tileset: any) => Boolean(tileset?.image))
 			.map((tileset: any) => ({
@@ -98,6 +104,7 @@ export class MapLoader {
 		}
 
 		decodeLayerData(data.layers, data.width, data.height)
+		const afterDecode = DEBUG_LOAD_TIMING ? perfNow() : 0
 
 		const collisionLayer = data.layers.find((layer) => layer.name === 'collision' && layer.type === 'tilelayer')
 		const collisionGrid = this.buildCollisionGrid(collisionLayer, data.width, data.height)
@@ -106,6 +113,18 @@ export class MapLoader {
 			if (layer.type === 'objectgroup') {
 				objectLayers.set(layer.name, layer.objects || [])
 			}
+		}
+
+		if (DEBUG_LOAD_TIMING) {
+			const fetchMs = afterFetch - perfStart
+			const parseMs = afterParse - afterFetch
+			const decodeMs = afterDecode - afterParse
+			const totalMs = afterDecode - perfStart
+			console.info(
+				`[Perf] map-load key=${mapKey} fetch=${fetchMs.toFixed(1)}ms parse=${parseMs.toFixed(
+					1
+				)}ms decode=${decodeMs.toFixed(1)}ms total=${totalMs.toFixed(1)}ms`
+			)
 		}
 
 		return { data, collisionGrid, objectLayers }

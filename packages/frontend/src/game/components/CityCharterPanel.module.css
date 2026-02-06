@@ -297,6 +297,56 @@
 	color: #b6f2a6;
 }
 
+.requirementList {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.requirementItem {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	font-size: 0.55rem;
+	color: #fffbe7;
+	gap: 8px;
+}
+
+.requirementLeft {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+
+.requirementIcon {
+	width: 16px;
+	text-align: center;
+	opacity: 0.9;
+}
+
+.requirementLabel {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 140px;
+}
+
+.requirementProgress {
+	color: #f6b26b;
+}
+
+.requirementItem[data-met='true'] .requirementProgress {
+	color: #b6f2a6;
+}
+
+.requirementItem[data-met='false'] .requirementProgress {
+	color: #ffb3a6;
+}
+
 .claimButton {
 	padding: var(--spacing-xs) var(--spacing-sm);
 	background: #1c2f20;

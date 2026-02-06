@@ -41,7 +41,8 @@ export default defineConfig({
         alias: {
             '@rugged/backend': path.resolve(__dirname, '../packages/backend/src'),
             '@rugged/game': path.resolve(__dirname, '../packages/game/src')
-        }
+        },
+        dedupe: ['@babylonjs/core', '@babylonjs/loaders']
     },
     root: path.resolve(__dirname, '../packages/frontend')
 });

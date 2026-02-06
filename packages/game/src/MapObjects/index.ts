@@ -223,13 +223,21 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 		return this.mapObjectsByMap.get(mapId)
 	}
 
-	public sendMapObjectsToClient(client: EventClient, map?: string) {
+	public sendMapObjectsToClient(
+		client: EventClient,
+		map?: string,
+		options: { includeResourceNodes?: boolean } = {}
+	) {
 		const mapId = map || client.currentGroup
 		const mapObjects = this.getMapObjects(mapId)
+		const includeResourceNodes = options.includeResourceNodes ?? false
 		
 		if (mapObjects && mapObjects.size > 0) {
 			// Send each object to the client
 			for (const object of mapObjects.values()) {
+				if (!includeResourceNodes && object.metadata?.resourceNode) {
+					continue
+				}
 				client.emit(Receiver.Sender, Event.MapObjects.SC.Spawn, { object })
 			}
 		}

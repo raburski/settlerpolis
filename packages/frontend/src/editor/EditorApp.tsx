@@ -6,6 +6,19 @@ type Vec2 = { x: number; y: number }
 
 type Vec3 = { x: number; y: number; z: number }
 
+type ResourceNodeRenderDefinition = {
+	id: string
+	footprint?: { width: number; height?: number; length?: number }
+	render?: {
+		modelSrc?: string
+		transform?: {
+			rotation?: Vec3
+			scale?: Vec3
+			elevation?: number
+		}
+	}
+}
+
 const DEFAULT_ASSET_ID = 'building_model'
 const DEFAULT_ASSET_PATH = ''
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'
@@ -14,6 +27,7 @@ const content = contentModules[`../../../../content/${CONTENT_FOLDER}/index.ts`]
 
 export function EditorApp() {
 	const sceneRef = useRef<EditorScene | null>(null)
+	const [editorMode, setEditorMode] = useState<'building' | 'resource'>('building')
 	const [assetId, setAssetId] = useState(DEFAULT_ASSET_ID)
 	const [assetPath, setAssetPath] = useState(DEFAULT_ASSET_PATH)
 	const [footprint, setFootprint] = useState({ width: 2, length: 2 })
@@ -26,14 +40,23 @@ export function EditorApp() {
 	const [accessTiles, setAccessTiles] = useState<Vec2[]>([])
 	const [blockedTiles, setBlockedTiles] = useState<Vec2[]>([])
 	const [loadError, setLoadError] = useState<string | null>(null)
+	const [resourceAssetPath, setResourceAssetPath] = useState(DEFAULT_ASSET_PATH)
+	const [resourceFootprint, setResourceFootprint] = useState({ width: 1, length: 1 })
+	const [resourcePosition, setResourcePosition] = useState<Vec2>({ x: 0, y: 0 })
+	const [resourceRotationDeg, setResourceRotationDeg] = useState<Vec3>({ x: 0, y: 0, z: 0 })
+	const [resourceScale, setResourceScale] = useState<Vec3>({ x: 1, y: 1, z: 1 })
+	const [resourceElevation, setResourceElevation] = useState(0)
+	const [resourceLoadError, setResourceLoadError] = useState<string | null>(null)
 	const [showHelp, setShowHelp] = useState(false)
 	const [pickMode, setPickMode] = useState<'position' | 'entry' | 'center' | 'access' | 'blocked'>('position')
 	const [assetOptions, setAssetOptions] = useState<string[]>([])
 	const [assetIndexError, setAssetIndexError] = useState<string | null>(null)
 	const [selectedAsset, setSelectedAsset] = useState('')
+	const [selectedResourceAsset, setSelectedResourceAsset] = useState('')
 	const [assetOpen, setAssetOpen] = useState(false)
 	const [selectedBuildingId, setSelectedBuildingId] = useState('')
 	const [definitionDraft, setDefinitionDraft] = useState<Record<string, any> | null>(null)
+	const [selectedResourceId, setSelectedResourceId] = useState('')
 	const [storageSlots, setStorageSlots] = useState<StorageSlot[]>([])
 	const [storageOpen, setStorageOpen] = useState(false)
 	const [footprintOpen, setFootprintOpen] = useState(false)
@@ -45,13 +68,28 @@ export function EditorApp() {
 	const [sceneReady, setSceneReady] = useState(false)
 	const [buildingsFileHandle, setBuildingsFileHandle] = useState<FileSystemFileHandle | null>(null)
 	const [fileStatus, setFileStatus] = useState('')
+	const [resourceFileHandle, setResourceFileHandle] = useState<FileSystemFileHandle | null>(null)
+	const [resourceFileStatus, setResourceFileStatus] = useState('')
+	const [resourceRenderDefinitions, setResourceRenderDefinitions] = useState<ResourceNodeRenderDefinition[]>([])
+	const [resourceRenderError, setResourceRenderError] = useState<string | null>(null)
 	const hasDefinition = Boolean(definitionDraft)
 	const supportsFilePicker = typeof window !== 'undefined' && 'showOpenFilePicker' in window
+	const isBuildingMode = editorMode === 'building'
+	const isResourceMode = editorMode === 'resource'
+	const activeFootprint = isResourceMode ? resourceFootprint : footprint
+	const activePosition = isResourceMode ? resourcePosition : position
+	const activeLoadError = isResourceMode ? resourceLoadError : loadError
 
 	const buildingDefinitions = useMemo(() => {
 		const definitions = (content as { buildings?: Array<Record<string, any>> })?.buildings
 		return Array.isArray(definitions) ? definitions : []
 	}, [])
+
+	const resourceDefinitions = useMemo(() => {
+		const definitions = (content as { resourceNodeDefinitions?: Array<Record<string, any>> })?.resourceNodeDefinitions
+		return Array.isArray(definitions) ? definitions : []
+	}, [])
+
 
 	const itemOptions = useMemo(() => {
 		const items = (content as { items?: Array<Record<string, any>> })?.items
@@ -95,6 +133,10 @@ export function EditorApp() {
 		const scene = sceneRef.current
 		if (!scene) return
 		scene.setPickHandler((gridPosition) => {
+			if (isResourceMode) {
+				setResourcePosition(gridPosition)
+				return
+			}
 			if (pickMode === 'entry') {
 				setEntryPoint({
 					x: gridPosition.x - position.x + 0.5,
@@ -129,7 +171,7 @@ export function EditorApp() {
 			}
 			setPosition(gridPosition)
 		})
-	}, [pickMode, position.x, position.y, toggleTileOffset])
+	}, [isResourceMode, pickMode, position.x, position.y, toggleTileOffset])
 
 	const rotationRad = useMemo(
 		() => ({
@@ -138,6 +180,15 @@ export function EditorApp() {
 			z: toRadians(rotationDeg.z)
 		}),
 		[rotationDeg]
+	)
+
+	const resourceRotationRad = useMemo(
+		() => ({
+			x: toRadians(resourceRotationDeg.x),
+			y: toRadians(resourceRotationDeg.y),
+			z: toRadians(resourceRotationDeg.z)
+		}),
+		[resourceRotationDeg]
 	)
 
 	useEffect(() => {
@@ -159,8 +210,22 @@ export function EditorApp() {
 		return () => window.removeEventListener('keydown', handleKeyDown)
 	}, [])
 
-	const placement: EditorPlacement = useMemo(
-		() => ({
+	const placement: EditorPlacement = useMemo(() => {
+		if (isResourceMode) {
+			return {
+				footprint: resourceFootprint,
+				position: resourcePosition,
+				rotation: resourceRotationRad,
+				scale: resourceScale,
+				elevation: resourceElevation,
+				storageSlots: [],
+				entryPoint: null,
+				centerPoint: null,
+				accessTiles: [],
+				blockedTiles: []
+			}
+		}
+		return {
 			footprint,
 			position,
 			rotation: rotationRad,
@@ -171,13 +236,35 @@ export function EditorApp() {
 			centerPoint,
 			accessTiles,
 			blockedTiles
-		}),
-		[footprint, position, rotationRad, scale, elevation, storageSlots, entryPoint, centerPoint, accessTiles, blockedTiles]
-	)
+		}
+	}, [
+		isResourceMode,
+		resourceFootprint,
+		resourcePosition,
+		resourceRotationRad,
+		resourceScale,
+		resourceElevation,
+		footprint,
+		position,
+		rotationRad,
+		scale,
+		elevation,
+		storageSlots,
+		entryPoint,
+		centerPoint,
+		accessTiles,
+		blockedTiles
+	])
 
 	useEffect(() => {
 		sceneRef.current?.updatePlacement(placement)
 	}, [placement])
+
+	useEffect(() => {
+		if (isResourceMode && pickMode !== 'position') {
+			setPickMode('position')
+		}
+	}, [isResourceMode, pickMode])
 
 	const isAutoTransparent = isEditingFields || pickMode === 'entry' || pickMode === 'center'
 	const isTransparent = manualTransparent || isAutoTransparent
@@ -204,6 +291,33 @@ export function EditorApp() {
 			setLoadError(message)
 		}
 	}, [assetPath])
+
+	const handleLoadResourceAsset = useCallback(async (nextPath?: string) => {
+		const normalized = normalizeAssetPath(nextPath ?? resourceAssetPath)
+		setResourceAssetPath(normalized)
+		if (!normalized) {
+			setResourceLoadError(null)
+			await sceneRef.current?.loadAsset('')
+			return
+		}
+		if (!sceneRef.current) return
+		try {
+			setResourceLoadError(null)
+			await sceneRef.current.loadAsset(normalized)
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Failed to load asset'
+			setResourceLoadError(message)
+		}
+	}, [resourceAssetPath])
+
+	useEffect(() => {
+		if (!sceneReady) return
+		if (isResourceMode) {
+			void handleLoadResourceAsset(resourceAssetPath)
+		} else {
+			void handleLoadAsset(assetPath)
+		}
+	}, [assetPath, handleLoadAsset, handleLoadResourceAsset, isResourceMode, resourceAssetPath, sceneReady])
 
 	const handleAddStorageSlot = useCallback(() => {
 		const defaultItem = itemOptions[0]?.id || ''
@@ -382,6 +496,61 @@ export function EditorApp() {
 		applyDefinitionToEditor(draft)
 	}, [applyDefinitionToEditor])
 
+	const applyResourceRenderToEditor = useCallback((draft: ResourceNodeRenderDefinition | null) => {
+		if (!draft) {
+			setResourceFootprint({ width: 1, length: 1 })
+			setResourceAssetPath('')
+			setSelectedResourceAsset('')
+			setResourceRotationDeg({ x: 0, y: 0, z: 0 })
+			setResourceScale({ x: 1, y: 1, z: 1 })
+			setResourceElevation(0)
+			return
+		}
+		const footprintDef = draft.footprint || {}
+		const width = Number(footprintDef.width) || 1
+		const length = Number(footprintDef.height ?? footprintDef.length) || 1
+		setResourceFootprint({ width, length })
+		const render = draft.render || {}
+		const modelSrc = render.modelSrc || ''
+		setResourceAssetPath(modelSrc)
+		if (modelSrc) {
+			if (assetOptions.includes(modelSrc)) {
+				setSelectedResourceAsset(modelSrc)
+			} else {
+				setSelectedResourceAsset('')
+			}
+			void handleLoadResourceAsset(modelSrc)
+		} else {
+			setSelectedResourceAsset('')
+			setAssetOpen(true)
+		}
+		const transform = render.transform || {}
+		const rotation = transform.rotation || { x: 0, y: 0, z: 0 }
+		setResourceRotationDeg({
+			x: toDegrees(rotation.x || 0),
+			y: toDegrees(rotation.y || 0),
+			z: toDegrees(rotation.z || 0)
+		})
+		setResourceScale({
+			x: transform.scale?.x ?? 1,
+			y: transform.scale?.y ?? 1,
+			z: transform.scale?.z ?? 1
+		})
+		setResourceElevation(transform.elevation ?? 0)
+	}, [assetOptions, handleLoadResourceAsset])
+
+	const loadResourceRender = useCallback((definitionId: string) => {
+		if (!definitionId) {
+			applyResourceRenderToEditor(null)
+			return
+		}
+		const draft = resourceRenderDefinitions.find((definition) => definition.id === definitionId) || null
+		applyResourceRenderToEditor(draft)
+		if (!draft) {
+			setAssetOpen(true)
+		}
+	}, [applyResourceRenderToEditor, resourceRenderDefinitions])
+
 	const definitionOutput = useMemo(() => {
 		if (!definitionDraft) return null
 		return mergeDefinitionWithEditor(definitionDraft, {
@@ -397,6 +566,43 @@ export function EditorApp() {
 			blockedTiles
 		})
 	}, [assetPath, definitionDraft, elevation, footprint, rotationRad, scale, storageSlots, entryPoint, centerPoint, accessTiles, blockedTiles])
+
+	const resourceRenderOutput = useMemo(() => {
+		if (!selectedResourceId) return null
+		const output: ResourceNodeRenderDefinition = {
+			id: selectedResourceId,
+			footprint: {
+				width: resourceFootprint.width,
+				height: resourceFootprint.length
+			}
+		}
+		if (resourceAssetPath) {
+			const transformOverrides = buildTransform(resourceRotationRad, resourceScale, resourceElevation)
+			output.render = {
+				modelSrc: resourceAssetPath
+			}
+			if (transformOverrides) {
+				output.render.transform = transformOverrides
+			}
+		}
+		return output
+	}, [resourceAssetPath, resourceElevation, resourceFootprint.length, resourceFootprint.width, resourceRotationRad, resourceScale, selectedResourceId])
+
+	useEffect(() => {
+		if (!resourceRenderOutput || !resourceRenderOutput.id) return
+		setResourceRenderDefinitions((prev) => {
+			const existingIndex = prev.findIndex((entry) => entry.id === resourceRenderOutput.id)
+			if (existingIndex === -1) {
+				if (!isResourceRenderMeaningful(resourceRenderOutput)) {
+					return prev
+				}
+				return [...prev, resourceRenderOutput]
+			}
+			const nextList = [...prev]
+			nextList[existingIndex] = resourceRenderOutput
+			return nextList
+		})
+	}, [resourceRenderOutput])
 
 	useEffect(() => {
 		const loadIndex = async () => {
@@ -419,11 +625,45 @@ export function EditorApp() {
 	}, [])
 
 	useEffect(() => {
+		const loadResourceRenders = async () => {
+			try {
+				setResourceRenderError(null)
+				const response = await fetch('/assets/resource-node-renders.json', { cache: 'no-cache' })
+				if (!response.ok) {
+					setResourceRenderDefinitions([])
+					return
+				}
+				const data = await response.json()
+				if (Array.isArray(data)) {
+					setResourceRenderDefinitions(data)
+					return
+				}
+				if (Array.isArray(data?.resourceNodeRenders)) {
+					setResourceRenderDefinitions(data.resourceNodeRenders)
+					return
+				}
+				setResourceRenderError('Resource render config has unexpected format.')
+			} catch (error) {
+				void error
+				setResourceRenderDefinitions([])
+			}
+		}
+		void loadResourceRenders()
+	}, [])
+
+	useEffect(() => {
 		if (!assetPath) return
 		if (!assetOptions.includes(assetPath)) return
 		if (selectedAsset === assetPath) return
 		setSelectedAsset(assetPath)
 	}, [assetOptions, assetPath, selectedAsset])
+
+	useEffect(() => {
+		if (!resourceAssetPath) return
+		if (!assetOptions.includes(resourceAssetPath)) return
+		if (selectedResourceAsset === resourceAssetPath) return
+		setSelectedResourceAsset(resourceAssetPath)
+	}, [assetOptions, resourceAssetPath, selectedResourceAsset])
 
 	useEffect(() => {
 		if (itemEmojiMap.size === 0) return
@@ -562,6 +802,144 @@ export function EditorApp() {
 		supportsFilePicker
 	])
 
+	const buildResourceRenderList = useCallback(
+		(nextDefinition: ResourceNodeRenderDefinition) => {
+			const existingIndex = resourceRenderDefinitions.findIndex((entry) => entry.id === nextDefinition.id)
+			if (existingIndex >= 0) {
+				return resourceRenderDefinitions.map((entry, index) =>
+					index === existingIndex ? nextDefinition : entry
+				)
+			}
+			return [...resourceRenderDefinitions, nextDefinition]
+		},
+		[resourceRenderDefinitions]
+	)
+
+	const downloadResourceRenderFile = useCallback((payload: unknown) => {
+		const blob = new Blob([JSON.stringify(payload, null, 2) + '\n'], { type: 'application/json' })
+		const url = URL.createObjectURL(blob)
+		const anchor = document.createElement('a')
+		anchor.href = url
+		anchor.download = 'resourceNodeRenders.json'
+		anchor.click()
+		URL.revokeObjectURL(url)
+	}, [])
+
+	const handlePickResourceFile = useCallback(async (): Promise<FileSystemFileHandle | null> => {
+		if (!('showOpenFilePicker' in window)) {
+			setResourceFileStatus('File picker not supported in this browser.')
+			return null
+		}
+		try {
+			const [handle] = await window.showOpenFilePicker({
+				multiple: false,
+				types: [
+					{
+						description: 'Resource render JSON',
+						accept: { 'application/json': ['.json'] }
+					}
+				]
+			})
+			if (handle) {
+				setResourceFileHandle(handle)
+				setResourceFileStatus(`Linked ${handle.name}`)
+				return handle
+			}
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') {
+				return null
+			}
+			setResourceFileStatus('Failed to pick file.')
+		}
+		return null
+	}, [])
+
+	const handleSaveResourceRenderFile = useCallback(async () => {
+		if (!resourceRenderOutput || !resourceRenderOutput.id) {
+			setResourceFileStatus('Select a resource node first.')
+			return
+		}
+
+		if (!supportsFilePicker) {
+			const renderList = buildResourceRenderList(resourceRenderOutput)
+			downloadResourceRenderFile({ resourceNodeRenders: renderList })
+			setResourceFileStatus('Downloaded resourceNodeRenders.json. Replace content/settlerpolis/resourceNodeRenders.json')
+			return
+		}
+
+		let handle = resourceFileHandle
+		if (!handle) {
+			handle = await handlePickResourceFile()
+		}
+		if (!handle) {
+			return
+		}
+
+		try {
+			const permission = await handle.requestPermission({ mode: 'readwrite' })
+			if (permission !== 'granted') {
+				setResourceFileStatus('Write permission denied.')
+				return
+			}
+			const file = await handle.getFile()
+			const text = await file.text()
+			const parsed = JSON.parse(text)
+			let renderList: ResourceNodeRenderDefinition[] = []
+			let wrapObject: Record<string, any> | null = null
+			let wrapKey: 'resourceNodeRenders' | 'resourceNodes' | null = null
+			let useArrayPayload = false
+
+			if (Array.isArray(parsed)) {
+				renderList = parsed
+				useArrayPayload = true
+			} else if (parsed && Array.isArray(parsed.resourceNodeRenders)) {
+				renderList = parsed.resourceNodeRenders
+				wrapObject = parsed
+				wrapKey = 'resourceNodeRenders'
+			} else if (parsed && Array.isArray(parsed.resourceNodes)) {
+				renderList = parsed.resourceNodes
+				wrapObject = parsed
+				wrapKey = 'resourceNodes'
+			} else {
+				setResourceFileStatus('Invalid resourceNodeRenders.json format.')
+				return
+			}
+
+			const nextDefinition = resourceRenderOutput
+			const existingIndex = renderList.findIndex((entry) => entry.id === nextDefinition.id)
+			const updatedList =
+				existingIndex >= 0
+					? renderList.map((entry, index) => (index === existingIndex ? nextDefinition : entry))
+					: [...renderList, nextDefinition]
+
+			let payload: unknown
+			if (wrapObject) {
+				const key = wrapKey ?? 'resourceNodeRenders'
+				payload = { ...wrapObject, [key]: updatedList }
+			} else if (useArrayPayload) {
+				payload = updatedList
+			} else {
+				payload = { resourceNodeRenders: updatedList }
+			}
+
+			const writable = await handle.createWritable()
+			await writable.write(JSON.stringify(payload, null, 2) + '\n')
+			await writable.close()
+			setResourceFileStatus(`Saved ${nextDefinition.id}`)
+			setResourceRenderDefinitions(buildResourceRenderList(nextDefinition))
+		} catch (error) {
+			void error
+			setResourceFileStatus('Failed to save file.')
+		}
+	}, [
+		buildResourceRenderList,
+		downloadResourceRenderFile,
+		handlePickResourceFile,
+		resourceFileHandle,
+		resourceRenderOutput,
+		supportsFilePicker
+	])
+
 	return (
 		<div className={styles.editorApp}>
 			<div className={styles.sidebar}>
@@ -579,21 +957,39 @@ export function EditorApp() {
 						?
 					</button>
 				</header>
+				<div className={styles.tabRow}>
+					<button
+						className={`${styles.tabButton} ${isBuildingMode ? styles.tabButtonActive : ''}`}
+						type="button"
+						onClick={() => setEditorMode('building')}
+					>
+						Buildings
+					</button>
+					<button
+						className={`${styles.tabButton} ${isResourceMode ? styles.tabButtonActive : ''}`}
+						type="button"
+						onClick={() => setEditorMode('resource')}
+					>
+						Resources
+					</button>
+				</div>
 				{showHelp && (
 					<section className={styles.helpPanel}>
 						<h2 className={styles.helpTitle}>How to use</h2>
 						<ul className={styles.helpList}>
 							<li>Drop a model in content/settlerpolis/assets.</li>
 							<li>Run the dev server to copy assets + build the index.</li>
+							<li>Resource renders are copied to public assets on dev/build.</li>
 							<li>Select a model from the library.</li>
 							<li>Click the grid to set the top-left tile.</li>
 							<li>Set width/length (grid tiles) and transforms.</li>
 							<li>Save updates to buildings.json from the definition panel.</li>
+							<li>Use the Resources tab to save resourceNodeRenders.json.</li>
 						</ul>
 					</section>
 				)}
 
-				{buildingDefinitions.length > 0 && (
+				{isBuildingMode && buildingDefinitions.length > 0 && (
 					<section className={styles.section}>
 						<div className={styles.sectionHeader}>Building definition</div>
 						<label className={styles.field}>
@@ -637,6 +1033,54 @@ export function EditorApp() {
 					</section>
 				)}
 
+				{isResourceMode && (
+					<section className={styles.section}>
+						<div className={styles.sectionHeader}>Resource render</div>
+						{resourceDefinitions.length > 0 ? (
+							<label className={styles.field}>
+								<span>Resource node</span>
+								<select
+									value={selectedResourceId}
+									onChange={(event) => {
+										const next = event.target.value
+										setSelectedResourceId(next)
+										loadResourceRender(next)
+									}}
+								>
+									<option value="">Select a resource...</option>
+									{resourceDefinitions.map((definition) => (
+										<option key={definition.id} value={definition.id}>
+											{definition.name || definition.id}
+										</option>
+									))}
+								</select>
+							</label>
+						) : (
+							<p className={styles.helperText}>No resource nodes found in content.</p>
+						)}
+						{resourceRenderError && <p className={styles.error}>{resourceRenderError}</p>}
+						{resourceDefinitions.length > 0 && (
+							<p className={styles.helperText}>
+								Load a resource node, then adjust the footprint and render settings below. Saving updates
+								resourceNodeRenders.json.
+							</p>
+						)}
+						{resourceRenderOutput && (
+							<div className={styles.inlineRow}>
+								{supportsFilePicker && (
+									<button className={styles.secondaryButton} type="button" onClick={handlePickResourceFile}>
+										Choose resourceNodeRenders.json
+									</button>
+								)}
+								<button className={styles.primaryButton} type="button" onClick={handleSaveResourceRenderFile}>
+									{supportsFilePicker ? 'Save to file' : 'Download resourceNodeRenders.json'}
+								</button>
+								{resourceFileStatus && <span className={styles.status}>{resourceFileStatus}</span>}
+							</div>
+						)}
+					</section>
+				)}
+
 				<section className={styles.section}>
 					<div className={styles.sectionHeaderRow}>
 						<div className={styles.sectionHeader}>Asset</div>
@@ -655,9 +1099,19 @@ export function EditorApp() {
 								<label className={styles.field}>
 									<span>Asset library</span>
 									<select
-										value={selectedAsset}
+										value={isResourceMode ? selectedResourceAsset : selectedAsset}
 										onChange={(event) => {
 											const next = event.target.value
+											if (isResourceMode) {
+												setSelectedResourceAsset(next)
+												setResourceAssetPath(next)
+												if (next) {
+													void handleLoadResourceAsset(next)
+												} else {
+													void handleLoadResourceAsset('')
+												}
+												return
+											}
 											setSelectedAsset(next)
 											setAssetPath(next)
 											if (next) {
@@ -680,7 +1134,7 @@ export function EditorApp() {
 							{!assetIndexError && assetOptions.length === 0 && (
 								<p className={styles.helperText}>No assets found yet. Run the content loader to build the index.</p>
 							)}
-							{!hasDefinition && (
+							{isBuildingMode && !hasDefinition && (
 								<label className={styles.field}>
 									<span>Asset ID</span>
 									<input
@@ -691,7 +1145,7 @@ export function EditorApp() {
 									/>
 								</label>
 							)}
-							{loadError && <p className={styles.error}>{loadError}</p>}
+							{activeLoadError && <p className={styles.error}>{activeLoadError}</p>}
 						</>
 					)}
 				</section>
@@ -721,12 +1175,17 @@ export function EditorApp() {
 										type="number"
 										step="1"
 										min="1"
-										value={footprint.width}
+										value={activeFootprint.width}
 										onChange={(event) =>
-											setFootprint((prev) => ({
-												...prev,
-												width: toInteger(event.target.value, prev.width)
-											}))
+											isResourceMode
+												? setResourceFootprint((prev) => ({
+														...prev,
+														width: toInteger(event.target.value, prev.width)
+													}))
+												: setFootprint((prev) => ({
+														...prev,
+														width: toInteger(event.target.value, prev.width)
+													}))
 										}
 									/>
 								</label>
@@ -736,12 +1195,17 @@ export function EditorApp() {
 										type="number"
 										step="1"
 										min="1"
-										value={footprint.length}
+										value={activeFootprint.length}
 										onChange={(event) =>
-											setFootprint((prev) => ({
-												...prev,
-												length: toInteger(event.target.value, prev.length)
-											}))
+											isResourceMode
+												? setResourceFootprint((prev) => ({
+														...prev,
+														length: toInteger(event.target.value, prev.length)
+													}))
+												: setFootprint((prev) => ({
+														...prev,
+														length: toInteger(event.target.value, prev.length)
+													}))
 										}
 									/>
 								</label>
@@ -752,12 +1216,17 @@ export function EditorApp() {
 									<input
 										type="number"
 										step="1"
-										value={position.x}
+										value={activePosition.x}
 										onChange={(event) =>
-											setPosition((prev) => ({
-												...prev,
-												x: toNumber(event.target.value, prev.x)
-											}))
+											isResourceMode
+												? setResourcePosition((prev) => ({
+														...prev,
+														x: toNumber(event.target.value, prev.x)
+													}))
+												: setPosition((prev) => ({
+														...prev,
+														x: toNumber(event.target.value, prev.x)
+													}))
 										}
 									/>
 								</label>
@@ -766,12 +1235,17 @@ export function EditorApp() {
 									<input
 										type="number"
 										step="1"
-										value={position.y}
+										value={activePosition.y}
 										onChange={(event) =>
-											setPosition((prev) => ({
-												...prev,
-												y: toNumber(event.target.value, prev.y)
-											}))
+											isResourceMode
+												? setResourcePosition((prev) => ({
+														...prev,
+														y: toNumber(event.target.value, prev.y)
+													}))
+												: setPosition((prev) => ({
+														...prev,
+														y: toNumber(event.target.value, prev.y)
+													}))
 										}
 									/>
 								</label>
@@ -780,116 +1254,118 @@ export function EditorApp() {
 					)}
 				</section>
 
-				<section
-					className={styles.section}
-					onFocusCapture={handleEditingFocus}
-					onBlurCapture={handleEditingBlur}
-				>
-					<div className={styles.sectionHeaderRow}>
-						<div className={styles.sectionHeader}>Entry + center points</div>
-						<button
-							className={styles.collapseButton}
-							type="button"
-							onClick={() => setEntryCenterOpen((prev) => !prev)}
-							aria-expanded={entryCenterOpen}
-						>
-							{entryCenterOpen ? '^' : 'v'}
-						</button>
-					</div>
-					{entryCenterOpen && (
-						<>
-							<p className={styles.helperText}>
-								Offsets are in tiles from the top-left corner of the footprint. Click the grid to pick a point.
-							</p>
-							{pickMode === 'entry' && (
-								<p className={styles.pickHint}>Click the grid to set the entry point.</p>
-							)}
-							{pickMode === 'center' && (
-								<p className={styles.pickHint}>Click the grid to set the center point.</p>
-							)}
-							{pickMode === 'access' && (
-								<p className={styles.pickHint}>Click the grid to toggle access tiles.</p>
-							)}
-							{pickMode === 'blocked' && (
-								<p className={styles.pickHint}>Click the grid to toggle blocked tiles.</p>
-							)}
-							<div className={styles.gridRow}>
-								<label className={styles.field}>
-									<span>Entry X</span>
-									<input
-										type="number"
-										step="0.1"
-										value={entryPoint?.x ?? ''}
-										onChange={(event) => setEntryPoint(updatePoint(entryPoint, 'x', event.target.value))}
-										placeholder="unset"
-									/>
-								</label>
-								<label className={styles.field}>
-									<span>Entry Y</span>
-									<input
-										type="number"
-										step="0.1"
-										value={entryPoint?.y ?? ''}
-										onChange={(event) => setEntryPoint(updatePoint(entryPoint, 'y', event.target.value))}
-										placeholder="unset"
-									/>
-								</label>
-							</div>
-							<div className={styles.inlineRow}>
-								<button
-									className={`${styles.modeButton} ${pickMode === 'entry' ? styles.modeButtonActive : ''}`}
-									type="button"
-									onClick={() => handlePickMode('entry')}
-								>
-									Pick entry
-								</button>
-								<button className={styles.smallButton} type="button" onClick={() => setEntryPoint(null)}>
-									Clear
-								</button>
-							</div>
+				{isBuildingMode && (
+					<section
+						className={styles.section}
+						onFocusCapture={handleEditingFocus}
+						onBlurCapture={handleEditingBlur}
+					>
+						<div className={styles.sectionHeaderRow}>
+							<div className={styles.sectionHeader}>Entry + center points</div>
+							<button
+								className={styles.collapseButton}
+								type="button"
+								onClick={() => setEntryCenterOpen((prev) => !prev)}
+								aria-expanded={entryCenterOpen}
+							>
+								{entryCenterOpen ? '^' : 'v'}
+							</button>
+						</div>
+						{entryCenterOpen && (
+							<>
+								<p className={styles.helperText}>
+									Offsets are in tiles from the top-left corner of the footprint. Click the grid to pick a point.
+								</p>
+								{pickMode === 'entry' && (
+									<p className={styles.pickHint}>Click the grid to set the entry point.</p>
+								)}
+								{pickMode === 'center' && (
+									<p className={styles.pickHint}>Click the grid to set the center point.</p>
+								)}
+								{pickMode === 'access' && (
+									<p className={styles.pickHint}>Click the grid to toggle access tiles.</p>
+								)}
+								{pickMode === 'blocked' && (
+									<p className={styles.pickHint}>Click the grid to toggle blocked tiles.</p>
+								)}
+								<div className={styles.gridRow}>
+									<label className={styles.field}>
+										<span>Entry X</span>
+										<input
+											type="number"
+											step="0.1"
+											value={entryPoint?.x ?? ''}
+											onChange={(event) => setEntryPoint(updatePoint(entryPoint, 'x', event.target.value))}
+											placeholder="unset"
+										/>
+									</label>
+									<label className={styles.field}>
+										<span>Entry Y</span>
+										<input
+											type="number"
+											step="0.1"
+											value={entryPoint?.y ?? ''}
+											onChange={(event) => setEntryPoint(updatePoint(entryPoint, 'y', event.target.value))}
+											placeholder="unset"
+										/>
+									</label>
+								</div>
+								<div className={styles.inlineRow}>
+									<button
+										className={`${styles.modeButton} ${pickMode === 'entry' ? styles.modeButtonActive : ''}`}
+										type="button"
+										onClick={() => handlePickMode('entry')}
+									>
+										Pick entry
+									</button>
+									<button className={styles.smallButton} type="button" onClick={() => setEntryPoint(null)}>
+										Clear
+									</button>
+								</div>
 
-							<div className={styles.gridRow}>
-								<label className={styles.field}>
-									<span>Center X</span>
-									<input
-										type="number"
-										step="0.1"
-										value={centerPoint?.x ?? ''}
-										onChange={(event) => setCenterPoint(updatePoint(centerPoint, 'x', event.target.value))}
-										placeholder="unset"
-									/>
-								</label>
-								<label className={styles.field}>
-									<span>Center Y</span>
-									<input
-										type="number"
-										step="0.1"
-										value={centerPoint?.y ?? ''}
-										onChange={(event) => setCenterPoint(updatePoint(centerPoint, 'y', event.target.value))}
-										placeholder="unset"
-									/>
-								</label>
-							</div>
-							<div className={styles.inlineRow}>
-								<button
-									className={`${styles.modeButton} ${pickMode === 'center' ? styles.modeButtonActive : ''}`}
-									type="button"
-									onClick={() => handlePickMode('center')}
-								>
-									Pick center
-								</button>
-								<button className={styles.secondaryButton} type="button" onClick={handleSetCenterFromFootprint}>
-									Use footprint center
-								</button>
-								<button className={styles.smallButton} type="button" onClick={() => setCenterPoint(null)}>
-									Clear
-								</button>
-							</div>
-						</>
-					)}
-				</section>
+								<div className={styles.gridRow}>
+									<label className={styles.field}>
+										<span>Center X</span>
+										<input
+											type="number"
+											step="0.1"
+											value={centerPoint?.x ?? ''}
+											onChange={(event) => setCenterPoint(updatePoint(centerPoint, 'x', event.target.value))}
+											placeholder="unset"
+										/>
+									</label>
+									<label className={styles.field}>
+										<span>Center Y</span>
+										<input
+											type="number"
+											step="0.1"
+											value={centerPoint?.y ?? ''}
+											onChange={(event) => setCenterPoint(updatePoint(centerPoint, 'y', event.target.value))}
+											placeholder="unset"
+										/>
+									</label>
+								</div>
+								<div className={styles.inlineRow}>
+									<button
+										className={`${styles.modeButton} ${pickMode === 'center' ? styles.modeButtonActive : ''}`}
+										type="button"
+										onClick={() => handlePickMode('center')}
+									>
+										Pick center
+									</button>
+									<button className={styles.secondaryButton} type="button" onClick={handleSetCenterFromFootprint}>
+										Use footprint center
+									</button>
+									<button className={styles.smallButton} type="button" onClick={() => setCenterPoint(null)}>
+										Clear
+									</button>
+								</div>
+							</>
+						)}
+					</section>
+				)}
 
-				{hasDefinition && (
+				{isBuildingMode && hasDefinition && (
 					<section className={styles.section}>
 						<div className={styles.sectionHeaderRow}>
 							<div className={styles.sectionHeader}>Access + blocked tiles</div>
@@ -1007,12 +1483,17 @@ export function EditorApp() {
 									<input
 										type="number"
 										step="1"
-										value={rotationDeg.x}
+										value={isResourceMode ? resourceRotationDeg.x : rotationDeg.x}
 										onChange={(event) =>
-											setRotationDeg((prev) => ({
-												...prev,
-												x: toNumber(event.target.value, prev.x)
-											}))
+											isResourceMode
+												? setResourceRotationDeg((prev) => ({
+														...prev,
+														x: toNumber(event.target.value, prev.x)
+													}))
+												: setRotationDeg((prev) => ({
+														...prev,
+														x: toNumber(event.target.value, prev.x)
+													}))
 										}
 									/>
 								</label>
@@ -1021,12 +1502,17 @@ export function EditorApp() {
 									<input
 										type="number"
 										step="1"
-										value={rotationDeg.y}
+										value={isResourceMode ? resourceRotationDeg.y : rotationDeg.y}
 										onChange={(event) =>
-											setRotationDeg((prev) => ({
-												...prev,
-												y: toNumber(event.target.value, prev.y)
-											}))
+											isResourceMode
+												? setResourceRotationDeg((prev) => ({
+														...prev,
+														y: toNumber(event.target.value, prev.y)
+													}))
+												: setRotationDeg((prev) => ({
+														...prev,
+														y: toNumber(event.target.value, prev.y)
+													}))
 										}
 									/>
 								</label>
@@ -1035,12 +1521,17 @@ export function EditorApp() {
 									<input
 										type="number"
 										step="1"
-										value={rotationDeg.z}
+										value={isResourceMode ? resourceRotationDeg.z : rotationDeg.z}
 										onChange={(event) =>
-											setRotationDeg((prev) => ({
-												...prev,
-												z: toNumber(event.target.value, prev.z)
-											}))
+											isResourceMode
+												? setResourceRotationDeg((prev) => ({
+														...prev,
+														z: toNumber(event.target.value, prev.z)
+													}))
+												: setRotationDeg((prev) => ({
+														...prev,
+														z: toNumber(event.target.value, prev.z)
+													}))
 										}
 									/>
 								</label>
@@ -1051,12 +1542,17 @@ export function EditorApp() {
 									<input
 										type="number"
 										step="0.05"
-										value={scale.x}
+										value={isResourceMode ? resourceScale.x : scale.x}
 										onChange={(event) =>
-											setScale((prev) => ({
-												...prev,
-												x: toNumber(event.target.value, prev.x)
-											}))
+											isResourceMode
+												? setResourceScale((prev) => ({
+														...prev,
+														x: toNumber(event.target.value, prev.x)
+													}))
+												: setScale((prev) => ({
+														...prev,
+														x: toNumber(event.target.value, prev.x)
+													}))
 										}
 									/>
 								</label>
@@ -1065,12 +1561,17 @@ export function EditorApp() {
 									<input
 										type="number"
 										step="0.05"
-										value={scale.y}
+										value={isResourceMode ? resourceScale.y : scale.y}
 										onChange={(event) =>
-											setScale((prev) => ({
-												...prev,
-												y: toNumber(event.target.value, prev.y)
-											}))
+											isResourceMode
+												? setResourceScale((prev) => ({
+														...prev,
+														y: toNumber(event.target.value, prev.y)
+													}))
+												: setScale((prev) => ({
+														...prev,
+														y: toNumber(event.target.value, prev.y)
+													}))
 										}
 									/>
 								</label>
@@ -1079,12 +1580,17 @@ export function EditorApp() {
 									<input
 										type="number"
 										step="0.05"
-										value={scale.z}
+										value={isResourceMode ? resourceScale.z : scale.z}
 										onChange={(event) =>
-											setScale((prev) => ({
-												...prev,
-												z: toNumber(event.target.value, prev.z)
-											}))
+											isResourceMode
+												? setResourceScale((prev) => ({
+														...prev,
+														z: toNumber(event.target.value, prev.z)
+													}))
+												: setScale((prev) => ({
+														...prev,
+														z: toNumber(event.target.value, prev.z)
+													}))
 										}
 									/>
 								</label>
@@ -1094,15 +1600,19 @@ export function EditorApp() {
 								<input
 									type="number"
 									step="0.1"
-									value={elevation}
-									onChange={(event) => setElevation(toNumber(event.target.value, elevation))}
+									value={isResourceMode ? resourceElevation : elevation}
+									onChange={(event) =>
+										isResourceMode
+											? setResourceElevation(toNumber(event.target.value, resourceElevation))
+											: setElevation(toNumber(event.target.value, elevation))
+									}
 								/>
 							</label>
 						</>
 					)}
 				</section>
 
-				{hasDefinition && (
+				{isBuildingMode && hasDefinition && (
 					<section className={styles.section}>
 						<div className={styles.sectionHeaderRow}>
 							<div className={styles.sectionHeader}>Storage slots</div>
@@ -1260,8 +1770,8 @@ export function EditorApp() {
 				<EditorViewport onSceneReady={handleSceneReady} />
 				<div className={styles.hud}>
 					<div className={styles.hudCard}>
-						<p>Footprint: {footprint.width} x {footprint.length}</p>
-						<p>Grid: ({position.x}, {position.y})</p>
+						<p>Footprint: {activeFootprint.width} x {activeFootprint.length}</p>
+						<p>Grid: ({activePosition.x}, {activePosition.y})</p>
 					</div>
 				</div>
 			</div>
@@ -1493,4 +2003,16 @@ function normalizeTileOffsets(tiles: Vec2[]): Array<{ x: number; y: number }> {
 		normalized.push({ x, y })
 	}
 	return normalized
+}
+
+function isResourceRenderMeaningful(definition: ResourceNodeRenderDefinition): boolean {
+	const footprint = definition.footprint
+	const width = Number(footprint?.width ?? 1)
+	const length = Number(footprint?.height ?? footprint?.length ?? 1)
+	const hasFootprint =
+		Number.isFinite(width) &&
+		Number.isFinite(length) &&
+		(Math.round(width) !== 1 || Math.round(length) !== 1)
+	const hasRender = Boolean(definition.render?.modelSrc)
+	return hasRender || hasFootprint
 }
