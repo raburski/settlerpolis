@@ -45,6 +45,7 @@ export interface PlayersDeps {
 export class PlayersManager extends BaseManager<PlayersDeps> {
 	private players = new Map<string, Player>()
 	private startingItems: StartingItem[] = []
+	private connectedClients = new Set<string>()
 
 	constructor(
 		managers: PlayersDeps,
@@ -118,6 +119,10 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 	private setupEventHandlers() {
 		// Handle initial connection
 		this.event.on(Event.Players.CS.Connect, (_, client) => {
+			if (this.connectedClients.has(client.id)) {
+				return
+			}
+			this.connectedClients.add(client.id)
 			this.logger.debug('[PLAYERS] on CONNECT', client.id)
 			
 			// Only send player ID initially
@@ -133,6 +138,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 		// Handle client lifecycle
 		this.event.onLeft((client) => {
 			this.logger.debug('[PLAYERS] on LEFT', client.id)
+			this.connectedClients.delete(client.id)
 			const player = this.players.get(client.id)
 			if (player) {
 				this.players.delete(client.id)

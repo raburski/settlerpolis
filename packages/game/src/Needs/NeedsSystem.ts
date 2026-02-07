@@ -46,7 +46,7 @@ export class NeedsSystem {
 	}
 
 	private setupEventHandlers(): void {
-		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+		this.event.on(SimulationEvents.SS.SlowTick, (data: SimulationTickData) => {
 			this.handleSimulationTick(data)
 		})
 		this.event.on(MovementEvents.SS.SegmentComplete, (data: { entityId: string, segmentDistance: number, totalDistance: number }) => {

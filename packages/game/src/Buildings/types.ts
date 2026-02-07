@@ -76,6 +76,7 @@ export interface BuildingDefinition {
 			rotation?: { x: number; y: number; z: number }
 			scale?: { x: number; y: number; z: number }
 			elevation?: number
+			offset?: { x: number; y: number; z: number }
 		}
 	}
 	renders?: Array<{
@@ -85,6 +86,7 @@ export interface BuildingDefinition {
 			rotation?: { x: number; y: number; z: number }
 			scale?: { x: number; y: number; z: number }
 			elevation?: number
+			offset?: { x: number; y: number; z: number }
 		}
 	}>
 	storageSlots?: import('../Storage/types').StorageSlotDefinition[]
@@ -168,6 +170,8 @@ export interface BuildingDefinition {
 		carryQuantity?: number
 		deliveryQuantity?: number
 		patrolStrideTiles?: number
+		patrolPauseMs?: number
+		patrolSpeedMultiplier?: number
 	}
 	amenitySlots?: {
 		count: number

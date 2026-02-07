@@ -99,6 +99,7 @@ export class SettlerController {
 		this.settler = settlerData
 
 		const isMoving =
+			settlerData.state === SettlerState.Moving ||
 			settlerData.state === SettlerState.MovingToItem ||
 			settlerData.state === SettlerState.CarryingItem ||
 			settlerData.state === SettlerState.MovingToBuilding ||

@@ -591,7 +591,7 @@ export const buildings: BuildingDefinition[] = [
       "cropNodeType": "tree",
       "plotRadiusTiles": 8,
       "plantTimeMs": 2000,
-      "growTimeMs": 45000,
+      "growTimeMs": 180000,
       "maxPlots": 18,
       "allowHarvest": false,
       "minSpacingTiles": 1,
@@ -1691,12 +1691,15 @@ export const buildings: BuildingDefinition[] = [
     "requiredProfession": "vendor",
     "workerSlots": 1,
     "marketDistribution": {
-      "maxDistanceTiles": 24,
+      "maxDistanceTiles": 80,
       "maxStops": 8,
       "roadSearchRadiusTiles": 8,
       "houseSearchRadiusTiles": 3,
       "carryQuantity": 8,
-      "deliveryQuantity": 2
+      "deliveryQuantity": 1,
+      "patrolStrideTiles": 80,
+      "patrolPauseMs": 0,
+      "patrolSpeedMultiplier": 0.55
     },
     "amenitySlots": {
       "count": 3

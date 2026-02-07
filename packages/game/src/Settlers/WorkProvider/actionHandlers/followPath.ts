@@ -18,6 +18,7 @@ export const FollowPathActionHandler: ActionHandler = {
 		const started = managers.movement.moveAlongPath(settlerId, action.path, {
 			targetType: action.targetType,
 			targetId: action.targetId,
+			speedMultiplier: action.speedMultiplier,
 			callbacks: {
 				onPathComplete: () => {
 					complete()

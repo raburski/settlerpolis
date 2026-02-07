@@ -4,6 +4,8 @@ import type { TransportSource } from '../types'
 import type { StepHandler, StepHandlerResult } from './types'
 import { ReservationBag } from '../reservations'
 import { MoveTargetType } from '../../../Movement/types'
+import { calculateDistance } from '../../../utils'
+import type { WorkAction } from '../types'
 
 export const TransportHandler: StepHandler = {
 	type: WorkStepType.Transport,
@@ -24,6 +26,8 @@ export const TransportHandler: StepHandler = {
 
 		const reservations = new ReservationBag()
 		const roadData = managers.roads.getRoadData(settler.mapId) || undefined
+		const map = managers.map.getMap(settler.mapId)
+		const tileSize = map?.tiledMap.tilewidth || 32
 
 		const canReach = (from: { x: number, y: number }, to: { x: number, y: number }) => {
 			const path = managers.map.findPath(settler.mapId, from, to, { roadData, allowDiagonal: true })
@@ -38,6 +42,66 @@ export const TransportHandler: StepHandler = {
 			if (fallback && canReach(from, fallback)) {
 				return fallback
 			}
+			return null
+		}
+
+		const getRandomDeliveryEgressPosition = (
+			deliveryPosition: { x: number, y: number },
+			forbiddenPositions: Array<{ x: number, y: number }>
+		) => {
+			const isForbidden = (position: { x: number, y: number }) => {
+				return forbiddenPositions.some(forbidden => calculateDistance(position, forbidden) < tileSize * 0.5)
+			}
+
+			const directions = [
+				{ x: 0, y: -1 },
+				{ x: 1, y: 0 },
+				{ x: 0, y: 1 },
+				{ x: -1, y: 0 }
+			]
+			const distances = [1, 2]
+			const candidates: Array<{ x: number, y: number }> = []
+
+			for (let index = directions.length - 1; index > 0; index--) {
+				const swapIndex = Math.floor(Math.random() * (index + 1))
+				const current = directions[index]
+				directions[index] = directions[swapIndex]
+				directions[swapIndex] = current
+			}
+
+			for (const distance of distances) {
+				for (const direction of directions) {
+					candidates.push({
+						x: deliveryPosition.x + direction.x * tileSize * distance,
+						y: deliveryPosition.y + direction.y * tileSize * distance
+					})
+				}
+			}
+
+			for (let index = candidates.length - 1; index > 0; index--) {
+				const swapIndex = Math.floor(Math.random() * (index + 1))
+				const current = candidates[index]
+				candidates[index] = candidates[swapIndex]
+				candidates[swapIndex] = current
+			}
+
+			for (const candidate of candidates) {
+				if (isForbidden(candidate)) {
+					continue
+				}
+				const reachable = resolveReachableTarget(deliveryPosition, candidate)
+				if (!reachable) {
+					continue
+				}
+				if (calculateDistance(reachable, deliveryPosition) < tileSize * 0.5) {
+					continue
+				}
+				if (isForbidden(reachable)) {
+					continue
+				}
+				return reachable
+			}
+
 			return null
 		}
 
@@ -79,17 +143,31 @@ export const TransportHandler: StepHandler = {
 				}
 				targetPosition = reachableTarget
 			}
+			const egressPosition = getRandomDeliveryEgressPosition(targetPosition, [
+				targetBuilding.position,
+				targetPosition
+			])
+			const actions: WorkAction[] = [
+				{ type: WorkActionType.Move, position: source.position, targetType: MoveTargetType.Item, targetId: source.itemId, setState: SettlerState.MovingToItem },
+				{ type: WorkActionType.PickupLoot, itemId: source.itemId, setState: SettlerState.CarryingItem },
+				{ type: WorkActionType.Move, position: targetPosition, targetType: step.target.type === TransportTargetType.Storage ? MoveTargetType.StorageSlot : MoveTargetType.Building, targetId: targetReservationId || targetBuilding.id, setState: SettlerState.CarryingItem },
+				// Construction consumes collectedResources (pre-storage), so it uses a dedicated action.
+				step.target.type === TransportTargetType.Construction
+					? { type: WorkActionType.DeliverConstruction, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, setState: SettlerState.Working }
+					: { type: WorkActionType.DeliverStorage, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, reservationId: targetReservationId || undefined, setState: SettlerState.Working }
+			]
+			if (egressPosition) {
+				actions.push({
+					type: WorkActionType.Move,
+					position: egressPosition,
+					targetType: MoveTargetType.Spot,
+					targetId: `delivery-egress:${assignment.assignmentId}:${targetBuilding.id}`,
+					setState: SettlerState.Moving
+				})
+			}
 
 			return {
-				actions: [
-					{ type: WorkActionType.Move, position: source.position, targetType: MoveTargetType.Item, targetId: source.itemId, setState: SettlerState.MovingToItem },
-					{ type: WorkActionType.PickupLoot, itemId: source.itemId, setState: SettlerState.CarryingItem },
-					{ type: WorkActionType.Move, position: targetPosition, targetType: step.target.type === TransportTargetType.Storage ? MoveTargetType.StorageSlot : MoveTargetType.Building, targetId: targetReservationId || targetBuilding.id, setState: SettlerState.CarryingItem },
-					// Construction consumes collectedResources (pre-storage), so it uses a dedicated action.
-					step.target.type === TransportTargetType.Construction
-						? { type: WorkActionType.DeliverConstruction, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, setState: SettlerState.Working }
-						: { type: WorkActionType.DeliverStorage, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, reservationId: targetReservationId || undefined, setState: SettlerState.Working }
-				],
+				actions,
 				releaseReservations: () => reservations.releaseAll()
 			}
 		}
@@ -150,17 +228,31 @@ export const TransportHandler: StepHandler = {
 				}
 				targetPosition = reachableTarget
 			}
+			const egressPosition = getRandomDeliveryEgressPosition(targetPosition, [
+				targetBuilding.position,
+				targetPosition
+			])
+			const actions: WorkAction[] = [
+				{ type: WorkActionType.Move, position: sourcePosition, targetType: MoveTargetType.StorageSlot, targetId: reservation.reservationId, setState: SettlerState.MovingToBuilding },
+				{ type: WorkActionType.WithdrawStorage, buildingInstanceId: sourceBuilding.id, itemType: step.itemType, quantity: step.quantity, reservationId: reservation.reservationId, setState: SettlerState.CarryingItem },
+				{ type: WorkActionType.Move, position: targetPosition, targetType: step.target.type === TransportTargetType.Storage ? MoveTargetType.StorageSlot : MoveTargetType.Building, targetId: targetReservationId || targetBuilding.id, setState: SettlerState.CarryingItem },
+				// Construction consumes collectedResources (pre-storage), so it uses a dedicated action.
+				step.target.type === TransportTargetType.Construction
+					? { type: WorkActionType.DeliverConstruction, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, setState: SettlerState.Working }
+					: { type: WorkActionType.DeliverStorage, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, reservationId: targetReservationId || undefined, setState: SettlerState.Working }
+			]
+			if (egressPosition) {
+				actions.push({
+					type: WorkActionType.Move,
+					position: egressPosition,
+					targetType: MoveTargetType.Spot,
+					targetId: `delivery-egress:${assignment.assignmentId}:${targetBuilding.id}`,
+					setState: SettlerState.Moving
+				})
+			}
 
 			return {
-				actions: [
-					{ type: WorkActionType.Move, position: sourcePosition, targetType: MoveTargetType.StorageSlot, targetId: reservation.reservationId, setState: SettlerState.MovingToBuilding },
-					{ type: WorkActionType.WithdrawStorage, buildingInstanceId: sourceBuilding.id, itemType: step.itemType, quantity: step.quantity, reservationId: reservation.reservationId, setState: SettlerState.CarryingItem },
-					{ type: WorkActionType.Move, position: targetPosition, targetType: step.target.type === TransportTargetType.Storage ? MoveTargetType.StorageSlot : MoveTargetType.Building, targetId: targetReservationId || targetBuilding.id, setState: SettlerState.CarryingItem },
-					// Construction consumes collectedResources (pre-storage), so it uses a dedicated action.
-					step.target.type === TransportTargetType.Construction
-						? { type: WorkActionType.DeliverConstruction, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, setState: SettlerState.Working }
-						: { type: WorkActionType.DeliverStorage, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, reservationId: targetReservationId || undefined, setState: SettlerState.Working }
-				],
+				actions,
 				releaseReservations: () => reservations.releaseAll()
 			}
 		}

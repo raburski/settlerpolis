@@ -51,7 +51,9 @@ export abstract class GameScene extends MapScene {
 	private resourceNodeBatcher: ResourceNodeBatcher | null = null
 	private resourceNodesDirty = false
 	private lastResourceCullCenter: { x: number; y: number } | null = null
+	private lastResourceCullSize: { width: number; height: number } | null = null
 	private resourceNodeStreamTimer = 0
+	private resourceNodeStreamIntervalMs = 250
 	private resourceNodeChunkQueue: string[] = []
 	private resourceNodeChunkRequests: Set<string> = new Set()
 	private resourceNodeLoadedChunks: Set<string> = new Set()
@@ -64,7 +66,9 @@ export abstract class GameScene extends MapScene {
 	private readonly resourceNodeChunkSize = 32
 	private readonly resourceNodeChunkPadding = 1
 	private readonly resourceNodeStreamingAdditive = true
-	private readonly resourceNodeDisableCulling = true
+	private readonly resourceNodeDisableCulling = false
+	private readonly resourceNodeStreamIntervalMovingMs = 250
+	private readonly resourceNodeStreamIntervalIdleMs = 550
 	private pendingMapObjectIds: string[] = []
 	private pendingMapObjects: Map<string, any> = new Map()
 	private mapObjectSpawnCount = 0
@@ -147,12 +151,20 @@ export abstract class GameScene extends MapScene {
 		EventBus.emit(UiEvents.Scene.Ready, { mapId: this.mapKey })
 		mark('scene ready emit')
 
-		if (!isTransition && !suppressAutoJoin) {
+		const shouldAutoJoin = !isTransition && !suppressAutoJoin
+		const workerDebug = String(import.meta.env.VITE_GAME_WORKER_DEBUG || '').toLowerCase() === 'true'
+		if (workerDebug) {
+			console.log('[GameScene] Auto-join check', { mapId: this.mapKey, isTransition, suppressAutoJoin, shouldAutoJoin })
+		}
+		if (shouldAutoJoin) {
 			EventBus.emit(Event.Players.CS.Join, {
 				position: { x: playerX, y: playerY },
 				mapId: this.mapKey,
 				appearance: {}
 			})
+			if (workerDebug) {
+				console.log('[GameScene] Auto-join emitted', { mapId: this.mapKey })
+			}
 			mark('auto join emit')
 		}
 	}
@@ -164,6 +176,7 @@ export abstract class GameScene extends MapScene {
 		this.processPendingMapObjects()
 		this.updateCameraFromKeyboard(deltaMs)
 		this.updateCameraRotationFromKeyboard()
+		this.updateCameraZoomFromKeyboard()
 		this.updateCameraHomeFromKeyboard()
 		this.keyboard?.update()
 		this.portalManager?.update()
@@ -272,6 +285,15 @@ export abstract class GameScene extends MapScene {
 		if (!this.keyboard) return
 		if (this.keyboard.isCameraHome()) {
 			this.cameras.main.recenterOnFollowTarget()
+		}
+	}
+
+	private updateCameraZoomFromKeyboard(): void {
+		if (!this.keyboard) return
+		if (this.keyboard.isZoomOut()) {
+			this.cameras.main.zoomOut()
+		} else if (this.keyboard.isZoomIn()) {
+			this.cameras.main.zoomIn()
 		}
 	}
 
@@ -427,8 +449,14 @@ export abstract class GameScene extends MapScene {
 	private updateResourceNodeStreaming(deltaMs: number): void {
 		if (!this.resourceNodeBatcher || !this.map) return
 		this.resourceNodeStreamTimer += deltaMs
-		if (this.resourceNodeStreamTimer < 250) return
+		if (this.resourceNodeStreamTimer < this.resourceNodeStreamIntervalMs) return
 		this.resourceNodeStreamTimer = 0
+		const growthDirty = this.resourceNodeBatcher.updateGrowthStages(
+			typeof performance !== 'undefined' ? performance.now() : Date.now()
+		)
+		if (growthDirty) {
+			this.resourceNodesDirty = true
+		}
 
 		const tileSize = this.map.tileWidth || 32
 		const worldBounds = this.getVisibleWorldBounds(tileSize * 10)
@@ -448,7 +476,41 @@ export abstract class GameScene extends MapScene {
 		if (minX > maxX || minY > maxY) return
 
 		const center = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 }
+		const viewSize = { width: maxX - minX, height: maxY - minY }
+		const cadenceMovementThreshold = tileSize * 0.2
+		const cadenceZoomThreshold = tileSize * 0.2
+		const movementThreshold = tileSize * 0.75
+		const zoomThreshold = tileSize * 0.5
+		const lastCenter = this.lastResourceCullCenter
+		const lastSize = this.lastResourceCullSize
+		const hasMotion = lastCenter
+			? Math.hypot(center.x - lastCenter.x, center.y - lastCenter.y) >= cadenceMovementThreshold
+			: true
+		const hasZoomMotion = lastSize
+			? Math.abs(viewSize.width - lastSize.width) >= cadenceZoomThreshold ||
+				Math.abs(viewSize.height - lastSize.height) >= cadenceZoomThreshold
+			: true
+		const hasPendingChunkWork = this.resourceNodeChunkQueue.length > 0 || this.resourceNodeChunkRequests.size > 0
+		this.resourceNodeStreamIntervalMs =
+			this.resourceNodesDirty || hasPendingChunkWork || hasMotion || hasZoomMotion
+				? this.resourceNodeStreamIntervalMovingMs
+				: this.resourceNodeStreamIntervalIdleMs
+		const movedEnough = lastCenter
+			? Math.hypot(center.x - lastCenter.x, center.y - lastCenter.y) >= movementThreshold
+			: true
+		const zoomChangedEnough = lastSize
+			? Math.abs(viewSize.width - lastSize.width) >= zoomThreshold ||
+				Math.abs(viewSize.height - lastSize.height) >= zoomThreshold
+			: true
+		const shouldRefreshView = this.resourceNodesDirty || movedEnough || zoomChangedEnough
+
+		if (!shouldRefreshView) {
+			this.flushResourceNodeChunkQueries(this.resourceNodeDesiredChunks)
+			return
+		}
+
 		this.lastResourceCullCenter = center
+		this.lastResourceCullSize = viewSize
 
 		const minTileX = Math.floor(minX / tileSize)
 		const maxTileX = Math.ceil(maxX / tileSize)
@@ -508,6 +570,10 @@ export abstract class GameScene extends MapScene {
 			this.resourceNodeChunkQueue.push(key)
 		}
 
+		this.flushResourceNodeChunkQueries(desired)
+	}
+
+	private flushResourceNodeChunkQueries(desired: Set<string>): void {
 		let sent = 0
 		const maxPerTick = 4
 		while (sent < maxPerTick && this.resourceNodeChunkQueue.length > 0) {
@@ -718,10 +784,10 @@ export abstract class GameScene extends MapScene {
 		if (width <= 0 || height <= 0) return null
 
 		const corners = [
-			renderer.screenToWorld(0, 0),
-			renderer.screenToWorld(width, 0),
-			renderer.screenToWorld(width, height),
-			renderer.screenToWorld(0, height)
+			renderer.screenToWorld(0, 0, { useGroundPick: false }),
+			renderer.screenToWorld(width, 0, { useGroundPick: false }),
+			renderer.screenToWorld(width, height, { useGroundPick: false }),
+			renderer.screenToWorld(0, height, { useGroundPick: false })
 		].filter(Boolean) as Vector3[]
 
 		if (corners.length === 0) return null
@@ -771,10 +837,16 @@ export abstract class GameScene extends MapScene {
 	}
 
 	private handleSettlerSpawned = (data: { settler: Settler }) => {
-		if (data.settler.mapId === this.mapKey) {
-			const settler = createSettler(this, data.settler)
-			this.settlers.set(data.settler.id, settler)
+		if (data.settler.mapId !== this.mapKey) {
+			return
 		}
+		const existing = this.settlers.get(data.settler.id)
+		if (existing) {
+			existing.updateSettler(data.settler)
+			return
+		}
+		const settler = createSettler(this, data.settler)
+		this.settlers.set(data.settler.id, settler)
 	}
 
 	private handleSettlerDied = (data: { settlerId: string }) => {
@@ -904,7 +976,9 @@ export abstract class GameScene extends MapScene {
 		this.resourceNodeBatcher = null
 		this.resourceNodesDirty = false
 		this.lastResourceCullCenter = null
+		this.lastResourceCullSize = null
 		this.resourceNodeStreamTimer = 0
+		this.resourceNodeStreamIntervalMs = this.resourceNodeStreamIntervalMovingMs
 		this.resourceNodeChunkQueue = []
 		this.resourceNodeChunkRequests.clear()
 		this.resourceNodeLoadedChunks.clear()
@@ -918,6 +992,7 @@ export abstract class GameScene extends MapScene {
 
 		EventBus.off(Event.Players.SC.Joined, this.handlePlayerJoined)
 		EventBus.off(Event.Players.SC.Left, this.handlePlayerLeft)
+		EventBus.off(Event.Players.SC.Move, this.handlePlayerMove)
 		EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems)
 		EventBus.off(Event.Loot.SC.Despawn, this.handleRemoveItems)
 		EventBus.off(Event.Loot.SC.Update, this.handleUpdateItems)
@@ -927,7 +1002,17 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn)
 		EventBus.off(Event.MapObjects.SC.Despawn, this.handleMapObjectDespawn)
 		EventBus.off(Event.ResourceNodes.SC.Sync, this.handleResourceNodesSync)
+		EventBus.off(Event.Buildings.SC.Placed, this.handleBuildingPlaced)
+		EventBus.off(Event.Buildings.SC.Progress, this.handleBuildingProgress)
+		EventBus.off(Event.Buildings.SC.Completed, this.handleBuildingCompleted)
+		EventBus.off(Event.Buildings.SC.Cancelled, this.handleBuildingCancelled)
 		EventBus.off(Event.Storage.SC.Spoilage, this.handleStorageSpoilage)
+		EventBus.off(Event.Population.SC.List, this.handlePopulationList)
+		EventBus.off(Event.Population.SC.SettlerSpawned, this.handleSettlerSpawned)
+		EventBus.off(Event.Population.SC.SettlerDied, this.handleSettlerDied)
+		EventBus.off(UiEvents.Population.SettlerSpawned, this.handleUISettlerSpawned)
+		EventBus.off(UiEvents.Population.SettlerDied, this.handleSettlerDied)
+		EventBus.off(UiEvents.Population.ProfessionChanged, this.handleSettlerProfessionChanged)
 		EventBus.off(Event.Roads.SC.Sync, this.handleRoadSync)
 		EventBus.off(Event.Roads.SC.Updated, this.handleRoadUpdated)
 		EventBus.off(Event.Roads.SC.PendingSync, this.handleRoadPendingSync)

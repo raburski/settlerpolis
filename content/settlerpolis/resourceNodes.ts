@@ -8,8 +8,8 @@ export const resourceNodeDefinitions: ResourceNodeDefinition[] = [
 		nodeItemType: ItemType.Tree,
 		outputItemType: ItemType.Logs,
 		harvestQuantity: 1,
-		harvestTimeMs: 2500,
-		maxHarvests: 6,
+		harvestTimeMs: 10000,
+		maxHarvests: 1,
 		blocksMovement: true
 	},
 	{
@@ -38,7 +38,8 @@ export const resourceNodeDefinitions: ResourceNodeDefinition[] = [
 		outputItemType: ItemType.Stone,
 		harvestQuantity: 1,
 		harvestTimeMs: 3500,
-		maxHarvests: 6
+		maxHarvests: 6,
+		blocksMovement: true
 	},
 	{
 		id: 'wheat_crop',

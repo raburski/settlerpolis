@@ -137,8 +137,8 @@ export type TransportTarget =
 	| { type: TransportTargetType.Construction, buildingInstanceId: BuildingInstanceId }
 
 export type WorkAction =
-	| { type: WorkActionType.Move, position: Position, targetType?: MoveTargetType, targetId?: string, setState?: import('../../Population/types').SettlerState }
-	| { type: WorkActionType.FollowPath, path: Position[], targetType?: MoveTargetType, targetId?: string, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.Move, position: Position, targetType?: MoveTargetType, targetId?: string, speedMultiplier?: number, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.FollowPath, path: Position[], targetType?: MoveTargetType, targetId?: string, speedMultiplier?: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Wait, durationMs: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Construct, buildingInstanceId: BuildingInstanceId, durationMs: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.BuildRoad, jobId: RoadJobId, durationMs: number, setState?: import('../../Population/types').SettlerState }

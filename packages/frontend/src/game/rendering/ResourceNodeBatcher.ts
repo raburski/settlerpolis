@@ -6,6 +6,8 @@ import { itemService } from '../services/ItemService'
 import { resourceNodeRenderService } from '../services/ResourceNodeRenderService'
 
 const BASE_OFFSET = 100000
+const perfNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
+const TREE_GROWTH_SCALES = [0.4, 0.7, 1]
 
 interface Batch {
 	type: 'emoji' | 'model'
@@ -26,7 +28,16 @@ type ModelRenderConfig = {
 		rotation?: { x: number; y: number; z: number }
 		scale?: { x: number; y: number; z: number }
 		elevation?: number
+		offset?: { x: number; y: number; z: number }
 	}
+}
+
+type GrowthState = {
+	startMs: number
+	durationMs: number
+	stageIndex: number
+	baseScale: number
+	stageScales: number[]
 }
 
 type WorkerMessage =
@@ -46,6 +57,8 @@ export class ResourceNodeBatcher {
 	private pendingEmojiUnsubscribes: Map<string, () => void> = new Map()
 	private pendingResults: Map<string, WorkerBatchResult> = new Map()
 	private modelLoadPromises: Map<string, Promise<Batch | null>> = new Map()
+	private visibleBatchKeys: Set<string> = new Set()
+	private growthStates: Map<string, GrowthState> = new Map()
 	private worker: Worker | null = null
 	private workerRequestId = 0
 	private awaitingResult = false
@@ -101,6 +114,9 @@ export class ResourceNodeBatcher {
 	add(object: MapObject): boolean {
 		if (!object?.metadata?.resourceNode) return false
 		this.objectsById.set(object.id, object)
+		const baseScale = getSeededScale(object.id)
+		const growthState = this.resolveGrowthState(object, baseScale)
+		const scale = growthState ? baseScale * (growthState.stageScales[growthState.stageIndex] ?? 1) : baseScale
 		const nodeType = object?.metadata?.resourceNodeType
 		const render = resourceNodeRenderService.isLoaded()
 			? resourceNodeRenderService.getRenderModel(nodeType, object.id)
@@ -108,33 +124,32 @@ export class ResourceNodeBatcher {
 		if (render?.modelSrc) {
 			const modelKey = this.getModelBatchKey(render)
 			if (ResourceNodeBatcher.failedModelSrcs.has(render.modelSrc)) {
-				return this.addEmojiNode(object)
+				return this.addEmojiNode(object, scale)
 			}
 			if (ResourceNodeBatcher.unsupportedModelSrcs.has(render.modelSrc)) {
-			return this.addEmojiNode(object)
+				return this.addEmojiNode(object, scale)
+			}
+			this.ensureModelBatch(modelKey, render)
+			if (this.idToBatchKey.has(object.id)) return true
+			const elevation = this.getNodeElevation(object, render)
+			const rotationOffset = getSeededRotation(object.id)
+			const rotation = (typeof object.rotation === 'number' ? object.rotation : 0) + rotationOffset
+			this.idToBatchKey.set(object.id, modelKey)
+			this.trackBatchId(modelKey, object.id)
+			this.worker?.postMessage({
+				type: 'add',
+				key: modelKey,
+				id: object.id,
+				x: object.position.x,
+				y: object.position.y,
+				rotation,
+				elevation,
+				scale
+			})
+			return true
 		}
-		this.ensureModelBatch(modelKey, render)
-		if (this.idToBatchKey.has(object.id)) return true
-		const elevation = this.getNodeElevation(object, render)
-		const scale = getSeededScale(object.id)
-		const rotationOffset = getSeededRotation(object.id)
-		const rotation = (typeof object.rotation === 'number' ? object.rotation : 0) + rotationOffset
-		this.idToBatchKey.set(object.id, modelKey)
-		this.trackBatchId(modelKey, object.id)
-		this.worker?.postMessage({
-			type: 'add',
-			key: modelKey,
-			id: object.id,
-			x: object.position.x,
-			y: object.position.y,
-			rotation,
-			elevation,
-			scale
-		})
-		return true
-	}
 
-		return this.addEmojiNode(object)
+		return this.addEmojiNode(object, scale)
 	}
 
 	remove(objectId: string): boolean {
@@ -142,12 +157,14 @@ export class ResourceNodeBatcher {
 		if (!key) {
 			this.objectsById.delete(objectId)
 			this.removePendingEmoji(objectId)
+			this.growthStates.delete(objectId)
 			return false
 		}
 		if (key.startsWith('pending-emoji:')) {
 			this.idToBatchKey.delete(objectId)
 			this.objectsById.delete(objectId)
 			this.removePendingEmoji(objectId)
+			this.growthStates.delete(objectId)
 			return true
 		}
 		const batch = this.batches.get(key)
@@ -155,6 +172,7 @@ export class ResourceNodeBatcher {
 		this.idToBatchKey.delete(objectId)
 		this.objectsById.delete(objectId)
 		this.untrackBatchId(key, objectId)
+		this.growthStates.delete(objectId)
 		this.worker?.postMessage({ type: 'remove', key, id: objectId })
 		return true
 	}
@@ -166,6 +184,23 @@ export class ResourceNodeBatcher {
 	updateAll(): void {
 		const huge = 1e9
 		this.requestUpdate({ minX: -huge, minY: -huge, maxX: huge, maxY: huge })
+	}
+
+	updateGrowthStages(nowMs: number): boolean {
+		let updated = false
+		for (const [id, state] of this.growthStates.entries()) {
+			if (state.durationMs <= 0) continue
+			const progress = clamp((nowMs - state.startMs) / state.durationMs, 0, 1)
+			const nextStage = getGrowthStageIndex(progress, state.stageScales.length)
+			if (nextStage === state.stageIndex) continue
+			state.stageIndex = nextStage
+			const key = this.idToBatchKey.get(id)
+			if (!key || key.startsWith('pending-emoji:')) continue
+			const scale = state.baseScale * (state.stageScales[nextStage] ?? 1)
+			this.worker?.postMessage({ type: 'scale', key, id, scale })
+			updated = true
+		}
+		return updated
 	}
 
 	dispose(): void {
@@ -192,6 +227,8 @@ export class ResourceNodeBatcher {
 		this.pendingEmojiUnsubscribes.clear()
 		this.pendingResults.clear()
 		this.modelLoadPromises.clear()
+		this.visibleBatchKeys.clear()
+		this.growthStates.clear()
 		this.worker?.terminate()
 		this.worker = null
 	}
@@ -249,16 +286,12 @@ export class ResourceNodeBatcher {
 			return
 		}
 
-		for (const [key, batch] of this.batches.entries()) {
-			const result = data.batches[key]
-			if (!result || result.count === 0) {
-				if (batch.hasBuffer) {
-					batch.baseMeshes.forEach((mesh) => {
-						mesh.thinInstanceCount = 0
-					})
-				}
-				continue
-			}
+		const nextVisibleKeys = new Set<string>()
+		for (const [key, result] of Object.entries(data.batches)) {
+			if (!result || result.count <= 0) continue
+			const batch = this.batches.get(key)
+			if (!batch) continue
+			nextVisibleKeys.add(key)
 			if (!batch.ready) {
 				this.pendingResults.set(key, result)
 				continue
@@ -270,6 +303,17 @@ export class ResourceNodeBatcher {
 			batch.hasBuffer = true
 		}
 
+		for (const key of this.visibleBatchKeys) {
+			if (nextVisibleKeys.has(key)) continue
+			const batch = this.batches.get(key)
+			if (!batch || !batch.hasBuffer) continue
+			batch.baseMeshes.forEach((mesh) => {
+				mesh.thinInstanceCount = 0
+			})
+			batch.hasBuffer = false
+		}
+		this.visibleBatchKeys = nextVisibleKeys
+
 		this.awaitingResult = false
 		if (this.queuedBounds) {
 			const next = this.queuedBounds
@@ -278,7 +322,41 @@ export class ResourceNodeBatcher {
 		}
 	}
 
-	private addEmojiNode(object: MapObject): boolean {
+	private resolveGrowthState(object: MapObject, baseScale: number): GrowthState | null {
+		const growth = getTreeGrowthMetadata(object)
+		if (!growth) {
+			this.growthStates.delete(object.id)
+			return null
+		}
+		const durationMs = growth.durationMs
+		if (durationMs <= 0) {
+			this.growthStates.delete(object.id)
+			return null
+		}
+		const existing = this.growthStates.get(object.id)
+		if (existing && existing.durationMs === durationMs) {
+			return existing
+		}
+		const elapsedMs = clamp(growth.elapsedMs, 0, durationMs)
+		const stageIndex = getGrowthStageIndex(elapsedMs / durationMs, TREE_GROWTH_SCALES.length)
+		const state: GrowthState = {
+			startMs: perfNow() - elapsedMs,
+			durationMs,
+			stageIndex,
+			baseScale,
+			stageScales: TREE_GROWTH_SCALES
+		}
+		this.growthStates.set(object.id, state)
+		return state
+	}
+
+	private resolveNodeScale(object: MapObject): number {
+		const baseScale = getSeededScale(object.id)
+		const growthState = this.resolveGrowthState(object, baseScale)
+		return growthState ? baseScale * (growthState.stageScales[growthState.stageIndex] ?? 1) : baseScale
+	}
+
+	private addEmojiNode(object: MapObject, scaleOverride?: number): boolean {
 		const itemMeta = itemService.getItemType(object.item.itemType)
 		const emoji = itemMeta?.emoji
 		if (!emoji) {
@@ -324,7 +402,8 @@ export class ResourceNodeBatcher {
 			x: object.position.x,
 			y: object.position.y,
 			rotation: typeof object.rotation === 'number' ? object.rotation : 0,
-			elevation
+			elevation,
+			scale: Number.isFinite(scaleOverride) ? scaleOverride : getSeededScale(object.id)
 		})
 		return true
 	}
@@ -354,7 +433,12 @@ export class ResourceNodeBatcher {
 				z: (renderConfig.transform?.scale?.z ?? 1) * this.tileSize
 			},
 			baseYOffset: 0,
-			pivotOffset: { x: 0, y: 0, z: 0 }
+			pivotOffset: { x: 0, y: 0, z: 0 },
+			offset: {
+				x: (renderConfig.transform?.offset?.x ?? 0) * this.tileSize,
+				y: (renderConfig.transform?.offset?.y ?? 0) * this.tileSize,
+				z: (renderConfig.transform?.offset?.z ?? 0) * this.tileSize
+			}
 		})
 
 		const promise = this.loadModelBatch(batchKey, renderConfig)
@@ -446,6 +530,7 @@ export class ResourceNodeBatcher {
 			const bounds = getBounds(meshes)
 			const transform = renderConfig.transform || {}
 			const scale = transform.scale ?? { x: 1, y: 1, z: 1 }
+			const offset = transform.offset ?? { x: 0, y: 0, z: 0 }
 			const scaleX = (scale.x ?? 1) * this.tileSize
 			const scaleY = (scale.y ?? 1) * this.tileSize
 			const scaleZ = (scale.z ?? 1) * this.tileSize
@@ -471,7 +556,12 @@ export class ResourceNodeBatcher {
 					z: (renderConfig.transform?.scale?.z ?? 1) * this.tileSize
 				},
 				baseYOffset: 0,
-				pivotOffset: { x: pivotOffset.x, y: pivotOffset.y, z: pivotOffset.z }
+				pivotOffset: { x: pivotOffset.x, y: pivotOffset.y, z: pivotOffset.z },
+				offset: {
+					x: (offset.x ?? 0) * this.tileSize,
+					y: (offset.y ?? 0) * this.tileSize,
+					z: (offset.z ?? 0) * this.tileSize
+				}
 			})
 
 			return {
@@ -493,7 +583,8 @@ export class ResourceNodeBatcher {
 		const rotation = render.transform?.rotation ?? {}
 		const scale = render.transform?.scale ?? {}
 		const elevation = render.transform?.elevation ?? 0
-		return `model:${render.modelSrc}:${rotation.x ?? 0},${rotation.y ?? 0},${rotation.z ?? 0}:${scale.x ?? 1},${scale.y ?? 1},${scale.z ?? 1}:${elevation}`
+		const offset = render.transform?.offset ?? {}
+		return `model:${render.modelSrc}:${rotation.x ?? 0},${rotation.y ?? 0},${rotation.z ?? 0}:${scale.x ?? 1},${scale.y ?? 1},${scale.z ?? 1}:${elevation}:${offset.x ?? 0},${offset.y ?? 0},${offset.z ?? 0}`
 	}
 
 	private getNodeElevation(object: MapObject, renderConfig: ModelRenderConfig): number {
@@ -553,7 +644,7 @@ export class ResourceNodeBatcher {
 			this.untrackBatchId(batchKey, id)
 			const obj = this.objectsById.get(id)
 			if (obj) {
-				this.addEmojiNode(obj)
+				this.addEmojiNode(obj, this.resolveNodeScale(obj))
 			}
 		})
 	}
@@ -577,7 +668,7 @@ export class ResourceNodeBatcher {
 			pending.forEach((id) => {
 				const obj = this.objectsById.get(id)
 				if (obj) {
-					this.addEmojiNode(obj)
+					this.addEmojiNode(obj, this.resolveNodeScale(obj))
 				}
 			})
 			this.pendingEmojiItems.delete(itemType)
@@ -605,6 +696,28 @@ export class ResourceNodeBatcher {
 			break
 		}
 	}
+}
+
+function getTreeGrowthMetadata(object: MapObject): { durationMs: number; elapsedMs: number } | null {
+	if (object?.metadata?.resourceNodeType !== 'tree') return null
+	const growth = object?.metadata?.growth
+	const durationMs = Number(growth?.durationMs)
+	if (!Number.isFinite(durationMs) || durationMs <= 0) return null
+	const elapsedMs = Number(growth?.elapsedMs)
+	const safeElapsed = Number.isFinite(elapsedMs) ? elapsedMs : 0
+	return { durationMs, elapsedMs: safeElapsed }
+}
+
+function getGrowthStageIndex(progress: number, stages: number): number {
+	if (!Number.isFinite(progress) || stages <= 0) return 0
+	const clamped = clamp(progress, 0, 1)
+	return Math.min(stages - 1, Math.floor(clamped * stages))
+}
+
+function clamp(value: number, min: number, max: number): number {
+	if (value < min) return min
+	if (value > max) return max
+	return value
 }
 
 function splitAssetUrl(url: string): { rootUrl: string; fileName: string } {

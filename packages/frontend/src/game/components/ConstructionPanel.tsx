@@ -570,9 +570,11 @@ export const ConstructionPanel: React.FC = () => {
 				<div className={styles.separator} aria-hidden="true" />
 				<div className={styles.detailPanel}>
 					{selectedDefinition ? (
-						<>
-							<div className={styles.detailIcon}>{selectedDefinition.icon || '🏗️'}</div>
-							<div className={styles.detailName}>{selectedDefinition.name}</div>
+						<div className={styles.detailRow}>
+							<div className={styles.detailMain}>
+								<div className={styles.detailIcon}>{selectedDefinition.icon || '🏗️'}</div>
+								<div className={styles.detailName}>{selectedDefinition.name}</div>
+							</div>
 							<div className={styles.detailCosts}>
 								{selectedDefinition.costs.map((cost, index) => (
 									<span key={index} className={styles.cost}>
@@ -580,11 +582,13 @@ export const ConstructionPanel: React.FC = () => {
 									</span>
 								))}
 							</div>
-						</>
+						</div>
 					) : selectedRoadType ? (
-						<>
-							<div className={styles.detailIcon}>{selectedRoadType === RoadType.Dirt ? '🟫' : '🪨'}</div>
-							<div className={styles.detailName}>{selectedRoadType === RoadType.Dirt ? 'Dirt road' : 'Stone road'}</div>
+						<div className={styles.detailRow}>
+							<div className={styles.detailMain}>
+								<div className={styles.detailIcon}>{selectedRoadType === RoadType.Dirt ? '🟫' : '🪨'}</div>
+								<div className={styles.detailName}>{selectedRoadType === RoadType.Dirt ? 'Dirt road' : 'Stone road'}</div>
+							</div>
 							<div className={styles.detailCosts}>
 								{selectedRoadType === RoadType.Dirt ? (
 									<span className={styles.cost}>No cost</span>
@@ -592,7 +596,7 @@ export const ConstructionPanel: React.FC = () => {
 									<span className={styles.cost}>1x <ItemEmoji itemType="stone" /> / tile</span>
 								)}
 							</div>
-						</>
+						</div>
 					) : (
 						<div className={styles.detailEmpty}>Select a building or road</div>
 					)}

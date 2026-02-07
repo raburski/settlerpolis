@@ -9,6 +9,7 @@ import { itemRenderService } from '../../services/ItemRenderService'
 import { EventBus } from '../../EventBus'
 import { UiEvents } from '../../uiEvents'
 import { Event } from '@rugged/game'
+import { rotateVec3 } from '../../../shared/transform'
 import {
 	AbstractMesh,
 	AnimationGroup,
@@ -222,6 +223,7 @@ export class MapObjectView extends BaseEntityView {
 			rotation?: { x: number; y: number; z: number }
 			scale?: { x: number; y: number; z: number }
 			elevation?: number
+			offset?: { x: number; y: number; z: number }
 		}
 	}): Promise<void> {
 		if (!render.modelSrc) return
@@ -364,6 +366,7 @@ export class MapObjectView extends BaseEntityView {
 			rotation?: { x: number; y: number; z: number }
 			scale?: { x: number; y: number; z: number }
 			elevation?: number
+			offset?: { x: number; y: number; z: number }
 		}
 	}): void {
 		if (!this.modelRoot) return
@@ -371,10 +374,21 @@ export class MapObjectView extends BaseEntityView {
 		const rotation = transform.rotation ?? { x: 0, y: 0, z: 0 }
 		const scale = transform.scale ?? { x: 1, y: 1, z: 1 }
 		const elevation = transform.elevation ?? 0
+		const offset = transform.offset ?? { x: 0, y: 0, z: 0 }
 		const tileSize = this.scene.map?.tileWidth || 32
-		this.modelRoot.position = new Vector3(0, -this.height / 2 + elevation * tileSize, 0)
 		const instanceRotation = typeof this.mapObject.rotation === 'number' ? this.mapObject.rotation : 0
-		this.modelRoot.rotation = new Vector3(rotation.x ?? 0, (rotation.y ?? 0) + instanceRotation, rotation.z ?? 0)
+		const finalRotation = {
+			x: rotation.x ?? 0,
+			y: (rotation.y ?? 0) + instanceRotation,
+			z: rotation.z ?? 0
+		}
+		const rotatedOffset = rotateVec3(offset, finalRotation)
+		this.modelRoot.position = new Vector3(
+			rotatedOffset.x * tileSize,
+			-this.height / 2 + (elevation + rotatedOffset.y) * tileSize,
+			rotatedOffset.z * tileSize
+		)
+		this.modelRoot.rotation = new Vector3(finalRotation.x, finalRotation.y, finalRotation.z)
 		this.modelRoot.scaling = new Vector3(
 			(scale.x ?? 1) * tileSize,
 			(scale.y ?? 1) * tileSize,
@@ -841,6 +855,7 @@ type BuildingRenderModel = {
 		rotation?: { x: number; y: number; z: number }
 		scale?: { x: number; y: number; z: number }
 		elevation?: number
+		offset?: { x: number; y: number; z: number }
 	}
 	weight?: number
 }

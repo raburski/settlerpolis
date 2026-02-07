@@ -3,6 +3,7 @@ import type { GameSnapshotV1 } from '@rugged/game'
 import { EventBus } from '../EventBus'
 import { playerService } from '../services/PlayerService'
 import { LocalManager } from "./LocalManager"
+import { WorkerManager } from "./WorkerManager"
 import { NetworkEventManager, NetworkManager } from "./NetworkManager"
 import { FrontendMapUrlService } from '../services/MapUrlService'
 import { UiEvents } from '../uiEvents'
@@ -21,6 +22,7 @@ import { itemRenderService } from '../services/ItemRenderService'
 
 const IS_REMOTE_GAME = false
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'
+const USE_WORKER = String(import.meta.env.VITE_GAME_USE_WORKER || 'true').toLowerCase() === 'true'
 
 void resourceNodeRenderService.load()
 void itemRenderService.load()
@@ -29,6 +31,14 @@ void itemRenderService.load()
 const contentModules = import.meta.glob('../../../../../content/*/index.ts', { eager: true })
 const contentPath = `../../../../../content/${CONTENT_FOLDER}/index.ts`
 const content = contentModules[contentPath]
+const cloneContentForWorker = (source: any) => {
+	try {
+		return JSON.parse(JSON.stringify(source))
+	} catch (error) {
+		console.warn('[Network] Failed to serialize content for worker, falling back to empty content', error)
+		return {}
+	}
+}
 
 // Debug: Log content loading
 console.log('[Network] Loading content:', {
@@ -51,13 +61,26 @@ function getNetworkManager(): NetworkEventManager {
 			}
 			return String(raw).toLowerCase() === 'true'
 		})()
-		const localManager = new LocalManager({ silentLogs: silentRoutingLogs })
-		const mapUrlService = new FrontendMapUrlService()
+		const mapBaseUrl = '/assets/maps/'
+		const mapUrlService = new FrontendMapUrlService(mapBaseUrl)
 		const logAllowlist = (import.meta.env.VITE_GAME_LOG_ALLOWLIST || 'WorkProviderManager')
 			.split(',')
 			.map((entry: string) => entry.trim())
 			.filter(Boolean)
-		const gameManager = new GameManager(localManager.server, content, mapUrlService, { logAllowlist })
+		const localManager = USE_WORKER ? null : new LocalManager({ silentLogs: silentRoutingLogs })
+		const workerManager = USE_WORKER
+			? new WorkerManager({
+				content: cloneContentForWorker(content),
+				mapBaseUrl,
+				logAllowlist,
+				silentLogs: silentRoutingLogs
+			})
+			: null
+		const gameManager = USE_WORKER || !localManager
+			? null
+			: new GameManager(localManager.server, content, mapUrlService, { logAllowlist })
+		const clientManager = (workerManager ? workerManager.client : localManager?.client) as NetworkEventManager
+		const serverManager = workerManager ? workerManager.server : localManager?.server
 		const storageKey = `rugged:snapshots:${CONTENT_FOLDER}`
 		const loadSnapshots = () => {
 			const raw = localStorage.getItem(storageKey)
@@ -75,8 +98,13 @@ function getNetworkManager(): NetworkEventManager {
 		const saveSnapshots = (entries: Array<{ name: string, savedAt: number, snapshot: GameSnapshotV1 }>) => {
 			localStorage.setItem(storageKey, JSON.stringify(entries))
 		}
-		const saveSnapshot = (name: string) => {
-			const snapshot = gameManager.serialize()
+		const saveSnapshot = async (name: string) => {
+			const snapshot = workerManager
+				? await workerManager.requestSnapshot()
+				: gameManager?.serialize()
+			if (!snapshot) {
+				throw new Error('Snapshot unavailable')
+			}
 			const trimmed = name?.trim() || 'Quick Save'
 			const entries = loadSnapshots()
 			const savedAt = Date.now()
@@ -93,7 +121,7 @@ function getNetworkManager(): NetworkEventManager {
 		const listSnapshots = () => {
 			return loadSnapshots().map((entry) => ({ name: entry.name, savedAt: entry.savedAt }))
 		}
-		const loadSnapshot = (name: string) => {
+		const loadSnapshot = async (name: string) => {
 			const entries = loadSnapshots()
 			const entry = entries.find((item) => item.name === name)
 			if (!entry) {
@@ -101,7 +129,11 @@ function getNetworkManager(): NetworkEventManager {
 				return false
 			}
 			const snapshot = entry.snapshot as GameSnapshotV1
-			gameManager.deserialize(snapshot)
+			if (workerManager) {
+				await workerManager.loadSnapshot(snapshot)
+			} else {
+				gameManager?.deserialize(snapshot)
+			}
 			const playerId = playerService.playerId
 			const player = snapshot.state.players.players.find(entry => entry.playerId === playerId)
 			if (player) {
@@ -113,36 +145,45 @@ function getNetworkManager(): NetworkEventManager {
 						return
 					}
 					resolved = true
-				EventBus.off(UiEvents.Scene.Ready, handleSceneReady)
+					EventBus.off(UiEvents.Scene.Ready, handleSceneReady)
 					if (fallbackTimer !== undefined) {
 						window.clearTimeout(fallbackTimer)
 					}
-					localManager.client.emit(Receiver.All, Event.Players.CS.Join, {
+					clientManager.emit(Receiver.All, Event.Players.CS.Join, {
 						position: player.position,
 						mapId: player.mapId,
 						appearance: player.appearance,
 						skipStartingItems: true
 					})
 				}
-			EventBus.on(UiEvents.Scene.Ready, handleSceneReady)
+				EventBus.on(UiEvents.Scene.Ready, handleSceneReady)
 				fallbackTimer = window.setTimeout(() => {
 					if (resolved) {
 						return
 					}
 					EventBus.off(UiEvents.Scene.Ready, handleSceneReady)
-					localManager.client.emit(Receiver.All, Event.Players.CS.Join, {
+					clientManager.emit(Receiver.All, Event.Players.CS.Join, {
 						position: player.position,
 						mapId: player.mapId,
 						appearance: player.appearance,
 						skipStartingItems: true
 					})
 				}, 750)
-				localManager.server.emit(Receiver.Sender, Event.Map.SC.Load, {
-					mapId: player.mapId,
-					mapUrl,
-					position: player.position,
-					suppressAutoJoin: true
-				}, player.playerId)
+				if (workerManager) {
+					EventBus.emit(Event.Map.SC.Load, {
+						mapId: player.mapId,
+						mapUrl,
+						position: player.position,
+						suppressAutoJoin: true
+					})
+				} else {
+					serverManager?.emit(Receiver.Sender, Event.Map.SC.Load, {
+						mapId: player.mapId,
+						mapUrl,
+						position: player.position,
+						suppressAutoJoin: true
+					}, player.playerId)
+				}
 			} else {
 				console.warn('[Snapshot] No matching player in snapshot to resync client state')
 			}
@@ -151,7 +192,7 @@ function getNetworkManager(): NetworkEventManager {
 		;(window as any).__ruggedSaveSnapshot = saveSnapshot
 		;(window as any).__ruggedLoadSnapshot = loadSnapshot
 		;(window as any).__ruggedListSnapshots = listSnapshots
-		return localManager.client
+		return clientManager
 	}
 }
 

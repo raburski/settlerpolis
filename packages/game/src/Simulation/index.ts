@@ -9,13 +9,21 @@ export class SimulationManager {
 	private tickIntervalMs: number
 	private tickTimer: NodeJS.Timeout | null = null
 	private simulationTimeMs = 0
+	private slowTickAccumulatorMs = 0
+	private verySlowTickAccumulatorMs = 0
+	private readonly slowTickIntervalMs: number
+	private readonly verySlowTickIntervalMs: number
 
 	constructor(
 		private event: EventManager,
 		private logger: Logger,
-		tickIntervalMs: number = 250
+		tickIntervalMs: number = 250,
+		slowTickIntervalMs: number = 1000,
+		verySlowTickIntervalMs: number = 5000
 	) {
 		this.tickIntervalMs = Math.max(1, tickIntervalMs)
+		this.slowTickIntervalMs = Math.max(1, slowTickIntervalMs)
+		this.verySlowTickIntervalMs = Math.max(1, verySlowTickIntervalMs)
 	}
 
 	start(): void {
@@ -73,6 +81,24 @@ export class SimulationManager {
 		}
 
 		this.event.emit(Receiver.All, SimulationEvents.SS.Tick, tickData)
+
+		this.slowTickAccumulatorMs += deltaMs
+		while (this.slowTickAccumulatorMs >= this.slowTickIntervalMs) {
+			this.slowTickAccumulatorMs -= this.slowTickIntervalMs
+			this.event.emit(Receiver.All, SimulationEvents.SS.SlowTick, {
+				deltaMs: this.slowTickIntervalMs,
+				nowMs: this.simulationTimeMs
+			} as SimulationTickData)
+		}
+
+		this.verySlowTickAccumulatorMs += deltaMs
+		while (this.verySlowTickAccumulatorMs >= this.verySlowTickIntervalMs) {
+			this.verySlowTickAccumulatorMs -= this.verySlowTickIntervalMs
+			this.event.emit(Receiver.All, SimulationEvents.SS.VerySlowTick, {
+				deltaMs: this.verySlowTickIntervalMs,
+				nowMs: this.simulationTimeMs
+			} as SimulationTickData)
+		}
 	}
 }
 

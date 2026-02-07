@@ -41,7 +41,7 @@ export const SaveLoadPanel = ({ isOpen, mode, onClose }: SaveLoadPanelProps) => 
 		setName('')
 	}, [isOpen])
 
-	const handleSave = () => {
+	const handleSave = async () => {
 		const saveFn = (window as any).__ruggedSaveSnapshot
 		if (typeof saveFn !== 'function') {
 			console.warn('[SaveLoadPanel] Snapshot save function is not available')
@@ -50,18 +50,18 @@ export const SaveLoadPanel = ({ isOpen, mode, onClose }: SaveLoadPanelProps) => 
 		if (!name.trim()) {
 			return
 		}
-		saveFn(name.trim())
+		await saveFn(name.trim())
 		setSaves(listSnapshots())
 		onClose()
 	}
 
-	const handleLoad = (saveName: string) => {
+	const handleLoad = async (saveName: string) => {
 		const loadFn = (window as any).__ruggedLoadSnapshot
 		if (typeof loadFn !== 'function') {
 			console.warn('[SaveLoadPanel] Snapshot load function is not available')
 			return
 		}
-		loadFn(saveName)
+		await loadFn(saveName)
 		onClose()
 	}
 

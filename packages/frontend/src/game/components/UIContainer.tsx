@@ -38,7 +38,7 @@ export const UIContainer = () => {
 	const [isCharterOpen, setIsCharterOpen] = useState(false)
 	const [isReputationOpen, setIsReputationOpen] = useState(false)
 	const [saveLoadMode, setSaveLoadMode] = useState<'save' | 'load' | null>(null)
-	const [showDebugBounds, setShowDebugBounds] = useState(false)
+	const [showDebug, setShowDebug] = useState(false)
 	const stockButtonRef = useRef<HTMLButtonElement | null>(null)
 	const [stockAnchor, setStockAnchor] = useState<DOMRect | null>(null)
 	const reputationButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -285,11 +285,11 @@ export const UIContainer = () => {
 					setIsReputationOpen(false)
 					setIsCharterOpen((prev) => !prev)
 				}}
-				showDebugBounds={showDebugBounds}
-				onToggleDebugBounds={() => {
-					setShowDebugBounds((prev) => {
+				showDebug={showDebug}
+				onToggleDebug={() => {
+					setShowDebug((prev) => {
 						const next = !prev
-						EventBus.emit(UiEvents.Debug.BoundsToggle, { enabled: next })
+						EventBus.emit(UiEvents.Debug.RenderStatsToggle, { enabled: next })
 						return next
 					})
 				}}
@@ -302,7 +302,7 @@ export const UIContainer = () => {
 				prioritiesButtonRef={prioritiesButtonRef}
 				charterButtonRef={charterButtonRef}
 			/>
-			<RenderStatsMeter />
+			{showDebug ? <RenderStatsMeter /> : null}
 			<SaveLoadPanel
 				isOpen={saveLoadMode !== null}
 				mode={saveLoadMode ?? 'save'}

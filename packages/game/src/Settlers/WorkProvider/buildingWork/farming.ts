@@ -30,6 +30,19 @@ export const FarmingWorkHandler: BuildingWorkHandler = {
 		const workCenter = building.workAreaCenter ?? building.position
 		const buildingTileX = Math.floor(workCenter.x / tileSize)
 		const buildingTileY = Math.floor(workCenter.y / tileSize)
+		const buildingBaseTileX = Math.floor(building.position.x / tileSize)
+		const buildingBaseTileY = Math.floor(building.position.y / tileSize)
+		const buildingWidth = definition.footprint?.width ?? 1
+		const buildingHeight = definition.footprint?.height ?? 1
+		const bufferTiles = definition.id === 'forester_hut' ? 1 : 0
+		const isWithinBuildingBuffer = (tileX: number, tileY: number) => {
+			if (bufferTiles <= 0) return false
+			const minX = buildingBaseTileX - bufferTiles
+			const maxX = buildingBaseTileX + buildingWidth - 1 + bufferTiles
+			const minY = buildingBaseTileY - bufferTiles
+			const maxY = buildingBaseTileY + buildingHeight - 1 + bufferTiles
+			return tileX >= minX && tileX <= maxX && tileY >= minY && tileY <= maxY
+		}
 
 		const isWithinRadius = (position: { x: number, y: number }) => {
 			const tileX = Math.floor(position.x / tileSize)
@@ -99,6 +112,9 @@ export const FarmingWorkHandler: BuildingWorkHandler = {
 				}
 				const distance = Math.hypot(dx, dy)
 				if (distance > radius) {
+					continue
+				}
+				if (isWithinBuildingBuffer(tileX, tileY)) {
 					continue
 				}
 				if (occupiedTiles.has(`${tileX},${tileY}`)) {

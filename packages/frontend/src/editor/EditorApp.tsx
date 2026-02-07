@@ -13,6 +13,7 @@ type ResourceNodeRenderVariant = {
 		rotation?: Vec3
 		scale?: Vec3
 		elevation?: number
+		offset?: Vec3
 	}
 }
 
@@ -22,6 +23,7 @@ type ResourceNodeRenderVariantState = {
 	rotationDeg: Vec3
 	scale: Vec3
 	elevation: number
+	offset: Vec3
 }
 
 type ResourceNodeRenderDefinition = {
@@ -33,6 +35,7 @@ type ResourceNodeRenderDefinition = {
 			rotation?: Vec3
 			scale?: Vec3
 			elevation?: number
+			offset?: Vec3
 		}
 	}
 	renders?: ResourceNodeRenderVariant[]
@@ -45,6 +48,7 @@ type ItemRenderVariant = {
 		rotation?: Vec3
 		scale?: Vec3
 		elevation?: number
+		offset?: Vec3
 	}
 }
 
@@ -54,6 +58,7 @@ type ItemRenderVariantState = {
 	rotationDeg: Vec3
 	scale: Vec3
 	elevation: number
+	offset: Vec3
 }
 
 type ItemRenderDefinition = {
@@ -65,6 +70,7 @@ type ItemRenderDefinition = {
 			rotation?: Vec3
 			scale?: Vec3
 			elevation?: number
+			offset?: Vec3
 		}
 	}
 	renders?: ItemRenderVariant[]
@@ -77,6 +83,7 @@ type BuildingRenderVariant = {
 		rotation?: Vec3
 		scale?: Vec3
 		elevation?: number
+		offset?: Vec3
 	}
 }
 
@@ -86,6 +93,7 @@ type BuildingRenderVariantState = {
 	rotationDeg: Vec3
 	scale: Vec3
 	elevation: number
+	offset: Vec3
 }
 
 const DEFAULT_ASSET_ID = 'building_model'
@@ -104,6 +112,7 @@ export function EditorApp() {
 	const [rotationDeg, setRotationDeg] = useState<Vec3>({ x: 0, y: 0, z: 0 })
 	const [scale, setScale] = useState<Vec3>({ x: 1, y: 1, z: 1 })
 	const [elevation, setElevation] = useState(0)
+	const [offset, setOffset] = useState<Vec3>({ x: 0, y: 0, z: 0 })
 	const [entryPoint, setEntryPoint] = useState<Vec2 | null>(null)
 	const [centerPoint, setCenterPoint] = useState<Vec2 | null>(null)
 	const [accessTiles, setAccessTiles] = useState<Vec2[]>([])
@@ -115,6 +124,7 @@ export function EditorApp() {
 	const [resourceRotationDeg, setResourceRotationDeg] = useState<Vec3>({ x: 0, y: 0, z: 0 })
 	const [resourceScale, setResourceScale] = useState<Vec3>({ x: 1, y: 1, z: 1 })
 	const [resourceElevation, setResourceElevation] = useState(0)
+	const [resourceOffset, setResourceOffset] = useState<Vec3>({ x: 0, y: 0, z: 0 })
 	const [resourceLoadError, setResourceLoadError] = useState<string | null>(null)
 	const [itemAssetPath, setItemAssetPath] = useState(DEFAULT_ASSET_PATH)
 	const [itemFootprint, setItemFootprint] = useState({ width: 1, length: 1 })
@@ -122,6 +132,7 @@ export function EditorApp() {
 	const [itemRotationDeg, setItemRotationDeg] = useState<Vec3>({ x: 0, y: 0, z: 0 })
 	const [itemScale, setItemScale] = useState<Vec3>({ x: 1, y: 1, z: 1 })
 	const [itemElevation, setItemElevation] = useState(0)
+	const [itemOffset, setItemOffset] = useState<Vec3>({ x: 0, y: 0, z: 0 })
 	const [itemLoadError, setItemLoadError] = useState<string | null>(null)
 	const [showHelp, setShowHelp] = useState(false)
 	const [pickMode, setPickMode] = useState<'position' | 'entry' | 'center' | 'access' | 'blocked'>('position')
@@ -343,6 +354,7 @@ export function EditorApp() {
 				rotation: resourceRotationRad,
 				scale: resourceScale,
 				elevation: resourceElevation,
+				offset: resourceOffset,
 				storageSlots: [],
 				entryPoint: null,
 				centerPoint: null,
@@ -357,6 +369,7 @@ export function EditorApp() {
 				rotation: itemRotationRad,
 				scale: itemScale,
 				elevation: itemElevation,
+				offset: itemOffset,
 				storageSlots: [],
 				entryPoint: null,
 				centerPoint: null,
@@ -370,6 +383,7 @@ export function EditorApp() {
 			rotation: rotationRad,
 			scale,
 			elevation,
+			offset,
 			storageSlots: previewStorageSlots,
 			entryPoint,
 			centerPoint,
@@ -384,16 +398,19 @@ export function EditorApp() {
 		itemPosition,
 		itemRotationRad,
 		itemScale,
+		itemOffset,
 		resourceElevation,
 		resourceFootprint,
 		resourcePosition,
 		resourceRotationRad,
 		resourceScale,
+		resourceOffset,
 		footprint,
 		position,
 		rotationRad,
 		scale,
 		elevation,
+		offset,
 		previewStorageSlots,
 		entryPoint,
 		centerPoint,
@@ -515,7 +532,8 @@ export function EditorApp() {
 			weight: 1,
 			rotationDeg: { x: 0, y: 0, z: 0 },
 			scale: { x: 1, y: 1, z: 1 },
-			elevation: 0
+			elevation: 0,
+			offset: { x: 0, y: 0, z: 0 }
 		}
 		const next = [...buildingModelVariants, nextVariant]
 		setBuildingModelVariants(next)
@@ -544,6 +562,7 @@ export function EditorApp() {
 			setRotationDeg(variant.rotationDeg)
 			setScale(variant.scale)
 			setElevation(variant.elevation)
+			setOffset(variant.offset)
 			const modelSrc = variant.modelSrc || ''
 			setAssetPath(modelSrc)
 			if (modelSrc) {
@@ -570,6 +589,7 @@ export function EditorApp() {
 				setRotationDeg({ x: 0, y: 0, z: 0 })
 				setScale({ x: 1, y: 1, z: 1 })
 				setElevation(0)
+				setOffset({ x: 0, y: 0, z: 0 })
 				void handleLoadAsset('')
 				return
 			}
@@ -589,6 +609,7 @@ export function EditorApp() {
 				setRotationDeg(variant.rotationDeg)
 				setScale(variant.scale)
 				setElevation(variant.elevation)
+				setOffset(variant.offset)
 				const modelSrc = variant.modelSrc || ''
 				setAssetPath(modelSrc)
 				if (modelSrc) {
@@ -653,13 +674,29 @@ export function EditorApp() {
 		[activeBuildingVariantIndex, updateBuildingVariant]
 	)
 
+	const updateActiveBuildingOffset = useCallback(
+		(updates: Partial<Vec3>) => {
+			if (activeBuildingVariantIndex === null) {
+				setOffset((prev) => ({ ...prev, ...updates }))
+				return
+			}
+			setOffset((prev) => {
+				const next = { ...prev, ...updates }
+				updateBuildingVariant(activeBuildingVariantIndex, { offset: next })
+				return next
+			})
+		},
+		[activeBuildingVariantIndex, updateBuildingVariant]
+	)
+
 	const handleAddResourceVariant = useCallback(() => {
 		const nextVariant: ResourceNodeRenderVariantState = {
 			modelSrc: '',
 			weight: 1,
 			rotationDeg: { x: 0, y: 0, z: 0 },
 			scale: { x: 1, y: 1, z: 1 },
-			elevation: 0
+			elevation: 0,
+			offset: { x: 0, y: 0, z: 0 }
 		}
 		const next = [...resourceModelVariants, nextVariant]
 		setResourceModelVariants(next)
@@ -688,6 +725,7 @@ export function EditorApp() {
 			setResourceRotationDeg(variant.rotationDeg)
 			setResourceScale(variant.scale)
 			setResourceElevation(variant.elevation)
+			setResourceOffset(variant.offset)
 			const modelSrc = variant.modelSrc || ''
 			setResourceAssetPath(modelSrc)
 			if (modelSrc) {
@@ -714,6 +752,7 @@ export function EditorApp() {
 				setResourceRotationDeg({ x: 0, y: 0, z: 0 })
 				setResourceScale({ x: 1, y: 1, z: 1 })
 				setResourceElevation(0)
+				setResourceOffset({ x: 0, y: 0, z: 0 })
 				void handleLoadResourceAsset('')
 				return
 			}
@@ -733,6 +772,7 @@ export function EditorApp() {
 				setResourceRotationDeg(variant.rotationDeg)
 				setResourceScale(variant.scale)
 				setResourceElevation(variant.elevation)
+				setResourceOffset(variant.offset)
 				const modelSrc = variant.modelSrc || ''
 				setResourceAssetPath(modelSrc)
 				if (modelSrc) {
@@ -797,13 +837,29 @@ export function EditorApp() {
 		[activeResourceVariantIndex, updateResourceVariant]
 	)
 
+	const updateActiveResourceOffset = useCallback(
+		(updates: Partial<Vec3>) => {
+			if (activeResourceVariantIndex === null) {
+				setResourceOffset((prev) => ({ ...prev, ...updates }))
+				return
+			}
+			setResourceOffset((prev) => {
+				const next = { ...prev, ...updates }
+				updateResourceVariant(activeResourceVariantIndex, { offset: next })
+				return next
+			})
+		},
+		[activeResourceVariantIndex, updateResourceVariant]
+	)
+
 	const handleAddItemVariant = useCallback(() => {
 		const nextVariant: ItemRenderVariantState = {
 			modelSrc: '',
 			weight: 1,
 			rotationDeg: { x: 0, y: 0, z: 0 },
 			scale: { x: 1, y: 1, z: 1 },
-			elevation: 0
+			elevation: 0,
+			offset: { x: 0, y: 0, z: 0 }
 		}
 		const next = [...itemModelVariants, nextVariant]
 		setItemModelVariants(next)
@@ -832,6 +888,7 @@ export function EditorApp() {
 			setItemRotationDeg(variant.rotationDeg)
 			setItemScale(variant.scale)
 			setItemElevation(variant.elevation)
+			setItemOffset(variant.offset)
 			const modelSrc = variant.modelSrc || ''
 			setItemAssetPath(modelSrc)
 			if (modelSrc) {
@@ -858,6 +915,7 @@ export function EditorApp() {
 				setItemRotationDeg({ x: 0, y: 0, z: 0 })
 				setItemScale({ x: 1, y: 1, z: 1 })
 				setItemElevation(0)
+				setItemOffset({ x: 0, y: 0, z: 0 })
 				void handleLoadItemAsset('')
 				return
 			}
@@ -877,6 +935,7 @@ export function EditorApp() {
 				setItemRotationDeg(variant.rotationDeg)
 				setItemScale(variant.scale)
 				setItemElevation(variant.elevation)
+				setItemOffset(variant.offset)
 				const modelSrc = variant.modelSrc || ''
 				setItemAssetPath(modelSrc)
 				if (modelSrc) {
@@ -937,6 +996,21 @@ export function EditorApp() {
 			}
 			setItemElevation(value)
 			updateItemVariant(activeItemVariantIndex, { elevation: value })
+		},
+		[activeItemVariantIndex, updateItemVariant]
+	)
+
+	const updateActiveItemOffset = useCallback(
+		(updates: Partial<Vec3>) => {
+			if (activeItemVariantIndex === null) {
+				setItemOffset((prev) => ({ ...prev, ...updates }))
+				return
+			}
+			setItemOffset((prev) => {
+				const next = { ...prev, ...updates }
+				updateItemVariant(activeItemVariantIndex, { offset: next })
+				return next
+			})
 		},
 		[activeItemVariantIndex, updateItemVariant]
 	)
@@ -1023,7 +1097,12 @@ export function EditorApp() {
 					y: transform.scale?.y ?? 1,
 					z: transform.scale?.z ?? 1
 				},
-				elevation: transform.elevation ?? 0
+				elevation: transform.elevation ?? 0,
+				offset: {
+					x: transform.offset?.x ?? 0,
+					y: transform.offset?.y ?? 0,
+					z: transform.offset?.z ?? 0
+				}
 			}
 		}
 		const renderVariants = Array.isArray(draft.renders)
@@ -1046,6 +1125,7 @@ export function EditorApp() {
 			setRotationDeg(first.rotationDeg)
 			setScale(first.scale)
 			setElevation(first.elevation)
+			setOffset(first.offset)
 			const modelSrc = first.modelSrc || ''
 			setAssetPath(modelSrc)
 			if (modelSrc) {
@@ -1064,6 +1144,7 @@ export function EditorApp() {
 			setRotationDeg({ x: 0, y: 0, z: 0 })
 			setScale({ x: 1, y: 1, z: 1 })
 			setElevation(0)
+			setOffset({ x: 0, y: 0, z: 0 })
 			setAssetPath('')
 			setSelectedAsset('')
 			setAssetOpen(true)
@@ -1140,6 +1221,7 @@ export function EditorApp() {
 			setRotationDeg({ x: 0, y: 0, z: 0 })
 			setScale({ x: 1, y: 1, z: 1 })
 			setElevation(0)
+			setOffset({ x: 0, y: 0, z: 0 })
 			void handleLoadAsset('')
 			return
 		}
@@ -1158,6 +1240,7 @@ export function EditorApp() {
 			setResourceRotationDeg({ x: 0, y: 0, z: 0 })
 			setResourceScale({ x: 1, y: 1, z: 1 })
 			setResourceElevation(0)
+			setResourceOffset({ x: 0, y: 0, z: 0 })
 			return
 		}
 		const footprintDef = draft.footprint || {}
@@ -1180,7 +1263,12 @@ export function EditorApp() {
 					y: transform.scale?.y ?? 1,
 					z: transform.scale?.z ?? 1
 				},
-				elevation: transform.elevation ?? 0
+				elevation: transform.elevation ?? 0,
+				offset: {
+					x: transform.offset?.x ?? 0,
+					y: transform.offset?.y ?? 0,
+					z: transform.offset?.z ?? 0
+				}
 			}
 		}
 		const renderVariants = Array.isArray(draft.renders)
@@ -1203,6 +1291,7 @@ export function EditorApp() {
 		setResourceRotationDeg({ x: 0, y: 0, z: 0 })
 		setResourceScale({ x: 1, y: 1, z: 1 })
 		setResourceElevation(0)
+		setResourceOffset({ x: 0, y: 0, z: 0 })
 	}, [assetOptions, handleLoadResourceAsset])
 
 	const loadResourceRender = useCallback((definitionId: string) => {
@@ -1227,6 +1316,7 @@ export function EditorApp() {
 			setItemRotationDeg({ x: 0, y: 0, z: 0 })
 			setItemScale({ x: 1, y: 1, z: 1 })
 			setItemElevation(0)
+			setItemOffset({ x: 0, y: 0, z: 0 })
 			return
 		}
 		const footprintDef = draft.footprint || {}
@@ -1249,7 +1339,12 @@ export function EditorApp() {
 					y: transform.scale?.y ?? 1,
 					z: transform.scale?.z ?? 1
 				},
-				elevation: transform.elevation ?? 0
+				elevation: transform.elevation ?? 0,
+				offset: {
+					x: transform.offset?.x ?? 0,
+					y: transform.offset?.y ?? 0,
+					z: transform.offset?.z ?? 0
+				}
 			}
 		}
 		const renderVariants = Array.isArray(draft.renders)
@@ -1272,6 +1367,7 @@ export function EditorApp() {
 		setItemRotationDeg({ x: 0, y: 0, z: 0 })
 		setItemScale({ x: 1, y: 1, z: 1 })
 		setItemElevation(0)
+		setItemOffset({ x: 0, y: 0, z: 0 })
 	}, [assetOptions, handleLoadItemAsset])
 
 	const loadItemRender = useCallback((definitionId: string) => {
@@ -1297,7 +1393,8 @@ export function EditorApp() {
 								weight: 1,
 								rotationDeg,
 								scale,
-								elevation
+								elevation,
+								offset
 							}
 						]
 					: []
@@ -1308,7 +1405,7 @@ export function EditorApp() {
 				y: toRadians(variant.rotationDeg.y),
 				z: toRadians(variant.rotationDeg.z)
 			}
-			const transformOverrides = buildTransform(rotationRad, variant.scale, variant.elevation)
+			const transformOverrides = buildTransform(rotationRad, variant.scale, variant.elevation, variant.offset)
 			return {
 				modelSrc: variant.modelSrc,
 				weight: variant.weight,
@@ -1324,7 +1421,7 @@ export function EditorApp() {
 			}
 		}
 		return { renders: normalizedVariants }
-	}, [assetPath, buildingModelVariants, elevation, rotationDeg, scale])
+	}, [assetPath, buildingModelVariants, elevation, offset, rotationDeg, scale])
 
 	const definitionOutput = useMemo(() => {
 		if (!definitionDraft) return null
@@ -1333,6 +1430,7 @@ export function EditorApp() {
 			rotation: rotationRad,
 			scale,
 			elevation,
+			offset,
 			footprint,
 			storageSlots,
 			entryPoint,
@@ -1346,6 +1444,7 @@ export function EditorApp() {
 		buildingRenderOutput,
 		definitionDraft,
 		elevation,
+		offset,
 		footprint,
 		rotationRad,
 		scale,
@@ -1368,7 +1467,8 @@ export function EditorApp() {
 								weight: 1,
 								rotationDeg: resourceRotationDeg,
 								scale: resourceScale,
-								elevation: resourceElevation
+								elevation: resourceElevation,
+								offset: resourceOffset
 							}
 						]
 					: []
@@ -1386,7 +1486,7 @@ export function EditorApp() {
 					y: toRadians(variant.rotationDeg.y),
 					z: toRadians(variant.rotationDeg.z)
 				}
-				const transformOverrides = buildTransform(rotationRad, variant.scale, variant.elevation)
+				const transformOverrides = buildTransform(rotationRad, variant.scale, variant.elevation, variant.offset)
 				return {
 					modelSrc: variant.modelSrc,
 					weight: variant.weight,
@@ -1409,6 +1509,7 @@ export function EditorApp() {
 		resourceFootprint.length,
 		resourceFootprint.width,
 		resourceModelVariants,
+		resourceOffset,
 		resourceRotationDeg,
 		resourceScale,
 		selectedResourceId
@@ -1426,7 +1527,8 @@ export function EditorApp() {
 								weight: 1,
 								rotationDeg: itemRotationDeg,
 								scale: itemScale,
-								elevation: itemElevation
+								elevation: itemElevation,
+								offset: itemOffset
 							}
 						]
 					: []
@@ -1444,7 +1546,7 @@ export function EditorApp() {
 					y: toRadians(variant.rotationDeg.y),
 					z: toRadians(variant.rotationDeg.z)
 				}
-				const transformOverrides = buildTransform(rotationRad, variant.scale, variant.elevation)
+				const transformOverrides = buildTransform(rotationRad, variant.scale, variant.elevation, variant.offset)
 				return {
 					modelSrc: variant.modelSrc,
 					weight: variant.weight,
@@ -1467,6 +1569,7 @@ export function EditorApp() {
 		itemFootprint.length,
 		itemFootprint.width,
 		itemModelVariants,
+		itemOffset,
 		itemRotationDeg,
 		itemScale,
 		selectedItemId
@@ -3200,6 +3303,86 @@ export function EditorApp() {
 											/>
 										</label>
 									</div>
+									<div className={styles.gridRow}>
+										<label className={styles.field}>
+											<span>Offset X</span>
+											<input
+												type="number"
+												step="0.1"
+												value={isResourceMode ? resourceOffset.x : isItemMode ? itemOffset.x : offset.x}
+												onChange={(event) =>
+													isResourceMode
+														? updateActiveResourceOffset({
+																x: toNumber(event.target.value, resourceOffset.x)
+															})
+														: isItemMode
+															? updateActiveItemOffset({
+																	x: toNumber(event.target.value, itemOffset.x)
+																})
+															: isBuildingMode
+																? updateActiveBuildingOffset({
+																		x: toNumber(event.target.value, offset.x)
+																	})
+																: setOffset((prev) => ({
+																		...prev,
+																		x: toNumber(event.target.value, prev.x)
+																	}))
+												}
+											/>
+										</label>
+										<label className={styles.field}>
+											<span>Offset Y</span>
+											<input
+												type="number"
+												step="0.1"
+												value={isResourceMode ? resourceOffset.y : isItemMode ? itemOffset.y : offset.y}
+												onChange={(event) =>
+													isResourceMode
+														? updateActiveResourceOffset({
+																y: toNumber(event.target.value, resourceOffset.y)
+															})
+														: isItemMode
+															? updateActiveItemOffset({
+																	y: toNumber(event.target.value, itemOffset.y)
+																})
+															: isBuildingMode
+																? updateActiveBuildingOffset({
+																		y: toNumber(event.target.value, offset.y)
+																	})
+																: setOffset((prev) => ({
+																		...prev,
+																		y: toNumber(event.target.value, prev.y)
+																	}))
+												}
+											/>
+										</label>
+										<label className={styles.field}>
+											<span>Offset Z</span>
+											<input
+												type="number"
+												step="0.1"
+												value={isResourceMode ? resourceOffset.z : isItemMode ? itemOffset.z : offset.z}
+												onChange={(event) =>
+													isResourceMode
+														? updateActiveResourceOffset({
+																z: toNumber(event.target.value, resourceOffset.z)
+															})
+														: isItemMode
+															? updateActiveItemOffset({
+																	z: toNumber(event.target.value, itemOffset.z)
+																})
+															: isBuildingMode
+																? updateActiveBuildingOffset({
+																		z: toNumber(event.target.value, offset.z)
+																	})
+																: setOffset((prev) => ({
+																		...prev,
+																		z: toNumber(event.target.value, prev.z)
+																	}))
+												}
+											/>
+										</label>
+									</div>
 									<label className={styles.field}>
 										<span>Elevation (Y)</span>
 										<input
@@ -3459,6 +3642,7 @@ function mergeDefinitionWithEditor(
 		rotation: { x: number; y: number; z: number }
 		scale: { x: number; y: number; z: number }
 		elevation: number
+		offset: { x: number; y: number; z: number }
 		footprint: { width: number; length: number }
 		storageSlots: StorageSlot[]
 		entryPoint: Vec2 | null
@@ -3472,6 +3656,7 @@ function mergeDefinitionWithEditor(
 					rotation?: { x: number; y: number; z: number }
 					scale?: { x: number; y: number; z: number }
 					elevation?: number
+					offset?: { x: number; y: number; z: number }
 				}
 			}
 			renders?: Array<{
@@ -3481,6 +3666,7 @@ function mergeDefinitionWithEditor(
 					rotation?: { x: number; y: number; z: number }
 					scale?: { x: number; y: number; z: number }
 					elevation?: number
+					offset?: { x: number; y: number; z: number }
 				}
 			}>
 		} | null
@@ -3512,7 +3698,7 @@ function mergeDefinitionWithEditor(
 	} else {
 		const render = next.render || {}
 		if (editor.assetPath || render.modelSrc) {
-			const transformOverrides = buildTransform(editor.rotation, editor.scale, editor.elevation)
+			const transformOverrides = buildTransform(editor.rotation, editor.scale, editor.elevation, editor.offset)
 			next.render = {
 				...render,
 				modelSrc: editor.assetPath || render.modelSrc
@@ -3570,12 +3756,19 @@ function mergeDefinitionWithEditor(
 function buildTransform(
 	rotation: { x: number; y: number; z: number },
 	scale: { x: number; y: number; z: number },
-	elevation: number
-): { rotation?: { x: number; y: number; z: number }; scale?: { x: number; y: number; z: number }; elevation?: number } | null {
+	elevation: number,
+	offset: { x: number; y: number; z: number }
+): {
+	rotation?: { x: number; y: number; z: number }
+	scale?: { x: number; y: number; z: number }
+	elevation?: number
+	offset?: { x: number; y: number; z: number }
+} | null {
 	const transform: {
 		rotation?: { x: number; y: number; z: number }
 		scale?: { x: number; y: number; z: number }
 		elevation?: number
+		offset?: { x: number; y: number; z: number }
 	} = {}
 	if (!isNearZero(rotation.x) || !isNearZero(rotation.y) || !isNearZero(rotation.z)) {
 		transform.rotation = rotation
@@ -3585,6 +3778,9 @@ function buildTransform(
 	}
 	if (!isNearZero(elevation)) {
 		transform.elevation = elevation
+	}
+	if (!isNearZero(offset.x) || !isNearZero(offset.y) || !isNearZero(offset.z)) {
+		transform.offset = offset
 	}
 	return Object.keys(transform).length > 0 ? transform : null
 }
@@ -3654,7 +3850,7 @@ function normalizeTileOffsets(tiles: Vec2[]): Array<{ x: number; y: number }> {
 
 function resolveItemPreviewRender(
 	definition: ItemRenderDefinition | null
-): { modelSrc: string; transform?: { rotation?: Vec3; scale?: Vec3; elevation?: number } } | null {
+): { modelSrc: string; transform?: { rotation?: Vec3; scale?: Vec3; elevation?: number; offset?: Vec3 } } | null {
 	if (!definition) return null
 	const variants = Array.isArray(definition.renders)
 		? definition.renders.filter((variant) => Boolean(variant?.modelSrc))
