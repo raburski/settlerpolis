@@ -72,6 +72,14 @@ export class RoadOverlay {
 		// no-op
 	}
 
+	public hasRoadAt(tileX: number, tileY: number): boolean {
+		return this.tiles.has(this.key(tileX, tileY))
+	}
+
+	public hasPendingRoadAt(tileX: number, tileY: number): boolean {
+		return this.pendingTiles.has(this.key(tileX, tileY))
+	}
+
 	public destroy(): void {
 		this.clearMeshes(this.tiles)
 		this.clearMeshes(this.pendingTiles)

@@ -1,17 +1,23 @@
 import { EventBus } from '../EventBus'
-import { Event, BuildingDefinition } from '@rugged/game'
+import { Event, BuildingDefinition, ResourceNodeDefinition, MapObject } from '@rugged/game'
 import { UiEvents } from '../uiEvents'
 import { AbstractMesh, Color3, SceneLoader, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core'
 import '@babylonjs/loaders'
 import type { GameScene } from '../scenes/base/GameScene'
 import type { PointerState } from '../input/InputManager'
 import { rotateVec3 } from '../../shared/transform'
+import { itemService } from '../services/ItemService'
 
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'
 const contentModules = import.meta.glob('../../../../../content/*/index.ts', { eager: true })
 const content = contentModules[`../../../../../content/${CONTENT_FOLDER}/index.ts`]
 const HALF_PI = Math.PI / 2
 const GHOST_VISIBILITY = 1
+const GHOST_TINT_VALID = '#6fbf6a'
+const GHOST_TINT_INVALID = '#e05c5c'
+const GHOST_EMISSIVE_VALID = new Color3(0.2, 0.6, 0.2)
+const GHOST_EMISSIVE_INVALID = new Color3(0.7, 0.2, 0.2)
+const GHOST_MODEL_ALPHA = 0.6
 
 interface BuildingPlacementState {
 	selectedBuildingId: string | null
@@ -29,10 +35,13 @@ export class BuildingPlacementManager {
 		rotationStep: 0
 	}
 	private buildings: Map<string, BuildingDefinition> = new Map()
+	private resourceNodes: Map<string, ResourceNodeDefinition> = new Map()
 	private tileSize: number = 32
 	private ghostRoot: TransformNode | null = null
 	private ghostBaseMesh: AbstractMesh | null = null
 	private ghostBaseMaterial: StandardMaterial | null = null
+	private ghostModelMaterialValid: StandardMaterial | null = null
+	private ghostModelMaterialInvalid: StandardMaterial | null = null
 	private ghostModelRoot: TransformNode | null = null
 	private ghostModelPivot: TransformNode | null = null
 	private ghostMeshes: AbstractMesh[] = []
@@ -46,6 +55,7 @@ export class BuildingPlacementManager {
 	constructor(scene: GameScene) {
 		this.scene = scene
 		this.loadBuildings()
+		this.loadResourceNodes()
 		this.setupEventListeners()
 	}
 
@@ -53,6 +63,14 @@ export class BuildingPlacementManager {
 		if (content?.buildings) {
 			content.buildings.forEach((building: BuildingDefinition) => {
 				this.buildings.set(building.id, building)
+			})
+		}
+	}
+
+	private loadResourceNodes() {
+		if (content?.resourceNodeDefinitions) {
+			content.resourceNodeDefinitions.forEach((node: ResourceNodeDefinition) => {
+				this.resourceNodes.set(node.id, node)
 			})
 		}
 	}
@@ -128,6 +146,14 @@ export class BuildingPlacementManager {
 			this.ghostBaseMaterial.dispose()
 		}
 		this.ghostBaseMaterial = null
+		if (this.ghostModelMaterialValid) {
+			this.ghostModelMaterialValid.dispose()
+		}
+		if (this.ghostModelMaterialInvalid) {
+			this.ghostModelMaterialInvalid.dispose()
+		}
+		this.ghostModelMaterialValid = null
+		this.ghostModelMaterialInvalid = null
 		this.ghostModelRoot = null
 		this.ghostModelPivot = null
 		this.ghostMeshes = []
@@ -142,21 +168,13 @@ export class BuildingPlacementManager {
 		const snappedX = Math.floor(worldX / tileSize) * tileSize
 		const snappedY = Math.floor(worldY / tileSize) * tileSize
 		this.state.lastMousePosition = { x: snappedX, y: snappedY }
-		this.state.isValidPosition = true
+		this.state.isValidPosition = this.isPlacementValid(snappedX, snappedY, building)
 
 		const footprint = this.getRotatedFootprint(building)
 		const centerX = snappedX + (footprint.width * tileSize) / 2
 		const centerY = snappedY + (footprint.height * tileSize) / 2
 		this.ghostRoot.position = new Vector3(centerX, tileSize * 0.5, centerY)
-		if (this.ghostBaseMesh) {
-			if (this.ghostBaseMaterial) {
-				const color = this.state.isValidPosition ? Color3.FromHexString('#ff00ff') : Color3.FromHexString('#ff0000')
-				this.ghostBaseMaterial.diffuseColor = color
-				this.ghostBaseMaterial.emissiveColor = this.state.isValidPosition ? new Color3(1, 0, 1) : new Color3(0.9, 0.1, 0.1)
-			} else {
-				this.scene.runtime.renderer.applyTint(this.ghostBaseMesh, this.state.isValidPosition ? '#ff00ff' : '#ff0000')
-			}
-		}
+		this.updateGhostTint()
 	}
 
 	private setInitialGhostPosition(): void {
@@ -220,14 +238,15 @@ export class BuildingPlacementManager {
 		mesh.outlineColor = Color3.White()
 		if (!this.ghostBaseMaterial) {
 			this.ghostBaseMaterial = new StandardMaterial('building-ghost-base', this.scene.runtime.renderer.scene)
-			this.ghostBaseMaterial.diffuseColor = Color3.FromHexString('#ff00ff')
-			this.ghostBaseMaterial.emissiveColor = new Color3(1, 0, 1)
+			this.ghostBaseMaterial.diffuseColor = Color3.FromHexString(GHOST_TINT_VALID)
+			this.ghostBaseMaterial.emissiveColor = GHOST_EMISSIVE_VALID
 			this.ghostBaseMaterial.specularColor = Color3.Black()
 			this.ghostBaseMaterial.alpha = 0.25
 			this.ghostBaseMaterial.disableDepthWrite = true
 		}
 		mesh.material = this.ghostBaseMaterial
 		this.ghostBaseMesh = mesh
+		this.updateGhostTint()
 	}
 
 	private async loadGhostModel(building: BuildingDefinition): Promise<void> {
@@ -271,6 +290,7 @@ export class BuildingPlacementManager {
 				this.centerGhostModel()
 				this.ghostModelRoot.parent = this.ghostRoot
 				this.applyGhostTransform()
+				this.updateGhostTint()
 				if (this.ghostBaseMesh && this.ghostMeshes.length > 0) {
 					this.ghostBaseMesh.visibility = 0
 				}
@@ -323,6 +343,186 @@ export class BuildingPlacementManager {
 		mesh.isVisible = true
 		mesh.visibility = GHOST_VISIBILITY
 		mesh.alwaysSelectAsActiveMesh = true
+		mesh.material = this.getGhostModelMaterial(this.state.isValidPosition)
+	}
+
+	private getGhostModelMaterial(isValid: boolean): StandardMaterial {
+		if (isValid) {
+			if (!this.ghostModelMaterialValid) {
+				const material = new StandardMaterial('building-ghost-model-valid', this.scene.runtime.renderer.scene)
+				material.diffuseColor = Color3.FromHexString(GHOST_TINT_VALID)
+				material.emissiveColor = GHOST_EMISSIVE_VALID
+				material.specularColor = Color3.Black()
+				material.alpha = GHOST_MODEL_ALPHA
+				this.ghostModelMaterialValid = material
+			}
+			return this.ghostModelMaterialValid
+		}
+		if (!this.ghostModelMaterialInvalid) {
+			const material = new StandardMaterial('building-ghost-model-invalid', this.scene.runtime.renderer.scene)
+			material.diffuseColor = Color3.FromHexString(GHOST_TINT_INVALID)
+			material.emissiveColor = GHOST_EMISSIVE_INVALID
+			material.specularColor = Color3.Black()
+			material.alpha = GHOST_MODEL_ALPHA
+			this.ghostModelMaterialInvalid = material
+		}
+		return this.ghostModelMaterialInvalid
+	}
+
+	private updateGhostTint(): void {
+		const isValid = this.state.isValidPosition
+		if (this.ghostBaseMesh) {
+			if (this.ghostBaseMaterial) {
+				this.ghostBaseMaterial.diffuseColor = Color3.FromHexString(isValid ? GHOST_TINT_VALID : GHOST_TINT_INVALID)
+				this.ghostBaseMaterial.emissiveColor = isValid ? GHOST_EMISSIVE_VALID : GHOST_EMISSIVE_INVALID
+			} else {
+				this.scene.runtime.renderer.applyTint(this.ghostBaseMesh, isValid ? GHOST_TINT_VALID : GHOST_TINT_INVALID)
+			}
+		}
+		if (this.ghostMeshes.length > 0) {
+			const material = this.getGhostModelMaterial(isValid)
+			this.ghostMeshes.forEach((mesh) => {
+				mesh.material = material
+			})
+		}
+	}
+
+	private isPlacementValid(worldX: number, worldY: number, building: BuildingDefinition): boolean {
+		const map = this.scene.map
+		if (!map) {
+			return true
+		}
+
+		const tileSize = map.tileWidth || this.tileSize
+		const footprint = this.getRotatedFootprint(building)
+		const startTileX = Math.floor(worldX / tileSize)
+		const startTileY = Math.floor(worldY / tileSize)
+		const mapWidthTiles = Math.floor(map.widthInPixels / tileSize)
+		const mapHeightTiles = Math.floor(map.heightInPixels / tileSize)
+		const collisionGrid = this.scene.getCollisionGrid()
+		const allowedGroundTypes = building.allowedGroundTypes || []
+		const enforceGroundTypes = allowedGroundTypes.length > 0
+
+		for (let tileY = 0; tileY < footprint.height; tileY += 1) {
+			for (let tileX = 0; tileX < footprint.width; tileX += 1) {
+				const checkTileX = startTileX + tileX
+				const checkTileY = startTileY + tileY
+
+				if (
+					checkTileX < 0 ||
+					checkTileY < 0 ||
+					checkTileX >= mapWidthTiles ||
+					checkTileY >= mapHeightTiles
+				) {
+					return false
+				}
+
+				if (this.scene.hasRoadAt(checkTileX, checkTileY) || this.scene.hasPendingRoadAt(checkTileX, checkTileY)) {
+					return false
+				}
+
+				const groundType = this.scene.runtime.renderer.getGroundTypeNameAtTile(checkTileX, checkTileY)
+				if (groundType === 'mountain' || groundType === 'water_shallow' || groundType === 'water_deep') {
+					return false
+				}
+
+				if (enforceGroundTypes) {
+					if (!groundType || !allowedGroundTypes.includes(groundType)) {
+						return false
+					}
+				} else if (collisionGrid?.[checkTileY]?.[checkTileX]) {
+					return false
+				}
+			}
+		}
+
+		const placementWidth = footprint.width * tileSize
+		const placementHeight = footprint.height * tileSize
+		const seenObjects = new Set<string>()
+		const mapObjects = this.scene.getMapObjects().map((entry) => entry.mapObject)
+		const resourceNodes = this.scene.getResourceNodeObjects()
+		for (const obj of [...mapObjects, ...resourceNodes]) {
+			if (!obj) continue
+			if (seenObjects.has(obj.id)) continue
+			seenObjects.add(obj.id)
+
+			const isResourceNode = Boolean(obj.metadata?.resourceNode)
+			const metadata = itemService.getItemType(obj.item.itemType)
+			const blocksPlacement = isResourceNode
+				? this.shouldBlockResourceNode(obj)
+				: Boolean(obj.metadata?.buildingId || obj.metadata?.buildingInstanceId) ||
+				  Boolean(metadata?.placement?.blocksPlacement)
+			if (!blocksPlacement) continue
+
+			let objWidth = tileSize
+			let objHeight = tileSize
+			if (obj.metadata?.footprint) {
+				objWidth = obj.metadata.footprint.width * tileSize
+				objHeight = obj.metadata.footprint.height * tileSize
+			} else {
+				const placementSize = metadata?.placement?.size
+				objWidth = (placementSize?.width || 1) * tileSize
+				objHeight = (placementSize?.height || 1) * tileSize
+			}
+
+			if (this.doRectanglesOverlap(
+				{ x: worldX, y: worldY },
+				placementWidth,
+				placementHeight,
+				obj.position,
+				objWidth,
+				objHeight
+			)) {
+				return false
+			}
+		}
+
+		for (const loot of this.scene.getLootBounds()) {
+			if (this.doRectanglesOverlap(
+				{ x: worldX, y: worldY },
+				placementWidth,
+				placementHeight,
+				{ x: loot.x, y: loot.y },
+				loot.width,
+				loot.height
+			)) {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	private shouldBlockResourceNode(node: MapObject): boolean {
+		const nodeType = node.metadata?.resourceNodeType
+		const def = nodeType ? this.resourceNodes.get(nodeType) : null
+		if (def) {
+			return def.blocksMovement ?? def.id === 'tree'
+		}
+		return true
+	}
+
+	private doRectanglesOverlap(
+		pos1: { x: number; y: number },
+		width1: number,
+		height1: number,
+		pos2: { x: number; y: number },
+		width2: number,
+		height2: number
+	): boolean {
+		const rect1Right = pos1.x + width1
+		const rect2Right = pos2.x + width2
+		if (rect1Right <= pos2.x || rect2Right <= pos1.x) {
+			return false
+		}
+
+		const rect1Bottom = pos1.y + height1
+		const rect2Bottom = pos2.y + height2
+		if (rect1Bottom <= pos2.y || rect2Bottom <= pos1.y) {
+			return false
+		}
+
+		return true
 	}
 
 	private setupMouseHandlers() {

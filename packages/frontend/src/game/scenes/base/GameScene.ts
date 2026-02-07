@@ -19,7 +19,7 @@ import { RoadOverlay } from '../../modules/RoadOverlay'
 import { RoadPlacementManager } from '../../modules/RoadPlacement'
 import { TextDisplayService } from '../../services/TextDisplayService'
 import { NPCProximityService } from '../../services/NPCProximityService'
-import type { Settler, RoadTile } from '@rugged/game'
+import type { Settler, RoadTile, MapObject } from '@rugged/game'
 import { Vector3 } from '@babylonjs/core'
 import { itemService } from '../../services/ItemService'
 import { sceneManager } from '../../services/SceneManager'
@@ -93,6 +93,26 @@ export abstract class GameScene extends MapScene {
 	start(data?: any): void {
 		this.sceneData = data || {}
 		super.start()
+	}
+
+	public getMapObjects(): MapObjectEntity[] {
+		return Array.from(this.mapObjects.values())
+	}
+
+	public hasRoadAt(tileX: number, tileY: number): boolean {
+		return this.roadOverlay?.hasRoadAt(tileX, tileY) ?? false
+	}
+
+	public hasPendingRoadAt(tileX: number, tileY: number): boolean {
+		return this.roadOverlay?.hasPendingRoadAt(tileX, tileY) ?? false
+	}
+
+	public getResourceNodeObjects(): MapObject[] {
+		return this.resourceNodeBatcher?.getObjects() ?? []
+	}
+
+	public getLootBounds(): { x: number; y: number; width: number; height: number }[] {
+		return Array.from(this.droppedItems.values()).map((loot) => loot.view.getBounds())
 	}
 
 	protected initializeScene(): void {
