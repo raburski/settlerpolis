@@ -91,7 +91,7 @@ export const UiEvents = {
 		Updated: 'ui:reputation:updated'
 	},
 	Debug: {
-		BoundsToggle: 'ui:debug:bounds-toggle',
+		RenderStatsToggle: 'ui:debug:render-stats-toggle',
 		RenderStats: 'ui:debug:render-stats'
 	}
 } as const

@@ -118,6 +118,7 @@ export class BabylonRenderer {
 	public readonly scene: Scene
 	public readonly camera: ArcRotateCamera
 	public readonly placeholderFactory: PlaceholderFactory
+	private readonly worldGroundPlane = Plane.FromPositionAndNormal(Vector3.Zero(), Vector3.Up())
 	private ground: Mesh | null = null
 	private cameraTarget: Vector3 = new Vector3(0, 0, 0)
 	private bounds: { minX: number; minZ: number; maxX: number; maxZ: number } | null = null
@@ -252,6 +253,10 @@ export class BabylonRenderer {
 	setOrthoScale(scale: number): void {
 		this.baseOrthoScale = Math.max(0.25, scale)
 		this.updateCameraOrtho()
+	}
+
+	getOrthoScale(): number {
+		return this.baseOrthoScale
 	}
 
 	setHighFidelity(enabled: boolean): void {
@@ -2748,18 +2753,22 @@ export class BabylonRenderer {
 		}
 	}
 
-	screenToWorld(pointerX: number, pointerY: number): Vector3 | null {
+	screenToWorld(
+		pointerX: number,
+		pointerY: number,
+		options?: { useGroundPick?: boolean }
+	): Vector3 | null {
+		const useGroundPick = options?.useGroundPick !== false
 		const ground = this.ground
-		if (ground) {
+		if (useGroundPick && ground) {
 			const pick = this.scene.pick(pointerX, pointerY, (mesh) => mesh === ground)
 			if (pick?.hit && pick.pickedPoint) {
 				return pick.pickedPoint
 			}
 		}
 
-		const plane = Plane.FromPositionAndNormal(Vector3.Zero(), Vector3.Up())
 		const ray = this.scene.createPickingRay(pointerX, pointerY, Matrix.Identity(), this.camera)
-		const distance = ray.intersectsPlane(plane)
+		const distance = ray.intersectsPlane(this.worldGroundPlane)
 		if (distance !== null) {
 			return ray.origin.add(ray.direction.scale(distance))
 		}

@@ -18,7 +18,9 @@ const KEY_CODES = {
 	ENTER: 'Enter',
 	SPACE: 'Space',
 	ESC: 'Escape',
-	E: 'KeyE'
+	E: 'KeyE',
+	MINUS: 'Minus',
+	EQUAL: 'Equal'
 }
 
 export class Keyboard {
@@ -151,6 +153,14 @@ export class Keyboard {
 
 	public isCameraHome(): boolean {
 		return this.enabled && !this.isInDialogue && this.isJustDown(KEY_CODES.H)
+	}
+
+	public isZoomOut(): boolean {
+		return this.enabled && !this.isInDialogue && this.isJustDown(KEY_CODES.MINUS)
+	}
+
+	public isZoomIn(): boolean {
+		return this.enabled && !this.isInDialogue && this.isJustDown(KEY_CODES.EQUAL)
 	}
 
 	public destroy(): void {

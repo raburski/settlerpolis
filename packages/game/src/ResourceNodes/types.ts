@@ -32,6 +32,7 @@ export interface ResourceNodeRenderDefinition {
 			rotation?: { x: number; y: number; z: number }
 			scale?: { x: number; y: number; z: number }
 			elevation?: number
+			offset?: { x: number; y: number; z: number }
 		}
 	}
 	renders?: Array<{
@@ -41,6 +42,7 @@ export interface ResourceNodeRenderDefinition {
 			rotation?: { x: number; y: number; z: number }
 			scale?: { x: number; y: number; z: number }
 			elevation?: number
+			offset?: { x: number; y: number; z: number }
 		}
 	}>
 }
@@ -62,6 +64,7 @@ export interface ResourceNodeInstance {
 	reservedBy?: string
 	mapObjectId?: MapObjectId
 	matureAtMs?: number
+	plantedAtMs?: number
 	spoilAtMs?: number
 	despawnAtMs?: number
 	isSpoiled?: boolean

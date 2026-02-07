@@ -271,6 +271,8 @@ export type EventPayloads = Record<string, unknown> & {
 	[SchedulerEvents.SS.Cancelled]: { id?: string, success?: boolean, error?: string }
 
 	[SimulationEvents.SS.Tick]: SimulationTickData
+	[SimulationEvents.SS.SlowTick]: SimulationTickData
+	[SimulationEvents.SS.VerySlowTick]: SimulationTickData
 
 	[WorkProviderEvents.SS.ActionCompleted]: { settlerId: SettlerId, action: WorkAction }
 	[WorkProviderEvents.SS.ActionFailed]: { settlerId: SettlerId, action: WorkAction, reason: string }

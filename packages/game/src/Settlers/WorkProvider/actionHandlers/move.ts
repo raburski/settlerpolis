@@ -150,6 +150,7 @@ export const MoveActionHandler: ActionHandler = {
 		const started = managers.movement.moveToPosition(settlerId, action.position, {
 			targetType,
 			targetId,
+			speedMultiplier: action.speedMultiplier,
 			callbacks: {
 				onPathComplete: () => {
 					complete()

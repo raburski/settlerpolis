@@ -5,6 +5,7 @@ import { AbstractMesh, Color3, SceneLoader, StandardMaterial, TransformNode, Vec
 import '@babylonjs/loaders'
 import type { GameScene } from '../scenes/base/GameScene'
 import type { PointerState } from '../input/InputManager'
+import { rotateVec3 } from '../../shared/transform'
 
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'
 const contentModules = import.meta.glob('../../../../../content/*/index.ts', { eager: true })
@@ -288,9 +289,20 @@ export class BuildingPlacementManager {
 		const placementRotation = this.getPlacementRotation()
 		const scale = transform.scale ?? { x: 1, y: 1, z: 1 }
 		const elevation = transform.elevation ?? 0
+		const offset = transform.offset ?? { x: 0, y: 0, z: 0 }
 		const tileSize = this.scene.map?.tileWidth || this.tileSize
-		this.ghostModelRoot.position = new Vector3(0, -tileSize * 0.5 + elevation * tileSize, 0)
-		this.ghostModelRoot.rotation = new Vector3(rotation.x ?? 0, (rotation.y ?? 0) + placementRotation, rotation.z ?? 0)
+		const finalRotation = {
+			x: rotation.x ?? 0,
+			y: (rotation.y ?? 0) + placementRotation,
+			z: rotation.z ?? 0
+		}
+		const rotatedOffset = rotateVec3(offset, finalRotation)
+		this.ghostModelRoot.position = new Vector3(
+			rotatedOffset.x * tileSize,
+			-tileSize * 0.5 + (elevation + rotatedOffset.y) * tileSize,
+			rotatedOffset.z * tileSize
+		)
+		this.ghostModelRoot.rotation = new Vector3(finalRotation.x, finalRotation.y, finalRotation.z)
 		this.ghostModelRoot.scaling = new Vector3(
 			(scale.x ?? 1) * tileSize,
 			(scale.y ?? 1) * tileSize,

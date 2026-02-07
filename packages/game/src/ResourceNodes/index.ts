@@ -82,6 +82,15 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 				continue
 			}
 
+			const node: ResourceNodeInstance = {
+				id: nodeId,
+				nodeType: def.id,
+				mapId: spawn.mapId,
+				position,
+				remainingHarvests,
+				matureAtMs: 0
+			}
+
 			const item: Item = {
 				id: uuidv4(),
 				itemType: def.nodeItemType
@@ -102,10 +111,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 				position,
 				item,
 				metadata: {
-					resourceNode: true,
-					resourceNodeId: nodeId,
-					resourceNodeType: def.id,
-					remainingHarvests
+					...this.buildNodeMetadata(node, def)
 				}
 			}, fakeClient)
 
@@ -114,15 +120,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 				continue
 			}
 
-			const node: ResourceNodeInstance = {
-				id: nodeId,
-				nodeType: def.id,
-				mapId: spawn.mapId,
-				position,
-				remainingHarvests,
-				mapObjectId: mapObject.id,
-				matureAtMs: 0
-			}
+			node.mapObjectId = mapObject.id
 
 			this.nodes.set(nodeId, node)
 		}
@@ -297,6 +295,17 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			return null
 		}
 
+		const matureAtMs = this.simulationTimeMs + Math.max(0, options.growTimeMs ?? 0)
+		const node: ResourceNodeInstance = {
+			id: nodeId,
+			nodeType: def.id,
+			mapId: options.mapId,
+			position,
+			remainingHarvests,
+			matureAtMs,
+			plantedAtMs: this.simulationTimeMs
+		}
+
 		const item: Item = {
 			id: uuidv4(),
 			itemType: def.nodeItemType
@@ -317,27 +326,14 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			position,
 			item,
 			metadata: {
-				resourceNode: true,
-				resourceNodeId: nodeId,
-				resourceNodeType: def.id,
-				remainingHarvests
+				...this.buildNodeMetadata(node, def)
 			}
 		}, fakeClient)
 
 		if (!mapObject) {
 			return null
 		}
-
-		const matureAtMs = this.simulationTimeMs + Math.max(0, options.growTimeMs ?? 0)
-		const node: ResourceNodeInstance = {
-			id: nodeId,
-			nodeType: def.id,
-			mapId: options.mapId,
-			position,
-			remainingHarvests,
-			mapObjectId: mapObject.id,
-			matureAtMs
-		}
+		node.mapObjectId = mapObject.id
 
 		if (options.spoilTimeMs !== undefined) {
 			node.spoilAtMs = matureAtMs + Math.max(0, options.spoilTimeMs)
@@ -439,10 +435,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			position: node.position,
 			item,
 			metadata: {
-				resourceNode: true,
-				resourceNodeId: node.id,
-				resourceNodeType: def.id,
-				remainingHarvests: node.remainingHarvests
+				...this.buildNodeMetadata(node, def)
 			}
 		}, fakeClient)
 	}
@@ -531,11 +524,13 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		if (node.mapObjectId) {
 			const existing = this.managers.mapObjects.getObjectById(node.mapObjectId)
 			if (existing) {
+				const nextMetadata = this.buildNodeMetadata(node, def)
 				const needsUpdate = existing.item.itemType !== def.nodeItemType ||
 					existing.metadata?.resourceNode !== true ||
 					existing.metadata?.resourceNodeId !== node.id ||
 					existing.metadata?.resourceNodeType !== node.nodeType ||
-					existing.metadata?.remainingHarvests !== node.remainingHarvests
+					existing.metadata?.remainingHarvests !== node.remainingHarvests ||
+					JSON.stringify(existing.metadata?.growth || null) !== JSON.stringify(nextMetadata.growth || null)
 				if (!needsUpdate) {
 					return existing
 				}
@@ -548,10 +543,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 					},
 					metadata: {
 						...(existing.metadata || {}),
-						resourceNode: true,
-						resourceNodeId: node.id,
-						resourceNodeType: node.nodeType,
-						remainingHarvests: node.remainingHarvests
+						...nextMetadata
 					}
 				}
 				this.managers.mapObjects.restoreObject(updated)
@@ -570,12 +562,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			rotation: 0,
 			playerId: WORLD_PLAYER_ID,
 			mapId: node.mapId,
-			metadata: {
-				resourceNode: true,
-				resourceNodeId: node.id,
-				resourceNodeType: node.nodeType,
-				remainingHarvests: node.remainingHarvests
-			}
+			metadata: this.buildNodeMetadata(node, def)
 		}
 
 		this.managers.mapObjects.restoreObject(mapObject)
@@ -624,7 +611,12 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	private shouldSyncNode(node: ResourceNodeInstance): boolean {
 		if (node.remainingHarvests <= 0) return false
 		if (node.isSpoiled) return false
-		if (!this.isNodeMature(node)) return false
+		if (!this.isNodeMature(node)) {
+			const def = this.definitions.get(node.nodeType)
+			if (def?.id !== 'tree') {
+				return false
+			}
+		}
 		return true
 	}
 
@@ -651,6 +643,29 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 
 			client.emit(Receiver.Sender, Event.MapObjects.SC.Spawn, { object: mapObject })
 		}
+	}
+
+	private getGrowthMetadata(node: ResourceNodeInstance, def: ResourceNodeDefinition): { durationMs: number; elapsedMs: number } | null {
+		if (def.id !== 'tree') return null
+		if (node.plantedAtMs === undefined || node.matureAtMs === undefined) return null
+		const durationMs = Math.max(0, node.matureAtMs - node.plantedAtMs)
+		if (durationMs <= 0) return null
+		const elapsedMs = Math.min(durationMs, Math.max(0, this.simulationTimeMs - node.plantedAtMs))
+		return { durationMs, elapsedMs }
+	}
+
+	private buildNodeMetadata(node: ResourceNodeInstance, def: ResourceNodeDefinition): Record<string, any> {
+		const metadata: Record<string, any> = {
+			resourceNode: true,
+			resourceNodeId: node.id,
+			resourceNodeType: def.id,
+			remainingHarvests: node.remainingHarvests
+		}
+		const growth = this.getGrowthMetadata(node, def)
+		if (growth) {
+			metadata.growth = growth
+		}
+		return metadata
 	}
 
 	reset(): void {

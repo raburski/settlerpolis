@@ -16,11 +16,18 @@ export class GameRuntime {
 	public readonly overlayRoot: HTMLDivElement
 	private activeScene: RuntimeScene | null = null
 	private renderStatsTimer = 0
+	private renderStatsEnabled = false
 	private readonly handleHighFidelity = (data: { enabled: boolean }) => {
 		this.renderer.setHighFidelity(Boolean(data?.enabled))
 	}
 	private readonly handleScrollSensitivity = (data: { level: number }) => {
 		this.renderer.setScrollWheelDeltaPercentage(getScrollSensitivityWheelDelta(data?.level))
+	}
+	private readonly handleRenderStatsToggle = (data: { enabled: boolean }) => {
+		this.renderStatsEnabled = Boolean(data?.enabled)
+		if (!this.renderStatsEnabled) {
+			this.renderStatsTimer = 0
+		}
 	}
 
 	constructor(canvas: HTMLCanvasElement) {
@@ -31,6 +38,7 @@ export class GameRuntime {
 		this.overlayRoot = this.createOverlay(canvas)
 		EventBus.on(UiEvents.Settings.HighFidelity, this.handleHighFidelity)
 		EventBus.on(UiEvents.Settings.ScrollSensitivity, this.handleScrollSensitivity)
+		EventBus.on(UiEvents.Debug.RenderStatsToggle, this.handleRenderStatsToggle)
 	}
 
 	start(): void {
@@ -55,6 +63,7 @@ export class GameRuntime {
 		}
 		EventBus.off(UiEvents.Settings.HighFidelity, this.handleHighFidelity)
 		EventBus.off(UiEvents.Settings.ScrollSensitivity, this.handleScrollSensitivity)
+		EventBus.off(UiEvents.Debug.RenderStatsToggle, this.handleRenderStatsToggle)
 		this.input.dispose()
 		this.renderer.dispose()
 		this.overlayRoot.remove()
@@ -79,6 +88,7 @@ export class GameRuntime {
 	}
 
 	private emitRenderStats(deltaMs: number): void {
+		if (!this.renderStatsEnabled) return
 		this.renderStatsTimer += deltaMs
 		if (this.renderStatsTimer < 250) return
 		this.renderStatsTimer = 0

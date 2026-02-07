@@ -160,6 +160,9 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		const callbacks = options?.callbacks
 		const targetType = options?.targetType
 		const targetId = options?.targetId
+		const speedMultiplier = typeof options?.speedMultiplier === 'number' && options.speedMultiplier > 0
+			? options.speedMultiplier
+			: 1
 		const totalDistance = this.calculatePathDistance(path)
 
 		const task: MovementTask = {
@@ -168,6 +171,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 			currentStep: 0,
 			targetType,
 			targetId,
+			speedMultiplier,
 			totalDistance,
 			traveledDistance: 0,
 			onStepComplete: callbacks?.onStepComplete ? (task, position) => callbacks.onStepComplete!(position) : undefined,
@@ -283,7 +287,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		const nextPosition = task.path[nextStep]
 		const currentPosition = task.path[task.currentStep] ?? entity.position
 
-		const segmentSpeed = entity.speed * this.managers.roads.getSpeedMultiplierForSegment(
+		const segmentSpeed = entity.speed * (task.speedMultiplier || 1) * this.managers.roads.getSpeedMultiplierForSegment(
 			entity.mapId,
 			currentPosition,
 			nextPosition

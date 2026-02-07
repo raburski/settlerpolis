@@ -22,6 +22,7 @@ import {
 import '@babylonjs/loaders'
 import { getHighFidelity, getScrollSensitivityWheelDelta } from '../game/services/DisplaySettings'
 import { IsometricRotation } from '../shared/IsometricRotation'
+import { rotateVec3 } from '../shared/transform'
 
 export interface StorageSlot {
 	itemType: string
@@ -35,6 +36,7 @@ export interface StorageSlot {
 			rotation?: { x: number; y: number; z: number }
 			scale?: { x: number; y: number; z: number }
 			elevation?: number
+			offset?: { x: number; y: number; z: number }
 		}
 	}
 }
@@ -45,6 +47,7 @@ export interface EditorPlacement {
 	rotation: { x: number; y: number; z: number }
 	scale: { x: number; y: number; z: number }
 	elevation: number
+	offset: { x: number; y: number; z: number }
 	storageSlots: StorageSlot[]
 	entryPoint?: { x: number; y: number } | null
 	centerPoint?: { x: number; y: number } | null
@@ -213,7 +216,12 @@ export class EditorScene {
 			this.footprint.position.set(centerX, 0.02, centerZ)
 		}
 		if (this.assetTransform) {
-			this.assetTransform.position.set(centerX, placement.elevation, centerZ)
+			const rotatedOffset = rotateVec3(placement.offset, placement.rotation)
+			this.assetTransform.position.set(
+				centerX + rotatedOffset.x * TILE_SIZE,
+				placement.elevation + rotatedOffset.y * TILE_SIZE,
+				centerZ + rotatedOffset.z * TILE_SIZE
+			)
 			this.assetTransform.rotation.set(
 				placement.rotation.x,
 				placement.rotation.y,
@@ -527,7 +535,9 @@ export class EditorScene {
 			const rotation = transform.rotation ?? { x: 0, y: 0, z: 0 }
 			const scale = transform.scale ?? { x: 1, y: 1, z: 1 }
 			const elevation = transform.elevation ?? 0
-			root.position.set(centerX, 0.12 + elevation, centerZ)
+			const offset = transform.offset ?? { x: 0, y: 0, z: 0 }
+			const rotatedOffset = rotateVec3(offset, rotation)
+			root.position.set(centerX + rotatedOffset.x, 0.12 + elevation + rotatedOffset.y, centerZ + rotatedOffset.z)
 			root.rotation.set(rotation.x ?? 0, rotation.y ?? 0, rotation.z ?? 0)
 			root.scaling.set(scale.x ?? 1, scale.y ?? 1, scale.z ?? 1)
 			this.storageSlotModelRoots.push(root)

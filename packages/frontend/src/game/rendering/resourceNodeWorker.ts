@@ -4,6 +4,7 @@ type WorkerMessage =
 	| { type: 'init'; tileHalf: number; baseOffset: number }
 	| { type: 'add'; key: string; id: string; x: number; y: number; rotation: number; elevation: number; scale?: number }
 	| { type: 'remove'; key: string; id: string }
+	| { type: 'scale'; key: string; id: string; scale: number }
 	| { type: 'update'; requestId: number; bounds: Bounds }
 	| {
 			type: 'config'
@@ -12,6 +13,7 @@ type WorkerMessage =
 			scale?: { x?: number; y?: number; z?: number }
 			baseYOffset?: number
 			pivotOffset?: { x?: number; y?: number; z?: number }
+			offset?: { x?: number; y?: number; z?: number }
 	  }
 
 type Node = { id: string; x: number; y: number; rotation: number; elevation: number; scale: number }
@@ -38,6 +40,9 @@ type BatchConfig = {
 	px: number
 	py: number
 	pz: number
+	ox: number
+	oy: number
+	oz: number
 }
 
 let tileHalf = 16
@@ -73,7 +78,10 @@ const getConfig = (key: string): BatchConfig => {
 			baseYOffset: tileHalf,
 			px: 0,
 			py: 0,
-			pz: 0
+			pz: 0,
+			ox: 0,
+			oy: 0,
+			oz: 0
 		}
 		configs.set(key, config)
 	}
@@ -87,6 +95,7 @@ const setConfig = (
 		scale?: { x?: number; y?: number; z?: number }
 		baseYOffset?: number
 		pivotOffset?: { x?: number; y?: number; z?: number }
+		offset?: { x?: number; y?: number; z?: number }
 	}
 ): void => {
 	const rot = options.baseRotation || {}
@@ -114,6 +123,7 @@ const setConfig = (
 
 	const scale = options.scale || {}
 	const pivot = options.pivotOffset || {}
+	const offset = options.offset || {}
 	const config: BatchConfig = {
 		b00,
 		b01,
@@ -130,7 +140,10 @@ const setConfig = (
 		baseYOffset: options.baseYOffset ?? tileHalf,
 		px: pivot.x ?? 0,
 		py: pivot.y ?? 0,
-		pz: pivot.z ?? 0
+		pz: pivot.z ?? 0,
+		ox: offset.x ?? 0,
+		oy: offset.y ?? 0,
+		oz: offset.z ?? 0
 	}
 	configs.set(key, config)
 }
@@ -156,6 +169,14 @@ const removeNode = (key: string, id: string): void => {
 	if (index !== lastIndex) {
 		batch.idToIndex.set(lastNode.id, index)
 	}
+}
+
+const updateNodeScale = (key: string, id: string, scale: number): void => {
+	const batch = batches.get(key)
+	if (!batch) return
+	const index = batch.idToIndex.get(id)
+	if (index === undefined) return
+	batch.nodes[index].scale = Number.isFinite(scale) ? scale : 1
 }
 
 const buildMatrices = (key: string, batch: Batch, bounds: Bounds): { matrices: Float32Array; count: number } => {
@@ -192,6 +213,9 @@ const buildMatrices = (key: string, batch: Batch, bounds: Bounds): { matrices: F
 		const r20 = config.b20 * cos + config.b22 * sin
 		const r21 = config.b21
 		const r22 = -config.b20 * sin + config.b22 * cos
+		const offsetX = r00 * config.ox + r01 * config.oy + r02 * config.oz
+		const offsetY = r10 * config.ox + r11 * config.oy + r12 * config.oz
+		const offsetZ = r20 * config.ox + r21 * config.oy + r22 * config.oz
 		matrices[offset++] = r00 * config.sx * scale
 		matrices[offset++] = r01 * config.sy * scale
 		matrices[offset++] = r02 * config.sz * scale
@@ -204,9 +228,9 @@ const buildMatrices = (key: string, batch: Batch, bounds: Bounds): { matrices: F
 		matrices[offset++] = r21 * config.sy * scale
 		matrices[offset++] = r22 * config.sz * scale
 		matrices[offset++] = 0
-		matrices[offset++] = cx + baseOffset + config.px * offsetFactor
-		matrices[offset++] = config.baseYOffset + node.elevation + baseOffset + config.py * offsetFactor
-		matrices[offset++] = cy + baseOffset + config.pz * offsetFactor
+		matrices[offset++] = cx + baseOffset + config.px * offsetFactor + offsetX
+		matrices[offset++] = config.baseYOffset + node.elevation + baseOffset + config.py * offsetFactor + offsetY
+		matrices[offset++] = cy + baseOffset + config.pz * offsetFactor + offsetZ
 		matrices[offset++] = 1
 	}
 	return { matrices, count: visibleCount }
@@ -226,7 +250,8 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
 				baseRotation: data.baseRotation,
 				scale: data.scale,
 				baseYOffset: data.baseYOffset,
-				pivotOffset: data.pivotOffset
+				pivotOffset: data.pivotOffset,
+				offset: data.offset
 			})
 			return
 		case 'add':
@@ -241,6 +266,9 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
 			return
 		case 'remove':
 			removeNode(data.key, data.id)
+			return
+		case 'scale':
+			updateNodeScale(data.key, data.id, data.scale)
 			return
 		case 'update': {
 			const results: Record<string, { matrices: Float32Array; count: number }> = {}

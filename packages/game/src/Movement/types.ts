@@ -28,6 +28,7 @@ export interface MovementTask {
 	currentStep: number
 	targetType?: MoveTargetType
 	targetId?: string
+	speedMultiplier?: number
 	totalDistance?: number
 	traveledDistance?: number
 	segmentRemainingMs?: number
@@ -49,4 +50,5 @@ export interface MoveToPositionOptions {
 	callbacks?: MovementCallbacks
 	targetType?: MoveTargetType
 	targetId?: string
+	speedMultiplier?: number
 }

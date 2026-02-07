@@ -64,6 +64,7 @@ export interface ItemRenderDefinition {
 			rotation?: { x: number; y: number; z: number }
 			scale?: { x: number; y: number; z: number }
 			elevation?: number
+			offset?: { x: number; y: number; z: number }
 		}
 	}
 	renders?: Array<{
@@ -73,6 +74,7 @@ export interface ItemRenderDefinition {
 			rotation?: { x: number; y: number; z: number }
 			scale?: { x: number; y: number; z: number }
 			elevation?: number
+			offset?: { x: number; y: number; z: number }
 		}
 	}>
 }

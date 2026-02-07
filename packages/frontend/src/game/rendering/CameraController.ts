@@ -16,6 +16,13 @@ interface ShakeState {
 	intensity: number
 }
 
+interface ZoomState {
+	start: number
+	end: number
+	startTime: number
+	duration: number
+}
+
 export class CameraController {
 	public scrollX = 0
 	public scrollY = 0
@@ -32,11 +39,17 @@ export class CameraController {
 	private dragStartWorld: { x: number; y: number } | null = null
 	private dragStartTarget: { x: number; y: number } | null = null
 	private dragStartFollowOffset: { x: number; y: number } | null = null
+	private zoomState: ZoomState | null = null
+	private zoomStep = 1
+	private readonly zoomScales: [number, number, number]
+	private readonly zoomDurationMs = 260
 	private readonly rotationStorageKey = 'rugged:camera-rotation-step'
 	private readonly isoRotation: IsometricRotation
 
 	constructor(renderer: BabylonRenderer, overlayRoot: HTMLDivElement) {
 		this.renderer = renderer
+		const middleZoom = this.renderer.getOrthoScale()
+		this.zoomScales = [middleZoom * 1.35, middleZoom, middleZoom * 0.75]
 		const initialStep = this.restoreRotation()
 		this.isoRotation = new IsometricRotation({ initialStep })
 		this.renderer.camera.alpha = this.isoRotation.getAlphaForStep()
@@ -83,6 +96,14 @@ export class CameraController {
 		this.isoRotation.rotateBySteps(stepDelta, this.renderer.camera.alpha)
 	}
 
+	zoomOut(): void {
+		this.setZoomStep(this.zoomStep - 1)
+	}
+
+	zoomIn(): void {
+		this.setZoomStep(this.zoomStep + 1)
+	}
+
 	getWorldPoint(screenX: number, screenY: number): { x: number; y: number } {
 		const world = this.renderer.screenToWorld(screenX, screenY)
 		if (!world) {
@@ -125,6 +146,7 @@ export class CameraController {
 
 	update(): void {
 		this.updateRotation()
+		this.updateZoom()
 		if (this.panState) {
 			const now = Date.now()
 			const elapsed = now - this.panState.startTime
@@ -249,6 +271,42 @@ export class CameraController {
 			return
 		}
 		this.renderer.camera.alpha = this.isoRotation.getAlphaForStep()
+	}
+
+	private updateZoom(): void {
+		if (!this.zoomState) return
+		const now = Date.now()
+		const elapsed = now - this.zoomState.startTime
+		const t = Math.min(1, elapsed / this.zoomState.duration)
+		const eased = t * t * (3 - 2 * t)
+		const scale = this.zoomState.start + (this.zoomState.end - this.zoomState.start) * eased
+		this.renderer.setOrthoScale(scale)
+		if (t >= 1) {
+			this.zoomState = null
+			this.renderer.setOrthoScale(this.zoomScales[this.zoomStep])
+		}
+	}
+
+	private setZoomStep(nextStep: number): void {
+		const clamped = Math.max(0, Math.min(this.zoomScales.length - 1, nextStep))
+		if (clamped === this.zoomStep) return
+		const now = Date.now()
+		const currentScale = this.getZoomScale(now)
+		this.zoomStep = clamped
+		this.zoomState = {
+			start: currentScale,
+			end: this.zoomScales[this.zoomStep],
+			startTime: now,
+			duration: this.zoomDurationMs
+		}
+	}
+
+	private getZoomScale(now: number): number {
+		if (!this.zoomState) return this.renderer.getOrthoScale()
+		const elapsed = now - this.zoomState.startTime
+		const t = Math.min(1, Math.max(0, elapsed / this.zoomState.duration))
+		const eased = t * t * (3 - 2 * t)
+		return this.zoomState.start + (this.zoomState.end - this.zoomState.start) * eased
 	}
 
 	private persistRotation(): void {

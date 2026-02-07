@@ -1691,12 +1691,15 @@ export const buildings: BuildingDefinition[] = [
     "requiredProfession": "vendor",
     "workerSlots": 1,
     "marketDistribution": {
-      "maxDistanceTiles": 24,
+      "maxDistanceTiles": 80,
       "maxStops": 8,
       "roadSearchRadiusTiles": 8,
       "houseSearchRadiusTiles": 3,
       "carryQuantity": 8,
-      "deliveryQuantity": 2
+      "deliveryQuantity": 1,
+      "patrolStrideTiles": 80,
+      "patrolPauseMs": 0,
+      "patrolSpeedMultiplier": 0.55
     },
     "amenitySlots": {
       "count": 3

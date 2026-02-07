@@ -81,6 +81,7 @@ type ResourceNodeRenderModel = {
 		rotation?: { x: number; y: number; z: number }
 		scale?: { x: number; y: number; z: number }
 		elevation?: number
+		offset?: { x: number; y: number; z: number }
 	}
 	weight?: number
 }
