@@ -8,7 +8,7 @@ export const resourceNodeDefinitions: ResourceNodeDefinition[] = [
 		nodeItemType: ItemType.Tree,
 		outputItemType: ItemType.Logs,
 		harvestQuantity: 1,
-		harvestTimeMs: 2500,
+		harvestTimeMs: 10000,
 		maxHarvests: 1,
 		blocksMovement: true
 	},

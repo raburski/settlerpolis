@@ -28,7 +28,8 @@ export class MultiplayerService {
 	private networkHandlers = new Map<string, (data: any, client: any) => void>()
 	private handleCSEvent = (eventName: string, data: any) => {
 		if (eventName && eventName.startsWith('cs:') && this.event) {
-			if (this.debug) {
+			const workerDebug = String(import.meta.env.VITE_GAME_WORKER_DEBUG || '').toLowerCase() === 'true'
+			if (this.debug || (workerDebug && eventName.startsWith('cs:players'))) {
 				console.log('[MULTIPLAYER SERVICE] Forwarding CS event:', eventName, data)
 			}
 			this.event.emit(Receiver.All, eventName, data)

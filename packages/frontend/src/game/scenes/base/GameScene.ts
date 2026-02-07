@@ -151,12 +151,20 @@ export abstract class GameScene extends MapScene {
 		EventBus.emit(UiEvents.Scene.Ready, { mapId: this.mapKey })
 		mark('scene ready emit')
 
-		if (!isTransition && !suppressAutoJoin) {
+		const shouldAutoJoin = !isTransition && !suppressAutoJoin
+		const workerDebug = String(import.meta.env.VITE_GAME_WORKER_DEBUG || '').toLowerCase() === 'true'
+		if (workerDebug) {
+			console.log('[GameScene] Auto-join check', { mapId: this.mapKey, isTransition, suppressAutoJoin, shouldAutoJoin })
+		}
+		if (shouldAutoJoin) {
 			EventBus.emit(Event.Players.CS.Join, {
 				position: { x: playerX, y: playerY },
 				mapId: this.mapKey,
 				appearance: {}
 			})
+			if (workerDebug) {
+				console.log('[GameScene] Auto-join emitted', { mapId: this.mapKey })
+			}
 			mark('auto join emit')
 		}
 	}
@@ -829,10 +837,16 @@ export abstract class GameScene extends MapScene {
 	}
 
 	private handleSettlerSpawned = (data: { settler: Settler }) => {
-		if (data.settler.mapId === this.mapKey) {
-			const settler = createSettler(this, data.settler)
-			this.settlers.set(data.settler.id, settler)
+		if (data.settler.mapId !== this.mapKey) {
+			return
 		}
+		const existing = this.settlers.get(data.settler.id)
+		if (existing) {
+			existing.updateSettler(data.settler)
+			return
+		}
+		const settler = createSettler(this, data.settler)
+		this.settlers.set(data.settler.id, settler)
 	}
 
 	private handleSettlerDied = (data: { settlerId: string }) => {
@@ -978,6 +992,7 @@ export abstract class GameScene extends MapScene {
 
 		EventBus.off(Event.Players.SC.Joined, this.handlePlayerJoined)
 		EventBus.off(Event.Players.SC.Left, this.handlePlayerLeft)
+		EventBus.off(Event.Players.SC.Move, this.handlePlayerMove)
 		EventBus.off(Event.Loot.SC.Spawn, this.handleAddItems)
 		EventBus.off(Event.Loot.SC.Despawn, this.handleRemoveItems)
 		EventBus.off(Event.Loot.SC.Update, this.handleUpdateItems)
@@ -987,7 +1002,17 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(Event.MapObjects.SC.Spawn, this.handleMapObjectSpawn)
 		EventBus.off(Event.MapObjects.SC.Despawn, this.handleMapObjectDespawn)
 		EventBus.off(Event.ResourceNodes.SC.Sync, this.handleResourceNodesSync)
+		EventBus.off(Event.Buildings.SC.Placed, this.handleBuildingPlaced)
+		EventBus.off(Event.Buildings.SC.Progress, this.handleBuildingProgress)
+		EventBus.off(Event.Buildings.SC.Completed, this.handleBuildingCompleted)
+		EventBus.off(Event.Buildings.SC.Cancelled, this.handleBuildingCancelled)
 		EventBus.off(Event.Storage.SC.Spoilage, this.handleStorageSpoilage)
+		EventBus.off(Event.Population.SC.List, this.handlePopulationList)
+		EventBus.off(Event.Population.SC.SettlerSpawned, this.handleSettlerSpawned)
+		EventBus.off(Event.Population.SC.SettlerDied, this.handleSettlerDied)
+		EventBus.off(UiEvents.Population.SettlerSpawned, this.handleUISettlerSpawned)
+		EventBus.off(UiEvents.Population.SettlerDied, this.handleSettlerDied)
+		EventBus.off(UiEvents.Population.ProfessionChanged, this.handleSettlerProfessionChanged)
 		EventBus.off(Event.Roads.SC.Sync, this.handleRoadSync)
 		EventBus.off(Event.Roads.SC.Updated, this.handleRoadUpdated)
 		EventBus.off(Event.Roads.SC.PendingSync, this.handleRoadPendingSync)

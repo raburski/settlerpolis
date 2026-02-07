@@ -591,7 +591,7 @@ export const buildings: BuildingDefinition[] = [
       "cropNodeType": "tree",
       "plotRadiusTiles": 8,
       "plantTimeMs": 2000,
-      "growTimeMs": 45000,
+      "growTimeMs": 180000,
       "maxPlots": 18,
       "allowHarvest": false,
       "minSpacingTiles": 1,

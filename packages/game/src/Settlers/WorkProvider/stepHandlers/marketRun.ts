@@ -128,123 +128,286 @@ const getRoadNeighbors = (roadData: { width: number, height: number, data: Array
 
 const tileKey = (tile: TilePosition): string => `${tile.x},${tile.y}`
 
-const sortRoadTilesByStartDistance = (tiles: TilePosition[], start: TilePosition): TilePosition[] => {
-	return [...tiles].sort((a, b) => {
-		const da = Math.abs(a.x - start.x) + Math.abs(a.y - start.y)
-		const db = Math.abs(b.x - start.x) + Math.abs(b.y - start.y)
-		if (da !== db) {
-			return da - db
-		}
-		if (a.y !== b.y) {
-			return a.y - b.y
-		}
-		return a.x - b.x
-	})
+const sameTile = (a: TilePosition, b: TilePosition): boolean => a.x === b.x && a.y === b.y
+
+const undirectedEdgeKey = (a: TilePosition, b: TilePosition): string => {
+	const aKey = tileKey(a)
+	const bKey = tileKey(b)
+	return aKey < bKey ? `${aKey}|${bKey}` : `${bKey}|${aKey}`
 }
 
-const findShortestRoadPath = (
+const directionRank = (from: TilePosition, to: TilePosition): number => {
+	const dx = to.x - from.x
+	const dy = to.y - from.y
+	if (dx === 0 && dy === -1) {
+		return 0
+	}
+	if (dx === 1 && dy === 0) {
+		return 1
+	}
+	if (dx === 0 && dy === 1) {
+		return 2
+	}
+	if (dx === -1 && dy === 0) {
+		return 3
+	}
+	return 4
+}
+
+const isStraightThrough = (tile: TilePosition, neighbors: TilePosition[]): boolean => {
+	if (neighbors.length !== 2) {
+		return false
+	}
+	const a = neighbors[0]
+	const b = neighbors[1]
+	const ax = a.x - tile.x
+	const ay = a.y - tile.y
+	const bx = b.x - tile.x
+	const by = b.y - tile.y
+	return ax === -bx && ay === -by
+}
+
+interface RoadNetwork {
+	tileByKey: Map<string, TilePosition>
+	adjacencyByKey: Map<string, TilePosition[]>
+}
+
+interface RoadNetworkSegment {
+	id: string
+	startKey: string
+	endKey: string
+	tiles: TilePosition[]
+}
+
+const discoverRoadNetwork = (
 	roadData: { width: number, height: number, data: Array<RoadType | null> },
 	start: TilePosition,
-	goal: TilePosition
-): TilePosition[] => {
-	if (start.x === goal.x && start.y === goal.y) {
-		return [start]
-	}
-
+	maxSteps: number
+): RoadNetwork => {
 	const startKey = tileKey(start)
-	const goalKey = tileKey(goal)
 	const queue: TilePosition[] = [start]
 	let head = 0
-	const visited = new Set<string>([startKey])
-	const parentByKey = new Map<string, string>()
+	const distanceByKey = new Map<string, number>([[startKey, 0]])
 	const tileByKey = new Map<string, TilePosition>([[startKey, start]])
 
 	while (head < queue.length) {
 		const current = queue[head]
 		head += 1
-		const neighbors = getRoadNeighbors(roadData, current)
+		const currentKey = tileKey(current)
+		const currentDistance = distanceByKey.get(currentKey) ?? 0
+		if (currentDistance >= maxSteps) {
+			continue
+		}
+		const neighbors = getRoadNeighbors(roadData, current).sort((a, b) => {
+			const rankDelta = directionRank(current, a) - directionRank(current, b)
+			if (rankDelta !== 0) {
+				return rankDelta
+			}
+			if (a.y !== b.y) {
+				return a.y - b.y
+			}
+			return a.x - b.x
+		})
 		for (const neighbor of neighbors) {
 			const neighborKey = tileKey(neighbor)
-			if (visited.has(neighborKey)) {
+			if (distanceByKey.has(neighborKey)) {
 				continue
 			}
-			visited.add(neighborKey)
-			parentByKey.set(neighborKey, tileKey(current))
+			distanceByKey.set(neighborKey, currentDistance + 1)
 			tileByKey.set(neighborKey, neighbor)
 			queue.push(neighbor)
-			if (neighborKey === goalKey) {
-				const reversedPath: TilePosition[] = []
-				let cursor = goalKey
-				while (true) {
-					const tile = tileByKey.get(cursor)
-					if (!tile) {
-						return []
-					}
-					reversedPath.push(tile)
-					if (cursor === startKey) {
-						break
-					}
-					const parent = parentByKey.get(cursor)
-					if (!parent) {
-						return []
-					}
-					cursor = parent
+		}
+	}
+
+	const adjacencyByKey = new Map<string, TilePosition[]>()
+	for (const [key, tile] of tileByKey.entries()) {
+		const neighbors = getRoadNeighbors(roadData, tile)
+			.filter(neighbor => tileByKey.has(tileKey(neighbor)))
+			.sort((a, b) => {
+				const rankDelta = directionRank(tile, a) - directionRank(tile, b)
+				if (rankDelta !== 0) {
+					return rankDelta
 				}
-				return reversedPath.reverse()
+				if (a.y !== b.y) {
+					return a.y - b.y
+				}
+				return a.x - b.x
+			})
+		adjacencyByKey.set(key, neighbors)
+	}
+
+	return { tileByKey, adjacencyByKey }
+}
+
+const buildRoadSegments = (network: RoadNetwork, start: TilePosition): Map<string, RoadNetworkSegment[]> => {
+	const nodeKeys = new Set<string>()
+	const startKey = tileKey(start)
+
+	for (const [key, tile] of network.tileByKey.entries()) {
+		const neighbors = network.adjacencyByKey.get(key) ?? []
+		if (key === startKey || neighbors.length !== 2 || !isStraightThrough(tile, neighbors)) {
+			nodeKeys.add(key)
+		}
+	}
+
+	const orderedNodeKeys = Array.from(nodeKeys.values()).sort((a, b) => {
+		const aTile = network.tileByKey.get(a)
+		const bTile = network.tileByKey.get(b)
+		if (!aTile || !bTile) {
+			return a.localeCompare(b)
+		}
+		const da = Math.abs(aTile.x - start.x) + Math.abs(aTile.y - start.y)
+		const db = Math.abs(bTile.x - start.x) + Math.abs(bTile.y - start.y)
+		if (da !== db) {
+			return da - db
+		}
+		if (aTile.y !== bTile.y) {
+			return aTile.y - bTile.y
+		}
+		return aTile.x - bTile.x
+	})
+
+	const traversedEdges = new Set<string>()
+	const segmentsByNode = new Map<string, RoadNetworkSegment[]>()
+	let segmentCounter = 0
+
+	for (const nodeKey of orderedNodeKeys) {
+		const nodeTile = network.tileByKey.get(nodeKey)
+		if (!nodeTile) {
+			continue
+		}
+		const neighbors = network.adjacencyByKey.get(nodeKey) ?? []
+		for (const neighbor of neighbors) {
+			const firstEdgeKey = undirectedEdgeKey(nodeTile, neighbor)
+			if (traversedEdges.has(firstEdgeKey)) {
+				continue
+			}
+
+			const tiles: TilePosition[] = [nodeTile]
+			let previous = nodeTile
+			let current = neighbor
+			traversedEdges.add(firstEdgeKey)
+
+			while (true) {
+				tiles.push(current)
+				const currentKey = tileKey(current)
+				if (nodeKeys.has(currentKey)) {
+					break
+				}
+
+				const nextCandidates = (network.adjacencyByKey.get(currentKey) ?? [])
+					.filter(candidate => !sameTile(candidate, previous))
+				if (nextCandidates.length === 0) {
+					break
+				}
+				const next = nextCandidates.sort((a, b) => {
+					const rankDelta = directionRank(current, a) - directionRank(current, b)
+					if (rankDelta !== 0) {
+						return rankDelta
+					}
+					if (a.y !== b.y) {
+						return a.y - b.y
+					}
+					return a.x - b.x
+				})[0]
+				traversedEdges.add(undirectedEdgeKey(current, next))
+				previous = current
+				current = next
+			}
+
+			const endKey = tileKey(current)
+			if (tiles.length <= 1) {
+				continue
+			}
+
+			const segment: RoadNetworkSegment = {
+				id: `seg-${segmentCounter}`,
+				startKey: nodeKey,
+				endKey,
+				tiles
+			}
+			segmentCounter += 1
+
+			segmentsByNode.set(nodeKey, [...(segmentsByNode.get(nodeKey) ?? []), segment])
+			if (endKey !== nodeKey) {
+				segmentsByNode.set(endKey, [...(segmentsByNode.get(endKey) ?? []), segment])
 			}
 		}
 	}
 
-	return []
+	for (const [nodeKey, segments] of segmentsByNode.entries()) {
+		const nodeTile = network.tileByKey.get(nodeKey)
+		if (!nodeTile) {
+			continue
+		}
+		segments.sort((a, b) => {
+			const aRef = a.startKey === nodeKey ? a.tiles[1] : a.tiles[a.tiles.length - 2]
+			const bRef = b.startKey === nodeKey ? b.tiles[1] : b.tiles[b.tiles.length - 2]
+			const aRank = aRef ? directionRank(nodeTile, aRef) : 99
+			const bRank = bRef ? directionRank(nodeTile, bRef) : 99
+			if (aRank !== bRank) {
+				return aRank - bRank
+			}
+			if (a.tiles.length !== b.tiles.length) {
+				return b.tiles.length - a.tiles.length
+			}
+			return a.id.localeCompare(b.id)
+		})
+	}
+
+	return segmentsByNode
 }
 
-const buildBreadthFirstRoadWalk = (roadData: { width: number, height: number, data: Array<RoadType | null> } | null, start: TilePosition | null, maxSteps: number): TilePosition[] => {
+export const buildRoadNetworkWalk = (roadData: { width: number, height: number, data: Array<RoadType | null> } | null, start: TilePosition | null, maxSteps: number): TilePosition[] => {
 	if (!roadData || !start || maxSteps <= 0) {
 		return []
 	}
 
+	const network = discoverRoadNetwork(roadData, start, maxSteps)
+	const startKey = tileKey(start)
+	const segmentsByNode = buildRoadSegments(network, start)
 	const route: TilePosition[] = [start]
-	const discovered = new Set<string>([tileKey(start)])
-	const queue: TilePosition[] = [start]
-	let queueHead = 0
-	let currentTile = start
-	let stepsLeft = maxSteps
+	const visitedSegments = new Set<string>()
 
-	while (queueHead < queue.length && stepsLeft > 0) {
-		const targetTile = queue[queueHead]
-		queueHead += 1
-
-		const neighbors = sortRoadTilesByStartDistance(getRoadNeighbors(roadData, targetTile), start)
-		for (const neighbor of neighbors) {
-			const neighborKey = tileKey(neighbor)
-			if (discovered.has(neighborKey)) {
+	const appendSegment = (segment: RoadNetworkSegment, fromNodeKey: string) => {
+		const orientedTiles = fromNodeKey === segment.startKey
+			? segment.tiles
+			: [...segment.tiles].reverse()
+		for (const tile of orientedTiles) {
+			const last = route[route.length - 1]
+			if (last && sameTile(last, tile)) {
 				continue
 			}
-			discovered.add(neighborKey)
-			queue.push(neighbor)
-		}
-
-		if (targetTile.x === currentTile.x && targetTile.y === currentTile.y) {
-			continue
-		}
-
-		const shortestPath = findShortestRoadPath(roadData, currentTile, targetTile)
-		if (shortestPath.length <= 1) {
-			continue
-		}
-
-		const travelSteps = Math.min(stepsLeft, shortestPath.length - 1)
-		for (let pathIndex = 1; pathIndex <= travelSteps; pathIndex += 1) {
-			route.push(shortestPath[pathIndex])
-		}
-		currentTile = shortestPath[travelSteps]
-		stepsLeft -= travelSteps
-
-		if (travelSteps < shortestPath.length - 1) {
-			break
+			route.push(tile)
 		}
 	}
 
+	const traverse = (nodeKey: string, mustReturnToNode: boolean) => {
+		const connected = segmentsByNode.get(nodeKey) ?? []
+		for (const segment of connected) {
+			if (visitedSegments.has(segment.id)) {
+				continue
+			}
+			visitedSegments.add(segment.id)
+
+			const nextNodeKey = segment.startKey === nodeKey
+				? segment.endKey
+				: segment.startKey
+			appendSegment(segment, nodeKey)
+
+			if (nextNodeKey !== nodeKey) {
+				traverse(nextNodeKey, true)
+			}
+
+			const hasMoreAtNode = (segmentsByNode.get(nodeKey) ?? [])
+				.some(candidate => !visitedSegments.has(candidate.id))
+			if (mustReturnToNode || hasMoreAtNode) {
+				appendSegment(segment, nextNodeKey)
+			}
+		}
+	}
+
+	traverse(startKey, false)
 	return route
 }
 
@@ -335,7 +498,7 @@ export const MarketRunHandler: StepHandler = {
 		const roadData = managers.roads.getRoadData(market.mapId)
 		const marketTile = toTile(market.position, tileSize)
 		const startRoad = findClosestRoadTile(roadData, marketTile, roadSearchRadius)
-		const roadRoute = buildBreadthFirstRoadWalk(roadData, startRoad, Math.max(1, maxDistanceTiles))
+		const roadRoute = buildRoadNetworkWalk(roadData, startRoad, Math.max(1, maxDistanceTiles))
 
 		const actions: WorkAction[] = []
 		const reservations = new ReservationBag()
