@@ -24,6 +24,15 @@ interface BuildingPlacementState {
 	isValidPosition: boolean
 	lastMousePosition: { x: number; y: number } | null
 	rotationStep: number
+	dragStartTile: { x: number; y: number } | null
+	dragCurrentTile: { x: number; y: number } | null
+}
+
+interface LinePlacement {
+	tile: { x: number; y: number }
+	worldX: number
+	worldY: number
+	isValid: boolean
 }
 
 export class BuildingPlacementManager {
@@ -32,7 +41,9 @@ export class BuildingPlacementManager {
 		selectedBuildingId: null,
 		isValidPosition: true,
 		lastMousePosition: null,
-		rotationStep: 0
+		rotationStep: 0,
+		dragStartTile: null,
+		dragCurrentTile: null
 	}
 	private buildings: Map<string, BuildingDefinition> = new Map()
 	private resourceNodes: Map<string, ResourceNodeDefinition> = new Map()
@@ -45,6 +56,10 @@ export class BuildingPlacementManager {
 	private ghostModelRoot: TransformNode | null = null
 	private ghostModelPivot: TransformNode | null = null
 	private ghostMeshes: AbstractMesh[] = []
+	private linePreviewMeshes: AbstractMesh[] = []
+	private lineModelRoots: TransformNode[] = []
+	private linePreviewMaterialValid: StandardMaterial | null = null
+	private linePreviewMaterialInvalid: StandardMaterial | null = null
 	private ghostRender: BuildingDefinition['render'] | null = null
 	private ghostLoadToken = 0
 	private selectHandler: ((data: { buildingId: string }) => void) | null = null
@@ -105,12 +120,16 @@ export class BuildingPlacementManager {
 	private selectBuilding(buildingId: string) {
 		this.state.selectedBuildingId = buildingId
 		this.state.rotationStep = 0
+		this.state.dragStartTile = null
+		this.state.dragCurrentTile = null
 		this.createGhostMesh()
 		this.setupMouseHandlers()
 	}
 
 	private cancelSelection() {
 		this.state.selectedBuildingId = null
+		this.state.dragStartTile = null
+		this.state.dragCurrentTile = null
 		this.destroyGhostMesh()
 		this.removeMouseHandlers()
 	}
@@ -137,6 +156,8 @@ export class BuildingPlacementManager {
 	private destroyGhostMesh() {
 		this.ghostLoadToken += 1
 		this.ghostRender = null
+		this.clearLinePreview()
+		this.disposeLinePreviewMaterials()
 		if (this.ghostRoot) {
 			this.ghostRoot.dispose()
 		}
@@ -157,6 +178,24 @@ export class BuildingPlacementManager {
 		this.ghostModelRoot = null
 		this.ghostModelPivot = null
 		this.ghostMeshes = []
+	}
+
+	private clearLinePreview(): void {
+		this.linePreviewMeshes.forEach((mesh) => mesh.dispose())
+		this.linePreviewMeshes = []
+		this.lineModelRoots.forEach((root) => root.dispose())
+		this.lineModelRoots = []
+	}
+
+	private disposeLinePreviewMaterials(): void {
+		if (this.linePreviewMaterialValid) {
+			this.linePreviewMaterialValid.dispose()
+		}
+		if (this.linePreviewMaterialInvalid) {
+			this.linePreviewMaterialInvalid.dispose()
+		}
+		this.linePreviewMaterialValid = null
+		this.linePreviewMaterialInvalid = null
 	}
 
 	private updateGhostPosition(worldX: number, worldY: number) {
@@ -213,6 +252,9 @@ export class BuildingPlacementManager {
 		this.applyGhostTransform()
 		if (this.state.lastMousePosition) {
 			this.updateGhostPosition(this.state.lastMousePosition.x, this.state.lastMousePosition.y)
+		}
+		if (this.state.dragStartTile && this.state.dragCurrentTile) {
+			this.updateLinePreview()
 		}
 	}
 
@@ -294,6 +336,9 @@ export class BuildingPlacementManager {
 				if (this.ghostBaseMesh && this.ghostMeshes.length > 0) {
 					this.ghostBaseMesh.visibility = 0
 				}
+				if (this.state.dragStartTile && this.state.dragCurrentTile) {
+					this.updateLinePreview()
+				}
 			})()
 		} catch (error) {
 			if (this.ghostRoot) {
@@ -303,7 +348,11 @@ export class BuildingPlacementManager {
 	}
 
 	private applyGhostTransform(): void {
-		if (!this.ghostModelRoot || !this.ghostRender) return
+		this.applyGhostTransformTo(this.ghostModelRoot)
+	}
+
+	private applyGhostTransformTo(target: TransformNode | null): void {
+		if (!target || !this.ghostRender) return
 		const transform = this.ghostRender.transform || {}
 		const rotation = transform.rotation ?? { x: 0, y: 0, z: 0 }
 		const placementRotation = this.getPlacementRotation()
@@ -317,13 +366,13 @@ export class BuildingPlacementManager {
 			z: rotation.z ?? 0
 		}
 		const rotatedOffset = rotateVec3(offset, finalRotation)
-		this.ghostModelRoot.position = new Vector3(
+		target.position = new Vector3(
 			rotatedOffset.x * tileSize,
 			-tileSize * 0.5 + (elevation + rotatedOffset.y) * tileSize,
 			rotatedOffset.z * tileSize
 		)
-		this.ghostModelRoot.rotation = new Vector3(finalRotation.x, finalRotation.y, finalRotation.z)
-		this.ghostModelRoot.scaling = new Vector3(
+		target.rotation = new Vector3(finalRotation.x, finalRotation.y, finalRotation.z)
+		target.scaling = new Vector3(
 			(scale.x ?? 1) * tileSize,
 			(scale.y ?? 1) * tileSize,
 			(scale.z ?? 1) * tileSize
@@ -338,12 +387,21 @@ export class BuildingPlacementManager {
 		this.ghostModelPivot.position = new Vector3(-center.x, -bounds.min.y, -center.z)
 	}
 
-	private applyGhostMeshAppearance(mesh: AbstractMesh): void {
+	private applyGhostMeshAppearance(mesh: AbstractMesh, isValid: boolean = this.state.isValidPosition): void {
 		mesh.isPickable = false
 		mesh.isVisible = true
 		mesh.visibility = GHOST_VISIBILITY
 		mesh.alwaysSelectAsActiveMesh = true
-		mesh.material = this.getGhostModelMaterial(this.state.isValidPosition)
+		mesh.material = this.getGhostModelMaterial(isValid)
+	}
+
+	private applyGhostAppearanceToNode(root: TransformNode, isValid: boolean): void {
+		const descendants = root.getDescendants(true)
+		for (const node of descendants) {
+			if (node instanceof AbstractMesh) {
+				this.applyGhostMeshAppearance(node, isValid)
+			}
+		}
 	}
 
 	private getGhostModelMaterial(isValid: boolean): StandardMaterial {
@@ -385,6 +443,184 @@ export class BuildingPlacementManager {
 				mesh.material = material
 			})
 		}
+	}
+
+	private getLinePreviewMaterial(isValid: boolean): StandardMaterial {
+		if (isValid) {
+			if (!this.linePreviewMaterialValid) {
+				const material = new StandardMaterial('building-line-preview-valid', this.scene.runtime.renderer.scene)
+				material.diffuseColor = Color3.FromHexString(GHOST_TINT_VALID)
+				material.emissiveColor = GHOST_EMISSIVE_VALID
+				material.specularColor = Color3.Black()
+				material.alpha = 0.25
+				material.disableDepthWrite = true
+				this.linePreviewMaterialValid = material
+			}
+			return this.linePreviewMaterialValid
+		}
+		if (!this.linePreviewMaterialInvalid) {
+			const material = new StandardMaterial('building-line-preview-invalid', this.scene.runtime.renderer.scene)
+			material.diffuseColor = Color3.FromHexString(GHOST_TINT_INVALID)
+			material.emissiveColor = GHOST_EMISSIVE_INVALID
+			material.specularColor = Color3.Black()
+			material.alpha = 0.25
+			material.disableDepthWrite = true
+			this.linePreviewMaterialInvalid = material
+		}
+		return this.linePreviewMaterialInvalid
+	}
+
+	private updateLinePreview(): void {
+		if (!this.state.dragStartTile || !this.state.dragCurrentTile || !this.state.selectedBuildingId) {
+			this.clearLinePreview()
+			return
+		}
+		const building = this.buildings.get(this.state.selectedBuildingId)
+		if (!building) {
+			this.clearLinePreview()
+			return
+		}
+
+		const placements = this.getLinePlacements(this.state.dragStartTile, this.state.dragCurrentTile, building)
+		this.clearLinePreview()
+
+		const tileSize = this.getTileSize()
+		const footprint = this.getRotatedFootprint(building)
+		const width = footprint.width * tileSize
+		const length = footprint.height * tileSize
+		const canUseModel = Boolean(this.ghostModelRoot && this.ghostRender?.modelSrc)
+
+		for (const placement of placements) {
+			if (!placement.isValid) {
+				continue
+			}
+
+			const centerX = placement.worldX + width / 2
+			const centerY = placement.worldY + length / 2
+
+			if (canUseModel && this.ghostModelRoot) {
+				const root = new TransformNode(`building-line-model-root-${placement.tile.x}-${placement.tile.y}`, this.scene.runtime.renderer.scene)
+				root.position = new Vector3(centerX, tileSize * 0.5, centerY)
+				const clone = this.ghostModelRoot.clone(`building-line-model-${placement.tile.x}-${placement.tile.y}`, root)
+				if (clone) {
+					this.applyGhostTransformTo(clone)
+					this.applyGhostAppearanceToNode(clone, true)
+					this.lineModelRoots.push(root)
+				} else {
+					root.dispose()
+				}
+				continue
+			}
+
+			const size = { width, length, height: tileSize }
+			const mesh = this.scene.runtime.renderer.createBox(`building-line-preview-${placement.tile.x}-${placement.tile.y}`, size)
+			mesh.isPickable = false
+			mesh.visibility = GHOST_VISIBILITY
+			mesh.isVisible = true
+			mesh.alwaysSelectAsActiveMesh = true
+			mesh.renderOutline = true
+			mesh.outlineWidth = 0.08
+			mesh.outlineColor = Color3.White()
+			mesh.material = this.getLinePreviewMaterial(true)
+			this.scene.runtime.renderer.setMeshPosition(mesh, centerX, tileSize * 0.5, centerY)
+			this.linePreviewMeshes.push(mesh)
+		}
+	}
+
+	private getTileSize(): number {
+		return this.scene.map?.tileWidth || this.tileSize
+	}
+
+	private getTileFromWorld(worldX: number, worldY: number): { x: number; y: number } {
+		const tileSize = this.getTileSize()
+		return {
+			x: Math.floor(worldX / tileSize),
+			y: Math.floor(worldY / tileSize)
+		}
+	}
+
+	private getWorldFromTile(tile: { x: number; y: number }): { x: number; y: number } {
+		const tileSize = this.getTileSize()
+		return {
+			x: tile.x * tileSize,
+			y: tile.y * tileSize
+		}
+	}
+
+	private getLinePlacements(
+		startTile: { x: number; y: number },
+		endTile: { x: number; y: number },
+		building: BuildingDefinition
+	): LinePlacement[] {
+		const placements: LinePlacement[] = []
+		const footprint = this.getRotatedFootprint(building)
+		const tileSize = this.getTileSize()
+		const placementWidth = footprint.width * tileSize
+		const placementHeight = footprint.height * tileSize
+		const accepted: Array<{ x: number; y: number; width: number; height: number }> = []
+		const tiles: Array<{ x: number; y: number }> = []
+
+		const dx = endTile.x - startTile.x
+		const dy = endTile.y - startTile.y
+		const distance = Math.hypot(dx, dy)
+		if (distance === 0) {
+			tiles.push({ x: startTile.x, y: startTile.y })
+		} else {
+			const dirX = dx / distance
+			const dirY = dy / distance
+			const stepTiles = dx === 0
+				? footprint.height
+				: dy === 0
+					? footprint.width
+					: Math.max(footprint.width, footprint.height)
+			const seen = new Set<string>()
+			for (let dist = 0; dist <= distance + 0.001; dist += stepTiles) {
+				const tileX = Math.round(startTile.x + dirX * dist)
+				const tileY = Math.round(startTile.y + dirY * dist)
+				const key = `${tileX},${tileY}`
+				if (seen.has(key)) continue
+				seen.add(key)
+				tiles.push({ x: tileX, y: tileY })
+			}
+			const endKey = `${endTile.x},${endTile.y}`
+			if (!seen.has(endKey)) {
+				tiles.push({ x: endTile.x, y: endTile.y })
+			}
+		}
+
+		for (const tile of tiles) {
+			const world = this.getWorldFromTile(tile)
+			let isValid = this.isPlacementValid(world.x, world.y, building)
+
+			if (isValid) {
+				for (const placed of accepted) {
+					if (this.doRectanglesOverlap(
+						{ x: world.x, y: world.y },
+						placementWidth,
+						placementHeight,
+						{ x: placed.x, y: placed.y },
+						placed.width,
+						placed.height
+					)) {
+						isValid = false
+						break
+					}
+				}
+			}
+
+			if (isValid) {
+				accepted.push({ x: world.x, y: world.y, width: placementWidth, height: placementHeight })
+			}
+
+			placements.push({
+				tile,
+				worldX: world.x,
+				worldY: world.y,
+				isValid
+			})
+		}
+
+		return placements
 	}
 
 	private isPlacementValid(worldX: number, worldY: number, building: BuildingDefinition): boolean {
@@ -528,7 +764,8 @@ export class BuildingPlacementManager {
 	private setupMouseHandlers() {
 		if (this.handlersActive) return
 		this.scene.runtime.input.on('pointermove', this.handleMouseMove)
-		this.scene.runtime.input.on('pointerdown', this.handleMouseClick)
+		this.scene.runtime.input.on('pointerdown', this.handlePointerDown)
+		this.scene.runtime.input.on('pointerup', this.handlePointerUp)
 		window.addEventListener('keydown', this.handleKeyDown)
 		this.handlersActive = true
 	}
@@ -536,7 +773,8 @@ export class BuildingPlacementManager {
 	private removeMouseHandlers() {
 		if (!this.handlersActive) return
 		this.scene.runtime.input.off('pointermove', this.handleMouseMove)
-		this.scene.runtime.input.off('pointerdown', this.handleMouseClick)
+		this.scene.runtime.input.off('pointerdown', this.handlePointerDown)
+		this.scene.runtime.input.off('pointerup', this.handlePointerUp)
 		window.removeEventListener('keydown', this.handleKeyDown)
 		this.handlersActive = false
 	}
@@ -548,20 +786,51 @@ export class BuildingPlacementManager {
 			return
 		}
 		this.updateGhostPosition(world.x, world.z)
+		if (this.state.dragStartTile) {
+			const tile = this.getTileFromWorld(world.x, world.z)
+			if (!this.state.dragCurrentTile || tile.x !== this.state.dragCurrentTile.x || tile.y !== this.state.dragCurrentTile.y) {
+				this.state.dragCurrentTile = tile
+				this.updateLinePreview()
+			}
+		}
 	}
 
-	private handleMouseClick = (pointer: PointerState) => {
+	private handlePointerDown = (pointer: PointerState) => {
 		if (pointer.button !== 0) return
-		if (!this.state.selectedBuildingId || !this.state.isValidPosition) return
-		if (!this.state.lastMousePosition) {
-			const world = pointer.world ?? this.scene.runtime.input.getWorldPoint()
-			if (!world) {
-				return
-			}
+		if (!this.state.selectedBuildingId) return
+		const world = pointer.world ?? this.scene.runtime.input.getWorldPoint()
+		if (!world) {
+			return
+		}
+		this.updateGhostPosition(world.x, world.z)
+		const tile = this.getTileFromWorld(world.x, world.z)
+		this.state.dragStartTile = tile
+		this.state.dragCurrentTile = tile
+		this.updateLinePreview()
+	}
+
+	private handlePointerUp = (pointer: PointerState) => {
+		if (pointer.button !== 0) return
+		if (!this.state.selectedBuildingId) return
+		const building = this.buildings.get(this.state.selectedBuildingId)
+		if (!building) return
+		const world = pointer.world ?? this.scene.runtime.input.getWorldPoint()
+		if (world) {
 			this.updateGhostPosition(world.x, world.z)
 		}
-		if (!this.state.lastMousePosition) return
-		this.placeBuilding(this.state.lastMousePosition.x, this.state.lastMousePosition.y)
+		if (!this.state.dragStartTile) {
+			return
+		}
+		const endTile = this.state.dragCurrentTile ?? (this.state.lastMousePosition ? this.getTileFromWorld(this.state.lastMousePosition.x, this.state.lastMousePosition.y) : this.state.dragStartTile)
+		const placements = this.getLinePlacements(this.state.dragStartTile, endTile, building)
+		for (const placement of placements) {
+			if (placement.isValid) {
+				this.placeBuilding(placement.worldX, placement.worldY)
+			}
+		}
+		this.state.dragStartTile = null
+		this.state.dragCurrentTile = null
+		this.clearLinePreview()
 	}
 
 	private handleKeyDown = (event: KeyboardEvent) => {

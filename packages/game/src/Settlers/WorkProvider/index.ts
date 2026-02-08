@@ -207,36 +207,23 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 	}
 
 	private migrateWarehouseAssignments(): void {
-		for (const assignment of this.assignments.getAll()) {
-			if (assignment.providerType !== WorkProviderType.Building || !assignment.buildingInstanceId) {
+		const assignments = Array.from(this.assignments.getAll())
+		for (const assignment of assignments) {
+			if (!assignment.buildingInstanceId) {
 				continue
 			}
 			const building = this.managers.buildings.getBuildingInstance(assignment.buildingInstanceId)
 			if (!building) {
 				continue
 			}
+			if (building.stage === ConstructionStage.Constructing) {
+				continue
+			}
 			const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
 			if (!definition?.isWarehouse) {
 				continue
 			}
-			const buildingProvider = this.providers.getBuilding(assignment.buildingInstanceId)
-			buildingProvider?.unassign(assignment.settlerId)
-
-			assignment.providerType = WorkProviderType.Logistics
-			assignment.providerId = this.logisticsProvider.id
-			this.logisticsProvider.assign(assignment.settlerId)
-			this.managers.population.setSettlerAssignment(
-				assignment.settlerId,
-				assignment.assignmentId,
-				assignment.providerId,
-				assignment.buildingInstanceId
-			)
-			this.event.emit(Receiver.Group, PopulationEvents.SC.WorkerAssigned, {
-				assignment,
-				settlerId: assignment.settlerId,
-				buildingInstanceId: assignment.buildingInstanceId
-			}, building.mapId)
-			this.dispatcher.dispatchNextStep(assignment.settlerId)
+			this.unassignWorker({ settlerId: assignment.settlerId })
 		}
 	}
 
@@ -346,6 +333,9 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		const isWarehouseAssignment = !isConstruction && Boolean(buildingDef.isWarehouse)
 		if (isConstruction) {
 			requiredProfession = ProfessionType.Builder
+		}
+		if (isWarehouseAssignment) {
+			return WorkerRequestFailureReason.BuildingDoesNotNeedWorkers
 		}
 
 		const candidate = this.findBestSettler(building.mapId, building.playerId, building.position, requiredProfession, {

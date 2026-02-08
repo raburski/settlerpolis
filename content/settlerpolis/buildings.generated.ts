@@ -28,8 +28,6 @@ export const buildings: BuildingDefinition[] = [
       }
     ],
     "isWarehouse": true,
-    "workerSlots": 2,
-    "requiredProfession": "carrier",
     "storagePreservation": {
       "spoilageMultiplier": 1
     },
@@ -108,7 +106,6 @@ export const buildings: BuildingDefinition[] = [
       }
     ],
     "isWarehouse": true,
-    "workerSlots": 1,
     "storagePreservation": {
       "spoilageMultiplier": 0.4
     },
@@ -169,8 +166,6 @@ export const buildings: BuildingDefinition[] = [
       }
     ],
     "isWarehouse": true,
-    "workerSlots": 1,
-    "requiredProfession": "carrier",
     "storagePreservation": {
       "spoilageMultiplier": 1
     },
@@ -221,7 +216,6 @@ export const buildings: BuildingDefinition[] = [
       }
     ],
     "isWarehouse": true,
-    "workerSlots": 1,
     "storagePreservation": {
       "spoilageMultiplier": 0.2
     },
