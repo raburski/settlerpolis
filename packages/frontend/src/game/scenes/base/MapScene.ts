@@ -58,6 +58,10 @@ export abstract class MapScene {
 		this.runtime.renderer.resetWaterSurface()
 	}
 
+	public getCollisionGrid(): boolean[][] | null {
+		return this.loadedMap?.collisionGrid ?? null
+	}
+
 	protected initializeScene(): void {
 		this.loadedMap = this.assetManager.getLoadedMap()
 		if (!this.loadedMap) {

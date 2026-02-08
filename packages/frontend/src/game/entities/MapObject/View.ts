@@ -29,6 +29,9 @@ import '@babylonjs/loaders'
 
 const DEBUG_LOAD_TIMING = String(import.meta.env.VITE_DEBUG_LOAD_TIMING || '').toLowerCase() === 'true'
 const perfNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
+const BUILDING_HIGHLIGHT_TINT = '#fff9c4'
+const BUILDING_HIGHLIGHT_EMISSIVE = new Color3(0.9, 0.85, 0.5)
+const BUILDING_HIGHLIGHT_ALPHA = 0.35
 
 export class MapObjectView extends BaseEntityView {
 	private static debugBoundsEnabled = false
@@ -63,6 +66,7 @@ export class MapObjectView extends BaseEntityView {
 	private modelInstanceSkeletons: Skeleton[] = []
 	private modelInstanceAnimationGroups: AnimationGroup[] = []
 	private invisibleMaterial: StandardMaterial | null = null
+	private highlightMaterial: StandardMaterial | null = null
 	private debugBoundsMesh: Mesh | null = null
 	private debugBoundsMaterial: StandardMaterial | null = null
 	private debugRootMesh: Mesh | null = null
@@ -413,6 +417,20 @@ export class MapObjectView extends BaseEntityView {
 		baseMesh.visibility = 1
 	}
 
+	private applyHighlightBase(): void {
+		const baseMesh = this.getMesh()
+		if (!this.highlightMaterial) {
+			this.highlightMaterial = new StandardMaterial(`map-object-highlight-${this.mapObject.id}`, baseMesh.getScene())
+			this.highlightMaterial.diffuseColor = Color3.FromHexString(BUILDING_HIGHLIGHT_TINT)
+			this.highlightMaterial.emissiveColor = BUILDING_HIGHLIGHT_EMISSIVE
+			this.highlightMaterial.specularColor = Color3.Black()
+			this.highlightMaterial.alpha = BUILDING_HIGHLIGHT_ALPHA
+			this.highlightMaterial.disableDepthWrite = true
+		}
+		baseMesh.material = this.highlightMaterial
+		baseMesh.visibility = 1
+	}
+
 	private showBase(): void {
 		this.getMesh().visibility = 1
 	}
@@ -644,18 +662,22 @@ export class MapObjectView extends BaseEntityView {
 		if (this.isHighlighted === highlighted) return
 		this.isHighlighted = highlighted
 		if (this.modelRoot || this.modelLoading || this.modelSrc) {
-			this.applyInvisibleBase()
+			if (highlighted) {
+				this.applyHighlightBase()
+			} else {
+				this.applyInvisibleBase()
+			}
 			return
 		}
 		if (this.constructionRoot) {
-			this.scene.runtime.renderer.applyTint(this.getMesh(), highlighted ? '#ffeb3b' : '#888888')
+			this.scene.runtime.renderer.applyTint(this.getMesh(), highlighted ? BUILDING_HIGHLIGHT_TINT : '#888888')
 			this.getMesh().visibility = highlighted ? 0.35 : 0
 			if (!highlighted) {
 				this.applyEmoji()
 			}
 			return
 		}
-		this.scene.runtime.renderer.applyTint(this.getMesh(), highlighted ? '#ffeb3b' : '#888888')
+		this.scene.runtime.renderer.applyTint(this.getMesh(), highlighted ? BUILDING_HIGHLIGHT_TINT : '#888888')
 		if (!highlighted) {
 			this.applyEmoji()
 		}
@@ -682,6 +704,10 @@ export class MapObjectView extends BaseEntityView {
 		}
 		this.disposeConstructionPlaceholder(true)
 		this.disposeModel()
+		if (this.highlightMaterial) {
+			this.highlightMaterial.dispose()
+			this.highlightMaterial = null
+		}
 		this.resourceRenderUnsubscribe?.()
 		this.itemRenderUnsubscribe?.()
 		this.unsubscribe?.()

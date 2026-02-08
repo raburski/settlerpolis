@@ -34,7 +34,6 @@ export const storehouse: BuildingDefinition = {
 		{ itemType: 'logs', quantity: 1 },
 		{ itemType: 'stone', quantity: 2 }
 	],
-	workerSlots: 2,
 	storageSlots: [
 		{ itemType: 'logs', offset: { x: 0, y: 0 } },
 		{ itemType: 'stone', offset: { x: 1, y: 0 } },

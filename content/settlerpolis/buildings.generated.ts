@@ -28,8 +28,6 @@ export const buildings: BuildingDefinition[] = [
       }
     ],
     "isWarehouse": true,
-    "workerSlots": 2,
-    "requiredProfession": "carrier",
     "storagePreservation": {
       "spoilageMultiplier": 1
     },
@@ -108,7 +106,6 @@ export const buildings: BuildingDefinition[] = [
       }
     ],
     "isWarehouse": true,
-    "workerSlots": 1,
     "storagePreservation": {
       "spoilageMultiplier": 0.4
     },
@@ -169,8 +166,6 @@ export const buildings: BuildingDefinition[] = [
       }
     ],
     "isWarehouse": true,
-    "workerSlots": 1,
-    "requiredProfession": "carrier",
     "storagePreservation": {
       "spoilageMultiplier": 1
     },
@@ -221,7 +216,6 @@ export const buildings: BuildingDefinition[] = [
       }
     ],
     "isWarehouse": true,
-    "workerSlots": 1,
     "storagePreservation": {
       "spoilageMultiplier": 0.2
     },
@@ -1691,7 +1685,7 @@ export const buildings: BuildingDefinition[] = [
     "requiredProfession": "vendor",
     "workerSlots": 1,
     "marketDistribution": {
-      "maxDistanceTiles": 80,
+      "maxDistanceTiles": 24,
       "maxStops": 8,
       "roadSearchRadiusTiles": 8,
       "houseSearchRadiusTiles": 3,

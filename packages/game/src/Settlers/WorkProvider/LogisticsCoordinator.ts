@@ -10,7 +10,7 @@ import { SettlerState } from '../../Population/types'
 import { WorkProviderEvents } from './events'
 import { v4 as uuidv4 } from 'uuid'
 
-const WAREHOUSE_REQUEST_PRIORITY = 10
+const WAREHOUSE_REQUEST_PRIORITY = 5
 
 export class LogisticsCoordinator {
 	private lastMapIdsWithRequests = new Set<string>()
@@ -75,14 +75,6 @@ export class LogisticsCoordinator {
 
 			const candidates = this.managers.buildings.getStorageRequestCandidates(building.id)
 			if (candidates.length === 0) {
-				continue
-			}
-
-			const workerSlots = definition.workerSlots ?? 0
-			if (workerSlots > 0 && this.managers.buildings.getBuildingWorkers(building.id).length === 0) {
-				for (const itemType of candidates) {
-					this.logisticsProvider.requestInput(building.id, itemType, 0, WAREHOUSE_REQUEST_PRIORITY)
-				}
 				continue
 			}
 

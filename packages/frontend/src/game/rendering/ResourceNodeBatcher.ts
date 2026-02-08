@@ -203,6 +203,10 @@ export class ResourceNodeBatcher {
 		return updated
 	}
 
+	public getObjects(): MapObject[] {
+		return Array.from(this.objectsById.values())
+	}
+
 	dispose(): void {
 		if (this.renderUnsubscribe) {
 			this.renderUnsubscribe()

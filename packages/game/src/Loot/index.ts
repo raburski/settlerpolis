@@ -20,7 +20,7 @@ export class LootManager extends BaseManager<LootDeps> {
 	private droppedItems = new Map<string, DroppedItem[]>()
 	private itemIdToMapId = new Map<string, string>()
 	private itemReservations = new Map<string, string>()
-	private readonly DROPPED_ITEM_LIFESPAN = 5 * 60 * 1000 // 5 minutes in milliseconds
+	private readonly DROPPED_ITEM_LIFESPAN = Number.POSITIVE_INFINITY
 	private readonly ITEM_CLEANUP_INTERVAL = 30 * 1000 // Check every 30 seconds
 	private simulationTimeMs = 0
 	private cleanupAccumulatorMs = 0
@@ -310,6 +310,9 @@ export class LootManager extends BaseManager<LootDeps> {
 	}
 
 	private cleanupExpiredItems() {
+		if (!Number.isFinite(this.DROPPED_ITEM_LIFESPAN)) {
+			return
+		}
 		const now = this.simulationTimeMs
 		this.droppedItems.forEach((items, mapId) => {
 			const expiredItemIds = items

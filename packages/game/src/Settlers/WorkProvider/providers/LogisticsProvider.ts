@@ -7,6 +7,8 @@ import type { LogisticsSnapshot } from '../../../state/types'
 import type { ItemType } from '../../../Items/types'
 import { getProductionRecipes } from '../../../Buildings/work'
 
+const CONSTRUCTION_REQUEST_PRIORITY_BASE = 200
+
 export class LogisticsProvider implements WorkProvider {
 	public readonly id = 'logistics'
 	public readonly type = WorkProviderType.Logistics
@@ -135,7 +137,7 @@ export class LogisticsProvider implements WorkProvider {
 			}
 			const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
 			const buildingPriority = definition?.priority ?? 1
-			const priority = 100 + buildingPriority
+			const priority = CONSTRUCTION_REQUEST_PRIORITY_BASE + buildingPriority
 			const needs = this.managers.buildings.getNeededResources(buildingId)
 			for (const need of needs) {
 				const inFlight = this.getInFlightConstruction(buildingId, need.itemType)
