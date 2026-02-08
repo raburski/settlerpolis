@@ -1685,7 +1685,7 @@ export const buildings: BuildingDefinition[] = [
     "requiredProfession": "vendor",
     "workerSlots": 1,
     "marketDistribution": {
-      "maxDistanceTiles": 80,
+      "maxDistanceTiles": 24,
       "maxStops": 8,
       "roadSearchRadiusTiles": 8,
       "houseSearchRadiusTiles": 3,

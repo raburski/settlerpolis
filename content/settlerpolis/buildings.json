@@ -5,7 +5,7 @@
       "name": "Storehouse",
       "description": "A storage building for resources",
       "category": "storage",
-      "icon": "\ud83d\udce6",
+      "icon": "📦",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "storehouse"
@@ -79,7 +79,7 @@
       "name": "Granary",
       "description": "Stores wheat and grain",
       "category": "storage",
-      "icon": "\ud83c\udf3e",
+      "icon": "🌾",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "storehouse"
@@ -143,7 +143,7 @@
       "name": "Vault",
       "description": "Securely stores gold bars and coins",
       "category": "storage",
-      "icon": "\ud83d\udd10",
+      "icon": "🔐",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "storehouse"
@@ -189,7 +189,7 @@
       "name": "Food Cellar",
       "description": "Stores preserved food",
       "category": "storage",
-      "icon": "\ud83e\udd55",
+      "icon": "🥕",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "storehouse"
@@ -246,7 +246,7 @@
       "name": "House",
       "description": "A simple house that spawns settlers",
       "category": "civil",
-      "icon": "\ud83c\udfe0",
+      "icon": "🏠",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "house"
@@ -306,7 +306,7 @@
       "name": "Graveyard",
       "description": "A fenced field for honoring the fallen",
       "category": "civil",
-      "icon": "\ud83e\udea6",
+      "icon": "🪦",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "storehouse"
@@ -412,7 +412,7 @@
       "name": "Woodcutter Hut",
       "description": "A simple hut where woodcutters gather logs",
       "category": "industry",
-      "icon": "\ud83e\udeb5",
+      "icon": "🪵",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "woodcutter_hut"
@@ -449,7 +449,7 @@
       "name": "Fishers Hut",
       "description": "Catches fish from nearby shores",
       "category": "food",
-      "icon": "\ud83c\udfa3",
+      "icon": "🎣",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "woodcutter_hut"
@@ -495,7 +495,7 @@
       "name": "Hunter Cabin",
       "description": "Hunts deer in nearby forests and processes meat",
       "category": "food",
-      "icon": "\ud83c\udff9",
+      "icon": "🏹",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "woodcutter_hut"
@@ -561,7 +561,7 @@
       "name": "Forester Hut",
       "description": "Plants new trees to sustain nearby forests",
       "category": "industry",
-      "icon": "\ud83c\udf32",
+      "icon": "🌲",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "woodcutter_hut"
@@ -595,7 +595,7 @@
       "name": "Quarry",
       "description": "Extracts stone from deposits",
       "category": "industry",
-      "icon": "\u26cf\ufe0f",
+      "icon": "⛏️",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "woodcutter_hut"
@@ -636,7 +636,7 @@
       "name": "Coal Mine",
       "description": "Extracts coal from mountain seams",
       "category": "metalwork",
-      "icon": "\u26cf\ufe0f",
+      "icon": "⛏️",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "woodcutter_hut"
@@ -686,7 +686,7 @@
       "name": "Iron Mine",
       "description": "Extracts iron ore from mountain veins",
       "category": "metalwork",
-      "icon": "\u26cf\ufe0f",
+      "icon": "⛏️",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "woodcutter_hut"
@@ -736,7 +736,7 @@
       "name": "Gold Mine",
       "description": "Extracts gold ore from mountain seams",
       "category": "metalwork",
-      "icon": "\u26cf\ufe0f",
+      "icon": "⛏️",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "woodcutter_hut"
@@ -786,7 +786,7 @@
       "name": "Sawmill",
       "description": "Converts logs into planks",
       "category": "industry",
-      "icon": "\ud83c\udfed",
+      "icon": "🏭",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "sawmill"
@@ -845,7 +845,7 @@
       "name": "Charcoal Kiln",
       "description": "Burns logs into charcoal",
       "category": "industry",
-      "icon": "\ud83d\udd25",
+      "icon": "🔥",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "sawmill"
@@ -904,7 +904,7 @@
       "name": "Iron Smelter",
       "description": "Smelts iron ore into iron bars",
       "category": "metalwork",
-      "icon": "\ud83d\udd25",
+      "icon": "🔥",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "sawmill"
@@ -974,7 +974,7 @@
       "name": "Gold Smelter",
       "description": "Smelts gold ore into gold bars",
       "category": "metalwork",
-      "icon": "\ud83d\udd25",
+      "icon": "🔥",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "sawmill"
@@ -1044,7 +1044,7 @@
       "name": "Mint",
       "description": "Mints gold bars into gold coins",
       "category": "metalwork",
-      "icon": "\ud83e\ude99",
+      "icon": "🪙",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "sawmill"
@@ -1103,7 +1103,7 @@
       "name": "Armory",
       "description": "Forges weapons and helmets",
       "category": "metalwork",
-      "icon": "\ud83d\udee1\ufe0f",
+      "icon": "🛡️",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "sawmill"
@@ -1239,7 +1239,7 @@
       "name": "Blacksmith",
       "description": "Forges tools for settlers",
       "category": "metalwork",
-      "icon": "\ud83d\udee0\ufe0f",
+      "icon": "🛠️",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "sawmill"
@@ -1371,7 +1371,7 @@
       "name": "Well",
       "description": "Draws clean water for the settlement",
       "category": "civil",
-      "icon": "\ud83e\udea3",
+      "icon": "🪣",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "storehouse"
@@ -1416,7 +1416,7 @@
       "name": "Windmill",
       "description": "Turns grain into flour",
       "category": "food",
-      "icon": "\ud83c\udf2c\ufe0f",
+      "icon": "🌬️",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "sawmill"
@@ -1498,7 +1498,7 @@
       "name": "Bakery",
       "description": "Bakes bread from flour and water",
       "category": "food",
-      "icon": "\ud83e\udd56",
+      "icon": "🥖",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "sawmill"
@@ -1572,7 +1572,7 @@
       "name": "Farm",
       "description": "Plants and harvests wheat",
       "category": "food",
-      "icon": "\ud83c\udf3e",
+      "icon": "🌾",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "storehouse"
@@ -1634,7 +1634,7 @@
       "name": "Market",
       "description": "A place for settlers to get fresh bread",
       "category": "food",
-      "icon": "\ud83d\uded2",
+      "icon": "🛒",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "storehouse"
@@ -1683,7 +1683,7 @@
       "requiredProfession": "vendor",
       "workerSlots": 1,
       "marketDistribution": {
-        "maxDistanceTiles": 80,
+        "maxDistanceTiles": 24,
         "maxStops": 8,
         "roadSearchRadiusTiles": 8,
         "houseSearchRadiusTiles": 3,
@@ -1718,7 +1718,7 @@
       "name": "Inn",
       "description": "A modest inn offering a quick rest and meal",
       "category": "civil",
-      "icon": "\ud83c\udfe8",
+      "icon": "🏨",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "storehouse"
@@ -1770,7 +1770,7 @@
       "name": "Trading Post",
       "description": "A hub for land trade routes and caravan shipments",
       "category": "infrastructure",
-      "icon": "\ud83c\udfea",
+      "icon": "🏪",
       "sprite": {
         "foundation": "building_foundation",
         "completed": "storehouse"
