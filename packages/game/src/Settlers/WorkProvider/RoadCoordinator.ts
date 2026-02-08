@@ -4,6 +4,7 @@ import type { ProviderFactory } from './ProviderFactory'
 import type { WorkAssignment } from './types'
 import { WorkAssignmentStatus, WorkProviderType } from './types'
 import { SettlerState, ProfessionType } from '../../Population/types'
+import { ConstructionStage } from '../../Buildings/types'
 import { v4 as uuidv4 } from 'uuid'
 
 export class RoadCoordinator {
@@ -18,6 +19,9 @@ export class RoadCoordinator {
 	assignRoadWorkers(): void {
 		const groups = this.managers.roads.getPendingJobGroups()
 		for (const group of groups) {
+			if (this.hasUnassignedConstruction(group.mapId, group.playerId)) {
+				continue
+			}
 			const provider = this.providers.getRoad(group.mapId, group.playerId)
 			const available = this.managers.population.getAvailableSettlers(group.mapId, group.playerId)
 				.filter(settler => settler.profession === ProfessionType.Builder)
@@ -44,5 +48,32 @@ export class RoadCoordinator {
 				assigned += 1
 			}
 		}
+	}
+
+	private hasUnassignedConstruction(mapId: string, playerId: string): boolean {
+		const buildings = this.managers.buildings.getAllBuildings()
+		for (const building of buildings) {
+			if (building.mapId !== mapId || building.playerId !== playerId) {
+				continue
+			}
+			if (building.stage !== ConstructionStage.Constructing) {
+				continue
+			}
+			const assignedSettlers = this.assignments.getByBuilding(building.id)
+			let hasBuilder = false
+			if (assignedSettlers) {
+				for (const settlerId of assignedSettlers) {
+					const settler = this.managers.population.getSettler(settlerId)
+					if (settler?.profession === ProfessionType.Builder) {
+						hasBuilder = true
+						break
+					}
+				}
+			}
+			if (!hasBuilder) {
+				return true
+			}
+		}
+		return false
 	}
 }

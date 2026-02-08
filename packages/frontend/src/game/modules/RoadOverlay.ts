@@ -20,6 +20,7 @@ export class RoadOverlay {
 	private tileSize: number
 	private tiles = new Map<string, RoadMeshEntry>()
 	private pendingTiles = new Map<string, RoadMeshEntry>()
+	private highlightTiles = new Map<string, RoadMeshEntry>()
 	private materialCache = new Map<string, StandardMaterial>()
 
 	constructor(scene: GameScene, tileSize: number) {
@@ -72,6 +73,10 @@ export class RoadOverlay {
 		// no-op
 	}
 
+	public getRoadTiles(): RoadTile[] {
+		return Array.from(this.tiles.values()).map((entry) => entry.tile)
+	}
+
 	public hasRoadAt(tileX: number, tileY: number): boolean {
 		return this.tiles.has(this.key(tileX, tileY))
 	}
@@ -80,11 +85,38 @@ export class RoadOverlay {
 		return this.pendingTiles.has(this.key(tileX, tileY))
 	}
 
+	public setHighlightTiles(tiles: Array<{ x: number; y: number }>, color: string = '#6fbf6a', alpha: number = 0.45): void {
+		this.clearMeshes(this.highlightTiles)
+		this.highlightTiles.clear()
+		if (tiles.length === 0) return
+
+		const height = 0.25
+		const yOffset = 1.05
+		for (const tile of tiles) {
+			const key = this.key(tile.x, tile.y)
+			const size = { width: this.tileSize, length: this.tileSize, height }
+			const mesh = this.scene.runtime.renderer.createBox(`road-highlight-${key}`, size)
+			const centerX = tile.x * this.tileSize + this.tileSize / 2
+			const centerY = tile.y * this.tileSize + this.tileSize / 2
+			this.scene.runtime.renderer.setMeshPosition(mesh, centerX, yOffset, centerY)
+			mesh.isPickable = false
+			mesh.material = this.getHighlightMaterial(color, alpha)
+			this.highlightTiles.set(key, { tile: { x: tile.x, y: tile.y, roadType: RoadType.None }, mesh })
+		}
+	}
+
+	public clearHighlightTiles(): void {
+		this.clearMeshes(this.highlightTiles)
+		this.highlightTiles.clear()
+	}
+
 	public destroy(): void {
 		this.clearMeshes(this.tiles)
 		this.clearMeshes(this.pendingTiles)
+		this.clearMeshes(this.highlightTiles)
 		this.tiles.clear()
 		this.pendingTiles.clear()
+		this.highlightTiles.clear()
 		this.materialCache.forEach((material) => material.dispose())
 		this.materialCache.clear()
 	}
@@ -121,6 +153,19 @@ export class RoadOverlay {
 			this.materialCache.set(cacheKey, material)
 		}
 		mesh.material = material
+	}
+
+	private getHighlightMaterial(color: string, alpha: number): StandardMaterial {
+		const cacheKey = `highlight:${color}:${alpha}`
+		let material = this.materialCache.get(cacheKey)
+		if (!material) {
+			material = new StandardMaterial(`road-${cacheKey}`, this.scene.runtime.renderer.scene)
+			material.diffuseColor = Color3.FromHexString(color)
+			material.specularColor = Color3.Black()
+			material.alpha = alpha
+			this.materialCache.set(cacheKey, material)
+		}
+		return material
 	}
 
 	private clearMeshes(target: Map<string, RoadMeshEntry>): void {

@@ -19,9 +19,10 @@ import { RoadOverlay } from '../../modules/RoadOverlay'
 import { RoadPlacementManager } from '../../modules/RoadPlacement'
 import { TextDisplayService } from '../../services/TextDisplayService'
 import { NPCProximityService } from '../../services/NPCProximityService'
-import type { Settler, RoadTile, MapObject } from '@rugged/game'
+import type { Settler, RoadTile, MapObject, BuildingDefinition, BuildingInstance } from '@rugged/game'
 import { Vector3 } from '@babylonjs/core'
 import { itemService } from '../../services/ItemService'
+import { buildingService } from '../../services/BuildingService'
 import { sceneManager } from '../../services/SceneManager'
 import type { GameRuntime } from '../../runtime/GameRuntime'
 import type { PointerState } from '../../input/InputManager'
@@ -38,6 +39,7 @@ export abstract class GameScene extends MapScene {
 	protected mapObjects: Map<string, MapObjectEntity> = new Map()
 	protected roadOverlay: RoadOverlay | null = null
 	protected roadPlacementManager: RoadPlacementManager | null = null
+	private marketReachBuildingId: string | null = null
 	protected keyboard: Keyboard | null = null
 	protected portalManager: PortalManager | null = null
 	protected buildingPlacementManager: BuildingPlacementManager | null = null
@@ -350,6 +352,10 @@ export abstract class GameScene extends MapScene {
 		EventBus.on(Event.Roads.SC.Updated, this.handleRoadUpdated, this)
 		EventBus.on(Event.Roads.SC.PendingSync, this.handleRoadPendingSync, this)
 		EventBus.on(Event.Roads.SC.PendingUpdated, this.handleRoadPendingUpdated, this)
+
+		EventBus.on(UiEvents.Building.Select, this.handleBuildingSelected, this)
+		EventBus.on(UiEvents.Building.Close, this.handleBuildingClosed, this)
+		EventBus.on(UiEvents.Building.Highlight, this.handleBuildingHighlight, this)
 	}
 
 	private handlePlayerJoined = (data: { playerId: string; position: { x: number; y: number } }) => {
@@ -892,6 +898,9 @@ export abstract class GameScene extends MapScene {
 		if (!this.roadOverlay || data.mapId !== this.mapKey) return
 		const perfStart = DEBUG_LOAD_TIMING ? performance.now() : 0
 		this.roadOverlay.setTiles(data.tiles)
+		if (this.marketReachBuildingId) {
+			this.updateMarketReachOverlay()
+		}
 		if (DEBUG_LOAD_TIMING) {
 			const elapsed = performance.now() - perfStart
 			console.info(
@@ -904,6 +913,9 @@ export abstract class GameScene extends MapScene {
 		if (!this.roadOverlay || data.mapId !== this.mapKey) return
 		const perfStart = DEBUG_LOAD_TIMING ? performance.now() : 0
 		this.roadOverlay.applyUpdates(data.tiles)
+		if (this.marketReachBuildingId) {
+			this.updateMarketReachOverlay()
+		}
 		if (DEBUG_LOAD_TIMING) {
 			const elapsed = performance.now() - perfStart
 			console.info(
@@ -934,6 +946,166 @@ export abstract class GameScene extends MapScene {
 				`[Perf] roads pending updated tiles=${data.tiles.length} time=${elapsed.toFixed(1)}ms map=${data.mapId}`
 			)
 		}
+	}
+
+	private handleBuildingSelected = (data: { buildingInstance: BuildingInstance; buildingDefinition: BuildingDefinition }) => {
+		if (!data?.buildingInstance || !data?.buildingDefinition) {
+			this.clearMarketReachOverlay()
+			return
+		}
+		const definition = data.buildingDefinition
+		if (!definition.marketDistribution) {
+			this.clearMarketReachOverlay()
+			return
+		}
+		this.marketReachBuildingId = data.buildingInstance.id
+		this.updateMarketReachOverlay()
+	}
+
+	private handleBuildingClosed = () => {
+		this.clearMarketReachOverlay()
+	}
+
+	private handleBuildingHighlight = (data: { buildingInstanceId: string; highlighted: boolean }) => {
+		if (!data?.highlighted && this.marketReachBuildingId === data.buildingInstanceId) {
+			this.clearMarketReachOverlay()
+		}
+	}
+
+	private clearMarketReachOverlay(): void {
+		this.marketReachBuildingId = null
+		this.roadOverlay?.clearHighlightTiles()
+	}
+
+	private updateMarketReachOverlay(): void {
+		if (!this.roadOverlay || !this.marketReachBuildingId || !this.map) {
+			return
+		}
+		const instance = buildingService.getBuildingInstance(this.marketReachBuildingId)
+		if (!instance || instance.mapId !== this.mapKey) {
+			this.clearMarketReachOverlay()
+			return
+		}
+		const definition = buildingService.getBuildingDefinition(instance.buildingId)
+		if (!definition?.marketDistribution) {
+			this.clearMarketReachOverlay()
+			return
+		}
+
+		const tileSize = this.map.tileWidth || 32
+		const marketTile = {
+			x: Math.floor(instance.position.x / tileSize),
+			y: Math.floor(instance.position.y / tileSize)
+		}
+		const roadTiles = this.roadOverlay.getRoadTiles()
+		if (roadTiles.length === 0) {
+			this.roadOverlay.clearHighlightTiles()
+			return
+		}
+
+		const mapWidthTiles = Math.floor(this.map.widthInPixels / tileSize)
+		const mapHeightTiles = Math.floor(this.map.heightInPixels / tileSize)
+		const roadSet = new Set<string>()
+		for (const tile of roadTiles) {
+			roadSet.add(this.roadKey(tile.x, tile.y))
+		}
+
+		const roadSearchRadius = Math.max(0, definition.marketDistribution.roadSearchRadiusTiles ?? 8)
+		const maxDistanceTiles = Math.max(1, definition.marketDistribution.maxDistanceTiles ?? 25)
+		const startRoad = this.findClosestRoadTile(roadSet, marketTile, roadSearchRadius, mapWidthTiles, mapHeightTiles)
+		if (!startRoad) {
+			this.roadOverlay.clearHighlightTiles()
+			return
+		}
+
+		const reachable = this.buildRoadReach(roadSet, startRoad, maxDistanceTiles, mapWidthTiles, mapHeightTiles)
+		this.roadOverlay.setHighlightTiles(reachable, '#6fbf6a', 0.45)
+	}
+
+	private buildRoadReach(
+		roadSet: Set<string>,
+		start: { x: number; y: number },
+		maxSteps: number,
+		width: number,
+		height: number
+	): Array<{ x: number; y: number }> {
+		const queue: Array<{ x: number; y: number }> = [start]
+		let head = 0
+		const distanceByKey = new Map<string, number>([[this.roadKey(start.x, start.y), 0]])
+		const reachable: Array<{ x: number; y: number }> = [start]
+
+		while (head < queue.length) {
+			const current = queue[head]
+			head += 1
+			const currentKey = this.roadKey(current.x, current.y)
+			const currentDistance = distanceByKey.get(currentKey) ?? 0
+			if (currentDistance >= maxSteps) {
+				continue
+			}
+			const neighbors = [
+				{ x: current.x, y: current.y - 1 },
+				{ x: current.x + 1, y: current.y },
+				{ x: current.x, y: current.y + 1 },
+				{ x: current.x - 1, y: current.y }
+			]
+			for (const neighbor of neighbors) {
+				if (!this.isRoadTile(roadSet, neighbor, width, height)) {
+					continue
+				}
+				const neighborKey = this.roadKey(neighbor.x, neighbor.y)
+				if (distanceByKey.has(neighborKey)) {
+					continue
+				}
+				distanceByKey.set(neighborKey, currentDistance + 1)
+				queue.push(neighbor)
+				reachable.push(neighbor)
+			}
+		}
+
+		return reachable
+	}
+
+	private findClosestRoadTile(
+		roadSet: Set<string>,
+		origin: { x: number; y: number },
+		maxRadius: number,
+		width: number,
+		height: number
+	): { x: number; y: number } | null {
+		if (this.isRoadTile(roadSet, origin, width, height)) {
+			return origin
+		}
+		for (let radius = 1; radius <= maxRadius; radius += 1) {
+			for (let dx = -radius; dx <= radius; dx += 1) {
+				const dy = radius - Math.abs(dx)
+				const candidates = [
+					{ x: origin.x + dx, y: origin.y + dy },
+					{ x: origin.x + dx, y: origin.y - dy }
+				]
+				for (const candidate of candidates) {
+					if (this.isRoadTile(roadSet, candidate, width, height)) {
+						return candidate
+					}
+				}
+			}
+		}
+		return null
+	}
+
+	private isRoadTile(
+		roadSet: Set<string>,
+		tile: { x: number; y: number },
+		width: number,
+		height: number
+	): boolean {
+		if (tile.x < 0 || tile.y < 0 || tile.x >= width || tile.y >= height) {
+			return false
+		}
+		return roadSet.has(this.roadKey(tile.x, tile.y))
+	}
+
+	private roadKey(x: number, y: number): string {
+		return `${x},${y}`
 	}
 
 	protected transitionToScene(targetScene: string, targetX: number = 0, targetY: number = 0) {
@@ -1037,6 +1209,9 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(Event.Roads.SC.Updated, this.handleRoadUpdated)
 		EventBus.off(Event.Roads.SC.PendingSync, this.handleRoadPendingSync)
 		EventBus.off(Event.Roads.SC.PendingUpdated, this.handleRoadPendingUpdated)
+		EventBus.off(UiEvents.Building.Select, this.handleBuildingSelected)
+		EventBus.off(UiEvents.Building.Close, this.handleBuildingClosed)
+		EventBus.off(UiEvents.Building.Highlight, this.handleBuildingHighlight)
 	}
 
 	private flushMapObjectSpawnStats(force: boolean = false): void {

@@ -209,8 +209,18 @@ export class RoadPlacementManager {
 
 	private updateGhostPosition(worldX: number, worldY: number): void {
 		const tileSize = this.getTileSize()
-		const tileX = Math.floor(worldX / tileSize)
-		const tileY = Math.floor(worldY / tileSize)
+		let tileX = Math.floor(worldX / tileSize)
+		let tileY = Math.floor(worldY / tileSize)
+
+		if (this.state.startTile) {
+			const dx = Math.abs(tileX - this.state.startTile.x)
+			const dy = Math.abs(tileY - this.state.startTile.y)
+			if (dx >= dy) {
+				tileY = this.state.startTile.y
+			} else {
+				tileX = this.state.startTile.x
+			}
+		}
 
 		const map = this.scene.map
 		let valid = true
