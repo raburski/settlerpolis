@@ -53,16 +53,24 @@ export class ResourceNodeBatcher {
 	private idToBatchKey: Map<string, string> = new Map()
 	private objectsById: Map<string, MapObject> = new Map()
 	private batchToIds: Map<string, Set<string>> = new Map()
+	private batchIdOrder: Map<string, string[]> = new Map()
+	private batchIdIndex: Map<string, Map<string, number>> = new Map()
+	private meshToBatchKey: Map<number, string> = new Map()
+	private batchKeyNodeTypes: Map<string, Set<string>> = new Map()
+	private pickableNodeTypes: Set<string> = new Set()
+	private pickableBatchKeys: Set<string> = new Set()
 	private pendingEmojiItems: Map<string, Set<string>> = new Map()
 	private pendingEmojiUnsubscribes: Map<string, () => void> = new Map()
 	private pendingResults: Map<string, WorkerBatchResult> = new Map()
 	private modelLoadPromises: Map<string, Promise<Batch | null>> = new Map()
 	private visibleBatchKeys: Set<string> = new Set()
+	private visibleIdOrder: Map<string, string[]> = new Map()
 	private growthStates: Map<string, GrowthState> = new Map()
 	private worker: Worker | null = null
 	private workerRequestId = 0
 	private awaitingResult = false
 	private queuedBounds: { minX: number; minY: number; maxX: number; maxY: number } | null = null
+	private lastUpdateBounds: { minX: number; minY: number; maxX: number; maxY: number } | null = null
 	private workerReady = false
 	private workerInitAt = 0
 	private tileHalf: number
@@ -123,6 +131,7 @@ export class ResourceNodeBatcher {
 			: null
 		if (render?.modelSrc) {
 			const modelKey = this.getModelBatchKey(render)
+			this.trackBatchNodeType(modelKey, nodeType)
 			if (ResourceNodeBatcher.failedModelSrcs.has(render.modelSrc)) {
 				return this.addEmojiNode(object, scale)
 			}
@@ -207,6 +216,33 @@ export class ResourceNodeBatcher {
 		return Array.from(this.objectsById.values())
 	}
 
+	public setPickableNodeTypes(types: string[]): void {
+		this.pickableNodeTypes = new Set(types.filter(Boolean))
+		for (const [batchKey, nodeTypes] of this.batchKeyNodeTypes.entries()) {
+			for (const nodeType of nodeTypes) {
+				if (this.pickableNodeTypes.has(nodeType)) {
+					this.markBatchPickable(batchKey)
+					break
+				}
+			}
+		}
+	}
+
+	public getObjectForPick(mesh: AbstractMesh, thinInstanceIndex?: number): MapObject | null {
+		if (!mesh || thinInstanceIndex === undefined || thinInstanceIndex === null) {
+			return null
+		}
+		if (thinInstanceIndex < 0) return null
+		const batchKey = (mesh.metadata as { resourceNodeBatchKey?: string } | undefined)?.resourceNodeBatchKey
+			|| this.meshToBatchKey.get(mesh.uniqueId)
+		if (!batchKey) return null
+		const order = this.visibleIdOrder.get(batchKey) || this.batchIdOrder.get(batchKey)
+		if (!order || thinInstanceIndex >= order.length) return null
+		const objectId = order[thinInstanceIndex]
+		if (!objectId) return null
+		return this.objectsById.get(objectId) ?? null
+	}
+
 	dispose(): void {
 		if (this.renderUnsubscribe) {
 			this.renderUnsubscribe()
@@ -226,6 +262,13 @@ export class ResourceNodeBatcher {
 		this.idToBatchKey.clear()
 		this.objectsById.clear()
 		this.batchToIds.clear()
+		this.batchIdOrder.clear()
+		this.batchIdIndex.clear()
+		this.meshToBatchKey.clear()
+		this.batchKeyNodeTypes.clear()
+		this.pickableNodeTypes.clear()
+		this.pickableBatchKeys.clear()
+		this.visibleIdOrder.clear()
 		this.pendingEmojiItems.clear()
 		this.pendingEmojiUnsubscribes.forEach((unsubscribe) => unsubscribe())
 		this.pendingEmojiUnsubscribes.clear()
@@ -263,6 +306,7 @@ export class ResourceNodeBatcher {
 			this.queuedBounds = bounds
 			return
 		}
+		this.lastUpdateBounds = bounds
 		this.awaitingResult = true
 		const requestId = (this.workerRequestId += 1)
 		this.worker.postMessage({ type: 'update', requestId, bounds })
@@ -305,6 +349,15 @@ export class ResourceNodeBatcher {
 				mesh.thinInstanceCount = result.count
 			})
 			batch.hasBuffer = true
+			if (this.pickableBatchKeys.has(key)) {
+				const visibleIds = this.buildVisibleIdOrder(key, this.lastUpdateBounds)
+				this.visibleIdOrder.set(
+					key,
+					visibleIds.length === result.count ? visibleIds : visibleIds.slice(0, result.count)
+				)
+			} else {
+				this.visibleIdOrder.set(key, [])
+			}
 		}
 
 		for (const key of this.visibleBatchKeys) {
@@ -315,6 +368,7 @@ export class ResourceNodeBatcher {
 				mesh.thinInstanceCount = 0
 			})
 			batch.hasBuffer = false
+			this.visibleIdOrder.set(key, [])
 		}
 		this.visibleBatchKeys = nextVisibleKeys
 
@@ -374,6 +428,7 @@ export class ResourceNodeBatcher {
 		)
 
 		const key = `emoji:${object.item.itemType}:${emoji}`
+		this.trackBatchNodeType(key, object?.metadata?.resourceNodeType)
 		let batch = this.batches.get(key)
 		if (!batch) {
 			const base = MeshBuilder.CreateBox(
@@ -382,9 +437,12 @@ export class ResourceNodeBatcher {
 				this.renderer.scene
 			)
 			base.isVisible = true
-			base.isPickable = false
-			base.thinInstanceEnablePicking = false
+			const isPickable = this.pickableBatchKeys.has(key)
+			base.isPickable = isPickable
+			base.thinInstanceEnablePicking = isPickable
 			base.alwaysSelectAsActiveMesh = true
+			base.metadata = { ...(base.metadata || {}), resourceNodeBatchKey: key }
+			this.meshToBatchKey.set(base.uniqueId, key)
 			base.position.set(-BASE_OFFSET, -BASE_OFFSET, -BASE_OFFSET)
 			this.renderer.applyEmoji(base, emoji)
 			batch = {
@@ -513,6 +571,7 @@ export class ResourceNodeBatcher {
 				container.dispose()
 				return null
 			}
+			const isPickable = this.pickableBatchKeys.has(batchKey)
 			meshes.forEach((mesh) => {
 				mesh.computeWorldMatrix(true)
 				const world = mesh.getWorldMatrix().clone()
@@ -522,11 +581,13 @@ export class ResourceNodeBatcher {
 				mesh.rotation.set(0, 0, 0)
 				mesh.scaling.set(1, 1, 1)
 				mesh.parent = pivot
-				mesh.isPickable = false
+				mesh.isPickable = isPickable
 				mesh.isVisible = true
 				mesh.visibility = 1
-				mesh.thinInstanceEnablePicking = false
+				mesh.thinInstanceEnablePicking = isPickable
 				mesh.alwaysSelectAsActiveMesh = true
+				mesh.metadata = { ...(mesh.metadata || {}), resourceNodeBatchKey: batchKey }
+				this.meshToBatchKey.set(mesh.uniqueId, batchKey)
 				mesh.refreshBoundingInfo()
 				mesh.computeWorldMatrix(true)
 			})
@@ -626,15 +687,48 @@ export class ResourceNodeBatcher {
 			set = new Set()
 			this.batchToIds.set(batchKey, set)
 		}
+		if (set.has(objectId)) {
+			return
+		}
 		set.add(objectId)
+
+		let order = this.batchIdOrder.get(batchKey)
+		if (!order) {
+			order = []
+			this.batchIdOrder.set(batchKey, order)
+		}
+		let indexMap = this.batchIdIndex.get(batchKey)
+		if (!indexMap) {
+			indexMap = new Map()
+			this.batchIdIndex.set(batchKey, indexMap)
+		}
+		indexMap.set(objectId, order.length)
+		order.push(objectId)
 	}
 
 	private untrackBatchId(batchKey: string, objectId: string): void {
 		const set = this.batchToIds.get(batchKey)
 		if (!set) return
-		set.delete(objectId)
-		if (set.size === 0) {
+		if (set.delete(objectId) && set.size === 0) {
 			this.batchToIds.delete(batchKey)
+		}
+
+		const order = this.batchIdOrder.get(batchKey)
+		const indexMap = this.batchIdIndex.get(batchKey)
+		if (!order || !indexMap) return
+		const index = indexMap.get(objectId)
+		if (index === undefined) return
+		const lastIndex = order.length - 1
+		const lastId = order[lastIndex]
+		order[index] = lastId
+		order.pop()
+		indexMap.delete(objectId)
+		if (index !== lastIndex) {
+			indexMap.set(lastId, index)
+		}
+		if (order.length === 0) {
+			this.batchIdOrder.delete(batchKey)
+			this.batchIdIndex.delete(batchKey)
 		}
 	}
 
@@ -699,6 +793,59 @@ export class ResourceNodeBatcher {
 			}
 			break
 		}
+	}
+
+	private trackBatchNodeType(batchKey: string, nodeType?: string | null): void {
+		if (!nodeType) return
+		let set = this.batchKeyNodeTypes.get(batchKey)
+		if (!set) {
+			set = new Set()
+			this.batchKeyNodeTypes.set(batchKey, set)
+		}
+		if (!set.has(nodeType)) {
+			set.add(nodeType)
+		}
+		if (this.pickableNodeTypes.has(nodeType)) {
+			this.markBatchPickable(batchKey)
+		}
+	}
+
+	private markBatchPickable(batchKey: string): void {
+		if (this.pickableBatchKeys.has(batchKey)) return
+		this.pickableBatchKeys.add(batchKey)
+		const batch = this.batches.get(batchKey)
+		if (!batch || !batch.baseMeshes.length) return
+		batch.baseMeshes.forEach((mesh) => {
+			mesh.isPickable = true
+			mesh.thinInstanceEnablePicking = true
+			mesh.metadata = { ...(mesh.metadata || {}), resourceNodeBatchKey: batchKey }
+			this.meshToBatchKey.set(mesh.uniqueId, batchKey)
+		})
+	}
+
+	private buildVisibleIdOrder(
+		batchKey: string,
+		bounds: { minX: number; minY: number; maxX: number; maxY: number } | null
+	): string[] {
+		const order = this.batchIdOrder.get(batchKey)
+		if (!order || order.length === 0) {
+			return []
+		}
+		if (!bounds) {
+			return [...order]
+		}
+		const results: string[] = []
+		for (const objectId of order) {
+			const obj = this.objectsById.get(objectId)
+			if (!obj) continue
+			const cx = obj.position.x + this.tileHalf
+			const cy = obj.position.y + this.tileHalf
+			if (cx < bounds.minX || cx > bounds.maxX || cy < bounds.minY || cy > bounds.maxY) {
+				continue
+			}
+			results.push(objectId)
+		}
+		return results
 	}
 }
 

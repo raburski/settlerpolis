@@ -4,6 +4,7 @@ import { EventBus } from '../../EventBus'
 import { Event, PICKUP_RANGE } from '@rugged/game'
 import { playerService } from '../../services/PlayerService'
 import type { GameScene } from '../../scenes/base/GameScene'
+import { shouldIgnoreKeyboardEvent } from '../../utils/inputGuards'
 
 export class MapObjectController {
 	private view: MapObjectView
@@ -15,6 +16,9 @@ export class MapObjectController {
 		this.view = view
 		this.mapObject = mapObject
 		this.boundKeyDown = (event) => {
+			if (shouldIgnoreKeyboardEvent(event)) {
+				return
+			}
 			if (event.code === 'KeyE') {
 				this.handleInteraction()
 			}

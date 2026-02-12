@@ -21,24 +21,39 @@ export const SaveLoadPanel = ({ isOpen, mode, onClose }: SaveLoadPanelProps) => 
 	const [name, setName] = useState('')
 	const [saves, setSaves] = useState<SaveEntry[]>([])
 
-	const listSnapshots = () => {
+	const listSnapshots = async () => {
 		const listFn = (window as any).__ruggedListSnapshots
 		if (typeof listFn !== 'function') {
 			return []
 		}
-		const result = listFn()
-		if (!Array.isArray(result)) {
+		try {
+			const result = await Promise.resolve(listFn())
+			if (!Array.isArray(result)) {
+				return []
+			}
+			return result
+		} catch (error) {
+			console.warn('[SaveLoadPanel] Failed to list snapshots', error)
 			return []
 		}
-		return result
 	}
 
 	useEffect(() => {
 		if (!isOpen) {
 			return
 		}
-		setSaves(listSnapshots())
+		let isActive = true
+		const loadList = async () => {
+			const next = await listSnapshots()
+			if (isActive) {
+				setSaves(next)
+			}
+		}
+		void loadList()
 		setName('')
+		return () => {
+			isActive = false
+		}
 	}, [isOpen])
 
 	const handleSave = async () => {
@@ -50,9 +65,14 @@ export const SaveLoadPanel = ({ isOpen, mode, onClose }: SaveLoadPanelProps) => 
 		if (!name.trim()) {
 			return
 		}
-		await saveFn(name.trim())
-		setSaves(listSnapshots())
-		onClose()
+		try {
+			await saveFn(name.trim())
+			const next = await listSnapshots()
+			setSaves(next)
+			onClose()
+		} catch (error) {
+			console.warn('[SaveLoadPanel] Failed to save snapshot', error)
+		}
 	}
 
 	const handleLoad = async (saveName: string) => {
@@ -61,8 +81,12 @@ export const SaveLoadPanel = ({ isOpen, mode, onClose }: SaveLoadPanelProps) => 
 			console.warn('[SaveLoadPanel] Snapshot load function is not available')
 			return
 		}
-		await loadFn(saveName)
-		onClose()
+		try {
+			await loadFn(saveName)
+			onClose()
+		} catch (error) {
+			console.warn('[SaveLoadPanel] Failed to load snapshot', error)
+		}
 	}
 
 	const sortedSaves = useMemo(() => {

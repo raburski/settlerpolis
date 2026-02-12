@@ -1,6 +1,7 @@
 import { EventBus } from '../EventBus'
 import { Event, BuildingDefinition, ResourceNodeDefinition, MapObject } from '@rugged/game'
 import { UiEvents } from '../uiEvents'
+import { shouldIgnoreKeyboardEvent } from '../utils/inputGuards'
 import { AbstractMesh, Color3, SceneLoader, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core'
 import '@babylonjs/loaders'
 import type { GameScene } from '../scenes/base/GameScene'
@@ -834,6 +835,9 @@ export class BuildingPlacementManager {
 	}
 
 	private handleKeyDown = (event: KeyboardEvent) => {
+		if (shouldIgnoreKeyboardEvent(event)) {
+			return
+		}
 		if (event.code === 'Escape') {
 			this.cancelSelection()
 			EventBus.emit(UiEvents.Construction.Cancel, {})

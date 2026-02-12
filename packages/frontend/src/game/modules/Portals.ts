@@ -1,4 +1,5 @@
 import type { GameScene } from '../scenes/base/GameScene'
+import { shouldIgnoreKeyboardEvent } from '../utils/inputGuards'
 
 interface PortalData {
 	target: string
@@ -26,6 +27,9 @@ export class PortalManager {
 		this.scene = scene
 		this.player = player
 		this.boundKeyDown = (event) => {
+			if (shouldIgnoreKeyboardEvent(event)) {
+				return
+			}
 			if (event.code === 'KeyE') {
 				this.keyDown = true
 			}

@@ -26,6 +26,41 @@
 	font-weight: 500;
 }
 
+.valueGroup {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.infoIconButton {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	border-radius: 6px;
+	background: rgba(255, 255, 255, 0.08);
+	border: 1px solid rgba(255, 255, 255, 0.18);
+	color: #fff;
+	font-size: 13px;
+	cursor: pointer;
+	transition: background 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+}
+
+.infoIconButton:hover {
+	background: rgba(255, 255, 255, 0.14);
+	border-color: rgba(255, 255, 255, 0.3);
+}
+
+.infoIconButton:active {
+	transform: translateY(1px);
+}
+
+.infoIconButton:focus-visible {
+	outline: 2px solid rgba(25, 118, 210, 0.6);
+	outline-offset: 2px;
+}
+
 .actions {
 	margin-top: 16px;
 	padding-top: 16px;

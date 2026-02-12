@@ -48,6 +48,7 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 	const [toolAvailability, setToolAvailability] = useState<Record<ProfessionType, boolean>>(
 		toolAvailabilityService.getAvailability()
 	)
+	const [currentMapId, setCurrentMapId] = useState<string | null>(null)
 	const [idleByProfession, setIdleByProfession] = useState<Record<ProfessionType, number>>({
 		[ProfessionType.Carrier]: 0,
 		[ProfessionType.Builder]: 0,
@@ -60,6 +61,19 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 		[ProfessionType.Baker]: 0,
 		[ProfessionType.Vendor]: 0,
 		[ProfessionType.Hunter]: 0
+	})
+	const cycleIndexRef = React.useRef<Record<ProfessionType, number>>({
+		[ProfessionType.Carrier]: -1,
+		[ProfessionType.Builder]: -1,
+		[ProfessionType.Woodcutter]: -1,
+		[ProfessionType.Miner]: -1,
+		[ProfessionType.Metallurgist]: -1,
+		[ProfessionType.Farmer]: -1,
+		[ProfessionType.Fisher]: -1,
+		[ProfessionType.Miller]: -1,
+		[ProfessionType.Baker]: -1,
+		[ProfessionType.Vendor]: -1,
+		[ProfessionType.Hunter]: -1
 	})
 
 	useEffect(() => {
@@ -76,6 +90,16 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 
 		return () => {
 			EventBus.off(UiEvents.Population.StatsUpdated, handleStatsUpdated)
+		}
+	}, [])
+
+	useEffect(() => {
+		const handleSceneReady = (data: { mapId: string }) => {
+			setCurrentMapId(data.mapId)
+		}
+		EventBus.on(UiEvents.Scene.Ready, handleSceneReady)
+		return () => {
+			EventBus.off(UiEvents.Scene.Ready, handleSceneReady)
 		}
 	}, [])
 
@@ -163,6 +187,28 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 		populationService.requestRevertToCarrier(profession)
 	}
 
+	const handleCycleProfession = (profession: ProfessionType) => {
+		const settlers = populationService.getSettlers().filter(settler => {
+			if (settler.profession !== profession) return false
+			if (currentMapId && settler.mapId !== currentMapId) return false
+			return true
+		})
+		if (settlers.length === 0) {
+			return
+		}
+		const currentIndex = cycleIndexRef.current[profession] ?? -1
+		const nextIndex = (currentIndex + 1) % settlers.length
+		cycleIndexRef.current[profession] = nextIndex
+		const targetSettler = settlers[nextIndex]
+		EventBus.emit(UiEvents.Settler.Click, { settlerId: targetSettler.id })
+		EventBus.emit(UiEvents.Camera.Focus, {
+			x: targetSettler.position.x,
+			y: targetSettler.position.y,
+			duration: 850,
+			mapId: targetSettler.mapId
+		})
+	}
+
 	if (!isVisible) {
 		return null
 	}
@@ -221,9 +267,15 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 								<span className={styles.professionIcon}>
 									{professionIcons[professionType]}
 								</span>
-								<span className={styles.professionLabel}>
+								<button
+									className={styles.professionLabelButton}
+									type="button"
+									onClick={() => handleCycleProfession(professionType)}
+									disabled={count === 0}
+									title={count === 0 ? `No ${professionLabels[professionType]} settlers available` : `Cycle ${professionLabels[professionType]} settlers`}
+								>
 									{professionLabels[professionType]}:
-								</span>
+								</button>
 								{!isCarrier && requiresTool && (
 									<button
 										className={styles.professionAddButton}

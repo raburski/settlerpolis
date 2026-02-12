@@ -22,6 +22,7 @@ import { WorldMapPanel } from './WorldMapPanel'
 import { CityCharterPanel } from './CityCharterPanel'
 import { ReputationPanel } from './ReputationPanel'
 import { RenderStatsMeter } from './RenderStatsMeter'
+import { MapPopoverLayer } from './MapPopoverLayer'
 import { EventBus } from '../EventBus'
 import { Event, FXType } from '@rugged/game'
 import type { CityCharterStateData } from '@rugged/game'
@@ -335,6 +336,7 @@ export const UIContainer = () => {
 			{!isWorldMapOpen ? <ConstructionPanel /> : null}
 			{!isWorldMapOpen ? <BuildingInfoPanel /> : null}
 			{!isWorldMapOpen ? <SettlerInfoPanel /> : null}
+			{!isWorldMapOpen ? <MapPopoverLayer /> : null}
 			<PopulationPanel
 				isVisible={isPopulationOpen}
 				onClose={() => setIsPopulationOpen(false)}
