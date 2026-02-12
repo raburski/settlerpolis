@@ -2,6 +2,7 @@ import { EventBus } from '../EventBus'
 import { Event, BuildingDefinition } from '@rugged/game'
 import { buildingService } from '../services/BuildingService'
 import { UiEvents } from '../uiEvents'
+import { shouldIgnoreKeyboardEvent } from '../utils/inputGuards'
 import type { AbstractMesh } from '@babylonjs/core'
 import type { GameScene } from '../scenes/base/GameScene'
 import type { PointerState } from '../input/InputManager'
@@ -88,8 +89,7 @@ export class WorkAreaSelectionManager {
 		this.destroyGhostMesh()
 
 		const radiusPixels = this.state.radiusTiles * this.getTileSize()
-		const size = { width: radiusPixels * 2, length: radiusPixels * 2, height: 1 }
-		const mesh = this.scene.runtime.renderer.createBox('work-area-ghost', size)
+		const mesh = this.scene.runtime.renderer.createCircle('work-area-ghost', radiusPixels, 1)
 		this.scene.runtime.renderer.applyTint(mesh, '#00ff00')
 		this.state.ghostMesh = mesh
 
@@ -186,6 +186,9 @@ export class WorkAreaSelectionManager {
 	}
 
 	private handleEscape = (event: KeyboardEvent) => {
+		if (shouldIgnoreKeyboardEvent(event)) {
+			return
+		}
 		if (event.code === 'Escape') {
 			this.cancelSelection()
 			EventBus.emit(UiEvents.Building.WorkAreaCancel, {})

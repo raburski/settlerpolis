@@ -19,7 +19,10 @@ import { RoadOverlay } from '../../modules/RoadOverlay'
 import { RoadPlacementManager } from '../../modules/RoadPlacement'
 import { TextDisplayService } from '../../services/TextDisplayService'
 import { NPCProximityService } from '../../services/NPCProximityService'
+import { ResourceNodeSelectionManager } from '../../modules/ResourceNodeSelectionManager'
+import { MapPopoverManager } from '../../modules/MapPopoverManager'
 import type { Settler, RoadTile, MapObject, BuildingDefinition, BuildingInstance } from '@rugged/game'
+import type { AbstractMesh } from '@babylonjs/core'
 import { Vector3 } from '@babylonjs/core'
 import { itemService } from '../../services/ItemService'
 import { buildingService } from '../../services/BuildingService'
@@ -39,6 +42,8 @@ export abstract class GameScene extends MapScene {
 	protected mapObjects: Map<string, MapObjectEntity> = new Map()
 	protected roadOverlay: RoadOverlay | null = null
 	protected roadPlacementManager: RoadPlacementManager | null = null
+	protected resourceNodeSelectionManager: ResourceNodeSelectionManager | null = null
+	protected mapPopoverManager: MapPopoverManager | null = null
 	private marketReachBuildingId: string | null = null
 	protected keyboard: Keyboard | null = null
 	protected portalManager: PortalManager | null = null
@@ -85,6 +90,7 @@ export abstract class GameScene extends MapScene {
 		EventBus.emit(UiEvents.Construction.Cancel, {})
 		EventBus.emit(UiEvents.Road.Cancel, {})
 		EventBus.emit(UiEvents.Building.WorkAreaCancel, {})
+		EventBus.emit(UiEvents.MapPopover.Close, { all: true })
 	}
 
 	constructor(runtime: GameRuntime, config: { mapKey: string; mapPath: string }) {
@@ -111,6 +117,24 @@ export abstract class GameScene extends MapScene {
 
 	public getResourceNodeObjects(): MapObject[] {
 		return this.resourceNodeBatcher?.getObjects() ?? []
+	}
+
+	public getResourceNodeFromPick(mesh: AbstractMesh, thinInstanceIndex?: number): MapObject | null {
+		return this.resourceNodeBatcher?.getObjectForPick(mesh, thinInstanceIndex) ?? null
+	}
+
+	public getCameraMoveVector(): { x: number; y: number } | null {
+		if (!this.keyboard) return null
+		let x = 0
+		let y = 0
+		if (this.keyboard.isMovingLeft()) x -= 1
+		if (this.keyboard.isMovingRight()) x += 1
+		if (this.keyboard.isMovingUp()) y -= 1
+		if (this.keyboard.isMovingDown()) y += 1
+		if (x === 0 && y === 0) return null
+		const length = Math.hypot(x, y)
+		if (length === 0) return null
+		return { x: x / length, y: y / length }
 	}
 
 	public getLootBounds(): { x: number; y: number; width: number; height: number }[] {
@@ -167,6 +191,9 @@ export abstract class GameScene extends MapScene {
 		this.roadOverlay = new RoadOverlay(this, this.map.tileWidth)
 		this.fx = new FX(this)
 		this.resourceNodeBatcher = new ResourceNodeBatcher(this.runtime.renderer, this.map.tileWidth)
+		this.resourceNodeBatcher.setPickableNodeTypes(['stone_deposit'])
+		this.mapPopoverManager = new MapPopoverManager(this)
+		this.resourceNodeSelectionManager = new ResourceNodeSelectionManager(this)
 		this.runtime.input.on('pointerup', this.handleMapRightClick)
 		mark('placements+fx')
 
@@ -203,6 +230,8 @@ export abstract class GameScene extends MapScene {
 		this.keyboard?.update()
 		this.portalManager?.update()
 		this.updateResourceNodeStreaming(deltaMs)
+		this.resourceNodeSelectionManager?.update()
+		this.mapPopoverManager?.update()
 
 		if (this.player) {
 			this.player.controller.update(deltaMs)
@@ -319,6 +348,12 @@ export abstract class GameScene extends MapScene {
 		}
 	}
 
+	private handleCameraFocus = (data: { x: number; y: number; duration?: number; mapId?: string }) => {
+		if (!data || typeof data.x !== 'number' || typeof data.y !== 'number') return
+		if (data.mapId && data.mapId !== this.mapKey) return
+		this.cameras.main.focusOn(data.x, data.y, data.duration ?? 800)
+	}
+
 	private setupMultiplayer() {
 		EventBus.on(Event.Players.SC.Joined, this.handlePlayerJoined, this)
 		EventBus.on(Event.Players.SC.Left, this.handlePlayerLeft, this)
@@ -356,6 +391,7 @@ export abstract class GameScene extends MapScene {
 		EventBus.on(UiEvents.Building.Select, this.handleBuildingSelected, this)
 		EventBus.on(UiEvents.Building.Close, this.handleBuildingClosed, this)
 		EventBus.on(UiEvents.Building.Highlight, this.handleBuildingHighlight, this)
+		EventBus.on(UiEvents.Camera.Focus, this.handleCameraFocus, this)
 	}
 
 	private handlePlayerJoined = (data: { playerId: string; position: { x: number; y: number } }) => {
@@ -1164,6 +1200,12 @@ export abstract class GameScene extends MapScene {
 		this.roadOverlay?.destroy()
 		this.roadOverlay = null
 
+		this.resourceNodeSelectionManager?.destroy()
+		this.resourceNodeSelectionManager = null
+		this.mapPopoverManager?.destroy()
+		this.mapPopoverManager = null
+		EventBus.emit(UiEvents.MapPopover.Close, { all: true })
+
 		this.resourceNodeBatcher?.dispose()
 		this.resourceNodeBatcher = null
 		this.resourceNodesDirty = false
@@ -1212,6 +1254,7 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(UiEvents.Building.Select, this.handleBuildingSelected)
 		EventBus.off(UiEvents.Building.Close, this.handleBuildingClosed)
 		EventBus.off(UiEvents.Building.Highlight, this.handleBuildingHighlight)
+		EventBus.off(UiEvents.Camera.Focus, this.handleCameraFocus)
 	}
 
 	private flushMapObjectSpawnStats(force: boolean = false): void {

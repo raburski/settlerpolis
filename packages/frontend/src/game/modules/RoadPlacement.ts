@@ -1,6 +1,7 @@
 import { EventBus } from '../EventBus'
 import { Event, RoadType } from '@rugged/game'
 import { UiEvents } from '../uiEvents'
+import { shouldIgnoreKeyboardEvent } from '../utils/inputGuards'
 import type { AbstractMesh } from '@babylonjs/core'
 import type { GameScene } from '../scenes/base/GameScene'
 import type { PointerState } from '../input/InputManager'
@@ -202,6 +203,9 @@ export class RoadPlacementManager {
 	}
 
 	private handleEscape = (event: KeyboardEvent) => {
+		if (shouldIgnoreKeyboardEvent(event)) {
+			return
+		}
 		if (event.code === 'Escape') {
 			this.cancelSelection(false)
 		}

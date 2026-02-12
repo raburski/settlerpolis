@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import styles from './WorldMapPanel.module.css'
 import { worldMapData, WorldMapNodeType, type WorldMapNode, type WorldMapNodeTradeOffer, type WorldMapLink } from '../worldmap/data'
+import { shouldIgnoreKeyboardEvent } from '../utils/inputGuards'
 
 type WorldMapPanelProps = {
 	isOpen: boolean
@@ -85,6 +86,9 @@ export const WorldMapPanel = ({ isOpen, onClose }: WorldMapPanelProps) => {
 	useEffect(() => {
 		if (!isOpen) return
 		const handleKeyDown = (event: KeyboardEvent) => {
+			if (shouldIgnoreKeyboardEvent(event)) {
+				return
+			}
 			if (event.code === 'Escape') {
 				onClose()
 			}

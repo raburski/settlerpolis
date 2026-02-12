@@ -9,6 +9,8 @@ interface PanState {
 	endZ: number
 	startTime: number
 	duration: number
+	followOffset?: { x: number; y: number }
+	easing?: 'smoothstep'
 }
 
 interface ShakeState {
@@ -137,6 +139,24 @@ export class CameraController {
 		}
 	}
 
+	focusOn(x: number, y: number, duration: number = 800): void {
+		const targetX = x
+		const targetZ = y
+		const followOffset = this.followTarget
+			? { x: targetX - this.followTarget.x, y: targetZ - this.followTarget.y }
+			: undefined
+		this.panState = {
+			startX: this.renderer.camera.target.x,
+			startZ: this.renderer.camera.target.z,
+			endX: targetX,
+			endZ: targetZ,
+			startTime: Date.now(),
+			duration,
+			followOffset,
+			easing: 'smoothstep'
+		}
+	}
+
 	shake(duration: number = 500, intensity: number = 0.01): void {
 		this.shakeState = {
 			endTime: Date.now() + duration,
@@ -151,10 +171,14 @@ export class CameraController {
 			const now = Date.now()
 			const elapsed = now - this.panState.startTime
 			const t = Math.min(1, elapsed / this.panState.duration)
-			const nextX = this.panState.startX + (this.panState.endX - this.panState.startX) * t
-			const nextZ = this.panState.startZ + (this.panState.endZ - this.panState.startZ) * t
+			const eased = this.panState.easing === 'smoothstep' ? t * t * (3 - 2 * t) : t
+			const nextX = this.panState.startX + (this.panState.endX - this.panState.startX) * eased
+			const nextZ = this.panState.startZ + (this.panState.endZ - this.panState.startZ) * eased
 			this.renderer.setCameraTarget(nextX, nextZ)
 			if (t >= 1) {
+				if (this.followTarget && this.panState.followOffset) {
+					this.followOffset = { ...this.panState.followOffset }
+				}
 				this.panState = null
 			}
 			return

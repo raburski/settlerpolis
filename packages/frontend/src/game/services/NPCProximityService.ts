@@ -1,4 +1,5 @@
 import type { NPCController } from '../entities/NPC'
+import { shouldIgnoreKeyboardEvent } from '../utils/inputGuards'
 
 const INTERACTION_RADIUS = 100
 
@@ -9,6 +10,9 @@ export class NPCProximityService {
 
 	constructor() {
 		this.boundKeyDown = (event) => {
+			if (shouldIgnoreKeyboardEvent(event)) {
+				return
+			}
 			if (event.code === 'KeyE') {
 				this.handleInteraction()
 			}

@@ -5,6 +5,7 @@ import { itemService } from '../services/ItemService'
 import { cityCharterService } from '../services/CityCharterService'
 import styles from './ConstructionPanel.module.css'
 import { UiEvents } from '../uiEvents'
+import { shouldIgnoreKeyboardEvent } from '../utils/inputGuards'
 
 // Try to load content - this is a fallback, server catalog is primary source
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'
@@ -57,19 +58,6 @@ const SHORTCUT_MIME = 'application/x-construction-shortcut'
 
 const isValidRoadType = (value: unknown): value is RoadType =>
 	value === RoadType.Dirt || value === RoadType.Stone
-
-const isTypingTarget = (target: EventTarget | null): boolean => {
-	if (!target || !(target instanceof HTMLElement)) {
-		return false
-	}
-	const tagName = target.tagName
-	return (
-		tagName === 'INPUT' ||
-		tagName === 'TEXTAREA' ||
-		tagName === 'SELECT' ||
-		target.isContentEditable
-	)
-}
 
 const parseShortcutEntry = (value: unknown): ShortcutEntry | null => {
 	if (!value || typeof value !== 'object') {
@@ -277,7 +265,7 @@ export const ConstructionPanel: React.FC = () => {
 			if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
 				return
 			}
-			if (isTypingTarget(event.target)) {
+			if (shouldIgnoreKeyboardEvent(event)) {
 				return
 			}
 

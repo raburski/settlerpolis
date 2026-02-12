@@ -81,6 +81,9 @@ export const UiEvents = {
 		UiNotification: 'ui:notification',
 		SystemMessage: 'ui:message:system'
 	},
+	Camera: {
+		Focus: 'ui:camera:focus'
+	},
 	CityCharter: {
 		Updated: 'ui:city-charter:updated'
 	},
@@ -89,6 +92,15 @@ export const UiEvents = {
 	},
 	Reputation: {
 		Updated: 'ui:reputation:updated'
+	},
+	MapPopover: {
+		Open: 'ui:map-popover:open',
+		Update: 'ui:map-popover:update',
+		Close: 'ui:map-popover:close'
+	},
+	ResourceNode: {
+		Select: 'ui:resource-node:select',
+		Close: 'ui:resource-node:close'
 	},
 	Debug: {
 		RenderStatsToggle: 'ui:debug:render-stats-toggle',

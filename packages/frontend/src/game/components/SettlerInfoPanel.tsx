@@ -76,6 +76,18 @@ export const SettlerInfoPanel: React.FC = () => {
 		EventBus.emit(UiEvents.Settler.Close)
 	}
 
+	const handleHouseFocus = (houseId: string) => {
+		const houseInstance = buildingService.getBuildingInstance(houseId)
+		if (!houseInstance) return
+		EventBus.emit(UiEvents.Building.Click, { buildingInstanceId: houseInstance.id })
+		EventBus.emit(UiEvents.Camera.Focus, {
+			x: houseInstance.position.x,
+			y: houseInstance.position.y,
+			duration: 650,
+			mapId: houseInstance.mapId
+		})
+	}
+
 	if (!isVisible || !settler) {
 		return null
 	}
@@ -246,7 +258,18 @@ export const SettlerInfoPanel: React.FC = () => {
 				{settler.houseId && (
 					<div className={sharedStyles.infoRow}>
 						<span className={sharedStyles.label}>House:</span>
-						<span className={sharedStyles.value}>🏠 Lives in house</span>
+						<div className={sharedStyles.valueGroup}>
+							<span className={sharedStyles.value}>🏠 Lives in house</span>
+							<button
+								className={sharedStyles.infoIconButton}
+								type="button"
+								onClick={() => handleHouseFocus(settler.houseId!)}
+								aria-label="Center camera on house"
+								title="Center camera on house"
+							>
+								🎯
+							</button>
+						</div>
 					</div>
 				)}
 

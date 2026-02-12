@@ -2602,6 +2602,16 @@ export class BabylonRenderer {
 		return mesh
 	}
 
+	createCircle(id: string, radius: number, height: number = 1, tessellation: number = 64): Mesh {
+		const mesh = MeshBuilder.CreateCylinder(
+			id,
+			{ height, diameter: radius * 2, tessellation },
+			this.scene
+		)
+		mesh.isPickable = false
+		return mesh
+	}
+
 	createBoxInstance(
 		id: string,
 		size: { width: number; length: number; height: number },

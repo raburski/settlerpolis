@@ -2,6 +2,7 @@ import { EventBus } from '../EventBus'
 import { Event } from '@rugged/game'
 import { FXType } from '@rugged/game'
 import { UiEvents } from '../uiEvents'
+import { isTextInputActive, shouldIgnoreKeyboardEvent } from '../utils/inputGuards'
 
 const KEY_CODES = {
 	W: 'KeyW',
@@ -45,6 +46,7 @@ export class Keyboard {
 
 	private onKeyDown(event: KeyboardEvent) {
 		if (!this.enabled) return
+		if (shouldIgnoreKeyboardEvent(event)) return
 		this.pressed.add(event.code)
 	}
 
@@ -68,6 +70,11 @@ export class Keyboard {
 
 	public update() {
 		if (!this.enabled) return
+		if (isTextInputActive()) {
+			this.pressed.clear()
+			this.prevPressed.clear()
+			return
+		}
 
 		if (this.isInDialogue) {
 			if (this.isJustDown(KEY_CODES.SPACE)) {
