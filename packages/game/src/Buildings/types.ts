@@ -163,6 +163,7 @@ export interface BuildingDefinition {
 	}>
 	marketDistribution?: {
 		itemTypes?: ItemType[]
+		deliveryTarget?: 'houses' | 'buildings'
 		maxDistanceTiles?: number
 		maxStops?: number
 		roadSearchRadiusTiles?: number

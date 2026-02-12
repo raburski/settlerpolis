@@ -292,6 +292,15 @@ export const buildings: BuildingDefinition[] = [
         },
         "hidden": true,
         "maxQuantity": 3
+      },
+      {
+        "itemType": "water",
+        "offset": {
+          "x": 0,
+          "y": 1
+        },
+        "hidden": true,
+        "maxQuantity": 3
       }
     ],
     "entryPoint": {
@@ -1402,6 +1411,23 @@ export const buildings: BuildingDefinition[] = [
         }
       ],
       "productionTime": 5
+    },
+    "requiredProfession": "vendor",
+    "workerSlots": 1,
+    "marketDistribution": {
+      "itemTypes": [
+        "water"
+      ],
+      "deliveryTarget": "houses",
+      "maxDistanceTiles": 24,
+      "maxStops": 8,
+      "roadSearchRadiusTiles": 8,
+      "houseSearchRadiusTiles": 3,
+      "carryQuantity": 8,
+      "deliveryQuantity": 1,
+      "patrolStrideTiles": 80,
+      "patrolPauseMs": 0,
+      "patrolSpeedMultiplier": 0.55
     },
     "storageSlots": [
       {
