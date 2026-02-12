@@ -447,6 +447,7 @@ export const MarketRunHandler: StepHandler = {
 		const maxStops = config.maxStops ?? DEFAULT_MAX_STOPS
 		const roadSearchRadius = config.roadSearchRadiusTiles ?? DEFAULT_ROAD_SEARCH_RADIUS
 		const houseSearchRadius = config.houseSearchRadiusTiles ?? DEFAULT_HOUSE_SEARCH_RADIUS
+		const deliveryTarget = config.deliveryTarget ?? 'houses'
 		const deliveryQuantity = Math.max(1, config.deliveryQuantity ?? DEFAULT_DELIVERY_QUANTITY)
 		const patrolStrideTiles = Math.max(1, config.patrolStrideTiles ?? DEFAULT_PATROL_STRIDE_TILES)
 		const patrolPauseMs = Math.max(0, Math.floor(config.patrolPauseMs ?? DEFAULT_PATROL_PAUSE_MS))
@@ -487,11 +488,26 @@ export const MarketRunHandler: StepHandler = {
 
 		const resolvedItemType = itemType
 
-		const houses = managers.buildings.getAllBuildings()
+		const recipients = managers.buildings.getAllBuildings()
 			.filter(building => building.mapId === market.mapId && building.playerId === market.playerId)
 			.filter(building => building.stage === ConstructionStage.Completed)
-			.filter(building => managers.buildings.getBuildingDefinition(building.buildingId)?.spawnsSettlers)
-			.map(building => ({ building, tile: toTile(building.position, tileSize) }))
+			.filter(building => building.id !== market.id)
+			.map(building => ({
+				building,
+				definition: managers.buildings.getBuildingDefinition(building.buildingId),
+				tile: toTile(building.position, tileSize)
+			}))
+			.filter(entry => Boolean(entry.definition))
+			.filter(entry => {
+				const isHouse = Boolean(entry.definition?.spawnsSettlers)
+				if (deliveryTarget === 'houses') {
+					return isHouse
+				}
+				if (deliveryTarget === 'buildings') {
+					return !isHouse
+				}
+				return true
+			})
 			.filter(entry => managers.storage.acceptsItemType(entry.building.id, resolvedItemType))
 			.filter(entry => managers.storage.hasAvailableStorage(entry.building.id, resolvedItemType, deliveryQuantity))
 
@@ -553,9 +569,9 @@ export const MarketRunHandler: StepHandler = {
 		const routeTiles = roadRoute.length > 0 ? roadRoute : [fallbackTile]
 		const lastRoadTile = routeTiles[routeTiles.length - 1] ?? fallbackTile
 		const routeSegments = buildRouteSegments(routeTiles, patrolStrideTiles)
-		const houseAssignmentsBySegment = assignRecipientsToRouteSegments(
+		const recipientAssignmentsBySegment = assignRecipientsToRouteSegments(
 			routeSegments,
-			houses.map(entry => ({
+			recipients.map(entry => ({
 				recipientId: entry.building.id,
 				tile: entry.tile,
 				payload: entry
@@ -596,7 +612,7 @@ export const MarketRunHandler: StepHandler = {
 				continue
 			}
 
-			const candidates = houseAssignmentsBySegment[segment.index] ?? []
+			const candidates = recipientAssignmentsBySegment[segment.index] ?? []
 			let deliveredOnSegment = false
 			for (const candidate of candidates) {
 				if (remaining <= 0 || stops >= maxStops) {

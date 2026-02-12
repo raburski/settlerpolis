@@ -79,7 +79,7 @@ export const professions: ProfessionDefinition[] = [
 		description: 'A settler who distributes market goods',
 		canBuild: false,
 		canCarry: true,
-		canWorkBuildings: ['market']
+		canWorkBuildings: ['market', 'well']
 	},
 	{
 		type: ProfessionType.Hunter,
