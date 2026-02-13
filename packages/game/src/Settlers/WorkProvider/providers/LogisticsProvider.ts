@@ -128,6 +128,35 @@ export class LogisticsProvider implements WorkProvider {
 		this.enqueue(this.buildRequest(LogisticsRequestType.Construction, buildingInstanceId, itemType, quantity, priority))
 	}
 
+	public getRequestsForBuilding(buildingInstanceId: string, type?: LogisticsRequestType): LogisticsRequest[] {
+		if (!type) {
+			return this.requests.filter(request => request.buildingInstanceId === buildingInstanceId)
+		}
+		return this.requests.filter(
+			request => request.buildingInstanceId === buildingInstanceId && request.type === type
+		)
+	}
+
+	public clearRequestsForBuilding(
+		buildingInstanceId: string,
+		options?: { type?: LogisticsRequestType, priority?: number }
+	): void {
+		const type = options?.type
+		const priority = options?.priority
+		this.requests = this.requests.filter((request) => {
+			if (request.buildingInstanceId !== buildingInstanceId) {
+				return true
+			}
+			if (type && request.type !== type) {
+				return true
+			}
+			if (typeof priority === 'number' && request.priority !== priority) {
+				return true
+			}
+			return false
+		})
+	}
+
 	public refreshConstructionRequests(): void {
 		const buildingIds = this.managers.buildings.getBuildingsNeedingResources()
 		for (const buildingId of buildingIds) {

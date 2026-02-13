@@ -1,13 +1,17 @@
 import { EventBus } from '../EventBus'
 import { Event } from '@rugged/game'
-import { Settler, PopulationListData, PopulationStatsData, ProfessionType, SettlerState, ConstructionStage, WorkerRequestFailureReason } from '@rugged/game'
+import { Settler, PopulationListData, PopulationStatsData, ProfessionType, SettlerPatch, SettlerState, ConstructionStage, WorkerRequestFailureReason } from '@rugged/game'
 import { buildingService } from './BuildingService'
 import type { WorkAssignment } from '@rugged/game/Settlers/WorkProvider/types'
 import { UiEvents } from '../uiEvents'
 
 class PopulationServiceClass {
 	private settlers = new Map<string, Settler>() // settlerId -> Settler
-private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkAssignment
+	private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkAssignment
+	private statsRefreshTimer: ReturnType<typeof setTimeout> | null = null
+	private readonly STATS_REFRESH_INTERVAL_MS = 120
+	private housingCapacityDirty = true
+	private housingCapacityCache = 0
 	private stats: PopulationStatsData = {
 		totalCount: 0,
 		byProfession: {
@@ -53,92 +57,110 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 		})
 
 		// Handle statistics updates
-		EventBus.on(Event.Population.SC.StatsUpdated, (data: PopulationStatsData) => {
-			console.log('[PopulationService] Received population stats update:', data)
-			const normalized = this.normalizeStats(data)
-			this.stats = {
-				...normalized,
-				housingCapacity: this.getHousingCapacityForSettlers(Array.from(this.settlers.values()))
-			}
-			EventBus.emit(UiEvents.Population.StatsUpdated, this.stats)
-		})
+			EventBus.on(Event.Population.SC.StatsUpdated, (data: PopulationStatsData) => {
+				console.log('[PopulationService] Received population stats update:', data)
+				const normalized = this.normalizeStats(data)
+				this.housingCapacityCache = normalized.housingCapacity || 0
+				this.housingCapacityDirty = false
+				this.stats = normalized
+				EventBus.emit(UiEvents.Population.StatsUpdated, this.stats)
+			})
 
 		// Handle settler spawned
-		EventBus.on(Event.Population.SC.SettlerSpawned, (data: { settler: Settler }) => {
-			console.log('[PopulationService] Settler spawned:', data.settler)
-			this.settlers.set(data.settler.id, data.settler)
-			EventBus.emit(UiEvents.Population.SettlerSpawned, data.settler)
-			this.updateStatsFromSettlers()
-		})
+			EventBus.on(Event.Population.SC.SettlerSpawned, (data: { settler: Settler }) => {
+				console.log('[PopulationService] Settler spawned:', data.settler)
+				this.settlers.set(data.settler.id, data.settler)
+				EventBus.emit(UiEvents.Population.SettlerSpawned, data.settler)
+				this.scheduleStatsRefresh()
+			})
 
-		// Note: Position updates are now handled directly by SettlerController via MovementEvents.SC.MoveToPosition
-		// PopulationService doesn't need to track position updates anymore
+			// Keep cached settler positions in sync for panels/planners that read PopulationService state.
+			EventBus.on(Event.Movement.SC.MoveToPosition, (data: { entityId: string, targetPosition: { x: number, y: number }, mapId: string }) => {
+				this.syncSettlerPosition(data.entityId, data.targetPosition, data.mapId)
+			})
+			EventBus.on(Event.Movement.SC.PositionUpdated, (data: { entityId: string, position: { x: number, y: number }, mapId: string }) => {
+				this.syncSettlerPosition(data.entityId, data.position, data.mapId)
+			})
 
 		// Handle profession changed
-		EventBus.on(Event.Population.SC.ProfessionChanged, (data: { settlerId: string, oldProfession: ProfessionType, newProfession: ProfessionType }) => {
-			const settler = this.settlers.get(data.settlerId)
-			if (settler) {
-				settler.profession = data.newProfession
-				EventBus.emit(UiEvents.Population.ProfessionChanged, data)
-				EventBus.emit(UiEvents.Population.SettlerUpdated, { settlerId: data.settlerId })
-				this.updateStatsFromSettlers()
-			}
-		})
+			EventBus.on(Event.Population.SC.ProfessionChanged, (data: { settlerId: string, oldProfession: ProfessionType, newProfession: ProfessionType }) => {
+				const settler = this.settlers.get(data.settlerId)
+				if (settler) {
+					settler.profession = data.newProfession
+					EventBus.emit(UiEvents.Population.ProfessionChanged, data)
+					EventBus.emit(UiEvents.Population.SettlerUpdated, { settlerId: data.settlerId, settler })
+					this.scheduleStatsRefresh()
+				}
+			})
 
 		// Handle worker assigned
-		EventBus.on(Event.Population.SC.WorkerAssigned, (data: { assignment: WorkAssignment, settlerId: string, buildingInstanceId: string }) => {
-			const settler = this.settlers.get(data.settlerId)
-			if (settler) {
-				this.assignments.set(data.assignment.assignmentId, data.assignment)
-				settler.stateContext = {
-					...settler.stateContext,
-					assignmentId: data.assignment.assignmentId
+			EventBus.on(Event.Population.SC.WorkerAssigned, (data: { assignment: WorkAssignment, settlerId: string, buildingInstanceId: string }) => {
+				const settler = this.settlers.get(data.settlerId)
+				if (settler) {
+					this.assignments.set(data.assignment.assignmentId, data.assignment)
+					settler.stateContext = {
+						...settler.stateContext,
+						assignmentId: data.assignment.assignmentId
+					}
+					settler.buildingId = data.buildingInstanceId
+					EventBus.emit(UiEvents.Population.WorkerAssigned, data)
+					EventBus.emit(UiEvents.Population.SettlerUpdated, { settlerId: data.settlerId, settler })
 				}
-				settler.buildingId = data.buildingInstanceId
-				EventBus.emit(UiEvents.Population.WorkerAssigned, data)
-				EventBus.emit(UiEvents.Population.SettlerUpdated, { settlerId: data.settlerId })
-				this.updateStatsFromSettlers()
-			}
-		})
+			})
 
 		// Handle settler updated (state, target, etc.)
-		EventBus.on(Event.Population.SC.SettlerUpdated, (data: { settler: Settler }) => {
-			const settler = data.settler
-			this.settlers.set(settler.id, settler)
-			EventBus.emit(UiEvents.Population.SettlerUpdated, { settlerId: settler.id })
-			this.updateStatsFromSettlers()
-		})
+			EventBus.on(Event.Population.SC.SettlerUpdated, (data: { settler: Settler }) => {
+				const settler = data.settler
+				this.settlers.set(settler.id, settler)
+				EventBus.emit(UiEvents.Population.SettlerUpdated, { settlerId: settler.id, settler })
+				this.scheduleStatsRefresh()
+			})
+
+			// Handle settler patched (delta updates: state/needs/target/context)
+			EventBus.on(Event.Population.SC.SettlerPatched, (data: { settlerId: string, patch: SettlerPatch }) => {
+				const updatedSettler = this.applySettlerPatch(data.settlerId, data.patch)
+				if (!updatedSettler) {
+					return
+				}
+				EventBus.emit(UiEvents.Population.SettlerUpdated, {
+					settlerId: data.settlerId,
+					settler: updatedSettler,
+					patch: data.patch
+				})
+				if (this.doesPatchAffectStats(data.patch)) {
+					this.scheduleStatsRefresh()
+				}
+			})
 
 		// Handle settler death/removal
-		EventBus.on(Event.Population.SC.SettlerDied, (data: { settlerId: string }) => {
-			if (this.settlers.has(data.settlerId)) {
-				this.settlers.delete(data.settlerId)
+			EventBus.on(Event.Population.SC.SettlerDied, (data: { settlerId: string }) => {
+				if (this.settlers.has(data.settlerId)) {
+					this.settlers.delete(data.settlerId)
 				for (const [assignmentId, assignment] of this.assignments.entries()) {
 					if (assignment.settlerId === data.settlerId) {
 						this.assignments.delete(assignmentId)
 					}
 				}
-			}
-			EventBus.emit(UiEvents.Population.SettlerDied, data)
-			this.updateStatsFromSettlers()
-		})
+				}
+				EventBus.emit(UiEvents.Population.SettlerDied, data)
+				this.scheduleStatsRefresh()
+			})
 
 		// Handle worker unassigned
-		EventBus.on(Event.Population.SC.WorkerUnassigned, (data: { settlerId: string, assignmentId: string }) => {
-			const settler = this.settlers.get(data.settlerId)
-			if (settler) {
+			EventBus.on(Event.Population.SC.WorkerUnassigned, (data: { settlerId: string, assignmentId: string }) => {
+				const settler = this.settlers.get(data.settlerId)
+				if (settler) {
 				this.assignments.delete(data.assignmentId)
 				settler.stateContext = {
 					...settler.stateContext,
 					assignmentId: undefined
 				}
-				settler.buildingId = undefined
-				settler.state = SettlerState.Idle
-				EventBus.emit(UiEvents.Population.WorkerUnassigned, data)
-				EventBus.emit(UiEvents.Population.SettlerUpdated, { settlerId: data.settlerId })
-				this.updateStatsFromSettlers()
-			}
-		})
+					settler.buildingId = undefined
+					settler.state = SettlerState.Idle
+					EventBus.emit(UiEvents.Population.WorkerUnassigned, data)
+					EventBus.emit(UiEvents.Population.SettlerUpdated, { settlerId: data.settlerId, settler })
+				}
+			})
 
 		// Handle worker request failed
 		EventBus.on(Event.Population.SC.WorkerRequestFailed, (data: { reason: WorkerRequestFailureReason, buildingInstanceId: string }) => {
@@ -147,16 +169,19 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 		})
 
 		// Recalculate housing capacity when houses change
-		EventBus.on(Event.Buildings.SC.Catalog, () => {
-			this.updateStatsFromSettlers()
-		})
-		EventBus.on(Event.Buildings.SC.Completed, () => {
-			this.updateStatsFromSettlers()
-		})
-		EventBus.on(Event.Buildings.SC.Cancelled, () => {
-			this.updateStatsFromSettlers()
-		})
-	}
+			EventBus.on(Event.Buildings.SC.Catalog, () => {
+				this.housingCapacityDirty = true
+				this.scheduleStatsRefresh(true)
+			})
+			EventBus.on(Event.Buildings.SC.Completed, () => {
+				this.housingCapacityDirty = true
+				this.scheduleStatsRefresh(true)
+			})
+			EventBus.on(Event.Buildings.SC.Cancelled, () => {
+				this.housingCapacityDirty = true
+				this.scheduleStatsRefresh(true)
+			})
+		}
 
 	private handlePopulationList(data: PopulationListData): void {
 		// Clear existing settlers
@@ -169,7 +194,8 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 		})
 
 		// Update stats from current settlers to keep professions in sync
-		this.updateStatsFromSettlers()
+		this.housingCapacityDirty = true
+		this.scheduleStatsRefresh(true)
 
 		// Emit UI event
 		EventBus.emit(UiEvents.Population.ListLoaded, data)
@@ -228,6 +254,15 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 		return capacity
 	}
 
+	private getCachedHousingCapacity(): number {
+		if (!this.housingCapacityDirty) {
+			return this.housingCapacityCache
+		}
+		this.housingCapacityCache = this.getHousingCapacityForSettlers(Array.from(this.settlers.values()))
+		this.housingCapacityDirty = false
+		return this.housingCapacityCache
+	}
+
 	private calculateStatsFromSettlers(): PopulationStatsData {
 		const byProfession = this.getEmptyByProfession()
 		const byProfessionActive = this.getEmptyByProfession()
@@ -254,13 +289,86 @@ private assignments = new Map<string, WorkAssignment>() // assignmentId -> WorkA
 			byProfessionActive,
 			idleCount,
 			workingCount,
-			housingCapacity: this.getHousingCapacityForSettlers(Array.from(this.settlers.values()))
+			housingCapacity: this.getCachedHousingCapacity()
 		}
 	}
 
-	private updateStatsFromSettlers(): void {
+	private flushStatsRefresh(): void {
 		this.stats = this.calculateStatsFromSettlers()
 		EventBus.emit(UiEvents.Population.StatsUpdated, this.stats)
+	}
+
+	private scheduleStatsRefresh(immediate: boolean = false): void {
+		if (immediate) {
+			if (this.statsRefreshTimer) {
+				clearTimeout(this.statsRefreshTimer)
+				this.statsRefreshTimer = null
+			}
+			this.flushStatsRefresh()
+			return
+		}
+		if (this.statsRefreshTimer) {
+			return
+		}
+		this.statsRefreshTimer = setTimeout(() => {
+			this.statsRefreshTimer = null
+			this.flushStatsRefresh()
+		}, this.STATS_REFRESH_INTERVAL_MS)
+	}
+
+	private applySettlerPatch(settlerId: string, patch: SettlerPatch): Settler | null {
+		const current = this.settlers.get(settlerId)
+		if (!current) {
+			return null
+		}
+
+		const updated: Settler = {
+			...current,
+			position: patch.position ? { ...patch.position } : current.position
+		}
+
+		if (patch.state !== undefined) {
+			updated.state = patch.state
+		}
+		if (patch.profession !== undefined) {
+			updated.profession = patch.profession
+		}
+		if (patch.health !== undefined) {
+			updated.health = patch.health
+		}
+		if (patch.needs !== undefined) {
+			updated.needs = {
+				hunger: patch.needs.hunger,
+				fatigue: patch.needs.fatigue
+			}
+		}
+		if (patch.stateContext !== undefined) {
+			updated.stateContext = {
+				...current.stateContext,
+				...patch.stateContext
+			}
+		}
+		if ('buildingId' in patch) {
+			updated.buildingId = patch.buildingId
+		}
+		if ('houseId' in patch) {
+			updated.houseId = patch.houseId
+		}
+
+		this.settlers.set(settlerId, updated)
+		return updated
+	}
+
+	private syncSettlerPosition(settlerId: string, position: { x: number, y: number }, mapId: string): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler || settler.mapId !== mapId) {
+			return
+		}
+		settler.position = { ...position }
+	}
+
+	private doesPatchAffectStats(patch: SettlerPatch): boolean {
+		return patch.state !== undefined || patch.profession !== undefined
 	}
 
 	// Public getters

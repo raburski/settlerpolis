@@ -24,26 +24,60 @@ export const TransportHandler: StepHandler = {
 			return { actions: [] }
 		}
 
-		const reservations = new ReservationBag()
-		const roadData = managers.roads.getRoadData(settler.mapId) || undefined
-		const map = managers.map.getMap(settler.mapId)
-		const tileSize = map?.tiledMap.tilewidth || 32
+			const reservations = new ReservationBag()
+			const roadData = managers.roads.getRoadData(settler.mapId) || undefined
+			const map = managers.map.getMap(settler.mapId)
+			const tileSize = map?.tiledMap.tilewidth || 32
+			const reachabilityByPair = new Map<string, boolean>()
+			const resolvedTargetByPair = new Map<string, { x: number, y: number } | null>()
+			const nearestWalkableByTarget = new Map<string, { x: number, y: number } | null>()
 
-		const canReach = (from: { x: number, y: number }, to: { x: number, y: number }) => {
-			const path = managers.map.findPath(settler.mapId, from, to, { roadData, allowDiagonal: true })
-			return path && path.length > 0
-		}
+			const pairKey = (from: { x: number, y: number }, to: { x: number, y: number }) => {
+				return `${from.x},${from.y}->${to.x},${to.y}`
+			}
 
-		const resolveReachableTarget = (from: { x: number, y: number }, target: { x: number, y: number }) => {
-			if (canReach(from, target)) {
-				return target
+			const targetKey = (target: { x: number, y: number }) => {
+				return `${target.x},${target.y}`
 			}
-			const fallback = managers.map.findNearestWalkablePosition(settler.mapId, target, 2)
-			if (fallback && canReach(from, fallback)) {
-				return fallback
+
+			const canReach = (from: { x: number, y: number }, to: { x: number, y: number }) => {
+				const key = pairKey(from, to)
+				const cached = reachabilityByPair.get(key)
+				if (cached !== undefined) {
+					return cached
+				}
+				const path = managers.map.findPath(settler.mapId, from, to, { roadData, allowDiagonal: true })
+				const reachable = !!(path && path.length > 0)
+				reachabilityByPair.set(key, reachable)
+				return reachable
 			}
-			return null
-		}
+
+			const resolveReachableTarget = (from: { x: number, y: number }, target: { x: number, y: number }) => {
+				const key = pairKey(from, target)
+				const cached = resolvedTargetByPair.get(key)
+				if (cached !== undefined) {
+					return cached
+				}
+
+				if (canReach(from, target)) {
+					resolvedTargetByPair.set(key, target)
+					return target
+				}
+
+				const fallbackKey = targetKey(target)
+				let fallback = nearestWalkableByTarget.get(fallbackKey)
+				if (fallback === undefined) {
+					fallback = managers.map.findNearestWalkablePosition(settler.mapId, target, 2)
+					nearestWalkableByTarget.set(fallbackKey, fallback)
+				}
+				if (fallback && canReach(from, fallback)) {
+					resolvedTargetByPair.set(key, fallback)
+					return fallback
+				}
+
+				resolvedTargetByPair.set(key, null)
+				return null
+			}
 
 		const getRandomDeliveryEgressPosition = (
 			deliveryPosition: { x: number, y: number },

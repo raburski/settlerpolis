@@ -46,7 +46,7 @@ import type { CutsceneTriggerEventData } from './Cutscene/types'
 import type { MapLoadData, MapLoadResponseData, MapTransitionData, MapTransitionResponseData } from './Map/types'
 import type { TimeUpdateEventData, TimeSpeedUpdateEventData, TimePauseEventData, TimeSyncEventData } from './Time/types'
 import type { PlaceBuildingData, CancelBuildingData, SetProductionPausedData, SetProductionPlanData, SetGlobalProductionPlanData, SetWorkAreaData, SetStorageRequestsData, BuildingPlacedData, BuildingProgressData, BuildingCompletedData, BuildingCancelledData, BuildingCatalogData, BuildingWorkAreaUpdatedData, BuildingStorageRequestsUpdatedData, BuildingWorkerQueueUpdatedData, ProductionPlanUpdatedData, GlobalProductionPlanUpdatedData, ConstructionStage } from './Buildings/types'
-import type { RequestWorkerData, UnassignWorkerData, RequestListData, PopulationListData, PopulationStatsData, Settler, ProfessionType, WorkerRequestFailureReason } from './Population/types'
+import type { RequestWorkerData, UnassignWorkerData, RequestListData, PopulationListData, PopulationStatsData, Settler, ProfessionType, SettlerPatchedData, WorkerRequestFailureReason } from './Population/types'
 import type { WorkAssignment, WorkStep, WorkAction, LogisticsRequest } from './Settlers/WorkProvider/types'
 import type { ProductionRecipe, ProductionStatus } from './Buildings/types'
 import type { ScheduleOptions } from './Scheduler/types'
@@ -218,6 +218,7 @@ export type EventPayloads = Record<string, unknown> & {
 	[PopulationEvents.CS.RequestList]: RequestListData
 	[PopulationEvents.SC.SettlerSpawned]: { settler: Settler }
 	[PopulationEvents.SC.SettlerUpdated]: { settler: Settler }
+	[PopulationEvents.SC.SettlerPatched]: SettlerPatchedData
 	[PopulationEvents.SC.SettlerDied]: { settlerId: SettlerId }
 	[PopulationEvents.SC.WorkerAssigned]: { assignment: WorkAssignment, settlerId: SettlerId, buildingInstanceId: BuildingInstanceId }
 	[PopulationEvents.SC.WorkerUnassigned]: { settlerId: SettlerId, buildingInstanceId: BuildingInstanceId, assignmentId: WorkAssignmentId }

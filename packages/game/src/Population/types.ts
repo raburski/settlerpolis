@@ -156,6 +156,25 @@ export interface PopulationStatsData {
 	housingCapacity: number
 }
 
+export interface SettlerPatch {
+	state?: SettlerState
+	profession?: ProfessionType
+	health?: number
+	needs?: {
+		hunger: number
+		fatigue: number
+	}
+	stateContext?: Partial<SettlerStateContext>
+	buildingId?: BuildingInstanceId
+	houseId?: BuildingInstanceId
+	position?: Position
+}
+
+export interface SettlerPatchedData {
+	settlerId: SettlerId
+	patch: SettlerPatch
+}
+
 export interface ProfessionTool {
 	itemType: ItemType // Item type that changes profession
 	targetProfession: ProfessionType // Profession this tool grants

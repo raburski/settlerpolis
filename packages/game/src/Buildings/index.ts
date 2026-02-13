@@ -318,7 +318,9 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.initializeBuildingResources(buildingInstance, definition)
 
 		// Try to place the object
-		const placedObject = this.managers.mapObjects.placeObject(client.id, placeObjectData, client)
+		const placedObject = this.managers.mapObjects.placeObject(client.id, placeObjectData, client, {
+			skipCollisionCheck: true
+		})
 		if (!placedObject) {
 			this.logger.error(`Failed to place building at position:`, position)
 			return
@@ -939,7 +941,6 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	private checkBuildingCollision(mapId: string, position: { x: number, y: number }, definition: BuildingDefinition, rotation: number): boolean {
 		// Get all existing buildings and map objects in this map
 		const existingBuildings = this.getBuildingsForMap(mapId)
-		const existingObjects = this.managers.mapObjects.getAllObjectsForMap(mapId)
 
 		// Get tile size from map (default to 32 if map not loaded)
 		const map = this.managers.map.getMap(mapId)
@@ -947,6 +948,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		const placementFootprint = this.getRotatedFootprint(definition, rotation)
 		const buildingWidth = placementFootprint.width * TILE_SIZE
 		const buildingHeight = placementFootprint.height * TILE_SIZE
+		const existingObjects = this.managers.mapObjects.getObjectsInArea(mapId, position, buildingWidth, buildingHeight)
 
 		this.logger.debug(`Checking collision for building ${definition.id} at position (${position.x}, ${position.y}) with footprint ${definition.footprint.width}x${definition.footprint.height} (${buildingWidth}x${buildingHeight} pixels)`)
 
