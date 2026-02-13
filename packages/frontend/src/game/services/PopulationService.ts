@@ -74,8 +74,13 @@ class PopulationServiceClass {
 				this.scheduleStatsRefresh()
 			})
 
-		// Note: Position updates are now handled directly by SettlerController via MovementEvents.SC.MoveToPosition
-		// PopulationService doesn't need to track position updates anymore
+			// Keep cached settler positions in sync for panels/planners that read PopulationService state.
+			EventBus.on(Event.Movement.SC.MoveToPosition, (data: { entityId: string, targetPosition: { x: number, y: number }, mapId: string }) => {
+				this.syncSettlerPosition(data.entityId, data.targetPosition, data.mapId)
+			})
+			EventBus.on(Event.Movement.SC.PositionUpdated, (data: { entityId: string, position: { x: number, y: number }, mapId: string }) => {
+				this.syncSettlerPosition(data.entityId, data.position, data.mapId)
+			})
 
 		// Handle profession changed
 			EventBus.on(Event.Population.SC.ProfessionChanged, (data: { settlerId: string, oldProfession: ProfessionType, newProfession: ProfessionType }) => {
@@ -352,6 +357,14 @@ class PopulationServiceClass {
 
 		this.settlers.set(settlerId, updated)
 		return updated
+	}
+
+	private syncSettlerPosition(settlerId: string, position: { x: number, y: number }, mapId: string): void {
+		const settler = this.settlers.get(settlerId)
+		if (!settler || settler.mapId !== mapId) {
+			return
+		}
+		settler.position = { ...position }
 	}
 
 	private doesPatchAffectStats(patch: SettlerPatch): boolean {

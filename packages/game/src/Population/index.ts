@@ -108,12 +108,17 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			this.sendPopulationList(client)
 		})
 
-		this.event.on(MovementEvents.SS.StepComplete, (data: { entityId: string, position: Position }) => {
+		const syncSettlerPosition = (data: { entityId: string, position: Position }) => {
 			const settler = this.settlers.get(data.entityId)
-			if (settler) {
-				settler.position = data.position
+			if (!settler) {
+				return
 			}
-		})
+			settler.position = { ...data.position }
+		}
+
+		// Keep population positions synced during movement to avoid stale starts when paths are recalculated.
+		this.event.on(MovementEvents.SS.SegmentComplete, syncSettlerPosition)
+		this.event.on(MovementEvents.SS.StepComplete, syncSettlerPosition)
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {

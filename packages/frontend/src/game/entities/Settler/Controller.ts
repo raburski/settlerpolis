@@ -30,6 +30,12 @@ export class SettlerController {
 				if (typeof data.speed === 'number') {
 					this.view.setSpeed(data.speed)
 				}
+				// Keep controller model position synced with movement segments so non-position patches
+				// cannot snap state back to an old coordinate.
+				this.settler.position = {
+					x: data.targetPosition.x,
+					y: data.targetPosition.y
+				}
 				this.view.setTargetPosition(data.targetPosition.x, data.targetPosition.y)
 			} else {
 				console.warn(`[SettlerController] Map name mismatch for settler ${data.entityId}: event mapId=${data.mapId}, settler mapId=${this.settler.mapId}`)
