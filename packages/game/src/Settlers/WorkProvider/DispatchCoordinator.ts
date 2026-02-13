@@ -159,6 +159,11 @@ export class DispatchCoordinator {
 				this.unassignWorker(settlerId)
 				return
 			}
+			if (assignment.providerType === WorkProviderType.Prospecting &&
+				(step.reason === WorkWaitReason.NoWork || step.reason === WorkWaitReason.WrongProfession)) {
+				this.unassignWorker(settlerId)
+				return
+			}
 			if (assignment.providerType === WorkProviderType.Construction && step.reason === WorkWaitReason.WrongProfession) {
 				this.unassignWorker(settlerId)
 				return

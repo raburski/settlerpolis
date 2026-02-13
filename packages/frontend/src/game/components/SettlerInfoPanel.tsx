@@ -95,6 +95,7 @@ export const SettlerInfoPanel: React.FC = () => {
 	const professionLabels: Record<ProfessionType, string> = {
 		[ProfessionType.Carrier]: 'Carrier',
 		[ProfessionType.Builder]: 'Builder',
+		[ProfessionType.Prospector]: 'Prospector',
 		[ProfessionType.Woodcutter]: 'Woodcutter',
 		[ProfessionType.Miner]: 'Miner',
 		[ProfessionType.Metallurgist]: 'Metallurgist',
@@ -109,6 +110,7 @@ export const SettlerInfoPanel: React.FC = () => {
 	const professionIcons: Record<ProfessionType, string> = {
 		[ProfessionType.Carrier]: '👤',
 		[ProfessionType.Builder]: '🔨',
+		[ProfessionType.Prospector]: '🧭',
 		[ProfessionType.Woodcutter]: '🪓',
 		[ProfessionType.Miner]: '⛏️',
 		[ProfessionType.Metallurgist]: '⚒️',
@@ -150,6 +152,8 @@ export const SettlerInfoPanel: React.FC = () => {
 				return '🏠 Going Home'
 			case SettlerState.Harvesting:
 				return '⛏️ Harvesting'
+			case SettlerState.Prospecting:
+				return '🧭 Prospecting'
 			case SettlerState.CarryingItem:
 				return '📦 Carrying Item'
 			case SettlerState.AssignmentFailed:

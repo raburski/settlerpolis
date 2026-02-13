@@ -13,6 +13,7 @@ class ToolAvailabilityService {
 	private professionToolCounts: Record<ProfessionType, number> = {
 		[ProfessionType.Carrier]: 0,
 		[ProfessionType.Builder]: 0,
+		[ProfessionType.Prospector]: 0,
 		[ProfessionType.Woodcutter]: 0,
 		[ProfessionType.Miner]: 0,
 		[ProfessionType.Metallurgist]: 0,
@@ -131,6 +132,7 @@ class ToolAvailabilityService {
 		return {
 			[ProfessionType.Carrier]: false,
 			[ProfessionType.Builder]: this.professionToolCounts[ProfessionType.Builder] > 0,
+			[ProfessionType.Prospector]: this.professionToolCounts[ProfessionType.Prospector] > 0,
 			[ProfessionType.Woodcutter]: this.professionToolCounts[ProfessionType.Woodcutter] > 0,
 			[ProfessionType.Miner]: this.professionToolCounts[ProfessionType.Miner] > 0,
 			[ProfessionType.Metallurgist]: this.professionToolCounts[ProfessionType.Metallurgist] > 0,

@@ -25,6 +25,21 @@ export const WaitHandler: StepHandler = {
 			}
 		}
 
+		if (step.reason === WorkWaitReason.NoWork &&
+			assignment.providerType === WorkProviderType.Building &&
+			assignment.buildingInstanceId) {
+			const building = managers.buildings.getBuildingInstance(assignment.buildingInstanceId)
+			if (building && building.buildingId === 'guildhall') {
+				const durationMs = step.retryAtMs ? Math.max(0, step.retryAtMs - simulationTimeMs) : 1500
+				return {
+					actions: [
+						{ type: WorkActionType.Move, position: building.position, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding },
+						{ type: WorkActionType.Wait, durationMs, setState: SettlerState.WaitingForWork }
+					]
+				}
+			}
+		}
+
 		const durationMs = step.retryAtMs ? Math.max(0, step.retryAtMs - simulationTimeMs) : 1500
 		return { actions: [{ type: WorkActionType.Wait, durationMs, setState: SettlerState.WaitingForWork }] }
 	}

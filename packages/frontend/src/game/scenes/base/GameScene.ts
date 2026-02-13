@@ -191,7 +191,7 @@ export abstract class GameScene extends MapScene {
 		this.roadOverlay = new RoadOverlay(this, this.map.tileWidth)
 		this.fx = new FX(this)
 		this.resourceNodeBatcher = new ResourceNodeBatcher(this.runtime.renderer, this.map.tileWidth)
-		this.resourceNodeBatcher.setPickableNodeTypes(['stone_deposit'])
+		this.resourceNodeBatcher.setPickableNodeTypes(['stone_deposit', 'resource_deposit'])
 		this.mapPopoverManager = new MapPopoverManager(this)
 		this.resourceNodeSelectionManager = new ResourceNodeSelectionManager(this)
 		this.runtime.input.on('pointerup', this.handleMapRightClick)
@@ -477,10 +477,9 @@ export abstract class GameScene extends MapScene {
 				return
 			}
 			if (chunkKey) {
-				if (this.resourceNodeIdToChunk.has(obj.id)) {
-					return
+				if (!this.resourceNodeIdToChunk.has(obj.id)) {
+					this.trackResourceNodeChunk(obj.id, chunkKey)
 				}
-				this.trackResourceNodeChunk(obj.id, chunkKey)
 			}
 		}
 		const id = obj.id

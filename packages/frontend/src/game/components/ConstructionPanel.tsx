@@ -55,6 +55,7 @@ type ShortcutEntry =
 const SHORTCUT_SLOTS = 8
 const SHORTCUT_STORAGE_KEY = 'settlerpolis:construction-shortcuts'
 const SHORTCUT_MIME = 'application/x-construction-shortcut'
+const HIDDEN_BUILDING_IDS = new Set(['coal_mine', 'iron_mine', 'gold_mine', 'stone_mine'])
 
 const isValidRoadType = (value: unknown): value is RoadType =>
 	value === RoadType.Dirt || value === RoadType.Stone
@@ -226,6 +227,9 @@ export const ConstructionPanel: React.FC = () => {
 		return building.unlockFlags.every((flag) => unlockedSet.has(flag))
 	}
 	const filteredBuildings = buildings.filter((building) => {
+		if (HIDDEN_BUILDING_IDS.has(building.id)) {
+			return false
+		}
 		if (building.category !== selectedCategory) {
 			return false
 		}

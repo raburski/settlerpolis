@@ -67,13 +67,18 @@ export const FarmingWorkHandler: BuildingWorkHandler = {
 				return { type: WorkStepType.Wait, reason: WorkWaitReason.NoStorage }
 			}
 
+			if (typeof farm.harvestTimeMs !== 'number') {
+				return { type: WorkStepType.Wait, reason: WorkWaitReason.NoWork }
+			}
+			const harvestTimeMs = farm.harvestTimeMs
+
 			return {
 				type: WorkStepType.Harvest,
 				buildingInstanceId: building.id,
 				resourceNodeId: closest.id,
 				outputItemType: cropDefinition.outputItemType,
 				quantity: cropDefinition.harvestQuantity,
-				durationMs: cropDefinition.harvestTimeMs ?? 1000
+				durationMs: harvestTimeMs
 			}
 		}
 

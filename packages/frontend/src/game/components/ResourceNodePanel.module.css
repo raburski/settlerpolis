@@ -84,3 +84,44 @@
 .value {
 	color: #ffffff;
 }
+
+.actionRow {
+	margin-top: var(--spacing-sm);
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-xs);
+}
+
+.actionButton {
+	width: 100%;
+	border: 2px solid #2c1810;
+	background: #8b5e2c;
+	color: #fffbe7;
+	font-family: 'Press Start 2P', monospace;
+	font-size: 0.55rem;
+	padding: 6px 8px;
+	cursor: pointer;
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+	text-transform: uppercase;
+}
+
+.actionButton:hover:not(:disabled) {
+	background: #a66d2d;
+}
+
+.actionButton:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+.emptyNote {
+	color: #c7b18a;
+	font-size: 0.55rem;
+	text-align: center;
+}
+
+.queueNote {
+	color: #c7b18a;
+	font-size: 0.55rem;
+	text-align: center;
+}

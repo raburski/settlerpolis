@@ -9,6 +9,7 @@ export type { SettlerId } from '../ids'
 export enum ProfessionType {
 	Carrier = 'carrier', // Default profession for all settlers
 	Builder = 'builder',
+	Prospector = 'prospector',
 	Woodcutter = 'woodcutter',
 	Miner = 'miner',
 	Metallurgist = 'metallurgist',
@@ -37,6 +38,7 @@ export enum SettlerState {
 	MovingToResource = 'moving_to_resource', // Moving to resource node for harvesting
 	MovingHome = 'moving_home',          // Moving to current/new home
 	Harvesting = 'harvesting',             // Harvesting at a resource node
+	Prospecting = 'prospecting',           // Investigating a resource deposit
 	AssignmentFailed = 'assignment_failed',    // Assignment failed, needs cleanup
 }
 

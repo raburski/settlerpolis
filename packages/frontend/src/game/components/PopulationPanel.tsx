@@ -18,6 +18,7 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 		byProfession: {
 			[ProfessionType.Carrier]: 0,
 			[ProfessionType.Builder]: 0,
+			[ProfessionType.Prospector]: 0,
 			[ProfessionType.Woodcutter]: 0,
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Metallurgist]: 0,
@@ -31,6 +32,7 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 		byProfessionActive: {
 			[ProfessionType.Carrier]: 0,
 			[ProfessionType.Builder]: 0,
+			[ProfessionType.Prospector]: 0,
 			[ProfessionType.Woodcutter]: 0,
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Metallurgist]: 0,
@@ -52,6 +54,7 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 	const cycleIndexRef = React.useRef<Record<ProfessionType, number>>({
 		[ProfessionType.Carrier]: -1,
 		[ProfessionType.Builder]: -1,
+		[ProfessionType.Prospector]: -1,
 		[ProfessionType.Woodcutter]: -1,
 		[ProfessionType.Miner]: -1,
 		[ProfessionType.Metallurgist]: -1,
@@ -93,6 +96,7 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 	const idleByProfession: Record<ProfessionType, number> = {
 		[ProfessionType.Carrier]: Math.max(0, (stats.byProfession[ProfessionType.Carrier] || 0) - (stats.byProfessionActive[ProfessionType.Carrier] || 0)),
 		[ProfessionType.Builder]: Math.max(0, (stats.byProfession[ProfessionType.Builder] || 0) - (stats.byProfessionActive[ProfessionType.Builder] || 0)),
+		[ProfessionType.Prospector]: Math.max(0, (stats.byProfession[ProfessionType.Prospector] || 0) - (stats.byProfessionActive[ProfessionType.Prospector] || 0)),
 		[ProfessionType.Woodcutter]: Math.max(0, (stats.byProfession[ProfessionType.Woodcutter] || 0) - (stats.byProfessionActive[ProfessionType.Woodcutter] || 0)),
 		[ProfessionType.Miner]: Math.max(0, (stats.byProfession[ProfessionType.Miner] || 0) - (stats.byProfessionActive[ProfessionType.Miner] || 0)),
 		[ProfessionType.Metallurgist]: Math.max(0, (stats.byProfession[ProfessionType.Metallurgist] || 0) - (stats.byProfessionActive[ProfessionType.Metallurgist] || 0)),
@@ -117,6 +121,7 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 	const professionLabels: Record<ProfessionType, string> = {
 		[ProfessionType.Carrier]: 'Carrier',
 		[ProfessionType.Builder]: 'Builder',
+		[ProfessionType.Prospector]: 'Prospector',
 		[ProfessionType.Woodcutter]: 'Woodcutter',
 		[ProfessionType.Miner]: 'Miner',
 		[ProfessionType.Metallurgist]: 'Metallurgist',
@@ -131,6 +136,7 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 	const professionIcons: Record<ProfessionType, string> = {
 		[ProfessionType.Carrier]: '👤',
 		[ProfessionType.Builder]: '🔨',
+		[ProfessionType.Prospector]: '🧭',
 		[ProfessionType.Woodcutter]: '🪓',
 		[ProfessionType.Miner]: '⛏️',
 		[ProfessionType.Metallurgist]: '⚒️',

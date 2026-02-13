@@ -30,6 +30,7 @@ import { CityCharterEvents } from './CityCharter/events'
 import { TradeEvents } from './Trade/events'
 import { ReputationEvents } from './Reputation/events'
 import { ResourceNodesEvents } from './ResourceNodes/events'
+import { LogsEvents } from './Logs/events'
 import type { PlayerJoinData, PlayerTransitionData, PlayerMoveData, EquipItemData, UnequipItemData, PlayerPlaceData } from './Players/types'
 import type { ChatMessageData, ChatSystemMessageData } from './Chat/types'
 import type { InventoryData, DropItemData, PickUpItemData, ConsumeItemData, MoveItemData, AddItemData, RemoveByTypePayload } from './Inventory/types'
@@ -60,7 +61,8 @@ import type { MoveTargetType } from './Movement/types'
 import type { CityCharterClaimRequest, CityCharterStateRequest, CityCharterStateData, CityCharterUnlockFlagsUpdated } from './CityCharter/types'
 import type { TradeRouteSelection, TradeRouteCancelled, TradeRouteListData, TradeRouteUpdatedData, TradeShipmentStartedData, TradeShipmentArrivedData } from './Trade/types'
 import type { ReputationUpdatedData } from './Reputation/types'
-import type { ResourceNodesQueryData, ResourceNodesSyncData } from './ResourceNodes/types'
+import type { ResourceNodeProspectRequestData, ResourceNodesQueryData, ResourceNodesSyncData } from './ResourceNodes/types'
+import type { LogConsoleEventData } from './Logs/events'
 import type {
 	BuildingId,
 	BuildingInstanceId,
@@ -156,7 +158,9 @@ export type EventPayloads = Record<string, unknown> & {
 	[MapObjectsEvents.SC.Despawn]: DespawnObjectData
 
 	[ResourceNodesEvents.CS.Query]: ResourceNodesQueryData
+	[ResourceNodesEvents.CS.RequestProspecting]: ResourceNodeProspectRequestData
 	[ResourceNodesEvents.SC.Sync]: ResourceNodesSyncData
+	[LogsEvents.SC.Console]: LogConsoleEventData
 
 	[FlagsEvents.SS.SetFlag]: SetFlagData
 	[FlagsEvents.SS.UnsetFlag]: UnsetFlagData
@@ -197,6 +201,7 @@ export type EventPayloads = Record<string, unknown> & {
 	[BuildingsEvents.CS.SetWorkArea]: SetWorkAreaData
 	[BuildingsEvents.CS.SetStorageRequests]: SetStorageRequestsData
 	[BuildingsEvents.SC.Placed]: BuildingPlacedData
+	[BuildingsEvents.SS.Placed]: BuildingPlacedData
 	[BuildingsEvents.SC.Progress]: BuildingProgressData
 	[BuildingsEvents.SC.Completed]: BuildingCompletedData
 	[BuildingsEvents.SC.Cancelled]: BuildingCancelledData
@@ -356,7 +361,8 @@ export const Event = {
 	CityCharter: CityCharterEvents,
 	Trade: TradeEvents,
 	Reputation: ReputationEvents,
-	ResourceNodes: ResourceNodesEvents
+	ResourceNodes: ResourceNodesEvents,
+	Logs: LogsEvents
 } as const
 
 export default Event 

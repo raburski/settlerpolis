@@ -6,7 +6,8 @@ export enum BuildingWorkKind {
 	Farm = 'farm',
 	Market = 'market',
 	Fishing = 'fishing',
-	Hunting = 'hunting'
+	Hunting = 'hunting',
+	Prospecting = 'prospecting'
 }
 
 export const getBuildingWorkKinds = (definition: BuildingDefinition): BuildingWorkKind[] => {

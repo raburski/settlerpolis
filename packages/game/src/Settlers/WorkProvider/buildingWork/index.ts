@@ -5,8 +5,10 @@ import { ProductionWorkHandler } from './production'
 import { MarketWorkHandler } from './market'
 import { FishingWorkHandler } from './fishing'
 import { HuntingWorkHandler } from './hunting'
+import { ProspectingWorkHandler } from './prospecting'
 
 export const BuildingWorkHandlers: BuildingWorkHandler[] = [
+	ProspectingWorkHandler,
 	FarmingWorkHandler,
 	HarvestWorkHandler,
 	FishingWorkHandler,

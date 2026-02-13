@@ -4,6 +4,7 @@ import { ProviderRegistry } from './ProviderRegistry'
 import { BuildingProvider } from './providers/BuildingProvider'
 import { ConstructionProvider } from './providers/ConstructionProvider'
 import { RoadProvider } from './providers/RoadProvider'
+import { ProspectingProvider } from './providers/ProspectingProvider'
 import type { LogisticsProvider } from './providers/LogisticsProvider'
 import type { BuildingInstanceId, MapId, PlayerId } from '../../ids'
 
@@ -11,6 +12,7 @@ export class ProviderFactory {
 	private buildingProviders = new Map<BuildingInstanceId, BuildingProvider>()
 	private constructionProviders = new Map<BuildingInstanceId, ConstructionProvider>()
 	private roadProviders = new Map<string, RoadProvider>()
+	private prospectingProviders = new Map<string, ProspectingProvider>()
 
 	constructor(
 		private managers: WorkProviderDeps,
@@ -67,9 +69,21 @@ export class ProviderFactory {
 		return provider
 	}
 
+	getProspecting(mapId: MapId, playerId: PlayerId): ProspectingProvider {
+		const key = `${mapId}:${playerId}`
+		let provider = this.prospectingProviders.get(key)
+		if (!provider) {
+			provider = new ProspectingProvider(mapId, playerId, this.managers, this.logger)
+			this.prospectingProviders.set(key, provider)
+			this.registry.register(provider)
+		}
+		return provider
+	}
+
 	clear(): void {
 		this.buildingProviders.clear()
 		this.constructionProviders.clear()
 		this.roadProviders.clear()
+		this.prospectingProviders.clear()
 	}
 }

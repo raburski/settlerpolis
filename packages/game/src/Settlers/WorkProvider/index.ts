@@ -31,6 +31,7 @@ import { DispatchCoordinator } from './DispatchCoordinator'
 import { LogisticsCoordinator } from './LogisticsCoordinator'
 import { ConstructionCoordinator } from './ConstructionCoordinator'
 import { RoadCoordinator } from './RoadCoordinator'
+import { ProspectingCoordinator } from './ProspectingCoordinator'
 import { LogisticsProvider } from './providers/LogisticsProvider'
 import { CriticalNeedsPolicy } from './policies/CriticalNeedsPolicy'
 import { HomeRelocationPolicy } from './policies/HomeRelocationPolicy'
@@ -47,6 +48,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 	private logisticsCoordinator: LogisticsCoordinator
 	private constructionCoordinator: ConstructionCoordinator
 	private roadCoordinator: RoadCoordinator
+	private prospectingCoordinator: ProspectingCoordinator
 	private simulationTimeMs = 0
 	private constructionAssignCooldownMs = 2000
 	private pauseRequests = new Map<string, { reason: string }>()
@@ -133,6 +135,14 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		)
 
 		this.roadCoordinator = new RoadCoordinator(
+			this.managers,
+			this.assignments,
+			this.providers,
+			() => this.simulationTimeMs,
+			dispatchNextStep
+		)
+
+		this.prospectingCoordinator = new ProspectingCoordinator(
 			this.managers,
 			this.assignments,
 			this.providers,
@@ -670,6 +680,10 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		}
 	}
 
+	public requestImmediateDispatch(settlerId: string): void {
+		this.dispatcher.dispatchNextStep(settlerId)
+	}
+
 	deserialize(state: WorkProviderSnapshot): void {
 		this.assignments.clear()
 		this.productionTracker.deserialize(state.productionStateByBuilding)
@@ -704,6 +718,14 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 				const [_, mapId, playerId] = assignment.providerId.split(':')
 				if (mapId && playerId) {
 					this.providers.getRoad(mapId, playerId).assign(assignment.settlerId)
+				}
+				continue
+			}
+
+			if (assignment.providerType === WorkProviderType.Prospecting) {
+				const [_, mapId, playerId] = assignment.providerId.split(':')
+				if (mapId && playerId) {
+					this.providers.getProspecting(mapId, playerId).assign(assignment.settlerId)
 				}
 				continue
 			}

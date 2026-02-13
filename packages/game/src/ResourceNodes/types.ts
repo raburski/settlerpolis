@@ -7,16 +7,21 @@ export type { ResourceNodeId } from '../ids'
 
 export type ResourceNodeType = string
 
+export type ResourceDepositType = 'coal' | 'iron' | 'gold' | 'stone' | 'empty'
+
 export interface ResourceNodeDefinition {
 	id: ResourceNodeType
 	name: string
 	nodeItemType: ItemType // Item type used for map object rendering
 	outputItemType: ItemType // Item type produced by harvesting
 	harvestQuantity: number
-	harvestTimeMs?: number
 	maxHarvests: number // Number of harvest actions before depletion
 	regenTimeMs?: number // Time in ms before depleted nodes regenerate
 	blocksMovement?: boolean
+	footprint?: {
+		width: number
+		height?: number
+	}
 }
 
 export interface ResourceNodeRenderDefinition {
@@ -53,6 +58,7 @@ export interface ResourceNodeSpawn {
 	position: Position
 	quantity?: number // Overrides definition.maxHarvests if provided
 	tileBased?: boolean // If true, position is in tiles (default: true)
+	depositType?: ResourceDepositType
 }
 
 export interface ResourceNodeInstance {
@@ -63,11 +69,17 @@ export interface ResourceNodeInstance {
 	remainingHarvests: number
 	reservedBy?: string
 	mapObjectId?: MapObjectId
+	claimedByBuildingId?: string
 	matureAtMs?: number
 	plantedAtMs?: number
 	spoilAtMs?: number
 	despawnAtMs?: number
 	isSpoiled?: boolean
+	depositType?: ResourceDepositType
+	depositDiscovered?: boolean
+	prospectingStatus?: 'queued' | 'in_progress'
+	prospectingJobId?: string
+	prospectingSettlerId?: string
 }
 
 export interface ResourceNodeBounds {
@@ -89,4 +101,8 @@ export interface ResourceNodesSyncData {
 	nodes: MapObject[]
 	requestId?: number
 	chunkKey?: string
+}
+
+export interface ResourceNodeProspectRequestData {
+	nodeId: ResourceNodeId
 }

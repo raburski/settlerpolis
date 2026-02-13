@@ -6,6 +6,12 @@ export const ProductionWorkHandler: BuildingWorkHandler = {
 	kind: BuildingWorkKind.Production,
 	canHandle: (definition) => getProductionRecipes(definition).length > 0,
 	getNextStep: ({ building, definition, managers, logistics }) => {
+		if (building.resourceNodeId) {
+			const node = managers.resourceNodes.getNode(building.resourceNodeId)
+			if (!node || node.remainingHarvests <= 0) {
+				return { type: WorkStepType.Wait, reason: WorkWaitReason.NoWork }
+			}
+		}
 		const recipes = getProductionRecipes(definition)
 		if (recipes.length === 0) {
 			return null

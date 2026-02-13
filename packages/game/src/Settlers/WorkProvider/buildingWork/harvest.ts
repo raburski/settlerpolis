@@ -62,13 +62,18 @@ export const HarvestWorkHandler: BuildingWorkHandler = {
 			return { type: WorkStepType.Wait, reason: WorkWaitReason.NoNodes }
 		}
 
+		if (typeof harvestDefinition.harvestTimeMs !== 'number') {
+			return { type: WorkStepType.Wait, reason: WorkWaitReason.NoWork }
+		}
+		const harvestTimeMs = harvestDefinition.harvestTimeMs
+
 		return {
 			type: WorkStepType.Harvest,
 			buildingInstanceId: building.id,
 			resourceNodeId: node.id,
 			outputItemType: nodeDefinition.outputItemType,
 			quantity: nodeDefinition.harvestQuantity,
-			durationMs: nodeDefinition.harvestTimeMs ?? 1000
+			durationMs: harvestTimeMs
 		}
 	}
 }

@@ -8,6 +8,7 @@ export type WorkerInitMessage = {
 	content: GameContent
 	mapBaseUrl: string
 	logAllowlist?: string[]
+	logToEventBus?: boolean
 	simulationTickMs?: number
 	silentLogs?: boolean
 	debug?: boolean
