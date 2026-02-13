@@ -12,6 +12,7 @@ import { TransportHandler } from './transport'
 import { MarketRunHandler } from './marketRun'
 import { WaitHandler } from './wait'
 import { ProspectHandler } from './prospect'
+import { StepAwayHandler } from './stepAway'
 
 export const StepHandlers: Record<WorkStepType, StepHandler> = {
 	[WorkStepType.AcquireTool]: AcquireToolHandler,
@@ -25,7 +26,8 @@ export const StepHandlers: Record<WorkStepType, StepHandler> = {
 	[WorkStepType.Transport]: TransportHandler,
 	[WorkStepType.MarketRun]: MarketRunHandler,
 	[WorkStepType.Prospect]: ProspectHandler,
-	[WorkStepType.Wait]: WaitHandler
+	[WorkStepType.Wait]: WaitHandler,
+	[WorkStepType.StepAway]: StepAwayHandler
 }
 
 export * from './types'

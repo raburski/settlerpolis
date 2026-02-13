@@ -19,19 +19,20 @@ import { ConstructionStage } from '../../Buildings/types'
 import { ProviderRegistry } from './ProviderRegistry'
 import { ActionSystem, type ActionQueueContextResolver } from './ActionSystem'
 import { WorkProviderEvents } from './events'
-import type { WorkAssignment, WorkAction, LogisticsRequest, WorkStep } from './types'
-import { TransportSourceType, WorkProviderType, WorkAssignmentStatus, WorkStepType } from './types'
+import type { WorkAssignment, WorkAction, LogisticsRequest, WorkStep, WorkProvider } from './types'
+import { WorkProviderType, WorkAssignmentStatus } from './types'
+import { StepHandlers } from './stepHandlers'
 import type { ActionQueueContext, WorkProviderSnapshot } from '../../state/types'
 import { ActionQueueContextKind } from '../../state/types'
 import { AssignmentStore } from './AssignmentStore'
 import { ProviderFactory } from './ProviderFactory'
 import { PolicyEngine } from './PolicyEngine'
 import { ProductionTracker } from './ProductionTracker'
-import { DispatchCoordinator } from './DispatchCoordinator'
-import { LogisticsCoordinator } from './LogisticsCoordinator'
-import { ConstructionCoordinator } from './ConstructionCoordinator'
-import { RoadCoordinator } from './RoadCoordinator'
-import { ProspectingCoordinator } from './ProspectingCoordinator'
+import { DispatchCoordinator } from './coordinators/DispatchCoordinator'
+import { LogisticsCoordinator } from './coordinators/LogisticsCoordinator'
+import { ConstructionCoordinator } from './coordinators/ConstructionCoordinator'
+import { RoadCoordinator } from './coordinators/RoadCoordinator'
+import { ProspectingCoordinator } from './coordinators/ProspectingCoordinator'
 import { LogisticsProvider } from './providers/LogisticsProvider'
 import { CriticalNeedsPolicy } from './policies/CriticalNeedsPolicy'
 import { HomeRelocationPolicy } from './policies/HomeRelocationPolicy'
@@ -224,12 +225,13 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		})
 
 		this.event.on(WorkProviderEvents.SS.StepCompleted, (data: { step: WorkStep }) => {
-			this.markLogisticsDirtyFromStep(data.step)
+			this.logisticsCoordinator.handleStepEvent(data.step)
 		})
 
 		this.event.on(WorkProviderEvents.SS.StepFailed, (data: { step: WorkStep }) => {
-			this.markLogisticsDirtyFromStep(data.step)
+			this.logisticsCoordinator.handleStepEvent(data.step)
 		})
+
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {
@@ -242,27 +244,6 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		this.constructionCoordinator.assignConstructionWorkers()
 		this.roadCoordinator.assignRoadWorkers()
 		this.dispatcher.processPendingDispatches()
-	}
-
-	private markLogisticsDirtyFromStep(step: WorkStep): void {
-		if ('buildingInstanceId' in step && typeof step.buildingInstanceId === 'string') {
-			this.logisticsCoordinator.markBuildingDirty(step.buildingInstanceId)
-		}
-
-		switch (step.type) {
-			case WorkStepType.Transport:
-				if (step.source.type === TransportSourceType.Storage) {
-					this.logisticsCoordinator.markBuildingDirty(step.source.buildingInstanceId)
-				}
-				this.logisticsCoordinator.markBuildingDirty(step.target.buildingInstanceId)
-				break
-			case WorkStepType.Wait:
-			case WorkStepType.AcquireTool:
-			case WorkStepType.BuildRoad:
-				break
-			default:
-				break
-		}
 	}
 
 	private migrateWarehouseAssignments(): void {
@@ -549,38 +530,107 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			return
 		}
 
-		this.actionSystem.abort(data.settlerId)
+		const exitActions = this.buildExitActions(assignment, data.settlerId) ?? []
+		const exitFallback = exitActions.length > 0 ? exitActions : null
+		const finalizeExit = () => {
+			this.managers.population.setSettlerState(data.settlerId, SettlerState.Idle)
+		}
+		const replaced = this.actionSystem.replaceQueueAfterCurrent(
+			data.settlerId,
+			exitActions,
+			finalizeExit,
+			() => finalizeExit()
+		)
+
+		if (!replaced) {
+			this.actionSystem.abort(data.settlerId)
+		}
 		this.dispatcher.clearSettlerState(data.settlerId)
 
 		this.assignments.remove(data.settlerId)
-		if (assignment.buildingInstanceId) {
-			this.managers.buildings.setAssignedWorker(assignment.buildingInstanceId, data.settlerId, false)
-			const provider = assignment.providerType === WorkProviderType.Logistics
-				? this.logisticsProvider
-				: (assignment.providerType === WorkProviderType.Construction
-					? this.providers.getConstruction(assignment.buildingInstanceId)
-					: this.providers.getBuilding(assignment.buildingInstanceId))
-			provider?.unassign(data.settlerId)
-		} else {
-			const provider = this.registry.get(assignment.providerId)
-			provider?.unassign(data.settlerId)
-		}
+		this.releaseAssignmentResources(assignment, data.settlerId)
+		this.unassignFromProvider(assignment, data.settlerId)
 
 		this.managers.population.setSettlerAssignment(data.settlerId, undefined, undefined, undefined)
-		this.managers.population.setSettlerState(data.settlerId, SettlerState.Idle)
 		this.managers.population.setSettlerWaitReason(data.settlerId, undefined)
+		if (!replaced) {
+			this.enqueueExitOrIdle(data.settlerId, exitFallback)
+		}
 
 		this.event.emit(Receiver.All, WorkProviderEvents.SS.AssignmentRemoved, { assignmentId: assignment.assignmentId })
-		if (assignment.buildingInstanceId) {
-			const building = this.managers.buildings.getBuildingInstance(assignment.buildingInstanceId)
-			if (building) {
-				this.event.emit(Receiver.Group, PopulationEvents.SC.WorkerUnassigned, {
-					settlerId: data.settlerId,
-					assignmentId: assignment.assignmentId,
-					buildingInstanceId: assignment.buildingInstanceId
-				}, building.mapId)
-			}
+		this.emitWorkerUnassigned(assignment, data.settlerId)
+	}
+
+	private releaseAssignmentResources(assignment: WorkAssignment, settlerId: string): void {
+		if (!assignment.buildingInstanceId) {
+			return
 		}
+		this.managers.buildings.setAssignedWorker(assignment.buildingInstanceId, settlerId, false)
+	}
+
+	private unassignFromProvider(assignment: WorkAssignment, settlerId: string): void {
+		const provider = this.resolveProviderForAssignment(assignment)
+		provider?.unassign(settlerId)
+	}
+
+	private resolveProviderForAssignment(assignment: WorkAssignment): WorkProvider | undefined {
+		if (assignment.providerType === WorkProviderType.Logistics) {
+			return this.logisticsProvider
+		}
+		if (assignment.providerType === WorkProviderType.Construction && assignment.buildingInstanceId) {
+			return this.providers.getConstruction(assignment.buildingInstanceId) ?? undefined
+		}
+		if (assignment.providerType === WorkProviderType.Building && assignment.buildingInstanceId) {
+			return this.providers.getBuilding(assignment.buildingInstanceId) ?? undefined
+		}
+		return this.registry.get(assignment.providerId)
+	}
+
+	private enqueueExitOrIdle(settlerId: string, exitActions: WorkAction[] | null): void {
+		if (!exitActions || exitActions.length === 0) {
+			this.managers.population.setSettlerState(settlerId, SettlerState.Idle)
+			return
+		}
+		const finalizeExit = () => {
+			this.managers.population.setSettlerState(settlerId, SettlerState.Idle)
+		}
+		this.actionSystem.enqueue(settlerId, exitActions, finalizeExit, () => finalizeExit())
+	}
+
+	private buildExitActions(assignment: WorkAssignment, settlerId: string): WorkAction[] | null {
+		const provider = this.resolveProviderForAssignment(assignment)
+		const step: WorkStep | null = provider?.requestUnassignStep?.(settlerId) ?? null
+		if (!step) {
+			return null
+		}
+		const handler = StepHandlers[step.type]
+		if (!handler) {
+			return null
+		}
+		const result = handler.build({
+			settlerId,
+			assignment,
+			step,
+			managers: this.managers,
+			reservationSystem: this.managers.reservations,
+			simulationTimeMs: this.simulationTimeMs
+		})
+		return result.actions
+	}
+
+	private emitWorkerUnassigned(assignment: WorkAssignment, settlerId: string): void {
+		if (!assignment.buildingInstanceId) {
+			return
+		}
+		const building = this.managers.buildings.getBuildingInstance(assignment.buildingInstanceId)
+		if (!building) {
+			return
+		}
+		this.event.emit(Receiver.Group, PopulationEvents.SC.WorkerUnassigned, {
+			settlerId,
+			assignmentId: assignment.assignmentId,
+			buildingInstanceId: assignment.buildingInstanceId
+		}, building.mapId)
 	}
 
 	private getServerClient(mapId?: string): EventClient {

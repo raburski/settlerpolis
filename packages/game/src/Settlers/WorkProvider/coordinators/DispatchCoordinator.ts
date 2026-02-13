@@ -1,26 +1,58 @@
-import { Receiver } from '../../Receiver'
-import type { EventManager } from '../../events'
-import type { WorkProviderDeps } from './deps'
-import type { AssignmentStore } from './AssignmentStore'
-import type { ProviderRegistry } from './ProviderRegistry'
-import { WorkProviderEvents } from './events'
-import type { WorkAssignment, WorkStep, WorkAction } from './types'
-import { TransportTargetType, WorkProviderType, WorkStepType, WorkWaitReason } from './types'
-import { SettlerState } from '../../Population/types'
-import { StepHandlers } from './stepHandlers'
-import type { ActionSystem } from './ActionSystem'
-import type { LogisticsProvider } from './providers/LogisticsProvider'
-import type { PolicyEngine } from './PolicyEngine'
-import type { ProductionTracker } from './ProductionTracker'
-import type { ActionQueueContext } from '../../state/types'
-import { ActionQueueContextKind } from '../../state/types'
-import type { WorkPolicyContext } from './policies/types'
-import { WorkPolicyPhase } from './policies/constants'
-import type { PausedContext } from '../../Needs/types'
-import type { SettlerId } from '../../ids'
+import { Receiver } from '../../../Receiver'
+import type { EventManager } from '../../../events'
+import type { WorkProviderDeps } from '../deps'
+import type { AssignmentStore } from '../AssignmentStore'
+import type { ProviderRegistry } from '../ProviderRegistry'
+import { WorkProviderEvents } from '../events'
+import type { WorkAssignment, WorkStep, WorkAction } from '../types'
+import { TransportTargetType, WorkProviderType, WorkStepType, WorkWaitReason } from '../types'
+import { SettlerState } from '../../../Population/types'
+import { StepHandlers } from '../stepHandlers'
+import type { ActionSystem } from '../ActionSystem'
+import type { LogisticsProvider } from '../providers/LogisticsProvider'
+import type { PolicyEngine } from '../PolicyEngine'
+import type { ProductionTracker } from '../ProductionTracker'
+import type { ActionQueueContext } from '../../../state/types'
+import { ActionQueueContextKind } from '../../../state/types'
+import type { WorkPolicyContext } from '../policies/types'
+import { WorkPolicyPhase } from '../policies/constants'
+import type { PausedContext } from '../../../Needs/types'
+import type { SettlerId } from '../../../ids'
+import { calculateDistance } from '../../../utils'
+import type { BuildingDefinition, BuildingInstance } from '../../../Buildings/types'
+import type { MapData } from '../../../Map/types'
 
 const MOVEMENT_RECOVERY_COOLDOWN_MS = 8000
 const MOVEMENT_FAILURE_MAX_RETRIES = 3
+const DEFAULT_TILE_SIZE = 32
+const CONSTRUCTION_ACTIVE_MARGIN_TILES = 1
+
+const getRotatedFootprint = (definition: BuildingDefinition, rotation: number): { width: number; height: number } => {
+	const turns = ((rotation % 4) + 4) % 4
+	if (turns % 2 === 1) {
+		return { width: definition.footprint.height, height: definition.footprint.width }
+	}
+	return { width: definition.footprint.width, height: definition.footprint.height }
+}
+
+const isSettlerInConstructionArea = (
+	settlerPosition: { x: number; y: number },
+	building: BuildingInstance,
+	definition: BuildingDefinition,
+	map?: MapData | null
+): boolean => {
+	const tileSize = map?.tiledMap?.tilewidth || DEFAULT_TILE_SIZE
+	const rotation = typeof building.rotation === 'number' ? building.rotation : 0
+	const footprint = getRotatedFootprint(definition, rotation)
+	const widthPx = footprint.width * tileSize
+	const heightPx = footprint.height * tileSize
+	const center = {
+		x: building.position.x + widthPx / 2,
+		y: building.position.y + heightPx / 2
+	}
+	const radius = Math.max(widthPx, heightPx) / 2 + CONSTRUCTION_ACTIVE_MARGIN_TILES * tileSize
+	return calculateDistance(settlerPosition, center) <= radius
+}
 
 export class DispatchCoordinator {
 	private movementRecoveryUntil = new Map<SettlerId, number>()
@@ -53,6 +85,33 @@ export class DispatchCoordinator {
 		}
 		const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
 		return Boolean(definition?.isWarehouse)
+	}
+
+	private maybeActivateConstructionWorker(settlerId: SettlerId, step: WorkStep): void {
+		if (step.type !== WorkStepType.Construct) {
+			return
+		}
+		const settler = this.managers.population.getSettler(settlerId)
+		const building = this.managers.buildings.getBuildingInstance(step.buildingInstanceId)
+		if (!settler || !building) {
+			return
+		}
+		const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
+		if (!definition) {
+			return
+		}
+		const map = this.managers.map.getMap(building.mapId)
+		if (!isSettlerInConstructionArea(settler.position, building, definition, map)) {
+			return
+		}
+		this.managers.buildings.setConstructionWorkerActive(building.id, settlerId, true)
+	}
+
+	private clearConstructionWorker(settlerId: SettlerId, step: WorkStep): void {
+		if (step.type !== WorkStepType.Construct) {
+			return
+		}
+		this.managers.buildings.setConstructionWorkerActive(step.buildingInstanceId, settlerId, false)
 	}
 
 	processPendingDispatches(): void {
@@ -174,6 +233,7 @@ export class DispatchCoordinator {
 		}
 
 		this.productionTracker.updateForStep(assignment, step)
+		this.maybeActivateConstructionWorker(settlerId, step)
 
 		this.event.emit(Receiver.All, WorkProviderEvents.SS.StepIssued, { settlerId, step })
 		const { actions, releaseReservations } = this.buildActionsForStep(settlerId, assignment, step)
@@ -283,6 +343,7 @@ export class DispatchCoordinator {
 		this.event.emit(Receiver.All, WorkProviderEvents.SS.StepCompleted, { settlerId, step })
 		this.managers.population.setSettlerLastStep(settlerId, step.type, undefined)
 		this.managers.population.setSettlerState(settlerId, SettlerState.Idle)
+		this.clearConstructionWorker(settlerId, step)
 		this.movementFailureCounts.delete(settlerId)
 		if (step.type === WorkStepType.Transport && step.target.type === TransportTargetType.Construction) {
 			this.logisticsProvider.releaseConstructionInFlight(step.target.buildingInstanceId, step.itemType, step.quantity)
@@ -308,6 +369,7 @@ export class DispatchCoordinator {
 	): void {
 		releaseReservations?.()
 		this.event.emit(Receiver.All, WorkProviderEvents.SS.StepFailed, { settlerId, step, reason })
+		this.clearConstructionWorker(settlerId, step)
 		let retryDelayMs = 1000
 		const isWaitReason = (Object.values(WorkWaitReason) as string[]).includes(reason)
 		let waitReason: WorkWaitReason = isWaitReason ? (reason as WorkWaitReason) : WorkWaitReason.NoWork

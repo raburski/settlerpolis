@@ -45,7 +45,8 @@ export enum WorkStepType {
 	Transport = 'transport',
 	MarketRun = 'market_run',
 	Wait = 'wait',
-	Prospect = 'prospect'
+	Prospect = 'prospect',
+	StepAway = 'step_away'
 }
 
 export enum WorkWaitReason {
@@ -132,6 +133,7 @@ export type WorkStep =
 	| { type: WorkStepType.MarketRun, buildingInstanceId: BuildingInstanceId }
 	| { type: WorkStepType.Prospect, resourceNodeId: ResourceNodeId, durationMs: number }
 	| { type: WorkStepType.Wait, reason: WorkWaitReason, retryAtMs?: number }
+	| { type: WorkStepType.StepAway, targetPosition: Position, targetType?: MoveTargetType, targetId?: string }
 
 export type TransportSource =
 	| { type: TransportSourceType.Ground, itemId: LootItemId, position: Position }
@@ -170,6 +172,7 @@ export interface WorkProvider {
 	pause(settlerId: SettlerId, reason?: string): void
 	resume(settlerId: SettlerId): void
 	requestNextStep(settlerId: SettlerId): WorkStep | null
+	requestUnassignStep?(settlerId: SettlerId): WorkStep | null
 }
 
 export type LogisticsRequest =
