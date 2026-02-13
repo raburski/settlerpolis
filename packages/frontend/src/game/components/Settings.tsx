@@ -11,13 +11,16 @@ import {
 	setHighFidelity,
 	setScrollSensitivity
 } from '../services/DisplaySettings'
+import { getAutoRequestWorker, setAutoRequestWorker } from '../services/GameplaySettings'
 
 export function Settings() {
 	const { isVisible, isExiting, toggle, close } = useSlidingPanel()
 	const initialHighFidelity = useMemo(() => getHighFidelity(), [])
 	const initialScrollSensitivity = useMemo(() => getScrollSensitivity(), [])
+	const initialAutoRequestWorker = useMemo(() => getAutoRequestWorker(), [])
 	const [highFidelity, setHighFidelityState] = useState(initialHighFidelity)
 	const [scrollSensitivity, setScrollSensitivityState] = useState(initialScrollSensitivity)
+	const [autoRequestWorker, setAutoRequestWorkerState] = useState(initialAutoRequestWorker)
 	const scrollOptions = useMemo(() => getScrollSensitivityOptions(), [])
 
 	useEventBus(UiEvents.Settings.Toggle, toggle)
@@ -36,6 +39,11 @@ export function Settings() {
 		const level = setScrollSensitivity(Number(event.target.value))
 		setScrollSensitivityState(level)
 		EventBus.emit(UiEvents.Settings.ScrollSensitivity, { level })
+	}
+	const handleAutoRequestWorkerChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+		const enabled = event.target.checked
+		setAutoRequestWorkerState(enabled)
+		setAutoRequestWorker(enabled)
 	}
 
 	if (!isVisible && !isExiting) {
@@ -121,6 +129,21 @@ export function Settings() {
 										</option>
 									))}
 								</select>
+							</div>
+						</div>
+					</div>
+					<div className={styles.settingCard}>
+						<h3 className={styles.settingTitle}>Automation</h3>
+						<div className={styles.settingContent}>
+							<div className={styles.settingRow}>
+								<label htmlFor="autoRequestWorker">Auto-request first worker</label>
+								<input
+									id="autoRequestWorker"
+									type="checkbox"
+									className={styles.checkbox}
+									checked={autoRequestWorker}
+									onChange={handleAutoRequestWorkerChange}
+								/>
 							</div>
 						</div>
 					</div>

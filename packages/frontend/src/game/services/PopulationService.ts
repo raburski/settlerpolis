@@ -1,9 +1,20 @@
 import { EventBus } from '../EventBus'
 import { Event } from '@rugged/game'
-import { Settler, PopulationListData, PopulationStatsData, ProfessionType, SettlerPatch, SettlerState, ConstructionStage, WorkerRequestFailureReason } from '@rugged/game'
+import {
+	BuildingInstance,
+	Settler,
+	PopulationListData,
+	PopulationStatsData,
+	ProfessionType,
+	SettlerPatch,
+	SettlerState,
+	ConstructionStage,
+	WorkerRequestFailureReason
+} from '@rugged/game'
 import { buildingService } from './BuildingService'
 import type { WorkAssignment } from '@rugged/game/Settlers/WorkProvider/types'
 import { UiEvents } from '../uiEvents'
+import { getAutoRequestWorker } from './GameplaySettings'
 
 class PopulationServiceClass {
 	private settlers = new Map<string, Settler>() // settlerId -> Settler
@@ -173,9 +184,10 @@ class PopulationServiceClass {
 				this.housingCapacityDirty = true
 				this.scheduleStatsRefresh(true)
 			})
-			EventBus.on(Event.Buildings.SC.Completed, () => {
+			EventBus.on(Event.Buildings.SC.Completed, (data: { building: BuildingInstance }) => {
 				this.housingCapacityDirty = true
 				this.scheduleStatsRefresh(true)
+				this.maybeAutoRequestWorker(data.building)
 			})
 			EventBus.on(Event.Buildings.SC.Cancelled, () => {
 				this.housingCapacityDirty = true
@@ -369,6 +381,42 @@ class PopulationServiceClass {
 
 	private doesPatchAffectStats(patch: SettlerPatch): boolean {
 		return patch.state !== undefined || patch.profession !== undefined
+	}
+
+	private getAssignedWorkerCount(buildingInstanceId: string): number {
+		let count = 0
+		for (const settler of this.settlers.values()) {
+			if (settler.buildingId !== buildingInstanceId) {
+				continue
+			}
+			if (settler.stateContext?.assignmentId) {
+				count += 1
+			}
+		}
+		return count
+	}
+
+	private maybeAutoRequestWorker(building: BuildingInstance): void {
+		if (!getAutoRequestWorker()) {
+			return
+		}
+		if (building.stage !== ConstructionStage.Completed) {
+			return
+		}
+		const definition = buildingService.getBuildingDefinition(building.buildingId)
+		const maxWorkers = definition?.workerSlots ?? 0
+		if (maxWorkers <= 0) {
+			return
+		}
+		const assignedWorkers = this.getAssignedWorkerCount(building.id)
+		if (assignedWorkers > 0) {
+			return
+		}
+		const pendingWorkers = building.pendingWorkers ?? 0
+		if (pendingWorkers > 0) {
+			return
+		}
+		this.requestWorker(building.id)
 	}
 
 	// Public getters
