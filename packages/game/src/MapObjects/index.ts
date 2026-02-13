@@ -276,12 +276,19 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 		this.addObjectToMap(mapObject)
 	}
 
-	public placeObject(playerId: string, data: PlaceObjectData, client: EventClient): MapObject | null {
-		// Check for collisions (pass metadata so buildings can use footprint)
-		const hasCollision = this.checkCollision(client.currentGroup, data.position, data.item, data.metadata)
-		if (hasCollision) {
-			this.logger.debug(`Collision detected at position:`, data.position)
-			return null
+	public placeObject(
+		playerId: string,
+		data: PlaceObjectData,
+		client: EventClient,
+		options?: { skipCollisionCheck?: boolean }
+	): MapObject | null {
+		if (!options?.skipCollisionCheck) {
+			// Check for collisions (pass metadata so buildings can use footprint)
+			const hasCollision = this.checkCollision(client.currentGroup, data.position, data.item, data.metadata)
+			if (hasCollision) {
+				this.logger.debug(`Collision detected at position:`, data.position)
+				return null
+			}
 		}
 
 		// Create the object

@@ -19,8 +19,8 @@ import { ConstructionStage } from '../../Buildings/types'
 import { ProviderRegistry } from './ProviderRegistry'
 import { ActionSystem, type ActionQueueContextResolver } from './ActionSystem'
 import { WorkProviderEvents } from './events'
-import type { WorkAssignment, WorkAction, LogisticsRequest } from './types'
-import { WorkProviderType, WorkAssignmentStatus } from './types'
+import type { WorkAssignment, WorkAction, LogisticsRequest, WorkStep } from './types'
+import { TransportSourceType, WorkProviderType, WorkAssignmentStatus, WorkStepType } from './types'
 import type { ActionQueueContext, WorkProviderSnapshot } from '../../state/types'
 import { ActionQueueContextKind } from '../../state/types'
 import { AssignmentStore } from './AssignmentStore'
@@ -167,12 +167,32 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			this.productionTracker.handleProductionPaused(data)
 		})
 
-		this.event.on(BuildingsEvents.SS.ConstructionCompleted, (data: { buildingInstanceId: string }) => {
-			this.constructionCoordinator.unassignAllForBuilding(data.buildingInstanceId)
+		this.event.on(BuildingsEvents.CS.Place, (_data, client) => {
+			this.logisticsCoordinator.markMapDirty(client.currentGroup)
 		})
 
-		this.event.on(BuildingsEvents.SS.Removed, (data: { buildingInstanceId: string }) => {
+		this.event.on(BuildingsEvents.CS.Cancel, (data: { buildingInstanceId: string }) => {
+			this.logisticsCoordinator.markBuildingDirty(data.buildingInstanceId)
+		})
+
+		this.event.on(BuildingsEvents.CS.SetStorageRequests, (data: { buildingInstanceId: string }) => {
+			this.logisticsCoordinator.markBuildingDirty(data.buildingInstanceId, {
+				consumption: false,
+				construction: false,
+				warehouse: true
+			})
+		})
+
+		this.event.on(BuildingsEvents.SS.ConstructionCompleted, (data: { buildingInstanceId: string, mapId?: string }) => {
 			this.constructionCoordinator.unassignAllForBuilding(data.buildingInstanceId)
+			this.logisticsCoordinator.markBuildingDirty(data.buildingInstanceId)
+			this.logisticsCoordinator.markMapDirty(data.mapId)
+		})
+
+		this.event.on(BuildingsEvents.SS.Removed, (data: { buildingInstanceId: string, mapId?: string }) => {
+			this.constructionCoordinator.unassignAllForBuilding(data.buildingInstanceId)
+			this.logisticsCoordinator.markBuildingDirty(data.buildingInstanceId)
+			this.logisticsCoordinator.markMapDirty(data.mapId)
 		})
 
 		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
@@ -192,6 +212,14 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			this.logisticsProvider.setItemPriorities(priorities)
 			this.logisticsCoordinator.broadcast()
 		})
+
+		this.event.on(WorkProviderEvents.SS.StepCompleted, (data: { step: WorkStep }) => {
+			this.markLogisticsDirtyFromStep(data.step)
+		})
+
+		this.event.on(WorkProviderEvents.SS.StepFailed, (data: { step: WorkStep }) => {
+			this.markLogisticsDirtyFromStep(data.step)
+		})
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {
@@ -204,6 +232,27 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		this.constructionCoordinator.assignConstructionWorkers()
 		this.roadCoordinator.assignRoadWorkers()
 		this.dispatcher.processPendingDispatches()
+	}
+
+	private markLogisticsDirtyFromStep(step: WorkStep): void {
+		if ('buildingInstanceId' in step && typeof step.buildingInstanceId === 'string') {
+			this.logisticsCoordinator.markBuildingDirty(step.buildingInstanceId)
+		}
+
+		switch (step.type) {
+			case WorkStepType.Transport:
+				if (step.source.type === TransportSourceType.Storage) {
+					this.logisticsCoordinator.markBuildingDirty(step.source.buildingInstanceId)
+				}
+				this.logisticsCoordinator.markBuildingDirty(step.target.buildingInstanceId)
+				break
+			case WorkStepType.Wait:
+			case WorkStepType.AcquireTool:
+			case WorkStepType.BuildRoad:
+				break
+			default:
+				break
+		}
 	}
 
 	private migrateWarehouseAssignments(): void {

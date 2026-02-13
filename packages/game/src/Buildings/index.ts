@@ -318,7 +318,9 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.initializeBuildingResources(buildingInstance, definition)
 
 		// Try to place the object
-		const placedObject = this.managers.mapObjects.placeObject(client.id, placeObjectData, client)
+		const placedObject = this.managers.mapObjects.placeObject(client.id, placeObjectData, client, {
+			skipCollisionCheck: true
+		})
 		if (!placedObject) {
 			this.logger.error(`Failed to place building at position:`, position)
 			return
