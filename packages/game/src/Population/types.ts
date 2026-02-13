@@ -110,6 +110,40 @@ export interface Settler {
 	createdAt: number
 }
 
+export type SettlerAnimationKey =
+	| 'idle'
+	| 'walk'
+	| 'run'
+	| 'work'
+	| 'carry'
+	| 'wait'
+	| 'sleep'
+	| 'consume'
+	| 'construct'
+	| 'harvest'
+	| 'fish'
+	| 'hunt'
+	| 'plant'
+	| 'produce'
+	| 'build_road'
+
+export interface SettlerRenderDefinition {
+	profession: ProfessionType
+	modelSrc: string
+	animationSrc?: string
+	transform?: {
+		rotation?: { x: number; y: number; z: number }
+		scale?: { x: number; y: number; z: number }
+		elevation?: number
+		offset?: { x: number; y: number; z: number }
+	}
+	animations?: Partial<Record<SettlerAnimationKey, string>>
+	attachments?: {
+		carrySocket?: string
+		toolSocket?: string
+	}
+}
+
 
 export interface SpawnSettlerData {
 	houseBuildingInstanceId: BuildingInstanceId

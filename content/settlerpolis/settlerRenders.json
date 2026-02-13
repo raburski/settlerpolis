@@ -1,0 +1,27 @@
+{
+  "settlerRenders": [
+    {
+      "profession": "builder",
+      "modelSrc": "/assets/library/settlers/builder1.glb",
+      "animationSrc": "/assets/library/settlers/builder1_animations.glb",
+      "transform": {
+        "scale": {
+          "x": 1,
+          "y": 1,
+          "z": 1
+        }
+      },
+      "animations": {
+        "idle": "Idle_3",
+        "walk": "Walking",
+        "run": "Running",
+        "work": "Idle_3",
+        "carry": "Walking"
+      },
+      "attachments": {
+        "carrySocket": "RightHand",
+        "toolSocket": "RightHand"
+      }
+    }
+  ]
+}
