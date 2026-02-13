@@ -9,11 +9,105 @@ interface Node {
 	h: number
 	f: number
 	parent: Node | null
+	closed: boolean
+	heapIndex: number
 }
 
 interface Neighbor {
 	position: Position
 	cost: number
+}
+
+class MinNodeHeap {
+	private readonly items: Node[] = []
+
+	get size(): number {
+		return this.items.length
+	}
+
+	push(node: Node): void {
+		node.heapIndex = this.items.length
+		this.items.push(node)
+		this.bubbleUp(node.heapIndex)
+	}
+
+	pop(): Node | undefined {
+		if (this.items.length === 0) {
+			return undefined
+		}
+
+		const root = this.items[0]
+		const last = this.items.pop()!
+		if (this.items.length > 0) {
+			this.items[0] = last
+			last.heapIndex = 0
+			this.bubbleDown(0)
+		}
+		root.heapIndex = -1
+		return root
+	}
+
+	update(node: Node): void {
+		const index = node.heapIndex
+		if (index < 0 || index >= this.items.length) {
+			return
+		}
+		if (!this.bubbleUp(index)) {
+			this.bubbleDown(index)
+		}
+	}
+
+	private bubbleUp(startIndex: number): boolean {
+		let index = startIndex
+		let moved = false
+		while (index > 0) {
+			const parentIndex = Math.floor((index - 1) / 2)
+			if (!this.isHigherPriority(this.items[index], this.items[parentIndex])) {
+				break
+			}
+			this.swap(index, parentIndex)
+			index = parentIndex
+			moved = true
+		}
+		return moved
+	}
+
+	private bubbleDown(startIndex: number): void {
+		let index = startIndex
+		while (true) {
+			const left = index * 2 + 1
+			const right = left + 1
+			let smallest = index
+
+			if (left < this.items.length && this.isHigherPriority(this.items[left], this.items[smallest])) {
+				smallest = left
+			}
+			if (right < this.items.length && this.isHigherPriority(this.items[right], this.items[smallest])) {
+				smallest = right
+			}
+			if (smallest === index) {
+				return
+			}
+			this.swap(index, smallest)
+			index = smallest
+		}
+	}
+
+	private isHigherPriority(a: Node, b: Node): boolean {
+		if (a.f === b.f) {
+			return a.h < b.h
+		}
+		return a.f < b.f
+	}
+
+	private swap(aIndex: number, bIndex: number): void {
+		const a = this.items[aIndex]
+		const b = this.items[bIndex]
+		this.items[aIndex] = b
+		this.items[bIndex] = a
+		b.heapIndex = aIndex
+		a.heapIndex = bIndex
+	}
 }
 
 export class Pathfinder {
@@ -25,45 +119,56 @@ export class Pathfinder {
 		options?: { roads?: RoadData, allowDiagonal?: boolean }
 	): Position[] {
 		const allowDiagonal = options?.allowDiagonal ?? false
-		const openSet: Node[] = []
-		const closedSet: Set<string> = new Set()
+		const openSet = new MinNodeHeap()
+		const nodesByKey = new Map<string, Node>()
+		const startHeuristic = this.heuristic(start, end, allowDiagonal)
 		const startNode: Node = {
 			position: start,
 			g: 0,
-			h: this.heuristic(start, end, allowDiagonal),
-			f: this.heuristic(start, end, allowDiagonal),
-			parent: null
+			h: startHeuristic,
+			f: startHeuristic,
+			parent: null,
+			closed: false,
+			heapIndex: -1
 		}
 
+		nodesByKey.set(this.getPositionKey(start), startNode)
 		openSet.push(startNode)
 
-		while (openSet.length > 0) {
-			// Find node with lowest f cost
-			let currentIndex = 0
-			for (let i = 1; i < openSet.length; i++) {
-				if (openSet[i].f < openSet[currentIndex].f) {
-					currentIndex = i
-				}
+		while (openSet.size > 0) {
+			const current = openSet.pop()
+			if (!current || current.closed) {
+				continue
 			}
-
-			const current = openSet[currentIndex]
 
 			// If we reached the end, reconstruct and return the path
 			if (current.position.x === end.x && current.position.y === end.y) {
 				return this.reconstructPath(current)
 			}
 
-			// Move current from open to closed set
-			openSet.splice(currentIndex, 1)
-			closedSet.add(`${current.position.x},${current.position.y}`)
+			current.closed = true
 
 			// Check all neighbors
 			const neighbors = this.getNeighbors(current.position, collision, allowDiagonal)
 			for (const neighbor of neighbors) {
-				const neighborKey = `${neighbor.position.x},${neighbor.position.y}`
+				const neighborKey = this.getPositionKey(neighbor.position)
+				let neighborNode = nodesByKey.get(neighborKey)
+				if (!neighborNode) {
+					const heuristic = this.heuristic(neighbor.position, end, allowDiagonal)
+					neighborNode = {
+						position: neighbor.position,
+						g: Number.POSITIVE_INFINITY,
+						h: heuristic,
+						f: Number.POSITIVE_INFINITY,
+						parent: null,
+						closed: false,
+						heapIndex: -1
+					}
+					nodesByKey.set(neighborKey, neighborNode)
+				}
 
 				// Skip if already evaluated
-				if (closedSet.has(neighborKey)) {
+				if (neighborNode.closed) {
 					continue
 				}
 
@@ -73,25 +178,15 @@ export class Pathfinder {
 				const tentativeG = current.g + neighbor.cost * roadCostMultiplier + pathCost
 
 				// Check if this path to neighbor is better
-				const existingNeighbor = openSet.find(
-					n => n.position.x === neighbor.position.x && n.position.y === neighbor.position.y
-				)
+				if (tentativeG < neighborNode.g) {
+					neighborNode.g = tentativeG
+					neighborNode.f = tentativeG + neighborNode.h
+					neighborNode.parent = current
 
-				if (!existingNeighbor || tentativeG < existingNeighbor.g) {
-					const neighborNode: Node = {
-						position: neighbor.position,
-						g: tentativeG,
-						h: this.heuristic(neighbor.position, end, allowDiagonal),
-						f: tentativeG + this.heuristic(neighbor.position, end, allowDiagonal),
-						parent: current
-					}
-
-					if (!existingNeighbor) {
+					if (neighborNode.heapIndex === -1) {
 						openSet.push(neighborNode)
 					} else {
-						existingNeighbor.g = tentativeG
-						existingNeighbor.f = tentativeG + existingNeighbor.h
-						existingNeighbor.parent = current
+						openSet.update(neighborNode)
 					}
 				}
 			}
@@ -99,6 +194,10 @@ export class Pathfinder {
 
 		// No path found
 		return []
+	}
+
+	private static getPositionKey(position: Position): string {
+		return `${position.x},${position.y}`
 	}
 
 	private static heuristic(a: Position, b: Position, allowDiagonal: boolean): number {
