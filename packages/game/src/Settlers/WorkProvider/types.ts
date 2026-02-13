@@ -54,6 +54,7 @@ export enum WorkWaitReason {
 	NoNodes = 'no_nodes',
 	OutputFull = 'output_full',
 	MissingInputs = 'missing_inputs',
+	NoRoadAccess = 'no_road_access',
 	CarryingItem = 'carrying_item',
 	NoPlots = 'no_plots',
 	WrongProfession = 'wrong_profession',
