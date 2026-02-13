@@ -1,5 +1,5 @@
 import { EventManager, Event, EventClient } from '../events'
-import { MapObject, PlaceObjectData, RemoveObjectData, SpawnObjectData, DespawnObjectData } from './types'
+import { MapObject, PlaceObjectData, RemoveObjectData, SpawnObjectData, DespawnObjectData, MapObjectId } from './types'
 import { Receiver } from '../Receiver'
 import { v4 as uuidv4 } from 'uuid'
 import { Item } from '../Items/types'
@@ -20,6 +20,11 @@ export interface MapObjectsDeps {
 export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 	// Map of mapId to MapObject[]
 	private mapObjectsByMap = new Map<string, Map<string, MapObject>>()
+	private objectChunksByMap = new Map<string, Map<string, Set<MapObjectId>>>()
+	private chunkKeysByObjectByMap = new Map<string, Map<MapObjectId, string[]>>()
+	private static readonly TILE_SIZE = 32
+	private static readonly CHUNK_SIZE_TILES = 16
+	private static readonly CHUNK_SIZE_PIXELS = MapObjectsManager.TILE_SIZE * MapObjectsManager.CHUNK_SIZE_TILES
 
 	constructor(
 		managers: MapObjectsDeps,
@@ -80,52 +85,17 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 		const objects = this.mapObjectsByMap.get(mapId)
 		if (!objects) return false
 
-		// Convert tile-based sizes to pixel-based sizes (assuming 32x32 tiles)
-		// TODO: Get actual tile size from MapManager
-		const TILE_SIZE = 32
+		const { width, height } = this.getObjectSizeInPixels(item, metadata)
+		const candidateObjects = this.getObjectsInArea(mapId, position, width, height)
 
-		// Get item size - check if it's a building with footprint in metadata
-		let width: number
-		let height: number
-		let footprint: { width: number, height: number } | undefined = undefined
-		
-		if (metadata?.footprint) {
-			// Building: use footprint from metadata (convert tiles to pixels)
-			footprint = metadata.footprint
-			width = metadata.footprint.width * TILE_SIZE
-			height = metadata.footprint.height * TILE_SIZE
-		} else {
-			// Regular item: use placement size from metadata (convert tiles to pixels)
-			const itemMetadata = item ? this.managers.items.getItemMetadata(item.itemType) : null
-			const placementWidth = itemMetadata?.placement?.size?.width || 1
-			const placementHeight = itemMetadata?.placement?.size?.height || 1
-			width = placementWidth * TILE_SIZE
-			height = placementHeight * TILE_SIZE
-		}
-
-		// Check each object in the map
-		for (const [_, object] of objects) {
-			// Get object's size - check if it's a building with footprint in metadata
-			let objectWidth: number
-			let objectHeight: number
-
-			if (object.metadata?.footprint) {
-				// Building: use footprint from metadata (convert tiles to pixels)
-				objectWidth = object.metadata.footprint.width * TILE_SIZE
-				objectHeight = object.metadata.footprint.height * TILE_SIZE
-			} else {
-				// Regular item: use placement size from metadata (convert tiles to pixels)
-				const objectMetadata = this.managers.items.getItemMetadata(object.item.itemType)
-				const placementWidth = objectMetadata?.placement?.size?.width || 1
-				const placementHeight = objectMetadata?.placement?.size?.height || 1
-				objectWidth = placementWidth * TILE_SIZE
-				objectHeight = placementHeight * TILE_SIZE
-			}
+		// Check each candidate object from nearby chunks
+		for (const object of candidateObjects) {
+			const objectSize = this.getObjectSizeInPixels(object.item, object.metadata)
 
 			// Check if the rectangles overlap
 			if (this.doRectanglesOverlap(
 				position, width, height,
-				object.position, objectWidth, objectHeight
+				object.position, objectSize.width, objectSize.height
 			)) {
 				// Allow storage piles to exist inside their parent building footprint
 				if (metadata?.storagePile && metadata?.buildingInstanceId &&
@@ -184,12 +154,14 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 		
 		// Add the object to the map
 		mapObjects.set(id, mapObject)
+		this.indexObject(mapObject)
 	}
 
 	private removeObjectFromMap(objectId: string, mapId: string) {
 		const mapObjects = this.mapObjectsByMap.get(mapId)
 		if (mapObjects) {
 			mapObjects.delete(objectId)
+			this.unindexObject(objectId, mapId)
 			
 			// Clean up empty map collections
 			if (mapObjects.size === 0) {
@@ -247,6 +219,36 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 	public getAllObjectsForMap(mapId: string): MapObject[] {
 		const mapObjects = this.getMapObjects(mapId)
 		return mapObjects ? Array.from(mapObjects.values()) : []
+	}
+
+	public getObjectsInArea(mapId: string, position: Position, width: number, height: number): MapObject[] {
+		const mapObjects = this.getMapObjects(mapId)
+		if (!mapObjects || mapObjects.size === 0) return []
+
+		const chunkMap = this.objectChunksByMap.get(mapId)
+		if (!chunkMap) {
+			return Array.from(mapObjects.values())
+		}
+
+		const candidateIds = new Set<MapObjectId>()
+		for (const chunkKey of this.getChunkKeysForArea(position, width, height)) {
+			const chunkObjects = chunkMap.get(chunkKey)
+			if (!chunkObjects) continue
+
+			for (const objectId of chunkObjects) {
+				candidateIds.add(objectId)
+			}
+		}
+
+		const candidates: MapObject[] = []
+		for (const objectId of candidateIds) {
+			const object = mapObjects.get(objectId)
+			if (object) {
+				candidates.push(object)
+			}
+		}
+
+		return candidates
 	}
 
 	// Get all map objects across all maps
@@ -327,21 +329,121 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 
 	deserialize(state: MapObjectsSnapshot): void {
 		this.mapObjectsByMap.clear()
+		this.objectChunksByMap.clear()
+		this.chunkKeysByObjectByMap.clear()
 		for (const [mapId, objects] of state.objectsByMap) {
-			const mapObjects = new Map<string, MapObject>()
 			for (const object of objects) {
-				mapObjects.set(object.id, {
+				this.addObjectToMap({
 					...object,
+					mapId,
 					position: { ...object.position },
 					item: { ...object.item },
 					metadata: object.metadata ? { ...object.metadata } : undefined
 				})
 			}
-			this.mapObjectsByMap.set(mapId, mapObjects)
 		}
 	}
 
 	reset(): void {
 		this.mapObjectsByMap.clear()
+		this.objectChunksByMap.clear()
+		this.chunkKeysByObjectByMap.clear()
+	}
+
+	private getObjectSizeInPixels(item?: Item, metadata?: Record<string, any>): { width: number, height: number } {
+		if (metadata?.footprint) {
+			return {
+				width: metadata.footprint.width * MapObjectsManager.TILE_SIZE,
+				height: metadata.footprint.height * MapObjectsManager.TILE_SIZE
+			}
+		}
+
+		const itemMetadata = item ? this.managers.items.getItemMetadata(item.itemType) : null
+		const placementWidth = itemMetadata?.placement?.size?.width || 1
+		const placementHeight = itemMetadata?.placement?.size?.height || 1
+
+		return {
+			width: placementWidth * MapObjectsManager.TILE_SIZE,
+			height: placementHeight * MapObjectsManager.TILE_SIZE
+		}
+	}
+
+	private indexObject(mapObject: MapObject): void {
+		const chunkMap = this.getOrCreateChunkMap(mapObject.mapId)
+		const chunkKeysByObject = this.getOrCreateChunkKeysByObjectMap(mapObject.mapId)
+		const objectSize = this.getObjectSizeInPixels(mapObject.item, mapObject.metadata)
+		const chunkKeys = this.getChunkKeysForArea(mapObject.position, objectSize.width, objectSize.height)
+
+		chunkKeysByObject.set(mapObject.id, chunkKeys)
+		for (const chunkKey of chunkKeys) {
+			let chunkObjects = chunkMap.get(chunkKey)
+			if (!chunkObjects) {
+				chunkObjects = new Set<MapObjectId>()
+				chunkMap.set(chunkKey, chunkObjects)
+			}
+			chunkObjects.add(mapObject.id)
+		}
+	}
+
+	private unindexObject(objectId: MapObjectId, mapId: string): void {
+		const chunkKeysByObject = this.chunkKeysByObjectByMap.get(mapId)
+		if (!chunkKeysByObject) return
+
+		const chunkMap = this.objectChunksByMap.get(mapId)
+		const chunkKeys = chunkKeysByObject.get(objectId) || []
+
+		for (const chunkKey of chunkKeys) {
+			const chunkObjects = chunkMap?.get(chunkKey)
+			if (!chunkObjects) continue
+
+			chunkObjects.delete(objectId)
+			if (chunkObjects.size === 0) {
+				chunkMap?.delete(chunkKey)
+			}
+		}
+
+		chunkKeysByObject.delete(objectId)
+
+		if (chunkMap && chunkMap.size === 0) {
+			this.objectChunksByMap.delete(mapId)
+		}
+		if (chunkKeysByObject.size === 0) {
+			this.chunkKeysByObjectByMap.delete(mapId)
+		}
+	}
+
+	private getOrCreateChunkMap(mapId: string): Map<string, Set<MapObjectId>> {
+		let chunkMap = this.objectChunksByMap.get(mapId)
+		if (!chunkMap) {
+			chunkMap = new Map<string, Set<MapObjectId>>()
+			this.objectChunksByMap.set(mapId, chunkMap)
+		}
+		return chunkMap
+	}
+
+	private getOrCreateChunkKeysByObjectMap(mapId: string): Map<MapObjectId, string[]> {
+		let chunkKeysByObject = this.chunkKeysByObjectByMap.get(mapId)
+		if (!chunkKeysByObject) {
+			chunkKeysByObject = new Map<MapObjectId, string[]>()
+			this.chunkKeysByObjectByMap.set(mapId, chunkKeysByObject)
+		}
+		return chunkKeysByObject
+	}
+
+	private getChunkKeysForArea(position: Position, width: number, height: number): string[] {
+		const endX = position.x + Math.max(0, width - 1)
+		const endY = position.y + Math.max(0, height - 1)
+		const minChunkX = Math.floor(position.x / MapObjectsManager.CHUNK_SIZE_PIXELS)
+		const maxChunkX = Math.floor(endX / MapObjectsManager.CHUNK_SIZE_PIXELS)
+		const minChunkY = Math.floor(position.y / MapObjectsManager.CHUNK_SIZE_PIXELS)
+		const maxChunkY = Math.floor(endY / MapObjectsManager.CHUNK_SIZE_PIXELS)
+
+		const chunkKeys: string[] = []
+		for (let chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+			for (let chunkY = minChunkY; chunkY <= maxChunkY; chunkY++) {
+				chunkKeys.push(`${chunkX}:${chunkY}`)
+			}
+		}
+		return chunkKeys
 	}
 }
