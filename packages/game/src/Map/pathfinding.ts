@@ -1,5 +1,5 @@
 import { Position } from '../types'
-import { CollisionData, PathData } from './types'
+import { CollisionData, CostData, PathData } from './types'
 import type { RoadData } from '../Roads/types'
 import { ROAD_PATH_PREFERENCE_MULTIPLIER, ROAD_SPEED_MULTIPLIERS, RoadType } from '../Roads/types'
 
@@ -111,12 +111,14 @@ class MinNodeHeap {
 }
 
 export class Pathfinder {
+	private static readonly DEFAULT_CONSTRUCTION_PENALTY = 1.5
+
 	static findPath(
 		collision: CollisionData,
 		paths: PathData,
 		start: Position,
 		end: Position,
-		options?: { roads?: RoadData, allowDiagonal?: boolean }
+		options?: { roads?: RoadData, allowDiagonal?: boolean, construction?: CostData, constructionPenalty?: number }
 	): Position[] {
 		const allowDiagonal = options?.allowDiagonal ?? false
 		const openSet = new MinNodeHeap()
@@ -174,8 +176,13 @@ export class Pathfinder {
 
 				// Calculate tentative g score with path preference
 				const pathCost = this.getPathCost(neighbor.position, paths)
+				const constructionCost = this.getConstructionCost(
+					neighbor.position,
+					options?.construction,
+					options?.constructionPenalty
+				)
 				const roadCostMultiplier = this.getRoadCostMultiplierForSegment(current.position, neighbor.position, options?.roads)
-				const tentativeG = current.g + neighbor.cost * roadCostMultiplier + pathCost
+				const tentativeG = current.g + neighbor.cost * roadCostMultiplier + pathCost + constructionCost
 
 				// Check if this path to neighbor is better
 				if (tentativeG < neighborNode.g) {
@@ -218,6 +225,22 @@ export class Pathfinder {
 			return paths.data[index] === 0 ? 0.5 : -0.5
 		}
 		return 0
+	}
+
+	private static getConstructionCost(position: Position, construction?: CostData, penalty?: number): number {
+		if (!construction) {
+			return 0
+		}
+		const index = position.y * construction.width + position.x
+		if (index < 0 || index >= construction.data.length) {
+			return 0
+		}
+		const value = construction.data[index] ?? 0
+		if (value <= 0) {
+			return 0
+		}
+		const appliedPenalty = typeof penalty === 'number' ? penalty : this.DEFAULT_CONSTRUCTION_PENALTY
+		return appliedPenalty * value
 	}
 
 	private static getNeighbors(position: Position, collision: CollisionData, allowDiagonal: boolean): Neighbor[] {

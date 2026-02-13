@@ -378,6 +378,9 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 		// Store building instance
 		this.buildings.set(buildingInstance.id, buildingInstance)
+		if (buildingInstance.stage !== ConstructionStage.Completed) {
+			this.updateConstructionPenalty(buildingInstance, true)
+		}
 
 		// Emit placed event - send building with empty collectedResources (client will track via ResourcesChanged events)
 		const clientBuilding = {
@@ -489,6 +492,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	private removeBuildingInstance(building: BuildingInstance): void {
+		this.updateConstructionPenalty(building, false)
 		if (building.stage === ConstructionStage.Completed) {
 			this.updateBlockedTiles(building, false)
 		}
@@ -770,6 +774,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		
 		// Update building stage
 		building.stage = ConstructionStage.Completed
+		this.updateConstructionPenalty(building, false)
 		this.updateBlockedTiles(building, true)
 
 		// Initialize storage for building if it has storage capacity
@@ -868,6 +873,35 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 				continue
 			}
 			this.managers.map.setDynamicCollision(building.mapId, tileX, tileY, blocked)
+		}
+	}
+
+	private updateConstructionPenalty(building: BuildingInstance, penalize: boolean): void {
+		const definition = this.definitions.get(building.buildingId)
+		if (!definition) {
+			return
+		}
+
+		const map = this.managers.map.getMap(building.mapId)
+		if (!map) {
+			return
+		}
+
+		const tileSize = map.tiledMap?.tilewidth || 32
+		const originTileX = Math.floor(building.position.x / tileSize)
+		const originTileY = Math.floor(building.position.y / tileSize)
+		const rotation = typeof building.rotation === 'number' ? building.rotation : 0
+		const footprint = this.getRotatedFootprint(definition, rotation)
+
+		for (let tileY = 0; tileY < footprint.height; tileY++) {
+			for (let tileX = 0; tileX < footprint.width; tileX++) {
+				this.managers.map.setConstructionPenalty(
+					building.mapId,
+					originTileX + tileX,
+					originTileY + tileY,
+					penalize
+				)
+			}
 		}
 	}
 
@@ -1867,6 +1901,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 		this.initializeStorageForExistingBuildings()
 		this.initializeCollisionForExistingBuildings()
+		this.initializeConstructionPenaltyForExistingBuildings()
 	}
 
 	private initializeStorageForExistingBuildings(): void {
@@ -1906,7 +1941,20 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 	}
 
+	private initializeConstructionPenaltyForExistingBuildings(): void {
+		if (this.definitions.size === 0) {
+			return
+		}
+		for (const building of this.buildings.values()) {
+			if (building.stage === ConstructionStage.Completed) {
+				continue
+			}
+			this.updateConstructionPenalty(building, true)
+		}
+	}
+
 	reset(): void {
+		this.managers.map.resetConstructionPenalties()
 		this.buildings.clear()
 		this.resourceRequests.clear()
 		this.assignedWorkers.clear()

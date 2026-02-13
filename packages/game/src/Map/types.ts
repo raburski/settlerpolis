@@ -149,6 +149,12 @@ export interface PathData {
 	data: number[]
 }
 
+export interface CostData {
+	width: number
+	height: number
+	data: ArrayLike<number>
+}
+
 export enum GroundType {
 	Grass = 'grass',
 	Dirt = 'dirt',

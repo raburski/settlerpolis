@@ -1,5 +1,5 @@
 import { EventManager, Event, EventClient } from '../events'
-import type { MapData, MapLayer, MapObjectLayer, MapLoadData, MapTransitionData, CollisionData, NPCSpots, NPCSpot, PathData, MapTrigger, TiledMap, MapUrlService, GroundType, TiledTileset } from './types'
+import type { MapData, MapLayer, MapObjectLayer, MapLoadData, MapTransitionData, CollisionData, CostData, NPCSpots, NPCSpot, PathData, MapTrigger, TiledMap, MapUrlService, GroundType, TiledTileset } from './types'
 import type { RoadData } from '../Roads/types'
 import { MapEvents } from './events'
 import { Receiver } from '../Receiver'
@@ -17,6 +17,7 @@ export class MapManager {
 	private maps: Map<string, MapData> = new Map()
 	private baseCollision: Map<string, number[]> = new Map()
 	private dynamicCollisionCounts: Map<string, Int16Array> = new Map()
+	private constructionPenaltyCounts: Map<string, Int16Array> = new Map()
 	private readonly MAPS_DIR = '/assets/maps/'//FETCH ? '/assets/maps/' : path.join(__dirname, '../../../assets/maps')
 	private debug = true
 	private defaultMapId: string = 'town' // Default starting map
@@ -380,6 +381,64 @@ export class MapManager {
 		this.dynamicCollisionCounts.set(mapId, new Int16Array(map.collision.data.length))
 	}
 
+	public setConstructionPenalty(mapId: string, tileX: number, tileY: number, penalize: boolean): void {
+		const map = this.maps.get(mapId)
+		if (!map) return
+
+		if (tileX < 0 || tileY < 0 || tileX >= map.collision.width || tileY >= map.collision.height) {
+			return
+		}
+
+		let counts = this.constructionPenaltyCounts.get(mapId)
+		if (!counts) {
+			counts = new Int16Array(map.collision.data.length)
+			this.constructionPenaltyCounts.set(mapId, counts)
+		}
+
+		const index = tileY * map.collision.width + tileX
+		if (index < 0 || index >= counts.length) {
+			return
+		}
+
+		if (penalize) {
+			counts[index] += 1
+			return
+		}
+
+		if (counts[index] <= 0) return
+		counts[index] -= 1
+	}
+
+	public getConstructionPenaltyData(mapId: string): CostData | undefined {
+		const map = this.maps.get(mapId)
+		if (!map) return undefined
+
+		let counts = this.constructionPenaltyCounts.get(mapId)
+		if (!counts) {
+			counts = new Int16Array(map.collision.data.length)
+			this.constructionPenaltyCounts.set(mapId, counts)
+		}
+
+		return {
+			width: map.collision.width,
+			height: map.collision.height,
+			data: counts
+		}
+	}
+
+	public resetConstructionPenalties(mapId?: string): void {
+		if (mapId) {
+			const map = this.maps.get(mapId)
+			if (!map) return
+			this.constructionPenaltyCounts.set(mapId, new Int16Array(map.collision.data.length))
+			return
+		}
+
+		for (const [id, map] of this.maps.entries()) {
+			this.constructionPenaltyCounts.set(id, new Int16Array(map.collision.data.length))
+		}
+	}
+
 	public getMapIds(): string[] {
 		return Array.from(this.maps.keys())
 	}
@@ -462,6 +521,7 @@ export class MapManager {
 
 		// Find path in tile coordinates
 		const path = Pathfinder.findPath(map.collision, map.paths, startTile, endTile, {
+			construction: this.getConstructionPenaltyData(mapId),
 			roads: options?.roadData,
 			allowDiagonal: options?.allowDiagonal
 		})
@@ -582,6 +642,7 @@ export class MapManager {
 				this.maps.set(mapId, mapData)
 				this.baseCollision.set(mapId, mapData.collision.data.slice())
 				this.dynamicCollisionCounts.set(mapId, new Int16Array(mapData.collision.data.length))
+				this.constructionPenaltyCounts.set(mapId, new Int16Array(mapData.collision.data.length))
 			} catch (error) {
 				this.logger.error(`Error loading map ${mapId}:`, error)
 			}
