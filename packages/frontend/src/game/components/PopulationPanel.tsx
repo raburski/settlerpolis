@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { EventBus } from '../EventBus'
 import { populationService } from '../services/PopulationService'
 import { toolAvailabilityService } from '../services/ToolAvailabilityService'
-import { ProfessionType, PopulationStatsData, SettlerState } from '@rugged/game'
+import { ProfessionType, PopulationStatsData } from '@rugged/game'
 import styles from './PopulationPanel.module.css'
 import { UiEvents } from '../uiEvents'
 
@@ -49,19 +49,6 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 		toolAvailabilityService.getAvailability()
 	)
 	const [currentMapId, setCurrentMapId] = useState<string | null>(null)
-	const [idleByProfession, setIdleByProfession] = useState<Record<ProfessionType, number>>({
-		[ProfessionType.Carrier]: 0,
-		[ProfessionType.Builder]: 0,
-		[ProfessionType.Woodcutter]: 0,
-		[ProfessionType.Miner]: 0,
-		[ProfessionType.Metallurgist]: 0,
-		[ProfessionType.Farmer]: 0,
-		[ProfessionType.Fisher]: 0,
-		[ProfessionType.Miller]: 0,
-		[ProfessionType.Baker]: 0,
-		[ProfessionType.Vendor]: 0,
-		[ProfessionType.Hunter]: 0
-	})
 	const cycleIndexRef = React.useRef<Record<ProfessionType, number>>({
 		[ProfessionType.Carrier]: -1,
 		[ProfessionType.Builder]: -1,
@@ -103,43 +90,19 @@ export const PopulationPanel: React.FC<PopulationPanelProps> = ({ isVisible, onC
 		}
 	}, [])
 
-	useEffect(() => {
-		const updateIdleCounts = () => {
-			const nextIdleCounts: Record<ProfessionType, number> = {
-				[ProfessionType.Carrier]: 0,
-				[ProfessionType.Builder]: 0,
-				[ProfessionType.Woodcutter]: 0,
-				[ProfessionType.Miner]: 0,
-				[ProfessionType.Metallurgist]: 0,
-				[ProfessionType.Farmer]: 0,
-				[ProfessionType.Fisher]: 0,
-				[ProfessionType.Miller]: 0,
-				[ProfessionType.Baker]: 0,
-				[ProfessionType.Vendor]: 0,
-				[ProfessionType.Hunter]: 0
-			}
-			populationService.getSettlers().forEach(settler => {
-				if (settler.state === SettlerState.Idle) {
-					nextIdleCounts[settler.profession] = (nextIdleCounts[settler.profession] || 0) + 1
-				}
-			})
-			setIdleByProfession(nextIdleCounts)
-		}
-
-		updateIdleCounts()
-
-		const handleSettlerUpdated = () => {
-			updateIdleCounts()
-		}
-
-		EventBus.on(UiEvents.Population.SettlerUpdated, handleSettlerUpdated)
-		EventBus.on(UiEvents.Population.ListLoaded, handleSettlerUpdated)
-
-		return () => {
-			EventBus.off(UiEvents.Population.SettlerUpdated, handleSettlerUpdated)
-			EventBus.off(UiEvents.Population.ListLoaded, handleSettlerUpdated)
-		}
-	}, [])
+	const idleByProfession: Record<ProfessionType, number> = {
+		[ProfessionType.Carrier]: Math.max(0, (stats.byProfession[ProfessionType.Carrier] || 0) - (stats.byProfessionActive[ProfessionType.Carrier] || 0)),
+		[ProfessionType.Builder]: Math.max(0, (stats.byProfession[ProfessionType.Builder] || 0) - (stats.byProfessionActive[ProfessionType.Builder] || 0)),
+		[ProfessionType.Woodcutter]: Math.max(0, (stats.byProfession[ProfessionType.Woodcutter] || 0) - (stats.byProfessionActive[ProfessionType.Woodcutter] || 0)),
+		[ProfessionType.Miner]: Math.max(0, (stats.byProfession[ProfessionType.Miner] || 0) - (stats.byProfessionActive[ProfessionType.Miner] || 0)),
+		[ProfessionType.Metallurgist]: Math.max(0, (stats.byProfession[ProfessionType.Metallurgist] || 0) - (stats.byProfessionActive[ProfessionType.Metallurgist] || 0)),
+		[ProfessionType.Farmer]: Math.max(0, (stats.byProfession[ProfessionType.Farmer] || 0) - (stats.byProfessionActive[ProfessionType.Farmer] || 0)),
+		[ProfessionType.Fisher]: Math.max(0, (stats.byProfession[ProfessionType.Fisher] || 0) - (stats.byProfessionActive[ProfessionType.Fisher] || 0)),
+		[ProfessionType.Miller]: Math.max(0, (stats.byProfession[ProfessionType.Miller] || 0) - (stats.byProfessionActive[ProfessionType.Miller] || 0)),
+		[ProfessionType.Baker]: Math.max(0, (stats.byProfession[ProfessionType.Baker] || 0) - (stats.byProfessionActive[ProfessionType.Baker] || 0)),
+		[ProfessionType.Vendor]: Math.max(0, (stats.byProfession[ProfessionType.Vendor] || 0) - (stats.byProfessionActive[ProfessionType.Vendor] || 0)),
+		[ProfessionType.Hunter]: Math.max(0, (stats.byProfession[ProfessionType.Hunter] || 0) - (stats.byProfessionActive[ProfessionType.Hunter] || 0))
+	}
 
 	useEffect(() => {
 		const unsubscribe = toolAvailabilityService.onUpdate(() => {

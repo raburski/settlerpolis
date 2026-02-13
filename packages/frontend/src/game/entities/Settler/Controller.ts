@@ -1,5 +1,5 @@
 import { SettlerView } from './View'
-import { Event, Settler, ProfessionType, SettlerState, NeedType } from '@rugged/game'
+import { Event, Settler, SettlerPatch, ProfessionType, SettlerState, NeedType } from '@rugged/game'
 import { EventBus } from '../../EventBus'
 import { UiEvents } from '../../uiEvents'
 import type { GameScene } from '../../scenes/base/GameScene'
@@ -9,10 +9,11 @@ export class SettlerController {
 		EventBus.on(Event.Movement.SC.MoveToPosition, this.handleMoveToPosition, this)
 		EventBus.on(Event.Movement.SC.PositionUpdated, this.handlePositionUpdated, this)
 
-		EventBus.on(Event.Population.SC.ProfessionChanged, this.handleProfessionChanged, this)
-		EventBus.on(Event.Population.SC.SettlerUpdated, this.handleSettlerUpdated, this)
-		EventBus.on(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
-		EventBus.on(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
+			EventBus.on(Event.Population.SC.ProfessionChanged, this.handleProfessionChanged, this)
+			EventBus.on(Event.Population.SC.SettlerUpdated, this.handleSettlerUpdated, this)
+			EventBus.on(Event.Population.SC.SettlerPatched, this.handleSettlerPatched, this)
+			EventBus.on(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
+			EventBus.on(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
 		EventBus.on(UiEvents.Settler.Highlight, this.handleHighlight, this)
 		EventBus.on(Event.Needs.SS.NeedInterruptStarted, this.handleNeedInterruptStarted, this)
 		EventBus.on(Event.Needs.SS.NeedInterruptEnded, this.handleNeedInterruptEnded, this)
@@ -72,6 +73,48 @@ export class SettlerController {
 		}
 	}
 
+	private handleSettlerPatched = (data: { settlerId: string, patch: SettlerPatch }) => {
+		if (data.settlerId !== this.settler.id) {
+			return
+		}
+
+		const patch = data.patch
+		const updated: Settler = {
+			...this.settler,
+			position: patch.position ? { ...patch.position } : this.settler.position
+		}
+
+		if (patch.state !== undefined) {
+			updated.state = patch.state
+		}
+		if (patch.profession !== undefined) {
+			updated.profession = patch.profession
+		}
+		if (patch.health !== undefined) {
+			updated.health = patch.health
+		}
+		if (patch.needs !== undefined) {
+			updated.needs = {
+				hunger: patch.needs.hunger,
+				fatigue: patch.needs.fatigue
+			}
+		}
+		if (patch.stateContext !== undefined) {
+			updated.stateContext = {
+				...this.settler.stateContext,
+				...patch.stateContext
+			}
+		}
+		if ('buildingId' in patch) {
+			updated.buildingId = patch.buildingId
+		}
+		if ('houseId' in patch) {
+			updated.houseId = patch.houseId
+		}
+
+		this.updateSettler(updated)
+	}
+
 	private handleHighlight = (data: { settlerId: string; highlighted: boolean }) => {
 		if (data.settlerId === this.settler.id) {
 			this.view.setHighlighted(data.highlighted)
@@ -129,10 +172,11 @@ export class SettlerController {
 	public destroy(): void {
 		EventBus.off(Event.Movement.SC.MoveToPosition, this.handleMoveToPosition, this)
 		EventBus.off(Event.Movement.SC.PositionUpdated, this.handlePositionUpdated, this)
-		EventBus.off(Event.Population.SC.ProfessionChanged, this.handleProfessionChanged, this)
-		EventBus.off(Event.Population.SC.SettlerUpdated, this.handleSettlerUpdated, this)
-		EventBus.off(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
-		EventBus.off(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
+			EventBus.off(Event.Population.SC.ProfessionChanged, this.handleProfessionChanged, this)
+			EventBus.off(Event.Population.SC.SettlerUpdated, this.handleSettlerUpdated, this)
+			EventBus.off(Event.Population.SC.SettlerPatched, this.handleSettlerPatched, this)
+			EventBus.off(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
+			EventBus.off(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
 		EventBus.off(UiEvents.Settler.Highlight, this.handleHighlight, this)
 		EventBus.off(Event.Needs.SS.NeedInterruptStarted, this.handleNeedInterruptStarted, this)
 		EventBus.off(Event.Needs.SS.NeedInterruptEnded, this.handleNeedInterruptEnded, this)

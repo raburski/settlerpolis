@@ -8,6 +8,7 @@ export const PopulationEvents = {
 	SC: {
 		SettlerSpawned: 'sc:population:settler-spawned', // Settler was spawned
 		SettlerUpdated: 'sc:population:settler-updated', // Settler state/data updated (e.g., state change, position, target)
+		SettlerPatched: 'sc:population:settler-patched', // Settler partial update (state/needs/target/context patch)
 		SettlerDied: 'sc:population:settler-died', // Settler died and was removed
 		WorkerAssigned: 'sc:population:worker-assigned', // Worker assigned to provider/building
 		WorkerUnassigned: 'sc:population:worker-unassigned', // Worker unassigned from provider/building

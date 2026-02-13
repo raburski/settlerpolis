@@ -382,19 +382,28 @@ export const BuildingInfoPanel: React.FC = () => {
 		}
 
 		// Check if any settler is moving to this building
-		const checkWorkerMovingToBuilding = () => {
-			if (buildingInstance) {
-				const settlers = populationService.getSettlers()
-				const workerMoving = settlers.find(
-					s => s.state === SettlerState.MovingToBuilding &&
-					s.stateContext.targetId === buildingInstance.id
-				)
-				if (workerMoving) {
-					setWorkerStatus('Worker is moving to building...')
-					setErrorMessage(null) // Clear any errors
+			const checkWorkerMovingToBuilding = (settlerId?: string) => {
+				if (buildingInstance) {
+					const findMovingWorker = (settler: { state: SettlerState, stateContext: { targetId?: string } } | undefined) => {
+						if (!settler) {
+							return false
+						}
+						return settler.state === SettlerState.MovingToBuilding && settler.stateContext.targetId === buildingInstance.id
+					}
+
+					const workerMoving = settlerId
+						? findMovingWorker(populationService.getSettler(settlerId))
+						: populationService.getSettlers().some(findMovingWorker)
+					if (workerMoving) {
+						setWorkerStatus('Worker is moving to building...')
+						setErrorMessage(null) // Clear any errors
+					}
 				}
 			}
-		}
+
+			const handlePopulationSettlerUpdated = (data: { settlerId: string }) => {
+				checkWorkerMovingToBuilding(data.settlerId)
+			}
 
 		// Listen for worker assigned
 		const handleWorkerAssigned = (data: { buildingInstanceId: string, settlerId: string }) => {
@@ -410,12 +419,12 @@ export const BuildingInfoPanel: React.FC = () => {
 		}
 
 		// Listen for worker unassigned
-		const handleWorkerUnassigned = (data: { settlerId: string }) => {
-			if (buildingInstance) {
-				// Force re-render to update worker count
-				setBuildingInstance({ ...buildingInstance })
+			const handleWorkerUnassigned = (_data: { settlerId: string }) => {
+				if (buildingInstance) {
+					// Force re-render to update worker count
+					setBuildingInstance({ ...buildingInstance })
+				}
 			}
-		}
 
 		// Listen for resources changed
 		const handleResourcesChanged = (data: { buildingInstanceId: string, itemType: string, quantity: number, requiredQuantity: number }) => {
@@ -472,7 +481,7 @@ export const BuildingInfoPanel: React.FC = () => {
 		EventBus.on(UiEvents.Building.Updated, handleBuildingUpdated)
 		EventBus.on(UiEvents.Building.Close, handleClosePanel)
 		EventBus.on(UiEvents.Population.WorkerRequestFailed, handleWorkerRequestFailed)
-		EventBus.on(UiEvents.Population.SettlerUpdated, checkWorkerMovingToBuilding)
+			EventBus.on(UiEvents.Population.SettlerUpdated, handlePopulationSettlerUpdated)
 		EventBus.on(UiEvents.Population.WorkerAssigned, handleWorkerAssigned)
 		EventBus.on(UiEvents.Population.WorkerUnassigned, handleWorkerUnassigned)
 		EventBus.on(UiEvents.Storage.Updated, handleStorageUpdated)
@@ -491,7 +500,7 @@ export const BuildingInfoPanel: React.FC = () => {
 			EventBus.off(UiEvents.Building.Updated, handleBuildingUpdated)
 			EventBus.off(UiEvents.Building.Close, handleClosePanel)
 			EventBus.off(UiEvents.Population.WorkerRequestFailed, handleWorkerRequestFailed)
-			EventBus.off(UiEvents.Population.SettlerUpdated, checkWorkerMovingToBuilding)
+				EventBus.off(UiEvents.Population.SettlerUpdated, handlePopulationSettlerUpdated)
 			EventBus.off(UiEvents.Population.WorkerAssigned, handleWorkerAssigned)
 			EventBus.off(UiEvents.Population.WorkerUnassigned, handleWorkerUnassigned)
 			EventBus.off(UiEvents.Storage.Updated, handleStorageUpdated)
