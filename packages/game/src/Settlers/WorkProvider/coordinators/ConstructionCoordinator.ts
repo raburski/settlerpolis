@@ -1,9 +1,9 @@
-import { ConstructionStage } from '../../Buildings/types'
-import { ProfessionType } from '../../Population/types'
-import type { WorkProviderDeps } from './deps'
-import type { AssignmentStore } from './AssignmentStore'
-import { WorkProviderType } from './types'
-import type { BuildingInstanceId, MapId, SettlerId } from '../../ids'
+import { ConstructionStage } from '../../../Buildings/types'
+import { ProfessionType } from '../../../Population/types'
+import type { WorkProviderDeps } from '../deps'
+import type { AssignmentStore } from '../AssignmentStore'
+import { WorkProviderType } from '../types'
+import type { BuildingInstanceId, MapId, SettlerId } from '../../../ids'
 
 export class ConstructionCoordinator {
 	private lastConstructionAssignAt = new Map<BuildingInstanceId, number>()

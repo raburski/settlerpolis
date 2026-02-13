@@ -1,13 +1,13 @@
-import { Receiver } from '../../Receiver'
-import { ConstructionStage } from '../../Buildings/types'
-import type { WorkProviderDeps } from './deps'
-import type { EventManager } from '../../events'
-import type { LogisticsProvider } from './providers/LogisticsProvider'
-import type { AssignmentStore } from './AssignmentStore'
-import type { LogisticsRequest, WorkAssignment } from './types'
-import { LogisticsRequestType, WorkAssignmentStatus, WorkProviderType } from './types'
-import { SettlerState } from '../../Population/types'
-import { WorkProviderEvents } from './events'
+import { Receiver } from '../../../Receiver'
+import { ConstructionStage } from '../../../Buildings/types'
+import type { WorkProviderDeps } from '../deps'
+import type { EventManager } from '../../../events'
+import type { LogisticsProvider } from '../providers/LogisticsProvider'
+import type { AssignmentStore } from '../AssignmentStore'
+import type { LogisticsRequest, WorkAssignment, WorkStep } from '../types'
+import { LogisticsRequestType, WorkAssignmentStatus, WorkProviderType, WorkStepType, TransportSourceType } from '../types'
+import { SettlerState } from '../../../Population/types'
+import { WorkProviderEvents } from '../events'
 import { v4 as uuidv4 } from 'uuid'
 
 const WAREHOUSE_REQUEST_PRIORITY = 5
@@ -34,6 +34,27 @@ export class LogisticsCoordinator {
 		private dispatchNextStep: (settlerId: string) => void
 	) {
 		this.markAllDirty()
+	}
+
+	public handleStepEvent(step: WorkStep): void {
+		if ('buildingInstanceId' in step && typeof step.buildingInstanceId === 'string') {
+			this.markBuildingDirty(step.buildingInstanceId)
+		}
+
+		switch (step.type) {
+			case WorkStepType.Transport:
+				if (step.source.type === TransportSourceType.Storage) {
+					this.markBuildingDirty(step.source.buildingInstanceId)
+				}
+				this.markBuildingDirty(step.target.buildingInstanceId)
+				break
+			case WorkStepType.Wait:
+			case WorkStepType.AcquireTool:
+			case WorkStepType.BuildRoad:
+				break
+			default:
+				break
+		}
 	}
 
 	tick(): void {

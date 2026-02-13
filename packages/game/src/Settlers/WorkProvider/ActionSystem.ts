@@ -83,6 +83,34 @@ export class ActionSystem {
 		this.queues.delete(settlerId)
 	}
 
+	public replaceQueueAfterCurrent(
+		settlerId: string,
+		actions: WorkAction[],
+		onComplete?: () => void,
+		onFail?: (reason: string) => void
+	): boolean {
+		const queue = this.queues.get(settlerId)
+		if (!queue) {
+			return false
+		}
+		if (queue.index >= queue.actions.length) {
+			this.queues.delete(settlerId)
+			return false
+		}
+
+		const currentAction = queue.actions[queue.index]
+		const removedActions = queue.actions.slice(queue.index + 1)
+		if (removedActions.length > 0) {
+			this.releaseReservations(removedActions, queue.context?.reservationOwnerId, settlerId)
+		}
+
+		queue.actions = [currentAction, ...actions]
+		queue.index = 0
+		queue.onComplete = onComplete
+		queue.onFail = onFail
+		return true
+	}
+
 	public registerContextResolver(kind: ActionQueueContext['kind'], resolver: ActionQueueContextResolver): void {
 		this.contextResolvers.set(kind, resolver)
 	}
