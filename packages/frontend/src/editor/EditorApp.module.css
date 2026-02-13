@@ -263,6 +263,59 @@
 	gap: var(--spacing-sm);
 }
 
+.animationList {
+	display: grid;
+	gap: var(--spacing-sm);
+}
+
+.animationRow {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(140px, 1fr);
+	align-items: center;
+	gap: var(--spacing-sm);
+	font-size: 0.6rem;
+	color: var(--dialog-item-type);
+	text-shadow: var(--dialog-text-shadow);
+}
+
+.animationRow select {
+	background: var(--dialog-bg);
+	border: var(--dialog-border-width) solid var(--dialog-border);
+	border-radius: var(--dialog-border-radius);
+	padding: 6px 10px;
+	color: var(--dialog-text);
+	font-size: 0.65rem;
+	outline: none;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+}
+
+.animationRow select:focus {
+	border-color: var(--dialog-border-accent);
+}
+
+.animationKey {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	font-size: 0.55rem;
+	color: var(--dialog-item-name);
+}
+
+.warningIcon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	border-radius: 999px;
+	border: 2px solid #f6c56b;
+	color: #f6c56b;
+	font-size: 0.55rem;
+	line-height: 1;
+}
+
 .modeButton {
 	background: var(--dialog-button-bg);
 	border: 2px solid var(--dialog-button-border);

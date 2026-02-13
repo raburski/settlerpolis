@@ -21,6 +21,7 @@ export class MovementController {
 	private currentState: 'idle' | 'moving' = 'idle'
 	private speed: number
 	private options: MovementControllerOptions
+	private movementVector: { x: number; y: number } | null = null
 	
 	constructor(options: MovementControllerOptions) {
 		this.speed = options.speed
@@ -51,6 +52,7 @@ export class MovementController {
 		
 		this.startPosition = { x: currentX, y: currentY }
 		this.targetPosition = { x, y }
+		this.movementVector = { x: dx, y: dy }
 		this.movementStartTime = Date.now()
 		this.movementDuration = (distance / this.speed) * 1000 // Convert to milliseconds
 		this.setState('moving')
@@ -98,6 +100,7 @@ export class MovementController {
 		if (progress >= 1) {
 			this.targetPosition = null
 			this.startPosition = null
+			this.movementVector = null
 			this.setState('idle')
 			this.options.onMovementComplete?.()
 		}
@@ -121,10 +124,15 @@ export class MovementController {
 	isMoving(): boolean {
 		return this.currentState === 'moving'
 	}
+
+	getMovementVector(): { x: number; y: number } | null {
+		return this.movementVector
+	}
 	
 	cancelMovement(): void {
 		this.targetPosition = null
 		this.startPosition = null
+		this.movementVector = null
 		this.setState('idle')
 	}
 	

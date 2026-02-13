@@ -18,7 +18,7 @@ export class SettlerController {
 		EventBus.on(Event.Needs.SS.NeedInterruptStarted, this.handleNeedInterruptStarted, this)
 		EventBus.on(Event.Needs.SS.NeedInterruptEnded, this.handleNeedInterruptEnded, this)
 
-		this.view.updateState(this.settler.state)
+		this.view.updateState(this.settler.state, this.settler.stateContext)
 		this.view.updateCarriedItem(this.settler.state === SettlerState.CarryingItem ? this.settler.stateContext.carryingItemType : undefined)
 		this.view.updateNeeds(this.settler.needs)
 		this.view.updateHealth(this.settler.health)
@@ -45,7 +45,11 @@ export class SettlerController {
 
 	private handlePositionUpdated = (data: { entityId: string; position: { x: number; y: number }; mapId: string }) => {
 		if (data.entityId === this.settler.id && data.mapId === this.settler.mapId) {
-			this.view.updatePosition(data.position.x, data.position.y)
+			const positionDiff = Math.abs(this.view.x - data.position.x) + Math.abs(this.view.y - data.position.y)
+			const POSITION_THRESHOLD = 2
+			if (!this.view.isInterpolating() || positionDiff > POSITION_THRESHOLD) {
+				this.view.updatePosition(data.position.x, data.position.y)
+			}
 			this.settler.position = data.position
 		}
 	}
@@ -69,7 +73,7 @@ export class SettlerController {
 			this.settler.stateContext = { ...this.settler.stateContext, assignmentId: undefined }
 			this.settler.buildingId = undefined
 			this.settler.state = SettlerState.Idle
-			this.view.updateState(SettlerState.Idle)
+			this.view.updateState(SettlerState.Idle, this.settler.stateContext)
 		}
 	}
 
@@ -168,7 +172,7 @@ export class SettlerController {
 			this.settler.position = settlerData.position
 		}
 
-		this.view.updateState(settlerData.state)
+		this.view.updateState(settlerData.state, settlerData.stateContext)
 		this.view.updateProfession(settlerData.profession)
 		this.view.updateCarriedItem(settlerData.state === SettlerState.CarryingItem ? settlerData.stateContext.carryingItemType : undefined)
 		this.view.updateNeeds(settlerData.needs)

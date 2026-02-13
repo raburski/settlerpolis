@@ -1,5 +1,6 @@
 import {
 	AbstractMesh,
+	AnimationGroup,
 	ArcRotateCamera,
 	AssetContainer,
 	Color3,
@@ -77,6 +78,9 @@ export class EditorScene {
 	private assetTransform: TransformNode | null = null
 	private assetPivot: TransformNode | null = null
 	private assetMeshes: AbstractMesh[] = []
+	private assetAnimationGroups: AnimationGroup[] = []
+	private activeAnimationName: string | null = null
+	private animationSource: string | null = null
 	private assetLoadToken = 0
 	private assetOpacity = 1
 	private readonly assetMaterials = new Map<Material, { alpha: number; transparencyMode?: number | null }>()
@@ -91,6 +95,8 @@ export class EditorScene {
 	private storageSlotLoadToken = 0
 	private static slotModelContainerCache = new Map<string, Promise<AssetContainer>>()
 	private static slotModelFailedSrcs = new Set<string>()
+	private static assetAnimationContainerCache = new Map<string, Promise<AssetContainer>>()
+	private static assetAnimationFailedSrcs = new Set<string>()
 	private accessTileMeshes: Mesh[] = []
 	private blockedTileMeshes: Mesh[] = []
 	private entryMarker: Mesh | null = null
@@ -239,7 +245,7 @@ export class EditorScene {
 		this.updateAccessPoints(placement.entryPoint ?? null, placement.centerPoint ?? null, placement.position)
 	}
 
-	async loadAsset(url: string): Promise<void> {
+	async loadAsset(url: string, animationUrl?: string): Promise<void> {
 		const loadToken = (this.assetLoadToken += 1)
 		this.disposeAsset()
 		if (!url) return
@@ -257,6 +263,8 @@ export class EditorScene {
 		this.assetPivot.parent = this.assetTransform
 
 		this.assetMeshes = result.meshes
+		this.assetAnimationGroups = result.animationGroups || []
+		this.animationSource = null
 		this.assetMeshes.forEach((mesh) => {
 			if (mesh.parent === null) {
 				mesh.parent = this.assetPivot
@@ -265,10 +273,91 @@ export class EditorScene {
 		})
 		this.applyAssetOpacity()
 
+		if (animationUrl) {
+			await this.loadAnimationClips(animationUrl)
+		}
+
 		this.centerAsset()
 		if (this.lastPlacement) {
 			this.updatePlacement(this.lastPlacement)
 		}
+	}
+
+	getAnimationGroupNames(): string[] {
+		return this.assetAnimationGroups.map((group) => group.name)
+	}
+
+	setActiveAnimation(name: string | null): void {
+		if (this.activeAnimationName === name) return
+		this.stopAssetAnimations()
+		this.activeAnimationName = name
+		if (!name) return
+		const group = this.assetAnimationGroups.find((entry) => entry.name === name)
+		if (!group) return
+		group.reset()
+		group.start(true)
+	}
+
+	private async loadAnimationClips(animationUrl: string): Promise<void> {
+		if (!this.assetTransform) return
+		if (EditorScene.assetAnimationFailedSrcs.has(animationUrl)) {
+			return
+		}
+		const previousGroups = this.assetAnimationGroups
+		try {
+			const container = await EditorScene.getAnimationContainer(this.scene, animationUrl)
+			const nodeMap = this.buildAssetNodeMap()
+			const clones: AnimationGroup[] = []
+			container.animationGroups?.forEach((group) => {
+				const clone = group.clone(group.name, (target) => {
+					if (!target || typeof (target as { name?: string }).name !== 'string') {
+						return target
+					}
+					const name = (target as { name?: string }).name
+					return (name && nodeMap.get(name)) || target
+				}, true)
+				clones.push(clone)
+			})
+			if (clones.length > 0) {
+				previousGroups.forEach((group) => group.dispose())
+				this.assetAnimationGroups = clones
+				this.animationSource = animationUrl
+				this.activeAnimationName = null
+			}
+		} catch (error) {
+			EditorScene.assetAnimationFailedSrcs.add(animationUrl)
+		}
+	}
+
+	private buildAssetNodeMap(): Map<string, TransformNode | AbstractMesh> {
+		const map = new Map<string, TransformNode | AbstractMesh>()
+		const root = this.assetTransform
+		if (!root) return map
+		if ('getChildTransformNodes' in root && typeof root.getChildTransformNodes === 'function') {
+			root.getChildTransformNodes(false).forEach((node: TransformNode) => {
+				if (node.name) {
+					map.set(node.name, node)
+				}
+			})
+		}
+		if ('getChildMeshes' in root && typeof root.getChildMeshes === 'function') {
+			root.getChildMeshes(false).forEach((mesh: AbstractMesh) => {
+				if (mesh.name) {
+					map.set(mesh.name, mesh)
+				}
+			})
+		}
+		return map
+	}
+
+	private stopAssetAnimations(): void {
+		this.assetAnimationGroups.forEach((group) => group.stop())
+	}
+
+	private disposeAssetAnimationGroups(): void {
+		this.assetAnimationGroups.forEach((group) => group.dispose())
+		this.assetAnimationGroups = []
+		this.activeAnimationName = null
 	}
 
 	setAssetOpacity(opacity: number): void {
@@ -374,6 +463,7 @@ export class EditorScene {
 	}
 
 	private disposeAsset(): void {
+		this.disposeAssetAnimationGroups()
 		if (this.assetMeshes.length > 0) {
 			this.assetMeshes.forEach((mesh) => mesh.dispose(false, true))
 		}
@@ -383,6 +473,7 @@ export class EditorScene {
 		this.assetTransform?.dispose()
 		this.assetPivot = null
 		this.assetTransform = null
+		this.animationSource = null
 	}
 
 	private applyAssetOpacity(): void {
@@ -563,6 +654,23 @@ export class EditorScene {
 				throw error
 			})
 		EditorScene.slotModelContainerCache.set(modelSrc, promise)
+		return promise
+	}
+
+	private static async getAnimationContainer(scene: Scene, animationSrc: string): Promise<AssetContainer> {
+		const cached = EditorScene.assetAnimationContainerCache.get(animationSrc)
+		if (cached) return cached
+		const { rootUrl, fileName } = splitAssetUrl(animationSrc)
+		const promise = SceneLoader.LoadAssetContainerAsync(rootUrl, fileName, scene)
+			.then((container) => {
+				container.removeAllFromScene()
+				return container
+			})
+			.catch((error) => {
+				EditorScene.assetAnimationContainerCache.delete(animationSrc)
+				throw error
+			})
+		EditorScene.assetAnimationContainerCache.set(animationSrc, promise)
 		return promise
 	}
 

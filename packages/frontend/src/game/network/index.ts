@@ -19,6 +19,7 @@ import '../services/CityCharterService'
 import '../services/ReputationService'
 import { resourceNodeRenderService } from '../services/ResourceNodeRenderService'
 import { itemRenderService } from '../services/ItemRenderService'
+import { settlerRenderService } from '../services/SettlerRenderService'
 
 const IS_REMOTE_GAME = false
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'
@@ -26,6 +27,7 @@ const USE_WORKER = String(import.meta.env.VITE_GAME_USE_WORKER || 'true').toLowe
 
 void resourceNodeRenderService.load()
 void itemRenderService.load()
+void settlerRenderService.load()
 
 // Load content using glob import
 const contentModules = import.meta.glob('../../../../../content/*/index.ts', { eager: true })

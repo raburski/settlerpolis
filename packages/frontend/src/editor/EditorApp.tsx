@@ -96,6 +96,58 @@ type BuildingRenderVariantState = {
 	offset: Vec3
 }
 
+type SettlerAnimationKey =
+	| 'idle'
+	| 'walk'
+	| 'run'
+	| 'work'
+	| 'carry'
+	| 'wait'
+	| 'sleep'
+	| 'consume'
+	| 'construct'
+	| 'harvest'
+	| 'fish'
+	| 'hunt'
+	| 'plant'
+	| 'produce'
+	| 'build_road'
+
+type SettlerRenderDefinition = {
+	profession: string
+	modelSrc?: string
+	animationSrc?: string
+	transform?: {
+		rotation?: Vec3
+		scale?: Vec3
+		elevation?: number
+		offset?: Vec3
+	}
+	animations?: Partial<Record<SettlerAnimationKey, string>>
+	attachments?: {
+		carrySocket?: string
+		toolSocket?: string
+	}
+}
+
+const SETTLER_ANIMATION_KEYS: SettlerAnimationKey[] = [
+	'idle',
+	'walk',
+	'run',
+	'carry',
+	'work',
+	'construct',
+	'harvest',
+	'fish',
+	'hunt',
+	'plant',
+	'produce',
+	'build_road',
+	'wait',
+	'sleep',
+	'consume'
+]
+
 const DEFAULT_ASSET_ID = 'building_model'
 const DEFAULT_ASSET_PATH = ''
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'
@@ -104,7 +156,7 @@ const content = contentModules[`../../../../content/${CONTENT_FOLDER}/index.ts`]
 
 export function EditorApp() {
 	const sceneRef = useRef<EditorScene | null>(null)
-	const [editorMode, setEditorMode] = useState<'building' | 'resource' | 'item'>('building')
+	const [editorMode, setEditorMode] = useState<'building' | 'resource' | 'item' | 'settler'>('building')
 	const [assetId, setAssetId] = useState(DEFAULT_ASSET_ID)
 	const [assetPath, setAssetPath] = useState(DEFAULT_ASSET_PATH)
 	const [footprint, setFootprint] = useState({ width: 2, length: 2 })
@@ -134,6 +186,20 @@ export function EditorApp() {
 	const [itemElevation, setItemElevation] = useState(0)
 	const [itemOffset, setItemOffset] = useState<Vec3>({ x: 0, y: 0, z: 0 })
 	const [itemLoadError, setItemLoadError] = useState<string | null>(null)
+	const [settlerAssetPath, setSettlerAssetPath] = useState(DEFAULT_ASSET_PATH)
+	const [settlerAnimationPath, setSettlerAnimationPath] = useState(DEFAULT_ASSET_PATH)
+	const [settlerFootprint, setSettlerFootprint] = useState({ width: 1, length: 1 })
+	const [settlerPosition, setSettlerPosition] = useState<Vec2>({ x: 0, y: 0 })
+	const [settlerRotationDeg, setSettlerRotationDeg] = useState<Vec3>({ x: 0, y: 0, z: 0 })
+	const [settlerScale, setSettlerScale] = useState<Vec3>({ x: 1, y: 1, z: 1 })
+	const [settlerElevation, setSettlerElevation] = useState(0)
+	const [settlerOffset, setSettlerOffset] = useState<Vec3>({ x: 0, y: 0, z: 0 })
+	const [settlerLoadError, setSettlerLoadError] = useState<string | null>(null)
+	const [settlerAnimationOptions, setSettlerAnimationOptions] = useState<string[]>([])
+	const [settlerAnimationMap, setSettlerAnimationMap] = useState<Partial<Record<SettlerAnimationKey, string>>>({})
+	const [settlerPreviewAnimation, setSettlerPreviewAnimation] = useState('')
+	const [settlerCarrySocket, setSettlerCarrySocket] = useState('RightHand')
+	const [settlerToolSocket, setSettlerToolSocket] = useState('RightHand')
 	const [showHelp, setShowHelp] = useState(false)
 	const [pickMode, setPickMode] = useState<'position' | 'entry' | 'center' | 'access' | 'blocked'>('position')
 	const [assetOptions, setAssetOptions] = useState<string[]>([])
@@ -141,11 +207,14 @@ export function EditorApp() {
 	const [selectedAsset, setSelectedAsset] = useState('')
 	const [selectedResourceAsset, setSelectedResourceAsset] = useState('')
 	const [selectedItemAsset, setSelectedItemAsset] = useState('')
+	const [selectedSettlerAsset, setSelectedSettlerAsset] = useState('')
+	const [selectedSettlerAnimationAsset, setSelectedSettlerAnimationAsset] = useState('')
 	const [assetOpen, setAssetOpen] = useState(false)
 	const [selectedBuildingId, setSelectedBuildingId] = useState('')
 	const [definitionDraft, setDefinitionDraft] = useState<Record<string, any> | null>(null)
 	const [selectedResourceId, setSelectedResourceId] = useState('')
 	const [selectedItemId, setSelectedItemId] = useState('')
+	const [selectedSettlerProfession, setSelectedSettlerProfession] = useState('')
 	const [storageSlots, setStorageSlots] = useState<StorageSlot[]>([])
 	const [storageOpen, setStorageOpen] = useState(false)
 	const [footprintOpen, setFootprintOpen] = useState(false)
@@ -167,6 +236,10 @@ export function EditorApp() {
 	const [itemFileStatus, setItemFileStatus] = useState('')
 	const [itemRenderDefinitions, setItemRenderDefinitions] = useState<ItemRenderDefinition[]>([])
 	const [itemRenderError, setItemRenderError] = useState<string | null>(null)
+	const [settlerFileHandle, setSettlerFileHandle] = useState<FileSystemFileHandle | null>(null)
+	const [settlerFileStatus, setSettlerFileStatus] = useState('')
+	const [settlerRenderDefinitions, setSettlerRenderDefinitions] = useState<SettlerRenderDefinition[]>([])
+	const [settlerRenderError, setSettlerRenderError] = useState<string | null>(null)
 	const [itemModelVariants, setItemModelVariants] = useState<ItemRenderVariantState[]>([])
 	const [activeItemVariantIndex, setActiveItemVariantIndex] = useState<number | null>(null)
 	const [buildingModelVariants, setBuildingModelVariants] = useState<BuildingRenderVariantState[]>([])
@@ -176,9 +249,10 @@ export function EditorApp() {
 	const isBuildingMode = editorMode === 'building'
 	const isResourceMode = editorMode === 'resource'
 	const isItemMode = editorMode === 'item'
-	const activeFootprint = isResourceMode ? resourceFootprint : isItemMode ? itemFootprint : footprint
-	const activePosition = isResourceMode ? resourcePosition : isItemMode ? itemPosition : position
-	const activeLoadError = isResourceMode ? resourceLoadError : isItemMode ? itemLoadError : loadError
+	const isSettlerMode = editorMode === 'settler'
+	const activeFootprint = isResourceMode ? resourceFootprint : isItemMode ? itemFootprint : isSettlerMode ? settlerFootprint : footprint
+	const activePosition = isResourceMode ? resourcePosition : isItemMode ? itemPosition : isSettlerMode ? settlerPosition : position
+	const activeLoadError = isResourceMode ? resourceLoadError : isItemMode ? itemLoadError : isSettlerMode ? settlerLoadError : loadError
 
 	const buildingDefinitions = useMemo(() => {
 		const definitions = (content as { buildings?: Array<Record<string, any>> })?.buildings
@@ -188,6 +262,18 @@ export function EditorApp() {
 	const resourceDefinitions = useMemo(() => {
 		const definitions = (content as { resourceNodeDefinitions?: Array<Record<string, any>> })?.resourceNodeDefinitions
 		return Array.isArray(definitions) ? definitions : []
+	}, [])
+
+	const professionOptions = useMemo(() => {
+		const definitions = (content as { professions?: Array<Record<string, any>> })?.professions
+		if (!Array.isArray(definitions)) return []
+		return definitions
+			.map((definition) => ({
+				id: String(definition.type ?? definition.id ?? ''),
+				label: String(definition.name ?? definition.type ?? definition.id ?? ''),
+				icon: typeof definition.icon === 'string' ? definition.icon : ''
+			}))
+			.filter((definition) => definition.id)
 	}, [])
 
 
@@ -264,6 +350,10 @@ export function EditorApp() {
 				setItemPosition(gridPosition)
 				return
 			}
+			if (isSettlerMode) {
+				setSettlerPosition(gridPosition)
+				return
+			}
 			if (pickMode === 'entry') {
 				setEntryPoint({
 					x: gridPosition.x - position.x + 0.5,
@@ -298,7 +388,7 @@ export function EditorApp() {
 			}
 			setPosition(gridPosition)
 		})
-	}, [isItemMode, isResourceMode, pickMode, position.x, position.y, toggleTileOffset])
+	}, [isItemMode, isResourceMode, isSettlerMode, pickMode, position.x, position.y, toggleTileOffset])
 
 	const rotationRad = useMemo(
 		() => ({
@@ -325,6 +415,15 @@ export function EditorApp() {
 			z: toRadians(itemRotationDeg.z)
 		}),
 		[itemRotationDeg]
+	)
+
+	const settlerRotationRad = useMemo(
+		() => ({
+			x: toRadians(settlerRotationDeg.x),
+			y: toRadians(settlerRotationDeg.y),
+			z: toRadians(settlerRotationDeg.z)
+		}),
+		[settlerRotationDeg]
 	)
 
 	useEffect(() => {
@@ -377,6 +476,21 @@ export function EditorApp() {
 				blockedTiles: []
 			}
 		}
+		if (isSettlerMode) {
+			return {
+				footprint: settlerFootprint,
+				position: settlerPosition,
+				rotation: settlerRotationRad,
+				scale: settlerScale,
+				elevation: settlerElevation,
+				offset: settlerOffset,
+				storageSlots: [],
+				entryPoint: null,
+				centerPoint: null,
+				accessTiles: [],
+				blockedTiles: []
+			}
+		}
 		return {
 			footprint,
 			position,
@@ -393,6 +507,7 @@ export function EditorApp() {
 	}, [
 		isItemMode,
 		isResourceMode,
+		isSettlerMode,
 		itemElevation,
 		itemFootprint,
 		itemPosition,
@@ -405,6 +520,12 @@ export function EditorApp() {
 		resourceRotationRad,
 		resourceScale,
 		resourceOffset,
+		settlerElevation,
+		settlerFootprint,
+		settlerPosition,
+		settlerRotationRad,
+		settlerScale,
+		settlerOffset,
 		footprint,
 		position,
 		rotationRad,
@@ -423,10 +544,10 @@ export function EditorApp() {
 	}, [placement])
 
 	useEffect(() => {
-		if ((isResourceMode || isItemMode) && pickMode !== 'position') {
+		if ((isResourceMode || isItemMode || isSettlerMode) && pickMode !== 'position') {
 			setPickMode('position')
 		}
-	}, [isItemMode, isResourceMode, pickMode])
+	}, [isItemMode, isResourceMode, isSettlerMode, pickMode])
 
 	const isAutoTransparent = isEditingFields || pickMode === 'entry' || pickMode === 'center'
 	const isTransparent = manualTransparent || isAutoTransparent
@@ -490,6 +611,32 @@ export function EditorApp() {
 		}
 	}, [itemAssetPath])
 
+	const handleLoadSettlerAsset = useCallback(async (nextModelPath?: string, nextAnimationPath?: string) => {
+		const normalizedModel = normalizeAssetPath(nextModelPath ?? settlerAssetPath)
+		const normalizedAnimation = normalizeAssetPath(nextAnimationPath ?? settlerAnimationPath)
+		setSettlerAssetPath(normalizedModel)
+		setSettlerAnimationPath(normalizedAnimation)
+		if (!normalizedModel) {
+			setSettlerLoadError(null)
+			setSettlerAnimationOptions([])
+			setSettlerPreviewAnimation('')
+			sceneRef.current?.setActiveAnimation(null)
+			await sceneRef.current?.loadAsset('')
+			return
+		}
+		if (!sceneRef.current) return
+		try {
+			setSettlerLoadError(null)
+			await sceneRef.current.loadAsset(normalizedModel, normalizedAnimation || undefined)
+			setSettlerAnimationOptions(sceneRef.current.getAnimationGroupNames())
+			setSettlerPreviewAnimation('')
+			sceneRef.current.setActiveAnimation(null)
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Failed to load asset'
+			setSettlerLoadError(message)
+		}
+	}, [settlerAnimationPath, settlerAssetPath])
+
 	useEffect(() => {
 		if (!sceneReady) return
 		if (isResourceMode) {
@@ -500,16 +647,24 @@ export function EditorApp() {
 			void handleLoadItemAsset(itemAssetPath)
 			return
 		}
+		if (isSettlerMode) {
+			void handleLoadSettlerAsset(settlerAssetPath, settlerAnimationPath)
+			return
+		}
 		void handleLoadAsset(assetPath)
 	}, [
 		assetPath,
 		handleLoadAsset,
 		handleLoadItemAsset,
 		handleLoadResourceAsset,
+		handleLoadSettlerAsset,
 		isItemMode,
 		isResourceMode,
+		isSettlerMode,
 		itemAssetPath,
 		resourceAssetPath,
+		settlerAnimationPath,
+		settlerAssetPath,
 		sceneReady
 	])
 
@@ -1382,6 +1537,76 @@ export function EditorApp() {
 		}
 	}, [applyItemRenderToEditor, itemRenderDefinitions])
 
+	const applySettlerRenderToEditor = useCallback((draft: SettlerRenderDefinition | null) => {
+		if (!draft) {
+			setSettlerFootprint({ width: 1, length: 1 })
+			setSettlerAssetPath('')
+			setSettlerAnimationPath('')
+			setSelectedSettlerAsset('')
+			setSelectedSettlerAnimationAsset('')
+			setSettlerRotationDeg({ x: 0, y: 0, z: 0 })
+			setSettlerScale({ x: 1, y: 1, z: 1 })
+			setSettlerElevation(0)
+			setSettlerOffset({ x: 0, y: 0, z: 0 })
+			setSettlerAnimationMap({})
+			setSettlerPreviewAnimation('')
+			setSettlerAnimationOptions([])
+			setSettlerCarrySocket('RightHand')
+			setSettlerToolSocket('RightHand')
+			void handleLoadSettlerAsset('', '')
+			return
+		}
+		const transform = draft.transform || {}
+		const rotation = transform.rotation || { x: 0, y: 0, z: 0 }
+		setSettlerRotationDeg({
+			x: toDegrees(rotation.x || 0),
+			y: toDegrees(rotation.y || 0),
+			z: toDegrees(rotation.z || 0)
+		})
+		setSettlerScale({
+			x: transform.scale?.x ?? 1,
+			y: transform.scale?.y ?? 1,
+			z: transform.scale?.z ?? 1
+		})
+		setSettlerElevation(transform.elevation ?? 0)
+		setSettlerOffset({
+			x: transform.offset?.x ?? 0,
+			y: transform.offset?.y ?? 0,
+			z: transform.offset?.z ?? 0
+		})
+		const modelSrc = draft.modelSrc ?? ''
+		const animationSrc = draft.animationSrc ?? ''
+		setSettlerAssetPath(modelSrc)
+		setSettlerAnimationPath(animationSrc)
+		if (modelSrc && assetOptions.includes(modelSrc)) {
+			setSelectedSettlerAsset(modelSrc)
+		} else {
+			setSelectedSettlerAsset('')
+		}
+		if (animationSrc && assetOptions.includes(animationSrc)) {
+			setSelectedSettlerAnimationAsset(animationSrc)
+		} else {
+			setSelectedSettlerAnimationAsset('')
+		}
+		setSettlerAnimationMap(draft.animations ?? {})
+		setSettlerPreviewAnimation('')
+		setSettlerCarrySocket(draft.attachments?.carrySocket ?? 'RightHand')
+		setSettlerToolSocket(draft.attachments?.toolSocket ?? 'RightHand')
+		void handleLoadSettlerAsset(modelSrc, animationSrc)
+	}, [assetOptions, handleLoadSettlerAsset])
+
+	const loadSettlerRender = useCallback((professionId: string) => {
+		if (!professionId) {
+			applySettlerRenderToEditor(null)
+			return
+		}
+		const draft = settlerRenderDefinitions.find((definition) => definition.profession === professionId) || null
+		applySettlerRenderToEditor(draft)
+		if (!draft) {
+			setAssetOpen(true)
+		}
+	}, [applySettlerRenderToEditor, settlerRenderDefinitions])
+
 	const buildingRenderOutput = useMemo(() => {
 		const variants =
 			buildingModelVariants.length > 0
@@ -1575,6 +1800,60 @@ export function EditorApp() {
 		selectedItemId
 	])
 
+	const settlerRenderOutput = useMemo(() => {
+		if (!selectedSettlerProfession) return null
+		const output: SettlerRenderDefinition = {
+			profession: selectedSettlerProfession
+		}
+		if (settlerAssetPath) {
+			output.modelSrc = settlerAssetPath
+		}
+		if (settlerAnimationPath) {
+			output.animationSrc = settlerAnimationPath
+		}
+		const rotationRad = {
+			x: toRadians(settlerRotationDeg.x),
+			y: toRadians(settlerRotationDeg.y),
+			z: toRadians(settlerRotationDeg.z)
+		}
+		const transformOverrides = buildTransform(rotationRad, settlerScale, settlerElevation, settlerOffset)
+		if (transformOverrides) {
+			output.transform = transformOverrides
+		}
+		const animations: Partial<Record<SettlerAnimationKey, string>> = {}
+		Object.entries(settlerAnimationMap).forEach(([key, value]) => {
+			if (typeof value === 'string' && value.trim()) {
+				animations[key as SettlerAnimationKey] = value
+			}
+		})
+		if (Object.keys(animations).length > 0) {
+			output.animations = animations
+		}
+		const attachments: { carrySocket?: string; toolSocket?: string } = {}
+		if (settlerCarrySocket) {
+			attachments.carrySocket = settlerCarrySocket
+		}
+		if (settlerToolSocket) {
+			attachments.toolSocket = settlerToolSocket
+		}
+		if (Object.keys(attachments).length > 0) {
+			output.attachments = attachments
+		}
+		return output
+	}, [
+		selectedSettlerProfession,
+		settlerAssetPath,
+		settlerAnimationPath,
+		settlerRotationDeg,
+		settlerScale,
+		settlerElevation,
+		settlerOffset,
+		settlerAnimationMap,
+		settlerCarrySocket,
+		settlerToolSocket
+	])
+
+
 	useEffect(() => {
 		if (!resourceRenderOutput || !resourceRenderOutput.id) return
 		setResourceRenderDefinitions((prev) => {
@@ -1606,6 +1885,22 @@ export function EditorApp() {
 			return nextList
 		})
 	}, [itemRenderOutput])
+
+	useEffect(() => {
+		if (!settlerRenderOutput || !settlerRenderOutput.profession) return
+		setSettlerRenderDefinitions((prev) => {
+			const existingIndex = prev.findIndex((entry) => entry.profession === settlerRenderOutput.profession)
+			if (existingIndex === -1) {
+				if (!isSettlerRenderMeaningful(settlerRenderOutput)) {
+					return prev
+				}
+				return [...prev, settlerRenderOutput]
+			}
+			const nextList = [...prev]
+			nextList[existingIndex] = settlerRenderOutput
+			return nextList
+		})
+	}, [settlerRenderOutput])
 
 	useEffect(() => {
 		const loadIndex = async () => {
@@ -1682,6 +1977,33 @@ export function EditorApp() {
 	}, [])
 
 	useEffect(() => {
+		const loadSettlerRenders = async () => {
+			try {
+				setSettlerRenderError(null)
+				const response = await fetch('/assets/settler-renders.json', { cache: 'no-cache' })
+				if (!response.ok) {
+					setSettlerRenderDefinitions([])
+					return
+				}
+				const data = await response.json()
+				if (Array.isArray(data)) {
+					setSettlerRenderDefinitions(data)
+					return
+				}
+				if (Array.isArray(data?.settlerRenders)) {
+					setSettlerRenderDefinitions(data.settlerRenders)
+					return
+				}
+				setSettlerRenderError('Settler render config has unexpected format.')
+			} catch (error) {
+				void error
+				setSettlerRenderDefinitions([])
+			}
+		}
+		void loadSettlerRenders()
+	}, [])
+
+	useEffect(() => {
 		if (!assetPath) return
 		if (!assetOptions.includes(assetPath)) return
 		if (selectedAsset === assetPath) return
@@ -1728,6 +2050,20 @@ export function EditorApp() {
 		if (selectedItemAsset === itemAssetPath) return
 		setSelectedItemAsset(itemAssetPath)
 	}, [assetOptions, itemAssetPath, selectedItemAsset])
+
+	useEffect(() => {
+		if (!settlerAssetPath) return
+		if (!assetOptions.includes(settlerAssetPath)) return
+		if (selectedSettlerAsset === settlerAssetPath) return
+		setSelectedSettlerAsset(settlerAssetPath)
+	}, [assetOptions, settlerAssetPath, selectedSettlerAsset])
+
+	useEffect(() => {
+		if (!settlerAnimationPath) return
+		if (!assetOptions.includes(settlerAnimationPath)) return
+		if (selectedSettlerAnimationAsset === settlerAnimationPath) return
+		setSelectedSettlerAnimationAsset(settlerAnimationPath)
+	}, [assetOptions, settlerAnimationPath, selectedSettlerAnimationAsset])
 
 	useEffect(() => {
 		if (!isResourceMode) return
@@ -2206,6 +2542,142 @@ export function EditorApp() {
 		supportsFilePicker
 	])
 
+	const buildSettlerRenderList = useCallback(
+		(nextDefinition: SettlerRenderDefinition) => {
+			const existingIndex = settlerRenderDefinitions.findIndex(
+				(entry) => entry.profession === nextDefinition.profession
+			)
+			if (existingIndex >= 0) {
+				return settlerRenderDefinitions.map((entry, index) =>
+					index === existingIndex ? nextDefinition : entry
+				)
+			}
+			return [...settlerRenderDefinitions, nextDefinition]
+		},
+		[settlerRenderDefinitions]
+	)
+
+	const downloadSettlerRenderFile = useCallback((payload: unknown) => {
+		const blob = new Blob([JSON.stringify(payload, null, 2) + '\n'], { type: 'application/json' })
+		const url = URL.createObjectURL(blob)
+		const anchor = document.createElement('a')
+		anchor.href = url
+		anchor.download = 'settlerRenders.json'
+		anchor.click()
+		URL.revokeObjectURL(url)
+	}, [])
+
+	const handlePickSettlerFile = useCallback(async (): Promise<FileSystemFileHandle | null> => {
+		if (!('showOpenFilePicker' in window)) {
+			setSettlerFileStatus('File picker not supported in this browser.')
+			return null
+		}
+		try {
+			const [handle] = await window.showOpenFilePicker({
+				multiple: false,
+				types: [
+					{
+						description: 'Settler render JSON',
+						accept: { 'application/json': ['.json'] }
+					}
+				]
+			})
+			if (handle) {
+				setSettlerFileHandle(handle)
+				setSettlerFileStatus(`Linked ${handle.name}`)
+				return handle
+			}
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') {
+				return null
+			}
+			setSettlerFileStatus('Failed to pick file.')
+		}
+		return null
+	}, [])
+
+	const handleSaveSettlerRenderFile = useCallback(async () => {
+		if (!settlerRenderOutput || !settlerRenderOutput.profession) {
+			setSettlerFileStatus('Select a profession first.')
+			return
+		}
+
+		if (!supportsFilePicker) {
+			const renderList = buildSettlerRenderList(settlerRenderOutput)
+			downloadSettlerRenderFile({ settlerRenders: renderList })
+			setSettlerFileStatus('Downloaded settlerRenders.json. Replace content/settlerpolis/settlerRenders.json')
+			return
+		}
+
+		let handle = settlerFileHandle
+		if (!handle) {
+			handle = await handlePickSettlerFile()
+		}
+		if (!handle) {
+			return
+		}
+
+		try {
+			const permission = await handle.requestPermission({ mode: 'readwrite' })
+			if (permission !== 'granted') {
+				setSettlerFileStatus('Write permission denied.')
+				return
+			}
+			const file = await handle.getFile()
+			const text = await file.text()
+			const parsed = JSON.parse(text)
+			let renderList: SettlerRenderDefinition[] = []
+			let wrapObject: Record<string, any> | null = null
+			let wrapKey: 'settlerRenders' | null = null
+			let useArrayPayload = false
+
+			if (Array.isArray(parsed)) {
+				renderList = parsed
+				useArrayPayload = true
+			} else if (parsed && Array.isArray(parsed.settlerRenders)) {
+				renderList = parsed.settlerRenders
+				wrapObject = parsed
+				wrapKey = 'settlerRenders'
+			} else {
+				setSettlerFileStatus('Invalid settlerRenders.json format.')
+				return
+			}
+
+			const nextDefinition = settlerRenderOutput
+			const existingIndex = renderList.findIndex((entry) => entry.profession === nextDefinition.profession)
+			const updatedList =
+				existingIndex >= 0
+					? renderList.map((entry, index) => (index === existingIndex ? nextDefinition : entry))
+					: [...renderList, nextDefinition]
+
+			let payload: unknown
+			if (wrapObject) {
+				const key = wrapKey ?? 'settlerRenders'
+				payload = { ...wrapObject, [key]: updatedList }
+			} else if (useArrayPayload) {
+				payload = updatedList
+			} else {
+				payload = { settlerRenders: updatedList }
+			}
+
+			const writable = await handle.createWritable()
+			await writable.write(JSON.stringify(payload, null, 2) + '\n')
+			await writable.close()
+			setSettlerFileStatus(`Saved ${nextDefinition.profession}`)
+			setSettlerRenderDefinitions(buildSettlerRenderList(nextDefinition))
+		} catch (error) {
+			void error
+			setSettlerFileStatus('Failed to save file.')
+		}
+	}, [
+		buildSettlerRenderList,
+		downloadSettlerRenderFile,
+		handlePickSettlerFile,
+		settlerFileHandle,
+		settlerRenderOutput,
+		supportsFilePicker
+	])
+
 	return (
 		<div className={styles.editorApp}>
 			<div className={styles.sidebar}>
@@ -2245,6 +2717,13 @@ export function EditorApp() {
 					>
 						Items
 					</button>
+					<button
+						className={`${styles.tabButton} ${isSettlerMode ? styles.tabButtonActive : ''}`}
+						type="button"
+						onClick={() => setEditorMode('settler')}
+					>
+						Settlers
+					</button>
 				</div>
 				{showHelp && (
 					<section className={styles.helpPanel}>
@@ -2259,6 +2738,7 @@ export function EditorApp() {
 							<li>Save updates to buildings.json from the definition panel.</li>
 							<li>Use the Resources tab to save resourceNodeRenders.json.</li>
 							<li>Use the Items tab to save itemRenders.json.</li>
+							<li>Use the Settlers tab to save settlerRenders.json.</li>
 						</ul>
 					</section>
 				)}
@@ -2673,57 +3153,65 @@ export function EditorApp() {
 					</section>
 				)}
 
-				<section className={styles.section}>
-					<div className={styles.sectionHeaderRow}>
-						<div className={styles.sectionHeader}>Asset</div>
-						<button
-							className={styles.collapseButton}
-							type="button"
-							onClick={() => setAssetOpen((prev) => !prev)}
-							aria-expanded={assetOpen}
-						>
-							{assetOpen ? '^' : 'v'}
-						</button>
-					</div>
-					{assetOpen && (
-						<>
-							{assetOptions.length > 0 && (
+				{isSettlerMode && (
+					<section className={styles.section}>
+						<div className={styles.sectionHeader}>Settler render</div>
+						{professionOptions.length > 0 ? (
+							<label className={styles.field}>
+								<span>Profession</span>
+								<select
+									value={selectedSettlerProfession}
+									onChange={(event) => {
+										const next = event.target.value
+										setSelectedSettlerProfession(next)
+										loadSettlerRender(next)
+									}}
+								>
+									<option value="">Select a profession...</option>
+									{professionOptions.map((definition) => (
+										<option key={definition.id} value={definition.id}>
+											{definition.icon ? `${definition.icon} ` : ''}{definition.label || definition.id}
+										</option>
+									))}
+								</select>
+							</label>
+						) : (
+							<p className={styles.helperText}>No professions found in content.</p>
+						)}
+						{settlerRenderError && <p className={styles.error}>{settlerRenderError}</p>}
+						{settlerRenderOutput && (
+							<div className={styles.inlineRow}>
+								{supportsFilePicker && (
+									<button className={styles.secondaryButton} type="button" onClick={handlePickSettlerFile}>
+										Choose settlerRenders.json
+									</button>
+								)}
+								<button className={styles.primaryButton} type="button" onClick={handleSaveSettlerRenderFile}>
+									{supportsFilePicker ? 'Save to file' : 'Download settlerRenders.json'}
+								</button>
+								{settlerFileStatus && <span className={styles.status}>{settlerFileStatus}</span>}
+							</div>
+						)}
+					</section>
+				)}
+
+				{isSettlerMode && (
+					<section className={styles.section}>
+						<div className={styles.sectionHeader}>Settler model</div>
+						{assetOptions.length > 0 ? (
+							<>
 								<label className={styles.field}>
-									<span>Asset library</span>
+									<span>Model</span>
 									<select
-										value={isResourceMode ? selectedResourceAsset : isItemMode ? selectedItemAsset : selectedAsset}
+										value={selectedSettlerAsset}
 										onChange={(event) => {
 											const next = event.target.value
-											if (isResourceMode) {
-												setSelectedResourceAsset(next)
-												setResourceAssetPath(next)
-												if (next) {
-													void handleLoadResourceAsset(next)
-												} else {
-													void handleLoadResourceAsset('')
-												}
-												return
-											}
-											if (isItemMode) {
-												setSelectedItemAsset(next)
-												setItemAssetPath(next)
-												if (next) {
-													void handleLoadItemAsset(next)
-												} else {
-													void handleLoadItemAsset('')
-												}
-												return
-											}
-											setSelectedAsset(next)
-											setAssetPath(next)
-											if (next) {
-												void handleLoadAsset(next)
-											} else {
-												void handleLoadAsset('')
-											}
+											setSelectedSettlerAsset(next)
+											setSettlerAssetPath(next)
+											void handleLoadSettlerAsset(next, settlerAnimationPath)
 										}}
 									>
-										<option value="">Select an asset...</option>
+										<option value="">Select a model...</option>
 										{assetOptions.map((asset) => (
 											<option key={asset} value={asset}>
 												{asset}
@@ -2731,26 +3219,200 @@ export function EditorApp() {
 										))}
 									</select>
 								</label>
-							)}
-							{assetIndexError && <p className={styles.error}>{assetIndexError}</p>}
-							{!assetIndexError && assetOptions.length === 0 && (
-								<p className={styles.helperText}>No assets found yet. Run the content loader to build the index.</p>
-							)}
-							{isBuildingMode && !hasDefinition && (
 								<label className={styles.field}>
-									<span>Asset ID</span>
-									<input
-										type="text"
-										value={assetId}
-										onChange={(event) => setAssetId(event.target.value)}
-										placeholder="my_asset"
-									/>
+									<span>Animation file</span>
+									<select
+										value={selectedSettlerAnimationAsset}
+										onChange={(event) => {
+											const next = event.target.value
+											setSelectedSettlerAnimationAsset(next)
+											setSettlerAnimationPath(next)
+											void handleLoadSettlerAsset(settlerAssetPath, next)
+										}}
+									>
+										<option value="">Select an animation file...</option>
+										{assetOptions.map((asset) => (
+											<option key={asset} value={asset}>
+												{asset}
+											</option>
+										))}
+									</select>
 								</label>
-							)}
-							{activeLoadError && <p className={styles.error}>{activeLoadError}</p>}
-						</>
-					)}
-				</section>
+							</>
+						) : (
+							<p className={styles.helperText}>No assets found yet. Run the content loader to build the index.</p>
+						)}
+						{assetIndexError && <p className={styles.error}>{assetIndexError}</p>}
+						{settlerLoadError && <p className={styles.error}>{settlerLoadError}</p>}
+						{settlerAnimationOptions.length > 0 ? (
+							<label className={styles.field}>
+								<span>Preview animation</span>
+								<select
+									value={settlerPreviewAnimation}
+									onChange={(event) => {
+										const next = event.target.value
+										setSettlerPreviewAnimation(next)
+										sceneRef.current?.setActiveAnimation(next || null)
+									}}
+								>
+									<option value="">Select an animation...</option>
+									{settlerAnimationOptions.map((name) => (
+										<option key={name} value={name}>{name}</option>
+									))}
+								</select>
+							</label>
+						) : (
+							<p className={styles.helperText}>No animation clips loaded yet.</p>
+						)}
+					</section>
+				)}
+
+				{isSettlerMode && (
+					<section className={styles.section}>
+						<div className={styles.sectionHeader}>Animation mapping</div>
+						<p className={styles.helperText}>Missing entries use the built-in fallbacks.</p>
+						<div className={styles.animationList}>
+							{SETTLER_ANIMATION_KEYS.map((key) => {
+								const currentValue = settlerAnimationMap[key] || ''
+								const label = formatAnimationKey(key)
+								const isMissing = !currentValue
+								return (
+									<div className={styles.animationRow} key={key}>
+										<div className={styles.animationKey}>
+											<span>{label}</span>
+											{isMissing && (
+												<span className={styles.warningIcon} title="Fallback will be used">!</span>
+											)}
+										</div>
+										<select
+											value={currentValue}
+											onChange={(event) => {
+												const next = event.target.value
+												setSettlerAnimationMap((prev) => ({
+													...prev,
+													[key]: next
+												}))
+											}}
+										>
+											<option value="">Use fallback</option>
+											{settlerAnimationOptions.map((name) => (
+												<option key={`${key}-${name}`} value={name}>{name}</option>
+											))}
+										</select>
+									</div>
+								)
+							})}
+						</div>
+					</section>
+				)}
+
+				{isSettlerMode && (
+					<section className={styles.section}>
+						<div className={styles.sectionHeader}>Attachments</div>
+						<p className={styles.helperText}>Optional bone/node names for attached items.</p>
+						<label className={styles.field}>
+							<span>Carry socket</span>
+							<input
+								type="text"
+								value={settlerCarrySocket}
+								onChange={(event) => setSettlerCarrySocket(event.target.value)}
+								placeholder="RightHand"
+							/>
+						</label>
+						<label className={styles.field}>
+							<span>Tool socket</span>
+							<input
+								type="text"
+								value={settlerToolSocket}
+								onChange={(event) => setSettlerToolSocket(event.target.value)}
+								placeholder="RightHand"
+							/>
+						</label>
+					</section>
+				)}
+
+				{!isSettlerMode && (
+					<section className={styles.section}>
+						<div className={styles.sectionHeaderRow}>
+							<div className={styles.sectionHeader}>Asset</div>
+							<button
+								className={styles.collapseButton}
+								type="button"
+								onClick={() => setAssetOpen((prev) => !prev)}
+								aria-expanded={assetOpen}
+							>
+								{assetOpen ? '^' : 'v'}
+							</button>
+						</div>
+						{assetOpen && (
+							<>
+								{assetOptions.length > 0 && (
+									<label className={styles.field}>
+										<span>Asset library</span>
+										<select
+											value={isResourceMode ? selectedResourceAsset : isItemMode ? selectedItemAsset : selectedAsset}
+											onChange={(event) => {
+												const next = event.target.value
+												if (isResourceMode) {
+													setSelectedResourceAsset(next)
+													setResourceAssetPath(next)
+													if (next) {
+														void handleLoadResourceAsset(next)
+													} else {
+														void handleLoadResourceAsset('')
+													}
+													return
+												}
+												if (isItemMode) {
+													setSelectedItemAsset(next)
+													setItemAssetPath(next)
+													if (next) {
+														void handleLoadItemAsset(next)
+													} else {
+														void handleLoadItemAsset('')
+													}
+													return
+												}
+												setSelectedAsset(next)
+												setAssetPath(next)
+												if (next) {
+													void handleLoadAsset(next)
+												} else {
+													void handleLoadAsset('')
+												}
+											}}
+										>
+											<option value="">Select an asset...</option>
+											{assetOptions.map((asset) => (
+												<option key={asset} value={asset}>
+													{asset}
+												</option>
+											))}
+										</select>
+									</label>
+								)}
+								{assetIndexError && <p className={styles.error}>{assetIndexError}</p>}
+								{!assetIndexError && assetOptions.length === 0 && (
+									<p className={styles.helperText}>
+										No assets found yet. Run the content loader to build the index.
+									</p>
+								)}
+								{isBuildingMode && !hasDefinition && (
+									<label className={styles.field}>
+										<span>Asset ID</span>
+										<input
+											type="text"
+											value={assetId}
+											onChange={(event) => setAssetId(event.target.value)}
+											placeholder="my_asset"
+										/>
+									</label>
+								)}
+								{activeLoadError && <p className={styles.error}>{activeLoadError}</p>}
+							</>
+						)}
+					</section>
+				)}
 
 				<section
 					className={styles.section}
@@ -2789,6 +3451,11 @@ export function EditorApp() {
 															...prev,
 															width: toInteger(event.target.value, prev.width)
 														}))
+													: isSettlerMode
+														? setSettlerFootprint((prev) => ({
+																...prev,
+																width: toInteger(event.target.value, prev.width)
+															}))
 													: setFootprint((prev) => ({
 															...prev,
 															width: toInteger(event.target.value, prev.width)
@@ -2814,6 +3481,11 @@ export function EditorApp() {
 															...prev,
 															length: toInteger(event.target.value, prev.length)
 														}))
+													: isSettlerMode
+														? setSettlerFootprint((prev) => ({
+																...prev,
+																length: toInteger(event.target.value, prev.length)
+															}))
 													: setFootprint((prev) => ({
 															...prev,
 															length: toInteger(event.target.value, prev.length)
@@ -2840,6 +3512,11 @@ export function EditorApp() {
 															...prev,
 															x: toNumber(event.target.value, prev.x)
 														}))
+													: isSettlerMode
+														? setSettlerPosition((prev) => ({
+																...prev,
+																x: toNumber(event.target.value, prev.x)
+															}))
 													: setPosition((prev) => ({
 															...prev,
 															x: toNumber(event.target.value, prev.x)
@@ -2864,6 +3541,11 @@ export function EditorApp() {
 															...prev,
 															y: toNumber(event.target.value, prev.y)
 														}))
+													: isSettlerMode
+														? setSettlerPosition((prev) => ({
+																...prev,
+																y: toNumber(event.target.value, prev.y)
+															}))
 													: setPosition((prev) => ({
 															...prev,
 															y: toNumber(event.target.value, prev.y)
@@ -3114,6 +3796,9 @@ export function EditorApp() {
 									!buildingModelVariants[activeBuildingVariantIndex]?.modelSrc) && (
 									<p className={styles.helperText}>Select a building model to edit its transform.</p>
 								)}
+							{isSettlerMode && !settlerAssetPath && (
+								<p className={styles.helperText}>Select a settler model to edit its transform.</p>
+							)}
 							{(isBuildingMode &&
 								(buildingModelVariants.length === 0 ||
 									(activeBuildingVariantIndex !== null &&
@@ -3123,7 +3808,8 @@ export function EditorApp() {
 								resourceModelVariants[activeResourceVariantIndex]?.modelSrc) ||
 							(isItemMode &&
 								activeItemVariantIndex !== null &&
-								itemModelVariants[activeItemVariantIndex]?.modelSrc) ? (
+								itemModelVariants[activeItemVariantIndex]?.modelSrc) ||
+							(isSettlerMode && settlerAssetPath) ? (
 								<>
 									{isResourceMode && activeResourceVariantIndex !== null && (
 										<p className={styles.helperText}>
@@ -3143,13 +3829,18 @@ export function EditorApp() {
 											{buildingModelVariants[activeBuildingVariantIndex]?.modelSrc || 'unset'}
 										</p>
 									)}
+									{isSettlerMode && (
+										<p className={styles.helperText}>
+											Editing transform for model: {settlerAssetPath || 'unset'}
+										</p>
+									)}
 									<div className={styles.gridRow}>
 										<label className={styles.field}>
 											<span>Rotate X (deg)</span>
 											<input
 												type="number"
 												step="1"
-												value={isResourceMode ? resourceRotationDeg.x : isItemMode ? itemRotationDeg.x : rotationDeg.x}
+												value={isResourceMode ? resourceRotationDeg.x : isItemMode ? itemRotationDeg.x : isSettlerMode ? settlerRotationDeg.x : rotationDeg.x}
 												onChange={(event) =>
 													isResourceMode
 														? updateActiveResourceRotation({
@@ -3159,6 +3850,11 @@ export function EditorApp() {
 															? updateActiveItemRotation({
 																	x: toNumber(event.target.value, itemRotationDeg.x)
 																})
+															: isSettlerMode
+																? setSettlerRotationDeg((prev) => ({
+																		...prev,
+																		x: toNumber(event.target.value, prev.x)
+																	}))
 															: isBuildingMode
 																? updateActiveBuildingRotation({
 																		x: toNumber(event.target.value, rotationDeg.x)
@@ -3175,7 +3871,7 @@ export function EditorApp() {
 											<input
 												type="number"
 												step="1"
-												value={isResourceMode ? resourceRotationDeg.y : isItemMode ? itemRotationDeg.y : rotationDeg.y}
+												value={isResourceMode ? resourceRotationDeg.y : isItemMode ? itemRotationDeg.y : isSettlerMode ? settlerRotationDeg.y : rotationDeg.y}
 												onChange={(event) =>
 													isResourceMode
 														? updateActiveResourceRotation({
@@ -3185,6 +3881,11 @@ export function EditorApp() {
 															? updateActiveItemRotation({
 																	y: toNumber(event.target.value, itemRotationDeg.y)
 																})
+															: isSettlerMode
+																? setSettlerRotationDeg((prev) => ({
+																		...prev,
+																		y: toNumber(event.target.value, prev.y)
+																	}))
 															: isBuildingMode
 																? updateActiveBuildingRotation({
 																		y: toNumber(event.target.value, rotationDeg.y)
@@ -3201,7 +3902,7 @@ export function EditorApp() {
 											<input
 												type="number"
 												step="1"
-												value={isResourceMode ? resourceRotationDeg.z : isItemMode ? itemRotationDeg.z : rotationDeg.z}
+												value={isResourceMode ? resourceRotationDeg.z : isItemMode ? itemRotationDeg.z : isSettlerMode ? settlerRotationDeg.z : rotationDeg.z}
 												onChange={(event) =>
 													isResourceMode
 														? updateActiveResourceRotation({
@@ -3211,6 +3912,11 @@ export function EditorApp() {
 															? updateActiveItemRotation({
 																	z: toNumber(event.target.value, itemRotationDeg.z)
 																})
+															: isSettlerMode
+																? setSettlerRotationDeg((prev) => ({
+																		...prev,
+																		z: toNumber(event.target.value, prev.z)
+																	}))
 															: isBuildingMode
 																? updateActiveBuildingRotation({
 																		z: toNumber(event.target.value, rotationDeg.z)
@@ -3229,7 +3935,7 @@ export function EditorApp() {
 											<input
 												type="number"
 												step="0.05"
-												value={isResourceMode ? resourceScale.x : isItemMode ? itemScale.x : scale.x}
+												value={isResourceMode ? resourceScale.x : isItemMode ? itemScale.x : isSettlerMode ? settlerScale.x : scale.x}
 												onChange={(event) =>
 													isResourceMode
 														? updateActiveResourceScale({
@@ -3239,6 +3945,11 @@ export function EditorApp() {
 															? updateActiveItemScale({
 																	x: toNumber(event.target.value, itemScale.x)
 																})
+															: isSettlerMode
+																? setSettlerScale((prev) => ({
+																		...prev,
+																		x: toNumber(event.target.value, prev.x)
+																	}))
 															: isBuildingMode
 																? updateActiveBuildingScale({
 																		x: toNumber(event.target.value, scale.x)
@@ -3255,7 +3966,7 @@ export function EditorApp() {
 											<input
 												type="number"
 												step="0.05"
-												value={isResourceMode ? resourceScale.y : isItemMode ? itemScale.y : scale.y}
+												value={isResourceMode ? resourceScale.y : isItemMode ? itemScale.y : isSettlerMode ? settlerScale.y : scale.y}
 												onChange={(event) =>
 													isResourceMode
 														? updateActiveResourceScale({
@@ -3265,6 +3976,11 @@ export function EditorApp() {
 															? updateActiveItemScale({
 																	y: toNumber(event.target.value, itemScale.y)
 																})
+															: isSettlerMode
+																? setSettlerScale((prev) => ({
+																		...prev,
+																		y: toNumber(event.target.value, prev.y)
+																	}))
 															: isBuildingMode
 																? updateActiveBuildingScale({
 																		y: toNumber(event.target.value, scale.y)
@@ -3281,7 +3997,7 @@ export function EditorApp() {
 											<input
 												type="number"
 												step="0.05"
-												value={isResourceMode ? resourceScale.z : isItemMode ? itemScale.z : scale.z}
+												value={isResourceMode ? resourceScale.z : isItemMode ? itemScale.z : isSettlerMode ? settlerScale.z : scale.z}
 												onChange={(event) =>
 													isResourceMode
 														? updateActiveResourceScale({
@@ -3291,6 +4007,11 @@ export function EditorApp() {
 															? updateActiveItemScale({
 																	z: toNumber(event.target.value, itemScale.z)
 																})
+															: isSettlerMode
+																? setSettlerScale((prev) => ({
+																		...prev,
+																		z: toNumber(event.target.value, prev.z)
+																	}))
 															: isBuildingMode
 																? updateActiveBuildingScale({
 																		z: toNumber(event.target.value, scale.z)
@@ -3309,7 +4030,7 @@ export function EditorApp() {
 											<input
 												type="number"
 												step="0.1"
-												value={isResourceMode ? resourceOffset.x : isItemMode ? itemOffset.x : offset.x}
+												value={isResourceMode ? resourceOffset.x : isItemMode ? itemOffset.x : isSettlerMode ? settlerOffset.x : offset.x}
 												onChange={(event) =>
 													isResourceMode
 														? updateActiveResourceOffset({
@@ -3319,6 +4040,11 @@ export function EditorApp() {
 															? updateActiveItemOffset({
 																	x: toNumber(event.target.value, itemOffset.x)
 																})
+															: isSettlerMode
+																? setSettlerOffset((prev) => ({
+																		...prev,
+																		x: toNumber(event.target.value, prev.x)
+																	}))
 															: isBuildingMode
 																? updateActiveBuildingOffset({
 																		x: toNumber(event.target.value, offset.x)
@@ -3335,7 +4061,7 @@ export function EditorApp() {
 											<input
 												type="number"
 												step="0.1"
-												value={isResourceMode ? resourceOffset.y : isItemMode ? itemOffset.y : offset.y}
+												value={isResourceMode ? resourceOffset.y : isItemMode ? itemOffset.y : isSettlerMode ? settlerOffset.y : offset.y}
 												onChange={(event) =>
 													isResourceMode
 														? updateActiveResourceOffset({
@@ -3345,6 +4071,11 @@ export function EditorApp() {
 															? updateActiveItemOffset({
 																	y: toNumber(event.target.value, itemOffset.y)
 																})
+															: isSettlerMode
+																? setSettlerOffset((prev) => ({
+																		...prev,
+																		y: toNumber(event.target.value, prev.y)
+																	}))
 															: isBuildingMode
 																? updateActiveBuildingOffset({
 																		y: toNumber(event.target.value, offset.y)
@@ -3361,7 +4092,7 @@ export function EditorApp() {
 											<input
 												type="number"
 												step="0.1"
-												value={isResourceMode ? resourceOffset.z : isItemMode ? itemOffset.z : offset.z}
+												value={isResourceMode ? resourceOffset.z : isItemMode ? itemOffset.z : isSettlerMode ? settlerOffset.z : offset.z}
 												onChange={(event) =>
 													isResourceMode
 														? updateActiveResourceOffset({
@@ -3371,6 +4102,11 @@ export function EditorApp() {
 															? updateActiveItemOffset({
 																	z: toNumber(event.target.value, itemOffset.z)
 																})
+															: isSettlerMode
+																? setSettlerOffset((prev) => ({
+																		...prev,
+																		z: toNumber(event.target.value, prev.z)
+																	}))
 															: isBuildingMode
 																? updateActiveBuildingOffset({
 																		z: toNumber(event.target.value, offset.z)
@@ -3388,12 +4124,14 @@ export function EditorApp() {
 										<input
 											type="number"
 											step="0.1"
-											value={isResourceMode ? resourceElevation : isItemMode ? itemElevation : elevation}
+											value={isResourceMode ? resourceElevation : isItemMode ? itemElevation : isSettlerMode ? settlerElevation : elevation}
 											onChange={(event) =>
 												isResourceMode
 													? updateActiveResourceElevation(toNumber(event.target.value, resourceElevation))
 													: isItemMode
 														? updateActiveItemElevation(toNumber(event.target.value, itemElevation))
+														: isSettlerMode
+															? setSettlerElevation(toNumber(event.target.value, settlerElevation))
 														: isBuildingMode
 															? updateActiveBuildingElevation(toNumber(event.target.value, elevation))
 															: setElevation(toNumber(event.target.value, elevation))
@@ -3897,4 +4635,21 @@ function isItemRenderMeaningful(definition: ItemRenderDefinition): boolean {
 		Boolean(definition.render?.modelSrc) ||
 		(Array.isArray(definition.renders) && definition.renders.some((variant) => Boolean(variant?.modelSrc)))
 	return hasRender || hasFootprint
+}
+
+function isSettlerRenderMeaningful(definition: SettlerRenderDefinition): boolean {
+	const hasModel = Boolean(definition.modelSrc)
+	const hasAnimation = Boolean(definition.animationSrc)
+	const hasAnimations = Boolean(definition.animations && Object.keys(definition.animations).length > 0)
+	const hasTransform = Boolean(definition.transform && Object.keys(definition.transform).length > 0)
+	const hasAttachments =
+		Boolean(definition.attachments?.carrySocket || definition.attachments?.toolSocket) &&
+		(hasModel || hasAnimation || hasAnimations || hasTransform)
+	return hasModel || hasAnimation || hasAnimations || hasTransform || hasAttachments
+}
+
+function formatAnimationKey(value: string): string {
+	if (!value) return ''
+	const normalized = value.replace(/_/g, ' ')
+	return normalized.charAt(0).toUpperCase() + normalized.slice(1)
 }
