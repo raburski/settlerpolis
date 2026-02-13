@@ -43,6 +43,10 @@ import type { BuildingsSnapshot, BuildingInstanceSnapshot } from '../state/types
 import { CityCharterEvents } from '../CityCharter/events'
 import type { CityCharterUnlockFlagsUpdated } from '../CityCharter/types'
 import { getProductionRecipes } from './work'
+import type { ResourceNodesManager } from '../ResourceNodes'
+
+const MINE_BUILDING_IDS = new Set(['coal_mine', 'iron_mine', 'gold_mine', 'stone_mine', 'quarry'])
+const RESOURCE_NODE_TYPES = new Set(['resource_deposit', 'stone_deposit'])
 
 export interface BuildingDeps {
 	inventory: InventoryManager
@@ -51,6 +55,7 @@ export interface BuildingDeps {
 	map: MapManager
 	loot: LootManager
 	storage: StorageManager
+	resourceNodes: ResourceNodesManager
 }
 
 export class BuildingManager extends BaseManager<BuildingDeps> {
@@ -229,7 +234,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	private placeBuilding(data: PlaceBuildingData, client: EventClient) {
-		const { buildingId, position } = data
+		const { buildingId, position, resourceNodeId } = data
 		const rotation = typeof data.rotation === 'number' ? data.rotation : 0
 		const definition = this.definitions.get(buildingId)
 
@@ -237,6 +242,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			this.logger.error(`Building definition not found: ${buildingId}`)
 			return
 		}
+		const isMine = MINE_BUILDING_IDS.has(buildingId)
 
 		if (definition.unlockFlags && definition.unlockFlags.length > 0) {
 			const key = this.getPlayerMapKey(client.id, client.currentGroup)
@@ -245,6 +251,41 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			if (!isUnlocked) {
 				this.logger.warn(`Building ${buildingId} is locked for player ${client.id} on map ${client.currentGroup}`)
 				return
+			}
+		}
+
+		if (isMine) {
+			if (!resourceNodeId) {
+				this.logger.warn(`Missing resourceNodeId for ${buildingId}; placement blocked`)
+				return
+			}
+			const node = this.managers.resourceNodes.getNode(resourceNodeId)
+			if (!node) {
+				this.logger.warn(`Invalid resourceNodeId=${resourceNodeId} for ${buildingId}`)
+				return
+			}
+			if (node.mapId !== client.currentGroup) {
+				this.logger.warn(`Resource node map mismatch nodeId=${resourceNodeId} nodeMap=${node.mapId} mapId=${client.currentGroup}`)
+				return
+			}
+			const expectedDeposit: Record<string, string> = {
+				coal_mine: 'coal',
+				iron_mine: 'iron',
+				gold_mine: 'gold',
+				stone_mine: 'stone',
+				quarry: 'stone'
+			}
+			const expectedType = expectedDeposit[buildingId]
+			if (node.nodeType === 'stone_deposit') {
+				if (expectedType !== 'stone') {
+					this.logger.warn(`Node type stone_deposit incompatible with ${buildingId}`)
+					return
+				}
+			} else {
+				if (!node.depositDiscovered || node.depositType !== expectedType) {
+					this.logger.warn(`Deposit mismatch nodeId=${resourceNodeId} depositType=${node.depositType ?? 'unknown'} expected=${expectedType}`)
+					return
+				}
 			}
 		}
 
@@ -280,6 +321,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			metadata: {
 				buildingId,
 				buildingInstanceId,
+				allowOverlapResourceNodes: isMine,
 				stage: ConstructionStage.CollectingResources,
 				progress: 0,
 				footprint: {
@@ -303,7 +345,8 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			createdAt: this.simulationTimeMs,
 			collectedResources: new Map(),
 			requiredResources: [],
-			productionPaused: false
+			productionPaused: false,
+			resourceNodeId: isMine ? resourceNodeId : undefined
 		}
 		if (getProductionRecipes(definition).length > 0) {
 			buildingInstance.useGlobalProductionPlan = true
@@ -347,6 +390,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			building: clientBuilding as any
 		}
 		client.emit(Receiver.Group, BuildingsEvents.SC.Placed, placedData, client.currentGroup)
+		this.event.emit(Receiver.All, BuildingsEvents.SS.Placed, { building: buildingInstance })
 	}
 
 	private cancelBuilding(data: CancelBuildingData, client: EventClient) {
@@ -986,6 +1030,13 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 		// Check collision with existing map objects
 		for (const obj of existingObjects) {
+			if (MINE_BUILDING_IDS.has(definition.id)) {
+				const nodeType = obj.metadata?.resourceNodeType as string | undefined
+				if (nodeType && RESOURCE_NODE_TYPES.has(nodeType)) {
+					// Allow mines/quarries to replace deposits without collision blocking.
+					continue
+				}
+			}
 			// For buildings, use footprint from metadata
 			let objWidth: number
 			let objHeight: number

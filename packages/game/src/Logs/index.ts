@@ -14,6 +14,14 @@ export interface Logger {
 	debug(...args: any[]): void
 }
 
+export type LogEventPayload = {
+	manager: string
+	level: 'debug' | 'info' | 'warn' | 'error'
+	message: string
+	args: string[]
+	timestamp: number
+}
+
 interface LoggerConfig {
 	enabled: boolean
 	level: LogLevel
@@ -25,6 +33,7 @@ export class LogsManager {
 	private globalLevel: LogLevel = LogLevel.Info
 	private globalEnabled: boolean = true
 	private allowedManagers: Set<string> | null = null
+	private eventEmitter: ((payload: LogEventPayload) => void) | null = null
 
 	/**
 	 * Get a logger instance for a manager
@@ -93,6 +102,16 @@ export class LogsManager {
 		// Format the log message with manager prefix
 		const prefix = `[${managerName}]`
 		const formattedArgs = [prefix, ...args]
+		const serializedArgs = args.map(arg => this.serializeArg(arg))
+		const eventPayload = this.eventEmitter
+			? {
+				manager: managerName,
+				level: this.levelToString(level),
+				message: serializedArgs.join(' '),
+				args: serializedArgs,
+				timestamp: Date.now()
+			} satisfies LogEventPayload
+			: null
 
 		// Use appropriate console method based on level
 		switch (level) {
@@ -108,6 +127,10 @@ export class LogsManager {
 			case LogLevel.Error:
 				console.error(...formattedArgs)
 				break
+		}
+
+		if (eventPayload) {
+			this.eventEmitter?.(eventPayload)
 		}
 	}
 
@@ -200,6 +223,10 @@ export class LogsManager {
 		}
 	}
 
+	public setEventEmitter(emitter: ((payload: LogEventPayload) => void) | null): void {
+		this.eventEmitter = emitter
+	}
+
 	/**
 	 * Restrict logging to an allowlist of manager names.
 	 * Pass null/empty to disable filtering.
@@ -210,5 +237,33 @@ export class LogsManager {
 			return
 		}
 		this.allowedManagers = new Set(managerNames)
+	}
+
+	private levelToString(level: LogLevel): LogEventPayload['level'] {
+		switch (level) {
+			case LogLevel.Debug:
+				return 'debug'
+			case LogLevel.Warn:
+				return 'warn'
+			case LogLevel.Error:
+				return 'error'
+			case LogLevel.Info:
+			default:
+				return 'info'
+		}
+	}
+
+	private serializeArg(arg: any): string {
+		if (typeof arg === 'string') {
+			return arg
+		}
+		if (arg instanceof Error) {
+			return `${arg.name}: ${arg.message}`
+		}
+		try {
+			return JSON.stringify(arg)
+		} catch (error) {
+			return String(arg)
+		}
 	}
 }

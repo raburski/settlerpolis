@@ -75,6 +75,7 @@ export const ProduceHandler: StepHandler = {
 
 		actions.push({ type: WorkActionType.Move, position: building.position, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding })
 		actions.push({ type: WorkActionType.Wait, durationMs: step.durationMs, setState: SettlerState.Working })
+		actions.push({ type: WorkActionType.Produce, buildingInstanceId: building.id, recipe: step.recipe, setState: SettlerState.Working })
 
 		for (const output of outputReservations) {
 			actions.push(

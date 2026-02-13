@@ -17,6 +17,7 @@ import '../services/LogisticsService'
 import '../services/CityCharterService'
 // Initialize ReputationService to start listening to events
 import '../services/ReputationService'
+import '../services/LogService'
 import { resourceNodeRenderService } from '../services/ResourceNodeRenderService'
 import { itemRenderService } from '../services/ItemRenderService'
 import { settlerRenderService } from '../services/SettlerRenderService'
@@ -63,6 +64,7 @@ function getNetworkManager(): NetworkEventManager {
 			}
 			return String(raw).toLowerCase() === 'true'
 		})()
+		const logToEventBus = String(import.meta.env.VITE_GAME_LOG_EVENTBUS || '').toLowerCase() === 'true'
 		const mapBaseUrl = '/assets/maps/'
 		const mapUrlService = new FrontendMapUrlService(mapBaseUrl)
 		const logAllowlist = (import.meta.env.VITE_GAME_LOG_ALLOWLIST || 'WorkProviderManager')
@@ -75,12 +77,13 @@ function getNetworkManager(): NetworkEventManager {
 				content: cloneContentForWorker(content),
 				mapBaseUrl,
 				logAllowlist,
+				logToEventBus,
 				silentLogs: silentRoutingLogs
 			})
 			: null
 		const gameManager = USE_WORKER || !localManager
 			? null
-			: new GameManager(localManager.server, content, mapUrlService, { logAllowlist })
+			: new GameManager(localManager.server, content, mapUrlService, { logAllowlist, logToEventBus })
 		const clientManager = (workerManager ? workerManager.client : localManager?.client) as NetworkEventManager
 		const serverManager = workerManager ? workerManager.server : localManager?.server
 		const storageKey = `rugged:snapshots:${CONTENT_FOLDER}`

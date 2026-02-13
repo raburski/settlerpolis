@@ -65,6 +65,7 @@ export class SettlerView extends BaseMovementView {
 	private professionEmojis: Record<ProfessionType, string> = {
 		[ProfessionType.Carrier]: '👤',
 		[ProfessionType.Builder]: '🔨',
+		[ProfessionType.Prospector]: '🧭',
 		[ProfessionType.Woodcutter]: '🪓',
 		[ProfessionType.Miner]: '⛏️',
 		[ProfessionType.Metallurgist]: '⚒️',

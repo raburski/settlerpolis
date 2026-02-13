@@ -27,6 +27,10 @@ export class BuildingProvider implements WorkProvider {
 
 	unassign(settlerId: string): void {
 		this.assigned.delete(settlerId)
+		const job = this.managers.resourceNodes.getProspectingJobForSettler(settlerId)
+		if (job) {
+			this.managers.resourceNodes.releaseProspectingJob(job.jobId)
+		}
 	}
 
 	pause(settlerId: string): void {

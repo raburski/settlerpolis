@@ -156,6 +156,13 @@ const STONE_SPAWN_RADIUS = 28
 const STONE_SPAWN_CLUSTER_TARGET = 4
 const STONE_SPAWN_ROCK_MIN = 4
 const STONE_PATCH_TARGET = 26
+const MOUNTAIN_DEPOSIT_DENSITY = 0.005
+const MOUNTAIN_DEPOSIT_BUFFER = 1
+const MOUNTAIN_DEPOSIT_FOOTPRINT = 2
+const STONE_QUANTITY_MIN = 10
+const STONE_QUANTITY_MAX = 50
+const RESOURCE_DEPOSIT_QUANTITY_MIN = 50
+const RESOURCE_DEPOSIT_QUANTITY_MAX = 200
 const DIRT_MAX_FRACTION = 0.008
 const MUD_MAX_FRACTION = 0.006
 const DIRT_MIN_FRACTION = 0.0018
@@ -196,6 +203,13 @@ const hash2D = (x: number, y: number, seed: number) => {
 	let h = seed ^ Math.imul(x, 374761393) ^ Math.imul(y, 668265263)
 	h = Math.imul(h ^ (h >>> 13), 1274126177)
 	return ((h ^ (h >>> 16)) >>> 0) / 4294967296
+}
+
+const rollQuantity = (min: number, max: number, seed: number, x: number, y: number) => {
+	const clampedMin = Math.min(min, max)
+	const clampedMax = Math.max(min, max)
+	const roll = hash2D(x, y, seed + 409)
+	return clampedMin + Math.floor(roll * (clampedMax - clampedMin + 1))
 }
 
 const valueNoise = (x: number, y: number, seed: number) => {
@@ -1430,7 +1444,12 @@ const generateStoneNodes = (
 				avoidMask
 			)
 			for (const pos of positions) {
-				nodes.push({ nodeType: 'stone_deposit', position: pos, tileBased: true })
+				nodes.push({
+					nodeType: 'stone_deposit',
+					position: pos,
+					tileBased: true,
+					quantity: rollQuantity(STONE_QUANTITY_MIN, STONE_QUANTITY_MAX, seed + 511, pos.x, pos.y)
+				})
 			}
 			remaining -= positions.length
 		}
@@ -1459,10 +1478,82 @@ const generateStoneNodes = (
 			avoidMask
 		)
 		for (const pos of positions) {
-			nodes.push({ nodeType: 'stone_deposit', position: pos, tileBased: true })
+			nodes.push({
+				nodeType: 'stone_deposit',
+				position: pos,
+				tileBased: true,
+				quantity: rollQuantity(STONE_QUANTITY_MIN, STONE_QUANTITY_MAX, seed + 593, pos.x, pos.y)
+			})
 		}
 		remaining -= positions.length
 		attempts += 1
+	}
+
+	return nodes
+}
+
+const generateMountainDepositNodes = (
+	tiles: Uint16Array,
+	width: number,
+	height: number,
+	seed: number,
+	occupiedMask?: Uint8Array | null
+): MapResourceNode[] => {
+	const nodes: MapResourceNode[] = []
+	const occupied = new Uint8Array(width * height)
+	if (occupiedMask) {
+		occupied.set(occupiedMask)
+	}
+
+	for (let y = 0; y < height - (MOUNTAIN_DEPOSIT_FOOTPRINT - 1); y += 1) {
+		for (let x = 0; x < width - (MOUNTAIN_DEPOSIT_FOOTPRINT - 1); x += 1) {
+			if (hash2D(x, y, seed + 211) > MOUNTAIN_DEPOSIT_DENSITY) {
+				continue
+			}
+
+			let allMountain = true
+			for (let dy = 0; dy < MOUNTAIN_DEPOSIT_FOOTPRINT; dy += 1) {
+				for (let dx = 0; dx < MOUNTAIN_DEPOSIT_FOOTPRINT; dx += 1) {
+					if (getTypeAt(tiles, width, height, x + dx, y + dy) !== 'mountain') {
+						allMountain = false
+						break
+					}
+				}
+				if (!allMountain) break
+			}
+			if (!allMountain) continue
+
+			let blocked = false
+			for (let dy = -MOUNTAIN_DEPOSIT_BUFFER; dy < MOUNTAIN_DEPOSIT_FOOTPRINT + MOUNTAIN_DEPOSIT_BUFFER; dy += 1) {
+				for (let dx = -MOUNTAIN_DEPOSIT_BUFFER; dx < MOUNTAIN_DEPOSIT_FOOTPRINT + MOUNTAIN_DEPOSIT_BUFFER; dx += 1) {
+					const tx = x + dx
+					const ty = y + dy
+					if (tx < 0 || ty < 0 || tx >= width || ty >= height) continue
+					if (occupied[ty * width + tx]) {
+						blocked = true
+						break
+					}
+				}
+				if (blocked) break
+			}
+			if (blocked) continue
+
+			nodes.push({
+				nodeType: 'resource_deposit',
+				position: { x, y },
+				tileBased: true,
+				quantity: rollQuantity(RESOURCE_DEPOSIT_QUANTITY_MIN, RESOURCE_DEPOSIT_QUANTITY_MAX, seed + 701, x, y)
+			})
+
+			for (let dy = -MOUNTAIN_DEPOSIT_BUFFER; dy < MOUNTAIN_DEPOSIT_FOOTPRINT + MOUNTAIN_DEPOSIT_BUFFER; dy += 1) {
+				for (let dx = -MOUNTAIN_DEPOSIT_BUFFER; dx < MOUNTAIN_DEPOSIT_FOOTPRINT + MOUNTAIN_DEPOSIT_BUFFER; dx += 1) {
+					const tx = x + dx
+					const ty = y + dy
+					if (tx < 0 || ty < 0 || tx >= width || ty >= height) continue
+					occupied[ty * width + tx] = 1
+				}
+			}
+		}
 	}
 
 	return nodes
@@ -2232,7 +2323,9 @@ const ridgeWeight = lerp(0.12, 0.26, roughness01)
 		width,
 		height
 	)
-	const resourceNodes = [...forestNodes, ...fishNodes, ...stoneNodes]
+	const resourceMask = buildResourceMask([...forestNodes, ...fishNodes, ...stoneNodes], width, height)
+	const depositNodes = generateMountainDepositNodes(tiles, width, height, seedBase + 1501, resourceMask)
+	const resourceNodes = [...forestNodes, ...fishNodes, ...stoneNodes, ...depositNodes]
 	const deerSpawns = generateDeerSpawns(forestNodes, width, height)
 
 	return {

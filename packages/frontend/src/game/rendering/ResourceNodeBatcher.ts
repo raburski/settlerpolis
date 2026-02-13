@@ -422,6 +422,7 @@ export class ResourceNodeBatcher {
 			return true
 		}
 
+		const scale = this.resolveEmojiScale(object, scaleOverride)
 		const elevation = this.renderer.getGroundHeightAt(
 			object.position.x + this.tileHalf,
 			object.position.y + this.tileHalf
@@ -465,9 +466,28 @@ export class ResourceNodeBatcher {
 			y: object.position.y,
 			rotation: typeof object.rotation === 'number' ? object.rotation : 0,
 			elevation,
-			scale: Number.isFinite(scaleOverride) ? scaleOverride : getSeededScale(object.id)
+			scale
 		})
 		return true
+	}
+
+	private resolveEmojiScale(object: MapObject, scaleOverride?: number): number {
+		const baseScale = Number.isFinite(scaleOverride) ? (scaleOverride as number) : getSeededScale(object.id)
+		const footprintScale = this.getFootprintScale(object)
+		if (object?.metadata?.resourceNodeType === 'resource_deposit') {
+			return footprintScale || baseScale
+		}
+		return footprintScale > 1 ? baseScale * footprintScale : baseScale
+	}
+
+	private getFootprintScale(object: MapObject): number {
+		const metadata = object?.metadata as { footprint?: { width?: number; height?: number; length?: number } } | undefined
+		const footprint = metadata?.footprint
+		let width = Number(footprint?.width)
+		let height = Number(footprint?.height ?? footprint?.length)
+		if (!Number.isFinite(width) || width <= 0) width = 1
+		if (!Number.isFinite(height) || height <= 0) height = width
+		return Math.max(width, height)
 	}
 
 	private ensureModelBatch(batchKey: string, renderConfig: ModelRenderConfig): void {

@@ -135,6 +135,7 @@ export class WorkerManager {
 			content: GameContent
 			mapBaseUrl: string
 			logAllowlist?: string[]
+			logToEventBus?: boolean
 			simulationTickMs?: number
 			silentLogs?: boolean
 		}
@@ -212,6 +213,7 @@ export class WorkerManager {
 			content: this.options.content,
 			mapBaseUrl: this.options.mapBaseUrl,
 			logAllowlist: this.options.logAllowlist,
+			logToEventBus: this.options.logToEventBus,
 			simulationTickMs: this.options.simulationTickMs,
 			silentLogs: this.options.silentLogs,
 			debug: this.debug

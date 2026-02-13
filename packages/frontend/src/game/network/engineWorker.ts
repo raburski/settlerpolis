@@ -164,7 +164,8 @@ const handleInit = (message: WorkerMessageFromMain & { type: 'init' }) => {
 	const mapUrlService = new FrontendMapUrlService(message.mapBaseUrl)
 	const options = {
 		simulationTickMs: message.simulationTickMs,
-		logAllowlist: message.logAllowlist
+		logAllowlist: message.logAllowlist,
+		logToEventBus: message.logToEventBus
 	}
 	debug = Boolean(message.debug)
 	gameManager = new GameManager(bus, message.content, mapUrlService, options)

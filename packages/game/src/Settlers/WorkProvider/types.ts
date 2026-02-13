@@ -22,7 +22,8 @@ export enum WorkProviderType {
 	Building = 'building',
 	Logistics = 'logistics',
 	Construction = 'construction',
-	Road = 'road'
+	Road = 'road',
+	Prospecting = 'prospecting'
 }
 
 export enum WorkAssignmentStatus {
@@ -43,7 +44,8 @@ export enum WorkStepType {
 	BuildRoad = 'build_road',
 	Transport = 'transport',
 	MarketRun = 'market_run',
-	Wait = 'wait'
+	Wait = 'wait',
+	Prospect = 'prospect'
 }
 
 export enum WorkWaitReason {
@@ -86,7 +88,8 @@ export enum WorkActionType {
 	ChangeProfession = 'change_profession',
 	ChangeHome = 'change_home',
 	Consume = 'consume',
-	Sleep = 'sleep'
+	Sleep = 'sleep',
+	ProspectNode = 'prospect_node'
 }
 
 export enum TransportSourceType {
@@ -127,6 +130,7 @@ export type WorkStep =
 	| { type: WorkStepType.BuildRoad, jobId: RoadJobId, position: Position, roadType: RoadType, durationMs: number }
 	| { type: WorkStepType.Transport, source: TransportSource, target: TransportTarget, itemType: ItemType, quantity: number }
 	| { type: WorkStepType.MarketRun, buildingInstanceId: BuildingInstanceId }
+	| { type: WorkStepType.Prospect, resourceNodeId: ResourceNodeId, durationMs: number }
 	| { type: WorkStepType.Wait, reason: WorkWaitReason, retryAtMs?: number }
 
 export type TransportSource =
@@ -156,6 +160,7 @@ export type WorkAction =
 	| { type: WorkActionType.ChangeHome, reservationId: ReservationId, houseId: BuildingInstanceId, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Consume, itemType?: ItemType, quantity?: number, durationMs: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Sleep, durationMs: number, setState?: import('../../Population/types').SettlerState }
+	| { type: WorkActionType.ProspectNode, nodeId: ResourceNodeId, setState?: import('../../Population/types').SettlerState }
 
 export interface WorkProvider {
 	id: WorkProviderId

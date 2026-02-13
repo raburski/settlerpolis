@@ -243,6 +243,7 @@ export interface AffinitySnapshot {
 export interface ResourceNodesSnapshot {
 	nodes: ResourceNodeInstance[]
 	simulationTimeMs: number
+	prospectingJobsByMap?: MapEntries<ProspectingJobSnapshot[]>
 }
 
 export interface RoadsSnapshot {
@@ -270,6 +271,15 @@ export interface RoadJobSnapshot {
 	tileX: number
 	tileY: number
 	roadType: RoadType
+	createdAt: number
+	assignedSettlerId?: SettlerId
+}
+
+export interface ProspectingJobSnapshot {
+	jobId: string
+	mapId: MapId
+	playerId: PlayerId
+	nodeId: string
 	createdAt: number
 	assignedSettlerId?: SettlerId
 }

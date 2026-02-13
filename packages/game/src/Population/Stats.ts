@@ -21,6 +21,7 @@ export class PopulationStats {
 		const byProfession: Record<ProfessionType, number> = {
 			[ProfessionType.Carrier]: 0,
 			[ProfessionType.Builder]: 0,
+			[ProfessionType.Prospector]: 0,
 			[ProfessionType.Woodcutter]: 0,
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Metallurgist]: 0,
@@ -34,6 +35,7 @@ export class PopulationStats {
 		const byProfessionActive: Record<ProfessionType, number> = {
 			[ProfessionType.Carrier]: 0,
 			[ProfessionType.Builder]: 0,
+			[ProfessionType.Prospector]: 0,
 			[ProfessionType.Woodcutter]: 0,
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Metallurgist]: 0,

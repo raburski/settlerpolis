@@ -84,6 +84,7 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 	private checkCollision(mapId: string, position: Position, item?: Item, metadata?: Record<string, any>): boolean {
 		const objects = this.mapObjectsByMap.get(mapId)
 		if (!objects) return false
+		const allowOverlapResourceNodes = Boolean(metadata?.allowOverlapResourceNodes)
 
 		const { width, height } = this.getObjectSizeInPixels(item, metadata)
 		const candidateObjects = this.getObjectsInArea(mapId, position, width, height)
@@ -97,6 +98,9 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 				position, width, height,
 				object.position, objectSize.width, objectSize.height
 			)) {
+				if (allowOverlapResourceNodes && object.metadata?.resourceNode) {
+					continue
+				}
 				// Allow storage piles to exist inside their parent building footprint
 				if (metadata?.storagePile && metadata?.buildingInstanceId &&
 					object.metadata?.buildingInstanceId === metadata.buildingInstanceId &&

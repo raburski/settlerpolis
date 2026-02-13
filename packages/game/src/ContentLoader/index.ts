@@ -266,6 +266,26 @@ export class ContentLoader {
 		const contentNodes = (this.content.resourceNodes || []).filter(node => !mapIdsWithNodes.has(node.mapId))
 		const nodesToSpawn = [...contentNodes, ...mapResourceNodes]
 
+		const nodesByMap = new Map<string, import('../ResourceNodes/types').ResourceNodeSpawn[]>()
+		for (const node of nodesToSpawn) {
+			const list = nodesByMap.get(node.mapId) ?? []
+			list.push(node)
+			nodesByMap.set(node.mapId, list)
+		}
+
+		for (const mapId of this.map.getMapIds()) {
+			const existingNodes = nodesByMap.get(mapId) ?? []
+			const hasDeposit = existingNodes.some(node => node.nodeType === 'resource_deposit')
+			if (hasDeposit) {
+				continue
+			}
+			const generated = this.resourceNodes.generateMountainDepositSpawns(mapId, existingNodes)
+			if (generated.length > 0) {
+				nodesToSpawn.push(...generated)
+				nodesByMap.set(mapId, existingNodes.concat(generated))
+			}
+		}
+
 		if (nodesToSpawn.length > 0) {
 			this.resourceNodes.spawnNodes(nodesToSpawn)
 		}

@@ -191,6 +191,7 @@ export class MapManager {
 
 			const tileBased = getProperty('tileBased')
 			const quantity = getProperty('quantity')
+			const depositType = getProperty('depositType')
 
 			const position = tileBased
 				? {
@@ -211,6 +212,12 @@ export class MapManager {
 
 			if (typeof quantity === 'number') {
 				spawn.quantity = quantity
+			}
+			if (typeof depositType === 'string') {
+				const isDepositType = ['coal', 'iron', 'gold', 'stone', 'empty'].includes(depositType)
+				if (isDepositType) {
+					spawn.depositType = depositType as import('../ResourceNodes/types').ResourceDepositType
+				}
 			}
 
 			nodes.push(spawn)

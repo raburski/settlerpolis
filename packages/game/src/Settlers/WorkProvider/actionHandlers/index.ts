@@ -18,6 +18,7 @@ import { ProduceActionHandler } from './produce'
 import { PlantActionHandler } from './plant'
 import { ChangeProfessionActionHandler } from './changeProfession'
 import { ChangeHomeActionHandler } from './changeHome'
+import { ProspectNodeActionHandler } from './prospectNode'
 
 export const ActionHandlers: Record<WorkActionType, ActionHandler> = {
 	[WorkActionType.Move]: MoveActionHandler,
@@ -37,7 +38,8 @@ export const ActionHandlers: Record<WorkActionType, ActionHandler> = {
 	[WorkActionType.ChangeProfession]: ChangeProfessionActionHandler,
 	[WorkActionType.ChangeHome]: ChangeHomeActionHandler,
 	[WorkActionType.Consume]: ConsumeActionHandler,
-	[WorkActionType.Sleep]: SleepActionHandler
+	[WorkActionType.Sleep]: SleepActionHandler,
+	[WorkActionType.ProspectNode]: ProspectNodeActionHandler
 }
 
 export * from './types'

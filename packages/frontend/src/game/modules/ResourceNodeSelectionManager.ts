@@ -4,13 +4,14 @@ import type { MapObject } from '@rugged/game'
 import { EventBus } from '../EventBus'
 import { UiEvents } from '../uiEvents'
 
-const STONE_NODE_TYPE = 'stone_deposit'
-const STONE_POPOVER_OFFSET_TILES = 1
+const RESOURCE_NODE_TYPES = new Set(['stone_deposit', 'resource_deposit'])
+const RESOURCE_POPOVER_OFFSET_TILES = 1
 
 export class ResourceNodeSelectionManager {
 	private scene: GameScene
 	private selectedNodeId: string | null = null
 	private lastRemaining: number | null = null
+	private lastMetadataKey: string | null = null
 	private dragStart: { x: number; y: number } | null = null
 	private readonly handleMapPopoverClose = (data?: { id?: string; kind?: string; all?: boolean }) => {
 		if (data?.all) {
@@ -99,9 +100,7 @@ export class ResourceNodeSelectionManager {
 		}
 		const node = this.scene.getResourceNodeFromPick(pick.pickedMesh, pick.thinInstanceIndex)
 		if (!node) return null
-		if (node?.metadata?.resourceNodeType !== STONE_NODE_TYPE) {
-			return null
-		}
+		if (!RESOURCE_NODE_TYPES.has(node?.metadata?.resourceNodeType)) return null
 		return node
 	}
 
@@ -133,6 +132,7 @@ export class ResourceNodeSelectionManager {
 		const nodeId = this.selectedNodeId
 		this.selectedNodeId = null
 		this.lastRemaining = null
+		this.lastMetadataKey = null
 		this.dragStart = null
 		if (emitClose) {
 			EventBus.emit(UiEvents.MapPopover.Close, { id: nodeId, exit: exitOffset })
@@ -143,27 +143,47 @@ export class ResourceNodeSelectionManager {
 		const remaining = typeof node.metadata?.remainingHarvests === 'number'
 			? node.metadata?.remainingHarvests
 			: null
-		const remainingChanged = remaining !== this.lastRemaining
+		const depositDiscovered = Boolean(node.metadata?.depositDiscovered)
+		const depositType = node.metadata?.depositType ?? null
+		const prospectingStatus = node.metadata?.prospectingStatus ?? null
+		const prospectingSettlerId = node.metadata?.prospectingSettlerId ?? null
+		const metadataKey = `${remaining ?? 'null'}|${depositDiscovered ? 1 : 0}|${depositType ?? ''}|${prospectingStatus ?? ''}|${prospectingSettlerId ?? ''}`
 
-		if (!force && !remainingChanged) {
+		if (!force && remaining === this.lastRemaining && metadataKey === this.lastMetadataKey) {
 			return
 		}
 
 		this.lastRemaining = remaining
+		this.lastMetadataKey = metadataKey
 		const tileSize = this.scene.map?.tileWidth ?? 32
-		const tileHalf = tileSize / 2
-		const worldX = node.position.x + tileHalf
-		const worldZ = node.position.y + tileHalf
-
+		const isResourceDeposit = node.metadata?.resourceNodeType === 'resource_deposit'
+		let footprintWidth = Number(node.metadata?.footprint?.width) || 1
+		let footprintHeight = Number(node.metadata?.footprint?.height) || footprintWidth
+		if (isResourceDeposit) {
+			footprintWidth = Math.max(2, footprintWidth)
+			footprintHeight = Math.max(2, footprintHeight)
+		}
+		const worldX = node.position.x + (tileSize * footprintWidth) / 2
+		const worldZ = node.position.y + (tileSize * footprintHeight) / 2
+		const offsetTiles = isResourceDeposit
+			? { y: RESOURCE_POPOVER_OFFSET_TILES, z: -1 }
+			: { y: RESOURCE_POPOVER_OFFSET_TILES }
 		EventBus.emit(UiEvents.MapPopover.Open, {
 			id: node.id,
 			kind: 'resource-node',
 			world: { x: worldX, z: worldZ },
-			offsetTiles: { y: STONE_POPOVER_OFFSET_TILES },
+			offsetTiles,
 			data: {
+				nodeId: node.metadata?.resourceNodeId,
 				nodeType: node.metadata?.resourceNodeType,
 				itemType: node.item?.itemType,
-				remainingHarvests: node.metadata?.remainingHarvests
+				remainingHarvests: node.metadata?.remainingHarvests,
+				depositDiscovered,
+				depositType,
+				prospectingStatus,
+				prospectingSettlerId,
+				footprint: node.metadata?.footprint,
+				position: { x: node.position.x, y: node.position.y }
 			}
 		})
 	}

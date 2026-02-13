@@ -28,6 +28,7 @@ class PopulationServiceClass {
 		byProfession: {
 			[ProfessionType.Carrier]: 0,
 			[ProfessionType.Builder]: 0,
+			[ProfessionType.Prospector]: 0,
 			[ProfessionType.Woodcutter]: 0,
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Metallurgist]: 0,
@@ -41,6 +42,7 @@ class PopulationServiceClass {
 		byProfessionActive: {
 			[ProfessionType.Carrier]: 0,
 			[ProfessionType.Builder]: 0,
+			[ProfessionType.Prospector]: 0,
 			[ProfessionType.Woodcutter]: 0,
 			[ProfessionType.Miner]: 0,
 			[ProfessionType.Metallurgist]: 0,

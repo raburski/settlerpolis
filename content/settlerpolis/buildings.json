@@ -311,6 +311,48 @@
       }
     },
     {
+      "id": "guildhall",
+      "name": "Guildhall",
+      "description": "A civic hall that coordinates prospectors",
+      "category": "civil",
+      "icon": "🏛️",
+      "sprite": {
+        "foundation": "building_foundation",
+        "completed": "storehouse"
+      },
+      "render": {
+        "modelSrc": "/assets/library/agora.glb",
+        "transform": {
+          "scale": {
+            "x": 1.6,
+            "y": 1.6,
+            "z": 1.6
+          }
+        }
+      },
+      "footprint": {
+        "width": 3,
+        "height": 3
+      },
+      "constructionTime": 16,
+      "costs": [
+        {
+          "itemType": "logs",
+          "quantity": 2
+        },
+        {
+          "itemType": "stone",
+          "quantity": 2
+        },
+        {
+          "itemType": "planks",
+          "quantity": 1
+        }
+      ],
+      "requiredProfession": "prospector",
+      "workerSlots": 2
+    },
+    {
       "id": "graveyard",
       "name": "Graveyard",
       "description": "A fenced field for honoring the fallen",
@@ -439,7 +481,8 @@
       ],
       "harvest": {
         "nodeType": "tree",
-        "radiusTiles": 8
+        "radiusTiles": 8,
+        "harvestTimeMs": 10000
       },
       "requiredProfession": "woodcutter",
       "workerSlots": 1,
@@ -626,10 +669,61 @@
       ],
       "harvest": {
         "nodeType": "stone_deposit",
-        "radiusTiles": 8
+        "radiusTiles": 8,
+        "harvestTimeMs": 3500
       },
       "requiredProfession": "miner",
       "workerSlots": 1,
+      "storageSlots": [
+        {
+          "itemType": "stone",
+          "offset": {
+            "x": 2,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "stone_mine",
+      "name": "Stone Mine",
+      "description": "Extracts stone from mountain seams",
+      "category": "industry",
+      "icon": "⛏️",
+      "sprite": {
+        "foundation": "building_foundation",
+        "completed": "woodcutter_hut"
+      },
+      "footprint": {
+        "width": 2,
+        "height": 2
+      },
+      "constructionTime": 13,
+      "costs": [
+        {
+          "itemType": "logs",
+          "quantity": 1
+        },
+        {
+          "itemType": "stone",
+          "quantity": 1
+        }
+      ],
+      "requiredProfession": "miner",
+      "workerSlots": 1,
+      "allowedGroundTypes": [
+        "mountain"
+      ],
+      "productionRecipe": {
+        "inputs": [],
+        "outputs": [
+          {
+            "itemType": "stone",
+            "quantity": 1
+          }
+        ],
+        "productionTime": 10
+      },
       "storageSlots": [
         {
           "itemType": "stone",
@@ -1628,7 +1722,8 @@
         "maxPlots": 12,
         "postPlantReturnWaitMs": 0,
         "spoilTimeMs": 20000,
-        "despawnTimeMs": 20000
+        "despawnTimeMs": 20000,
+        "harvestTimeMs": 3000
       },
       "render": {
         "modelSrc": "/assets/library/farmhouse.glb",

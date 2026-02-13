@@ -32,6 +32,7 @@ const createSeed = () => Math.random().toString(36).slice(2, 10)
 const FOREST_PREVIEW_COLOR: [number, number, number] = [18, 58, 24]
 const FISH_PREVIEW_COLOR: [number, number, number] = [74, 226, 255]
 const STONE_PREVIEW_COLOR: [number, number, number] = [166, 172, 186]
+const RESOURCE_DEPOSIT_PREVIEW_COLOR: [number, number, number] = [208, 188, 132]
 const DEER_PREVIEW_COLOR: [number, number, number] = [150, 92, 56]
 const SPAWN_PREVIEW_COLOR: [number, number, number] = [220, 58, 64]
 
@@ -109,11 +110,18 @@ export function MapGeneratorApp() {
 				const isTree = node.nodeType === 'tree'
 				const isFish = node.nodeType === 'fish'
 				const isStone = node.nodeType === 'stone_deposit'
-				if (!isTree && !isFish && !isStone) continue
+				const isDeposit = node.nodeType === 'resource_deposit'
+				if (!isTree && !isFish && !isStone && !isDeposit) continue
 				const x = node.position.x
 				const y = node.position.y
-				const color = isTree ? FOREST_PREVIEW_COLOR : isStone ? STONE_PREVIEW_COLOR : FISH_PREVIEW_COLOR
-				const size = isTree || isStone ? 2 : 1
+				const color = isTree
+					? FOREST_PREVIEW_COLOR
+					: isStone
+						? STONE_PREVIEW_COLOR
+						: isDeposit
+							? RESOURCE_DEPOSIT_PREVIEW_COLOR
+							: FISH_PREVIEW_COLOR
+				const size = isTree || isStone || isDeposit ? 2 : 1
 				for (let dy = 0; dy < size; dy += 1) {
 					for (let dx = 0; dx < size; dx += 1) {
 						const nx = x + dx

@@ -18,6 +18,14 @@ export const professions: ProfessionDefinition[] = [
 		canWorkBuildings: [] // Phase B: No production buildings yet
 	},
 	{
+		type: ProfessionType.Prospector,
+		name: 'Prospector',
+		description: 'A settler skilled in surveying deposits',
+		canBuild: false,
+		canCarry: true,
+		canWorkBuildings: ['guildhall']
+	},
+	{
 		type: ProfessionType.Woodcutter,
 		name: 'Woodcutter',
 		description: 'A settler skilled in cutting wood',

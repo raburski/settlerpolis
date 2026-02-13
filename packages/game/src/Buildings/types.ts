@@ -4,7 +4,7 @@ import type { ProfessionType } from '../Population/types'
 import type { ResourceNodeType } from '../ResourceNodes/types'
 import type { GroundType } from '../Map/types'
 import type { WorldMapLinkType } from '../WorldMap/types'
-import type { BuildingId, BuildingInstanceId, MapId, PlayerId } from '../ids'
+import type { BuildingId, BuildingInstanceId, MapId, PlayerId, ResourceNodeId } from '../ids'
 
 export type { BuildingId, BuildingInstanceId } from '../ids'
 
@@ -128,6 +128,7 @@ export interface BuildingDefinition {
 	harvest?: {
 		nodeType: ResourceNodeType
 		radiusTiles?: number
+		harvestTimeMs?: number
 	} // Optional resource node harvesting config
 	farm?: {
 		cropNodeType: ResourceNodeType
@@ -140,6 +141,7 @@ export interface BuildingDefinition {
 		postPlantReturnWaitMs?: number
 		spoilTimeMs?: number
 		despawnTimeMs?: number
+		harvestTimeMs?: number
 	}
 	fishing?: {
 		nodeType: ResourceNodeType
@@ -208,12 +210,14 @@ export interface BuildingInstance {
 	useGlobalProductionPlan?: boolean
 	storageRequests?: ItemType[] // Item types to request for storage delivery (warehouses)
 	pendingWorkers?: number // Queued worker requests awaiting assignment
+	resourceNodeId?: ResourceNodeId
 }
 
 export interface PlaceBuildingData {
 	buildingId: BuildingId
 	position: Position
 	rotation?: number
+	resourceNodeId?: ResourceNodeId
 }
 
 export interface CancelBuildingData {

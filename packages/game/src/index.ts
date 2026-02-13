@@ -60,10 +60,13 @@ export { EquipmentSlot, EquipmentSlotType }
 // export { Event } from './events' 
 
 import { LogsManager, LogLevel } from './Logs'
+import { LogsEvents } from './Logs/events'
+import { Receiver } from './Receiver'
 
 export interface GameManagerOptions {
 	simulationTickMs?: number
 	logAllowlist?: string[]
+	logToEventBus?: boolean
 }
 
 export class GameManager {
@@ -82,6 +85,11 @@ export class GameManager {
 		this.managers.logs = new LogsManager()
 		if (options.logAllowlist && options.logAllowlist.length > 0) {
 			this.managers.logs.setAllowedManagers(options.logAllowlist)
+		}
+		if (options.logToEventBus) {
+			this.managers.logs.setEventEmitter((payload) => {
+				event.emit(Receiver.All, LogsEvents.SC.Console, payload)
+			})
 		}
 		this.managers.simulation = new SimulationManager(
 			event,
