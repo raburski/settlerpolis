@@ -463,6 +463,7 @@ export const MarketRunHandler: StepHandler = {
 		const allowedTypes = getAllowedMarketItemTypes(definition)
 		const carriedType = settler.stateContext.carryingItemType
 		const carriedQuantity = settler.stateContext.carryingQuantity ?? 0
+		const isCarrying = Boolean(carriedType && carriedQuantity > 0)
 		const candidateTypes = allowedTypes.length > 0 ? allowedTypes : (carriedType ? [carriedType] : [])
 
 		let itemType = carriedType
@@ -516,11 +517,15 @@ export const MarketRunHandler: StepHandler = {
 		const startRoad = findClosestRoadTile(roadData, marketTile, roadSearchRadius)
 		const roadRoute = buildRoadNetworkWalk(roadData, startRoad, Math.max(1, maxDistanceTiles))
 
+		if (!startRoad && !isCarrying) {
+			return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
+		}
+
 		const actions: WorkAction[] = []
 		const reservations = new ReservationBag()
 
 		let remaining = carriedQuantity
-		if (!carriedType || carriedQuantity <= 0) {
+		if (!isCarrying) {
 			const maxCarryConfig = config.carryQuantity ?? managers.items.getItemMetadata(resolvedItemType)?.maxStackSize ?? DEFAULT_CARRY_QUANTITY
 			const maxCarry = Math.max(1, Math.min(carryCapacity, maxCarryConfig))
 			const available = managers.storage.getAvailableQuantity(market.id, resolvedItemType)
