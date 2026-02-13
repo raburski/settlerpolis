@@ -67,6 +67,7 @@ export class BuildingPlacementManager {
 	private cancelHandler: (() => void) | null = null
 	private placedHandler: (() => void) | null = null
 	private handlersActive = false
+	private rotationLocked = false
 
 	constructor(scene: GameScene) {
 		this.scene = scene
@@ -123,6 +124,7 @@ export class BuildingPlacementManager {
 		this.state.rotationStep = 0
 		this.state.dragStartTile = null
 		this.state.dragCurrentTile = null
+		this.rotationLocked = false
 		this.createGhostMesh()
 		this.setupMouseHandlers()
 	}
@@ -131,6 +133,7 @@ export class BuildingPlacementManager {
 		this.state.selectedBuildingId = null
 		this.state.dragStartTile = null
 		this.state.dragCurrentTile = null
+		this.rotationLocked = false
 		this.destroyGhostMesh()
 		this.removeMouseHandlers()
 	}
@@ -208,6 +211,18 @@ export class BuildingPlacementManager {
 		const snappedX = Math.floor(worldX / tileSize) * tileSize
 		const snappedY = Math.floor(worldY / tileSize) * tileSize
 		this.state.lastMousePosition = { x: snappedX, y: snappedY }
+		let rotationChanged = false
+		if (!this.rotationLocked) {
+			const autoStep = this.getAutoRotationStep(snappedX, snappedY, building)
+			if (autoStep !== null && autoStep !== this.state.rotationStep) {
+				this.state.rotationStep = autoStep
+				rotationChanged = true
+				if (!building.render?.modelSrc) {
+					this.rebuildGhostBaseMesh(building)
+				}
+				this.applyGhostTransform()
+			}
+		}
 		this.state.isValidPosition = this.isPlacementValid(snappedX, snappedY, building)
 
 		const footprint = this.getRotatedFootprint(building)
@@ -215,6 +230,9 @@ export class BuildingPlacementManager {
 		const centerY = snappedY + (footprint.height * tileSize) / 2
 		this.ghostRoot.position = new Vector3(centerX, tileSize * 0.5, centerY)
 		this.updateGhostTint()
+		if (rotationChanged && this.state.dragStartTile && this.state.dragCurrentTile) {
+			this.updateLinePreview()
+		}
 	}
 
 	private setInitialGhostPosition(): void {
@@ -236,7 +254,11 @@ export class BuildingPlacementManager {
 	}
 
 	private getRotatedFootprint(building: BuildingDefinition): { width: number; height: number } {
-		if (this.state.rotationStep % 2 === 0) {
+		return this.getRotatedFootprintForStep(building, this.state.rotationStep)
+	}
+
+	private getRotatedFootprintForStep(building: BuildingDefinition, rotationStep: number): { width: number; height: number } {
+		if (rotationStep % 2 === 0) {
 			return { width: building.footprint.width, height: building.footprint.height }
 		}
 		return { width: building.footprint.height, height: building.footprint.width }
@@ -246,6 +268,7 @@ export class BuildingPlacementManager {
 		if (!this.state.selectedBuildingId) return
 		const building = this.buildings.get(this.state.selectedBuildingId)
 		if (!building) return
+		this.rotationLocked = true
 		this.state.rotationStep = (this.state.rotationStep + 1) % 4
 		if (!building.render?.modelSrc) {
 			this.rebuildGhostBaseMesh(building)
@@ -530,6 +553,140 @@ export class BuildingPlacementManager {
 
 	private getTileSize(): number {
 		return this.scene.map?.tileWidth || this.tileSize
+	}
+
+	private getAutoRotationStep(worldX: number, worldY: number, building: BuildingDefinition): number | null {
+		const tileSize = this.getTileSize()
+		const originX = Math.floor(worldX / tileSize)
+		const originY = Math.floor(worldY / tileSize)
+		const accessTiles = building.accessTiles ?? []
+		const hasAccessTiles = accessTiles.length > 0
+		const entryPoint = building.entryPoint ?? null
+		const baseWidth = building.footprint.width
+		const baseHeight = building.footprint.height
+		const normalizedAccess = accessTiles.map((tile) => ({
+			x: Math.round(tile.x),
+			y: Math.round(tile.y)
+		}))
+		let best: { step: number; accessDist: number; entryDist: number } | null = null
+
+		for (let step = 0; step < 4; step += 1) {
+			const footprint = this.getRotatedFootprintForStep(building, step)
+			const roadTiles = this.getAdjacentRoadTiles(originX, originY, footprint.width, footprint.height)
+			if (roadTiles.length === 0) {
+				continue
+			}
+
+			let accessDist = Number.POSITIVE_INFINITY
+			if (hasAccessTiles) {
+				const accessPoints = normalizedAccess.map((tile) => {
+					const rotated = this.rotatePointOffset(tile, baseWidth, baseHeight, step)
+					return { x: originX + rotated.x, y: originY + rotated.y }
+				})
+				accessDist = this.getMinDistanceToRoad(roadTiles, accessPoints)
+			}
+
+			let entryDist = Number.POSITIVE_INFINITY
+			if (entryPoint) {
+				const rotatedEntry = this.rotatePointOffset(entryPoint, baseWidth, baseHeight, step)
+				entryDist = this.getMinDistanceToRoad(roadTiles, [{ x: originX + rotatedEntry.x, y: originY + rotatedEntry.y }])
+			}
+
+			const candidate = { step, accessDist, entryDist }
+			if (!best) {
+				best = candidate
+				continue
+			}
+			if (hasAccessTiles) {
+				if (candidate.accessDist < best.accessDist) {
+					best = candidate
+					continue
+				}
+				if (candidate.accessDist === best.accessDist && entryPoint) {
+					if (candidate.entryDist < best.entryDist) {
+						best = candidate
+					}
+				}
+				continue
+			}
+			if (entryPoint && candidate.entryDist < best.entryDist) {
+				best = candidate
+			}
+		}
+
+		if (!best) {
+			return null
+		}
+		if (hasAccessTiles && !Number.isFinite(best.accessDist)) {
+			if (entryPoint && Number.isFinite(best.entryDist)) {
+				return best.step
+			}
+			return null
+		}
+		if (!hasAccessTiles && entryPoint && !Number.isFinite(best.entryDist)) {
+			return null
+		}
+		return best.step
+	}
+
+	private getAdjacentRoadTiles(originX: number, originY: number, width: number, height: number): Array<{ x: number; y: number }> {
+		const tiles: Array<{ x: number; y: number }> = []
+		const seen = new Set<string>()
+		const pushIfRoad = (tileX: number, tileY: number) => {
+			if (this.scene.hasRoadAt(tileX, tileY) || this.scene.hasPendingRoadAt(tileX, tileY)) {
+				const key = `${tileX},${tileY}`
+				if (seen.has(key)) return
+				seen.add(key)
+				tiles.push({ x: tileX, y: tileY })
+			}
+		}
+
+		const maxX = originX + width - 1
+		const maxY = originY + height - 1
+		for (let tileX = originX; tileX <= maxX; tileX += 1) {
+			pushIfRoad(tileX, originY - 1)
+			pushIfRoad(tileX, maxY + 1)
+		}
+		for (let tileY = originY; tileY <= maxY; tileY += 1) {
+			pushIfRoad(originX - 1, tileY)
+			pushIfRoad(maxX + 1, tileY)
+		}
+		return tiles
+	}
+
+	private getMinDistanceToRoad(
+		roadTiles: Array<{ x: number; y: number }>,
+		points: Array<{ x: number; y: number }>
+	): number {
+		let best = Number.POSITIVE_INFINITY
+		for (const point of points) {
+			for (const road of roadTiles) {
+				const distance = Math.abs(point.x - road.x) + Math.abs(point.y - road.y)
+				if (distance < best) {
+					best = distance
+				}
+			}
+		}
+		return best
+	}
+
+	private rotatePointOffset(
+		offset: { x: number; y: number },
+		width: number,
+		height: number,
+		rotationStep: number
+	): { x: number; y: number } {
+		const turns = ((rotationStep % 4) + 4) % 4
+		if (turns === 0) {
+			return { x: offset.x, y: offset.y }
+		}
+		if (turns === 1) {
+			return { x: offset.y, y: width - offset.x }
+		}
+		if (turns === 2) {
+			return { x: width - offset.x, y: height - offset.y }
+		}
+		return { x: height - offset.y, y: offset.x }
 	}
 
 	private getTileFromWorld(worldX: number, worldY: number): { x: number; y: number } {
