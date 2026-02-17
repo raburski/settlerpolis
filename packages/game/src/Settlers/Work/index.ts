@@ -18,27 +18,20 @@ import type { ItemType } from '../../Items/types'
 import type { BuildingDefinition, BuildingInstance, ProductionRecipe, SetProductionPausedData } from '../../Buildings/types'
 import { ConstructionStage } from '../../Buildings/types'
 import { ProviderRegistry } from './ProviderRegistry'
-import { WorkProviderEvents } from './events'
+import { WorkProviderEvents, WorkDispatchReason } from './events'
 import type { WorkAssignment, WorkAction, LogisticsRequest, WorkStep, WorkProvider } from './types'
 import { WorkProviderType, WorkAssignmentStatus } from './types'
 import { StepHandlers } from './stepHandlers'
 import type { WorkProviderSnapshot } from '../../state/types'
-import { ActionQueueContextKind } from '../../state/types'
 import { AssignmentStore } from './AssignmentStore'
 import { ProviderFactory } from './ProviderFactory'
-import { PolicyEngine } from './PolicyEngine'
 import { ProductionTracker } from './ProductionTracker'
-import type { SettlerBehaviourCoordinator } from '../Behaviour'
 import { LogisticsCoordinator } from './coordinators/LogisticsCoordinator'
 import { ConstructionCoordinator } from './coordinators/ConstructionCoordinator'
 import { RoadCoordinator } from './coordinators/RoadCoordinator'
 import { ProspectingCoordinator } from './coordinators/ProspectingCoordinator'
 import { LogisticsProvider } from './providers/LogisticsProvider'
-import { CriticalNeedsPolicy } from './policies/CriticalNeedsPolicy'
-import { HomeRelocationPolicy } from './policies/HomeRelocationPolicy'
 import type { SettlerWorkRuntimePort } from './runtime'
-import { WorkPolicyPhase } from './policies/constants'
-import type { WorkPolicyContext } from './policies/types'
 
 export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements SettlerWorkRuntimePort {
 	private registry = new ProviderRegistry()
@@ -46,9 +39,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 	private providers: ProviderFactory
 	private logisticsProvider: LogisticsProvider
 	private actionsManager: WorkProviderDeps['actions']
-	private policyEngine: PolicyEngine
 	private productionTracker: ProductionTracker
-	private dispatcher: SettlerBehaviourCoordinator | null = null
 	private logisticsCoordinator: LogisticsCoordinator
 	private constructionCoordinator: ConstructionCoordinator
 	private roadCoordinator: RoadCoordinator
@@ -75,20 +66,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 		this.providers = new ProviderFactory(this.managers, this.registry, this.logger, this.logisticsProvider)
 
-		const policies = [
-			new CriticalNeedsPolicy(),
-			new HomeRelocationPolicy()
-		]
-
-		const dispatchNextStep = (settlerId: string) => this.dispatcher?.dispatchNextStep(settlerId)
-
-		this.policyEngine = new PolicyEngine(
-			policies,
-			this.managers,
-			this.actionsManager,
-			this.assignments,
-			dispatchNextStep
-		)
+		const dispatchNextStep = (settlerId: string) => this.emitDispatchRequested(settlerId, WorkDispatchReason.WorkFlow)
 
 		this.productionTracker = new ProductionTracker(
 			this.managers,
@@ -132,16 +110,6 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		)
 
 		this.setupEventHandlers()
-	}
-
-	public bindBehaviourManager(dispatcher: SettlerBehaviourCoordinator): void {
-		this.dispatcher = dispatcher
-		this.actionsManager.registerContextResolver(ActionQueueContextKind.Work, (settlerId, context) => {
-			if (context.kind !== ActionQueueContextKind.Work) {
-				return {}
-			}
-			return dispatcher.buildWorkQueueCallbacks(settlerId, context.step)
-		})
 	}
 
 	private setupEventHandlers(): void {
@@ -291,7 +259,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		this.managers.event.emit(Receiver.All, NeedsEvents.SS.ContextResumed, { settlerId: data.settlerId })
 
 		if (assignment) {
-			this.dispatcher?.dispatchNextStep(data.settlerId)
+			this.emitDispatchRequested(data.settlerId, WorkDispatchReason.ContextResumed)
 		}
 	}
 
@@ -425,7 +393,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 			buildingInstanceId: building.id
 		}, building.mapId)
 
-		this.dispatcher?.dispatchNextStep(candidate.id)
+		this.emitDispatchRequested(candidate.id, WorkDispatchReason.WorkerAssigned)
 		return null
 	}
 
@@ -543,8 +511,6 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		if (!replaced) {
 			this.actionsManager.abort(data.settlerId)
 		}
-		this.dispatcher?.clearSettlerState(data.settlerId)
-
 		this.assignments.remove(data.settlerId)
 		this.releaseAssignmentResources(assignment, data.settlerId)
 		this.unassignFromProvider(assignment, data.settlerId)
@@ -555,7 +521,10 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 			this.enqueueExitOrIdle(data.settlerId, exitFallback)
 		}
 
-		this.managers.event.emit(Receiver.All, WorkProviderEvents.SS.AssignmentRemoved, { assignmentId: assignment.assignmentId })
+		this.managers.event.emit(Receiver.All, WorkProviderEvents.SS.AssignmentRemoved, {
+			assignmentId: assignment.assignmentId,
+			settlerId: data.settlerId
+		})
 		this.emitWorkerUnassigned(assignment, data.settlerId)
 	}
 
@@ -642,6 +611,10 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		}
 	}
 
+	private emitDispatchRequested(settlerId: string, reason: WorkDispatchReason): void {
+		this.managers.event.emit(Receiver.All, WorkProviderEvents.SS.DispatchRequested, { settlerId, reason })
+	}
+
 	public getAssignment(settlerId: string): WorkAssignment | undefined {
 		return this.assignments.get(settlerId)
 	}
@@ -667,17 +640,6 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 	public unassignSettler(settlerId: string): void {
 		this.unassignWorker({ settlerId })
-	}
-
-	public applyPolicy(phase: WorkPolicyPhase, settlerId: string, assignment: WorkAssignment, step?: WorkStep): boolean {
-		const context: WorkPolicyContext = {
-			settlerId,
-			assignment,
-			managers: this.managers,
-			simulationTimeMs: this.simulationTimeMs
-		}
-		const result = this.policyEngine.evaluate(phase, context, step)
-		return this.policyEngine.apply(settlerId, result)
 	}
 
 	public updateProductionForStep(assignment: WorkAssignment, step: WorkStep): void {
@@ -760,7 +722,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 	}
 
 	public requestImmediateDispatch(settlerId: string): void {
-		this.dispatcher?.dispatchNextStep(settlerId)
+		this.emitDispatchRequested(settlerId, WorkDispatchReason.ImmediateRequest)
 	}
 
 	deserialize(state: WorkProviderSnapshot): void {
@@ -817,7 +779,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 			if (this.pauseRequests.has(assignment.settlerId) || this.pausedContexts.has(assignment.settlerId)) {
 				continue
 			}
-			this.dispatcher?.dispatchNextStep(assignment.settlerId)
+			this.emitDispatchRequested(assignment.settlerId, WorkDispatchReason.ResumeAfterDeserialize)
 		}
 	}
 
@@ -838,5 +800,4 @@ export { SettlerWorkManager as WorkProviderManager }
 export { WorkProviderEvents }
 export * from './types'
 export * from './deps'
-export * from './policies'
 export * from './runtime'

@@ -1,11 +1,14 @@
-import { calculateDistance } from '../../../utils'
 import { ConstructionStage } from '../../../Buildings/types'
-import { SettlerState } from '../../../Population/types'
-import { WorkActionType, WorkProviderType } from '../types'
+import type { BuildingManager } from '../../../Buildings'
+import type { MapManager } from '../../../Map'
 import { MoveTargetType } from '../../../Movement/types'
-import type { WorkAction, WorkStep } from '../types'
-import { WorkPolicyResultType } from './constants'
-import type { WorkPolicy, WorkPolicyContext, WorkPolicyResult } from './types'
+import type { ReservationSystem } from '../../../Reservation'
+import type { RoadManager } from '../../../Roads'
+import { calculateDistance } from '../../../utils'
+import type { PopulationManager } from '../../../Population'
+import { SettlerState } from '../../../Population/types'
+import type { WorkAction, WorkAssignment } from '../../Work/types'
+import { WorkActionType, WorkProviderType } from '../../Work/types'
 
 const HOME_MOVE_CHECK_COOLDOWN_MS = 15000
 const HOME_MOVE_COOLDOWN_MS = 90000
@@ -14,53 +17,59 @@ const HOME_MOVE_MIN_IMPROVEMENT_TILES = 2
 const HOME_MOVE_PACK_MS = 3000
 const HOME_MOVE_UNPACK_MS = 3000
 
-export class HomeRelocationPolicy implements WorkPolicy {
-	public readonly id = 'home-relocation'
+export interface HomeRelocationPlannerDeps {
+	buildings: BuildingManager
+	population: PopulationManager
+	reservations: ReservationSystem
+	roads: RoadManager
+	map: MapManager
+}
+
+export interface HomeRelocationPlan {
+	actions: WorkAction[]
+	releaseReservation: () => void
+}
+
+export class HomeRelocationPlanner {
 	private lastHomeMoveAt = new Map<string, number>()
 	private lastHomeMoveCheckAt = new Map<string, number>()
 
-	public onNoStep(ctx: WorkPolicyContext): WorkPolicyResult | null {
-		return this.tryEnqueueHomeMove(ctx)
-	}
-
-	public onWaitStep(ctx: WorkPolicyContext, _step: WorkStep): WorkPolicyResult | null {
-		return this.tryEnqueueHomeMove(ctx)
-	}
-
-	private tryEnqueueHomeMove(ctx: WorkPolicyContext): WorkPolicyResult | null {
-		const assignment = ctx.assignment
+	public tryBuildPlan(
+		settlerId: string,
+		assignment: WorkAssignment,
+		simulationTimeMs: number,
+		deps: HomeRelocationPlannerDeps
+	): HomeRelocationPlan | null {
 		if (assignment.providerType !== WorkProviderType.Building || !assignment.buildingInstanceId) {
 			return null
 		}
 
-		const settler = ctx.managers.population.getSettler(ctx.settlerId)
+		const settler = deps.population.getSettler(settlerId)
 		if (!settler?.houseId) {
 			return null
 		}
 
-		const nowMs = ctx.simulationTimeMs
-		if (!this.canAttemptHomeMove(ctx.settlerId, nowMs)) {
+		if (!this.canAttemptHomeMove(settlerId, simulationTimeMs)) {
 			return null
 		}
 
-		const plan = this.buildHomeMovePlan(ctx, settler.houseId, assignment.buildingInstanceId)
+		const plan = this.buildHomeMovePlan(
+			settlerId,
+			settler.houseId,
+			assignment.buildingInstanceId,
+			deps
+		)
 		if (!plan) {
 			return null
 		}
 
-		this.lastHomeMoveAt.set(ctx.settlerId, nowMs)
+		this.lastHomeMoveAt.set(settlerId, simulationTimeMs)
+		return plan
+	}
 
-		return {
-			type: WorkPolicyResultType.Enqueue,
-			actions: plan.actions,
-			onComplete: () => {
-				ctx.managers.population.setSettlerState(ctx.settlerId, SettlerState.Idle)
-			},
-			onFail: () => {
-				plan.releaseReservation()
-				ctx.managers.population.setSettlerState(ctx.settlerId, SettlerState.Idle)
-			}
-		}
+	public reset(): void {
+		this.lastHomeMoveAt.clear()
+		this.lastHomeMoveCheckAt.clear()
 	}
 
 	private canAttemptHomeMove(settlerId: string, nowMs: number): boolean {
@@ -79,49 +88,50 @@ export class HomeRelocationPolicy implements WorkPolicy {
 	}
 
 	private buildHomeMovePlan(
-		ctx: WorkPolicyContext,
+		settlerId: string,
 		currentHouseId: string,
-		workplaceId: string
-	): { actions: WorkAction[], releaseReservation: () => void } | null {
-		const workplace = ctx.managers.buildings.getBuildingInstance(workplaceId)
+		workplaceId: string,
+		deps: HomeRelocationPlannerDeps
+	): HomeRelocationPlan | null {
+		const workplace = deps.buildings.getBuildingInstance(workplaceId)
 		if (!workplace) {
 			return null
 		}
 
-		const currentHouse = ctx.managers.buildings.getBuildingInstance(currentHouseId)
+		const currentHouse = deps.buildings.getBuildingInstance(currentHouseId)
 		if (!currentHouse) {
 			return null
 		}
 
 		const mapId = workplace.mapId
-		const currentCost = this.estimateCommuteDistance(ctx, mapId, currentHouse.position, workplace.position)
+		const currentCost = this.estimateCommuteDistance(deps, mapId, currentHouse.position, workplace.position)
 		if (currentCost === null) {
 			return null
 		}
 
-		const tileSize = this.getTileSize(ctx, mapId)
+		const tileSize = this.getTileSize(deps, mapId)
 		const minImprovement = HOME_MOVE_MIN_IMPROVEMENT_TILES * tileSize
 
 		let bestHouse: typeof currentHouse | null = null
 		let bestCost = currentCost
 
-		const houses = ctx.managers.buildings.getAllBuildings()
+		const houses = deps.buildings.getAllBuildings()
 			.filter(building => building.mapId === mapId && building.playerId === workplace.playerId)
 			.filter(building => building.stage === ConstructionStage.Completed)
 			.filter(building => building.id !== currentHouse.id)
 			.filter(building => {
-				const definition = ctx.managers.buildings.getBuildingDefinition(building.buildingId)
+				const definition = deps.buildings.getBuildingDefinition(building.buildingId)
 				if (!definition?.spawnsSettlers) {
 					return false
 				}
 				if ((definition.maxOccupants ?? 0) <= 0) {
 					return false
 				}
-				return ctx.managers.reservations.canReserveHouseSlot(building.id)
+				return deps.reservations.canReserveHouseSlot(building.id)
 			})
 
 		for (const house of houses) {
-			const cost = this.estimateCommuteDistance(ctx, mapId, house.position, workplace.position)
+			const cost = this.estimateCommuteDistance(deps, mapId, house.position, workplace.position)
 			if (cost === null) {
 				continue
 			}
@@ -143,12 +153,12 @@ export class HomeRelocationPolicy implements WorkPolicy {
 			return null
 		}
 
-		const reservationId = ctx.managers.reservations.reserveHouseSlot(bestHouse.id, ctx.settlerId)
+		const reservationId = deps.reservations.reserveHouseSlot(bestHouse.id, settlerId)
 		if (!reservationId) {
 			return null
 		}
 
-		const releaseReservation = () => ctx.managers.reservations.releaseHouseReservation(reservationId)
+		const releaseReservation = () => deps.reservations.releaseHouseReservation(reservationId)
 		const actions: WorkAction[] = [
 			{ type: WorkActionType.Move, position: currentHouse.position, targetType: MoveTargetType.House, targetId: currentHouse.id, setState: SettlerState.MovingHome },
 			{ type: WorkActionType.Wait, durationMs: HOME_MOVE_PACK_MS, setState: SettlerState.Packing },
@@ -162,13 +172,13 @@ export class HomeRelocationPolicy implements WorkPolicy {
 	}
 
 	private estimateCommuteDistance(
-		ctx: WorkPolicyContext,
+		deps: HomeRelocationPlannerDeps,
 		mapId: string,
 		from: { x: number, y: number },
 		to: { x: number, y: number }
 	): number | null {
-		const roadData = ctx.managers.roads.getRoadData(mapId) || undefined
-		const path = ctx.managers.map.findPath(mapId, from, to, {
+		const roadData = deps.roads.getRoadData(mapId) || undefined
+		const path = deps.map.findPath(mapId, from, to, {
 			roadData,
 			allowDiagonal: true
 		})
@@ -189,7 +199,7 @@ export class HomeRelocationPolicy implements WorkPolicy {
 		return total
 	}
 
-	private getTileSize(ctx: WorkPolicyContext, mapId: string): number {
-		return ctx.managers.map.getMap(mapId)?.tiledMap.tilewidth || 32
+	private getTileSize(deps: HomeRelocationPlannerDeps, mapId: string): number {
+		return deps.map.getMap(mapId)?.tiledMap.tilewidth || 32
 	}
 }

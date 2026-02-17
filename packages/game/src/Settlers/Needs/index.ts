@@ -7,10 +7,10 @@ import type { StorageManager } from '../../Storage'
 import type { PopulationManager } from '../../Population'
 import type { ItemsManager } from '../../Items'
 import type { ReservationSystem } from '../../Reservation'
-import type { SettlerBehaviourCoordinator } from '../Behaviour'
 import { NeedsSystem } from './NeedsSystem'
 import { NeedPlanner } from './NeedPlanner'
 import { NeedInterruptController } from './NeedInterruptController'
+import type { NeedsBehaviourApi } from './NeedInterruptController'
 import type { NeedsSnapshot } from '../../state/types'
 import { NeedsManagerState } from './NeedsManagerState'
 
@@ -22,7 +22,7 @@ export interface NeedsDeps {
 	population: PopulationManager
 	items: ItemsManager
 	reservations: ReservationSystem
-	behaviour: SettlerBehaviourCoordinator
+	behaviour: NeedsBehaviourApi
 }
 
 export class SettlerNeedsManager extends BaseManager<NeedsDeps> {

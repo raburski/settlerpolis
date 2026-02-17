@@ -1,3 +1,11 @@
+export enum WorkDispatchReason {
+	WorkFlow = 'work_flow',
+	ContextResumed = 'context_resumed',
+	WorkerAssigned = 'worker_assigned',
+	ImmediateRequest = 'immediate_request',
+	ResumeAfterDeserialize = 'resume_after_deserialize'
+}
+
 export const WorkProviderEvents = {
 	CS: {
 		SetLogisticsPriorities: 'cs:work:logistics-priorities'
@@ -12,6 +20,7 @@ export const WorkProviderEvents = {
 		StepCompleted: 'ss:work:step-completed',
 		StepFailed: 'ss:work:step-failed',
 		AssignmentCreated: 'ss:work:assignment-created',
-		AssignmentRemoved: 'ss:work:assignment-removed'
+		AssignmentRemoved: 'ss:work:assignment-removed',
+		DispatchRequested: 'ss:work:dispatch-requested'
 	}
 } as const

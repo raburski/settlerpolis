@@ -22,7 +22,7 @@ import { BuildingsEvents } from './Buildings/events'
 import { PopulationEvents } from './Population/events'
 import { MovementEvents } from './Movement/events'
 import { StorageEvents } from './Storage/events'
-import { WorkProviderEvents } from './Settlers/Work/events'
+import { WorkProviderEvents, WorkDispatchReason } from './Settlers/Work/events'
 import { NeedsEvents } from './Settlers/Needs/events'
 import { RoadEvents } from './Roads/events'
 import { WildlifeEvents } from './Wildlife/events'
@@ -286,7 +286,8 @@ export type EventPayloads = Record<string, unknown> & {
 	[WorkProviderEvents.SS.StepCompleted]: { settlerId: SettlerId, step: WorkStep }
 	[WorkProviderEvents.SS.StepFailed]: { settlerId: SettlerId, step: WorkStep, reason: string }
 	[WorkProviderEvents.SS.AssignmentCreated]: { assignment: WorkAssignment }
-	[WorkProviderEvents.SS.AssignmentRemoved]: { assignmentId: WorkAssignmentId }
+	[WorkProviderEvents.SS.AssignmentRemoved]: { assignmentId: WorkAssignmentId, settlerId: SettlerId }
+	[WorkProviderEvents.SS.DispatchRequested]: { settlerId: SettlerId, reason: WorkDispatchReason }
 
 	[NeedsEvents.SS.NeedBecameUrgent]: NeedThresholdEventData
 	[NeedsEvents.SS.NeedBecameCritical]: NeedThresholdEventData
