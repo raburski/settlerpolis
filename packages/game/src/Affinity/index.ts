@@ -7,11 +7,10 @@ import { Logger } from '../Logs'
 import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
 import type { AffinitySnapshot } from '../state/types'
+import { AffinityState } from './AffinityState'
 
 export class AffinityManager {
-	private affinities: Map<string, AffinityData> = new Map()
-	private npcWeights: Map<string, Partial<Record<AffinitySentimentType, number>>> = new Map()
-	private simulationTimeMs = 0
+	public state = new AffinityState()
 
 	constructor(
 		private event: EventManager,
@@ -28,7 +27,7 @@ export class AffinityManager {
 
 	/* EVENT HANDLERS */
 	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
-		this.simulationTimeMs = data.nowMs
+		this.state.simulationTimeMs = data.nowMs
 	}
 
 	private readonly handleAffinitySSUpdate = (data: AffinityUpdateEventData, client: EventClient): void => {
@@ -48,42 +47,12 @@ export class AffinityManager {
 
 	/* METHODS */
 	public loadAffinityWeights(affinityWeights: Record<string, AffinitySentiments>) {
-		// Load weights from content file into the private map
-		Object.entries(affinityWeights).forEach(([npcId, weights]) => {
-			this.npcWeights.set(npcId, weights)
-		})
-	}
-
-	// Get the affinity key for a player-NPC pair
-	private getAffinityKey(playerId: string, npcId: string): string {
-		return `${playerId}:${npcId}`
+		this.state.loadAffinityWeights(affinityWeights)
 	}
 
 	// Get or create affinity data for a player-NPC pair
 	private getOrCreateAffinityData(playerId: string, npcId: string): AffinityData {
-		const key = this.getAffinityKey(playerId, npcId)
-		let affinityData = this.affinities.get(key)
-
-		if (!affinityData) {
-			// Initialize with neutral values (0) for all sentiment types
-			const sentiments: Record<AffinitySentimentType, number> = {} as Record<AffinitySentimentType, number>
-			
-			// Initialize all sentiment types with 0
-			Object.values(AffinitySentimentType).forEach(type => {
-				sentiments[type] = 0
-			})
-
-			affinityData = {
-				playerId,
-				npcId,
-				sentiments,
-				lastUpdated: this.simulationTimeMs
-			}
-			
-			this.affinities.set(key, affinityData)
-		}
-
-		return affinityData
+		return this.state.getOrCreateAffinityData(playerId, npcId)
 	}
 
 	// Set a specific value for a sentiment type
@@ -94,7 +63,7 @@ export class AffinityManager {
 		const clampedValue = Math.max(-100, Math.min(100, value))
 		
 		affinityData.sentiments[sentimentType] = clampedValue
-		affinityData.lastUpdated = this.simulationTimeMs
+		affinityData.lastUpdated = this.state.simulationTimeMs
 		
 		const overallScore = this.calculateOverallScore(playerId, npcId)
 		const approach = getOverallNPCApproach(affinityData.sentiments)
@@ -124,7 +93,7 @@ export class AffinityManager {
 		const newValue = Math.max(-100, Math.min(100, currentValue + change))
 		
 		affinityData.sentiments[sentimentType] = newValue
-		affinityData.lastUpdated = this.simulationTimeMs
+		affinityData.lastUpdated = this.state.simulationTimeMs
 		
 		const overallScore = this.calculateOverallScore(playerId, npcId)
 		const approach = getOverallNPCApproach(affinityData.sentiments)
@@ -177,7 +146,7 @@ export class AffinityManager {
 	public getPlayerNPCs(playerId: string): string[] {
 		const npcIds: string[] = []
 		
-		this.affinities.forEach((data, key) => {
+		this.state.affinities.forEach((data) => {
 			if (data.playerId === playerId) {
 				npcIds.push(data.npcId)
 			}
@@ -190,7 +159,7 @@ export class AffinityManager {
 	public getNPCPlayers(npcId: string): string[] {
 		const playerIds: string[] = []
 		
-		this.affinities.forEach((data, key) => {
+		this.state.affinities.forEach((data) => {
 			if (data.npcId === npcId) {
 				playerIds.push(data.playerId)
 			}
@@ -205,7 +174,7 @@ export class AffinityManager {
 		
 		// Get all unique NPCs for this player
 		const npcIds = new Set<string>()
-		this.affinities.forEach((data, key) => {
+		this.state.affinities.forEach((data) => {
 			if (data.playerId === playerId) {
 				npcIds.add(data.npcId)
 			}
@@ -222,29 +191,14 @@ export class AffinityManager {
 	}
 
 	serialize(): AffinitySnapshot {
-		return {
-			affinities: Array.from(this.affinities.values()).map(affinity => ({
-				...affinity,
-				sentiments: { ...affinity.sentiments }
-			})),
-			simulationTimeMs: this.simulationTimeMs
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: AffinitySnapshot): void {
-		this.affinities.clear()
-		for (const affinity of state.affinities) {
-			const key = this.getAffinityKey(affinity.playerId, affinity.npcId)
-			this.affinities.set(key, {
-				...affinity,
-				sentiments: { ...affinity.sentiments }
-			})
-		}
-		this.simulationTimeMs = state.simulationTimeMs
+		this.state.deserialize(state)
 	}
 
 	reset(): void {
-		this.affinities.clear()
-		this.simulationTimeMs = 0
+		this.state.reset()
 	}
 }

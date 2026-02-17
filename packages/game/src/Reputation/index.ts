@@ -4,12 +4,14 @@ import { ReputationEvents } from './events'
 import { Receiver } from '../Receiver'
 import type { ReputationSnapshot, ReputationUpdatedData } from './types'
 import type { PlayerId } from '../ids'
+import { ReputationState } from './ReputationState'
 
 export * from './events'
 export * from './types'
+export * from './ReputationState'
 
 export class ReputationManager {
-	private reputationByPlayer = new Map<PlayerId, number>()
+	public state = new ReputationState()
 
 	constructor(
 		private event: EventManager
@@ -41,9 +43,7 @@ export class ReputationManager {
 	}
 
 	public addReputation(playerId: PlayerId, delta: number): number {
-		const current = this.reputationByPlayer.get(playerId) || 0
-		const next = current + delta
-		this.reputationByPlayer.set(playerId, next)
+		const next = this.state.addReputation(playerId, delta)
 		this.event.emit(Receiver.Client, ReputationEvents.SC.Updated, {
 			playerId,
 			reputation: next
@@ -52,29 +52,27 @@ export class ReputationManager {
 	}
 
 	public setReputation(playerId: PlayerId, value: number): number {
-		this.reputationByPlayer.set(playerId, value)
+		const next = this.state.setReputation(playerId, value)
 		this.event.emit(Receiver.Client, ReputationEvents.SC.Updated, {
 			playerId,
-			reputation: value
+			reputation: next
 		} satisfies ReputationUpdatedData, playerId)
-		return value
+		return next
 	}
 
 	public getReputation(playerId: PlayerId): number {
-		return this.reputationByPlayer.get(playerId) || 0
+		return this.state.getReputation(playerId)
 	}
 
 	public serialize(): ReputationSnapshot {
-		return {
-			reputation: Array.from(this.reputationByPlayer.entries())
-		}
+		return this.state.serialize()
 	}
 
 	public deserialize(state: ReputationSnapshot): void {
-		this.reputationByPlayer = new Map(state.reputation || [])
+		this.state.deserialize(state)
 	}
 
 	reset(): void {
-		this.reputationByPlayer.clear()
+		this.state.reset()
 	}
 }
