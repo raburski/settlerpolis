@@ -18,7 +18,6 @@ export class CityCharterManagerState {
 	public tiersById = new Map<string, CityCharterTier>()
 	public defaultTierId: string | null = null
 	public states = new Map<string, CityCharterState>()
-	public tickAccumulatorMs = 0
 
 	private getStateKey(playerId: PlayerId, mapId: MapId): string {
 		return `${playerId}:${mapId}`
@@ -55,6 +54,5 @@ export class CityCharterManagerState {
 
 	public reset(): void {
 		this.states.clear()
-		this.tickAccumulatorMs = 0
 	}
 }

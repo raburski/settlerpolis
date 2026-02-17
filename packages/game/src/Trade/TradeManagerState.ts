@@ -7,7 +7,6 @@ export class TradeManagerState {
 	public nodesById = new Map<string, WorldMapNode>()
 	public travelMsByNode = new Map<string, number>()
 	public simulationTimeMs = 0
-	public tickAccumulatorMs = 0
 	public requestCounter = 0
 
 	public serialize(): TradeSnapshot {
@@ -17,7 +16,6 @@ export class TradeManagerState {
 				offer: { ...route.offer }
 			})),
 			simulationTimeMs: this.simulationTimeMs,
-			tickAccumulatorMs: this.tickAccumulatorMs,
 			requestCounter: this.requestCounter
 		}
 	}
@@ -28,7 +26,6 @@ export class TradeManagerState {
 			this.routesByBuilding.set(route.buildingInstanceId, { ...route, offer: { ...route.offer } })
 		}
 		this.simulationTimeMs = state.simulationTimeMs
-		this.tickAccumulatorMs = state.tickAccumulatorMs
 		this.requestCounter = state.requestCounter ?? 0
 	}
 
@@ -36,7 +33,6 @@ export class TradeManagerState {
 		this.routesByBuilding.clear()
 		this.travelMsByNode.clear()
 		this.simulationTimeMs = 0
-		this.tickAccumulatorMs = 0
 		this.requestCounter = 0
 	}
 }

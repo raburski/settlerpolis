@@ -21,7 +21,6 @@ export interface LootDeps {
 export class LootManager extends BaseManager<LootDeps> {
 	private readonly state = new LootManagerState()
 	private readonly DROPPED_ITEM_LIFESPAN = Number.POSITIVE_INFINITY
-	private readonly ITEM_CLEANUP_INTERVAL = 30 * 1000 // Check every 30 seconds
 
 	constructor(
 		managers: LootDeps,
@@ -59,7 +58,7 @@ export class LootManager extends BaseManager<LootDeps> {
 	}
 
 	private setupEventHandlers() {
-		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.managers.event.on(SimulationEvents.SS.VerySlowTick, this.handleSimulationSSTick)
 		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, this.handlePlayersCSJoin)
 		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, this.handlePlayersCSTransitionTo)
 		this.managers.event.on(LootEvents.SS.Spawn, this.handleLootSSSpawn)
@@ -110,11 +109,6 @@ export class LootManager extends BaseManager<LootDeps> {
 
 	private handleSimulationTick(data: SimulationTickData): void {
 		this.state.simulationTimeMs = data.nowMs
-		this.state.cleanupAccumulatorMs += data.deltaMs
-		if (this.state.cleanupAccumulatorMs < this.ITEM_CLEANUP_INTERVAL) {
-			return
-		}
-		this.state.cleanupAccumulatorMs -= this.ITEM_CLEANUP_INTERVAL
 		this.cleanupExpiredItems()
 	}
 

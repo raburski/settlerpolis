@@ -4,7 +4,6 @@ import type { StorageSnapshot, BuildingStorageSnapshot } from '../state/types'
 export class StorageManagerState {
 	public buildingStorages: Map<string, BuildingStorage> = new Map()
 	public reservations: Map<string, StorageReservation> = new Map()
-	public tickAccumulatorMs = 0
 	public simulationTimeMs = 0
 
 	public serialize(): StorageSnapshot {
@@ -27,8 +26,7 @@ export class StorageManagerState {
 		return {
 			storages,
 			reservations: Array.from(this.reservations.values()).map(reservation => ({ ...reservation })),
-			simulationTimeMs: this.simulationTimeMs,
-			tickAccumulatorMs: this.tickAccumulatorMs
+			simulationTimeMs: this.simulationTimeMs
 		}
 	}
 
@@ -58,13 +56,11 @@ export class StorageManagerState {
 			this.reservations.set(reservation.reservationId, { ...reservation })
 		}
 		this.simulationTimeMs = state.simulationTimeMs
-		this.tickAccumulatorMs = state.tickAccumulatorMs
 	}
 
 	public reset(): void {
 		this.buildingStorages.clear()
 		this.reservations.clear()
 		this.simulationTimeMs = 0
-		this.tickAccumulatorMs = 0
 	}
 }

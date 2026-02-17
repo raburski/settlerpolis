@@ -4,8 +4,7 @@ import { AffinityEvents } from './events'
 import { Receiver } from '../types'
 import { getOverallNPCApproach } from './utils'
 import { Logger } from '../Logs'
-import { SimulationEvents } from '../Simulation/events'
-import type { SimulationTickData } from '../Simulation/types'
+import type { SimulationManager } from '../Simulation'
 import type { AffinitySnapshot } from '../state/types'
 import { AffinityState } from './AffinityState'
 
@@ -14,22 +13,18 @@ export class AffinityManager {
 
 	constructor(
 		private event: EventManager,
-		private logger: Logger
+		private logger: Logger,
+		private simulation: SimulationManager
 	) {
 		this.setupEventHandlers()
 	}
 
 	private setupEventHandlers() {
-		this.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
 		this.event.on(AffinityEvents.SS.Update, this.handleAffinitySSUpdate)
 		this.event.on(Event.Players.CS.Connect, this.handlePlayersCSConnect)
 	}
 
 	/* EVENT HANDLERS */
-	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
-		this.state.simulationTimeMs = data.nowMs
-	}
-
 	private readonly handleAffinitySSUpdate = (data: AffinityUpdateEventData, client: EventClient): void => {
 		const { playerId, npcId, sentimentType, set, add } = data
 
@@ -63,7 +58,7 @@ export class AffinityManager {
 		const clampedValue = Math.max(-100, Math.min(100, value))
 		
 		affinityData.sentiments[sentimentType] = clampedValue
-		affinityData.lastUpdated = this.state.simulationTimeMs
+		affinityData.lastUpdated = this.simulation.getSimulationTimeMs()
 		
 		const overallScore = this.calculateOverallScore(playerId, npcId)
 		const approach = getOverallNPCApproach(affinityData.sentiments)
@@ -93,7 +88,7 @@ export class AffinityManager {
 		const newValue = Math.max(-100, Math.min(100, currentValue + change))
 		
 		affinityData.sentiments[sentimentType] = newValue
-		affinityData.lastUpdated = this.state.simulationTimeMs
+		affinityData.lastUpdated = this.simulation.getSimulationTimeMs()
 		
 		const overallScore = this.calculateOverallScore(playerId, npcId)
 		const approach = getOverallNPCApproach(affinityData.sentiments)

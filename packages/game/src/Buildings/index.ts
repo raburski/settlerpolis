@@ -86,7 +86,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.managers.event.on<SetGlobalProductionPlanData>(BuildingsEvents.CS.SetGlobalProductionPlan, this.handleBuildingsCSSetGlobalProductionPlan)
 		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, this.handlePlayersCSJoin)
 		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, this.handlePlayersCSTransitionTo)
-		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.managers.event.on(SimulationEvents.SS.SlowTick, this.handleSimulationSSTick)
 		this.managers.event.on<CityCharterUnlockFlagsUpdated>(CityCharterEvents.SS.UnlockFlagsUpdated, this.handleCityCharterSSUnlockFlagsUpdated)
 	}
 
@@ -161,11 +161,6 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	private handleSimulationTick(data: SimulationTickData) {
 		this.state.simulationTimeMs = data.nowMs
-		this.state.tickAccumulatorMs += data.deltaMs
-		if (this.state.tickAccumulatorMs < this.TICK_INTERVAL_MS) {
-			return
-		}
-		this.state.tickAccumulatorMs -= this.TICK_INTERVAL_MS
 		this.tick()
 	}
 

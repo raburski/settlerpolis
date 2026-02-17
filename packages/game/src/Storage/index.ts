@@ -43,7 +43,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 	private setupEventHandlers() {
 		this.managers.event.on(StorageEvents.SS.StorageTick, this.handleStorageSSStorageTick)
-		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.managers.event.on(SimulationEvents.SS.VerySlowTick, this.handleSimulationSSTick)
 	}
 
 	/* EVENT HANDLERS */
@@ -57,11 +57,6 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 	private handleSimulationTick(data: SimulationTickData): void {
 		this.state.simulationTimeMs = data.nowMs
-		this.state.tickAccumulatorMs += data.deltaMs
-		if (this.state.tickAccumulatorMs < this.STORAGE_TICK_INTERVAL_MS) {
-			return
-		}
-		this.state.tickAccumulatorMs -= this.STORAGE_TICK_INTERVAL_MS
 		this.managers.event.emit(Receiver.All, StorageEvents.SS.StorageTick, {})
 	}
 

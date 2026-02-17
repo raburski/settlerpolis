@@ -6,7 +6,6 @@ export class LootManagerState {
 	public itemIdToMapId = new Map<string, string>()
 	public itemReservations = new Map<string, string>()
 	public simulationTimeMs = 0
-	public cleanupAccumulatorMs = 0
 
 	public serialize(): LootSnapshot {
 		return {
@@ -17,8 +16,7 @@ export class LootManagerState {
 					position: { ...item.position }
 				}))
 			])),
-			itemReservations: Array.from(this.itemReservations.entries()),
-			cleanupAccumulatorMs: this.cleanupAccumulatorMs
+			itemReservations: Array.from(this.itemReservations.entries())
 		}
 	}
 
@@ -26,7 +24,6 @@ export class LootManagerState {
 		this.droppedItems.clear()
 		this.itemIdToMapId.clear()
 		this.itemReservations.clear()
-		this.cleanupAccumulatorMs = state.cleanupAccumulatorMs
 		for (const [mapId, items] of state.droppedItems) {
 			const nextItems = items.map(item => ({
 				...item,
@@ -46,6 +43,5 @@ export class LootManagerState {
 		this.droppedItems.clear()
 		this.itemIdToMapId.clear()
 		this.itemReservations.clear()
-		this.cleanupAccumulatorMs = 0
 	}
 }

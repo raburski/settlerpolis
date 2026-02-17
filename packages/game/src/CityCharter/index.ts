@@ -36,7 +36,6 @@ type RequirementsContext = {
 
 export class CityCharterManager extends BaseManager<CityCharterDeps> {
 	private readonly state = new CityCharterManagerState()
-	private readonly TICK_INTERVAL_MS = 1000
 
 	constructor(
 		managers: CityCharterDeps,
@@ -47,7 +46,7 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.managers.event.on(SimulationEvents.SS.SlowTick, this.handleSimulationSSTick)
 		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, this.handlePlayersCSJoin)
 		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, this.handlePlayersCSTransitionTo)
 		this.managers.event.on(CityCharterEvents.CS.Claim, this.handleCityCharterCSClaim)
@@ -108,12 +107,7 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 		}
 	}
 
-	private handleSimulationTick(data: SimulationTickData): void {
-		this.state.tickAccumulatorMs += data.deltaMs
-		if (this.state.tickAccumulatorMs < this.TICK_INTERVAL_MS) {
-			return
-		}
-		this.state.tickAccumulatorMs -= this.TICK_INTERVAL_MS
+	private handleSimulationTick(_data: SimulationTickData): void {
 		for (const state of this.state.states.values()) {
 			this.refreshState(state.playerId, state.mapId, true)
 		}

@@ -97,7 +97,6 @@ export interface MapObjectsSnapshot {
 export interface LootSnapshot {
 	droppedItems: MapEntries<DroppedItem[]>
 	itemReservations: MapEntries<string>
-	cleanupAccumulatorMs: number
 }
 
 export type CollectedResourcesSnapshot = Array<[string, number]>
@@ -116,7 +115,6 @@ export interface BuildingsSnapshot {
 	productionCountsByBuilding?: MapEntries<MapEntries<number>>
 	globalProductionPlans?: MapEntries<MapEntries<ProductionPlan>>
 	simulationTimeMs: number
-	tickAccumulatorMs: number
 }
 
 export interface BuildingStorageSnapshot {
@@ -129,7 +127,6 @@ export interface StorageSnapshot {
 	storages: BuildingStorageSnapshot[]
 	reservations: StorageReservation[]
 	simulationTimeMs: number
-	tickAccumulatorMs: number
 }
 
 export interface PopulationSnapshot {
