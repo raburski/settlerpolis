@@ -32,35 +32,43 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 	}
 
 	private setupEventHandlers() {
-		// Handle schedule requests
-		this.managers.event.on(SchedulerEvents.SS.Schedule, (data: ScheduleOptions, client: EventClient) => {
-			this.schedule(data, client)
-		})
-
-		// Handle cancel requests
-		this.managers.event.on(SchedulerEvents.SS.Cancel, (data: { id: string }, client: EventClient) => {
-			this.cancel(data.id, client)
-		})
-		
-		// Handle enable requests
-		this.managers.event.on(SchedulerEvents.SS.Enable, (data: { id: string }, client: EventClient) => {
-			this.enableEvent(data.id, client)
-		})
-		
-		// Handle disable requests
-		this.managers.event.on(SchedulerEvents.SS.Disable, (data: { id: string }, client: EventClient) => {
-			this.disableEvent(data.id, client)
-		})
-
-		// Drive scheduler off simulation ticks
-		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			this.handleSimulationTick(data)
-		})
+		this.managers.event.on(SchedulerEvents.SS.Schedule, this.handleSchedulerSSSchedule)
+		this.managers.event.on(SchedulerEvents.SS.Cancel, this.handleSchedulerSSCancel)
+		this.managers.event.on(SchedulerEvents.SS.Enable, this.handleSchedulerSSEnable)
+		this.managers.event.on(SchedulerEvents.SS.Disable, this.handleSchedulerSSDisable)
+		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
 	}
 
+	/* EVENT HANDLERS */
+	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
+		this.handleSimulationTick(data)
+	}
+
+	private readonly handleSchedulerSSSchedule = (data: ScheduleOptions, client: EventClient): void => {
+		this.schedule(data, client)
+	}
+
+	private readonly handleSchedulerSSCancel = (data: { id: string }, client: EventClient): void => {
+		this.cancel(data.id, client)
+	}
+
+	private readonly handleSchedulerSSEnable = (data: { id: string }, client: EventClient): void => {
+		this.enableEvent(data.id, client)
+	}
+
+	private readonly handleSchedulerSSDisable = (data: { id: string }, client: EventClient): void => {
+		this.disableEvent(data.id, client)
+	}
+
+	private handleSimulationTick(data: SimulationTickData) {
+		this.simulationTimeMs = data.nowMs
+		this.processDueEvents()
+	}
+
+	/* METHODS */
 	public loadSchedules(schedules: ScheduleOptions[]): string[] {
 		const scheduledIds: string[] = []
-		
+
 		// Create a system client for initialization
 		const systemClient: EventClient = {
 			id: 'system-init',
@@ -71,19 +79,14 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 			setGroup: (group: string) => {
 				// No-op for system client
 			}
-		};
-		
+		}
+
 		for (const schedule of schedules) {
 			const id = this.schedule(schedule, systemClient)
 			scheduledIds.push(id)
 		}
 
 		return scheduledIds
-	}
-
-	private handleSimulationTick(data: SimulationTickData) {
-		this.simulationTimeMs = data.nowMs
-		this.processDueEvents()
 	}
 
 	private processDueEvents() {

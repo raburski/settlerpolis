@@ -21,28 +21,32 @@ export class AffinityManager {
 	}
 
 	private setupEventHandlers() {
-		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			this.simulationTimeMs = data.nowMs
-		})
-
-		// Handle affinity update requests
-		this.event.on(AffinityEvents.SS.Update, (data: AffinityUpdateEventData, client: EventClient) => {
-			const { playerId, npcId, sentimentType, set, add } = data
-			
-			if (set !== undefined) {
-				this.setAffinityValue(playerId, npcId, sentimentType, set, client)
-			} else if (add !== undefined) {
-				this.changeAffinityValue(playerId, npcId, sentimentType, add, client)
-			}
-		})
-
-		// Handle player connection to send initial affinity list
-		this.event.on(Event.Players.CS.Connect, (_, client: EventClient) => {
-			const listData = this.getAllNPCApproaches(client.id)
-			client.emit(Receiver.Sender, AffinityEvents.SC.List, listData)
-		})
+		this.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.event.on(AffinityEvents.SS.Update, this.handleAffinitySSUpdate)
+		this.event.on(Event.Players.CS.Connect, this.handlePlayersCSConnect)
 	}
 
+	/* EVENT HANDLERS */
+	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
+		this.simulationTimeMs = data.nowMs
+	}
+
+	private readonly handleAffinitySSUpdate = (data: AffinityUpdateEventData, client: EventClient): void => {
+		const { playerId, npcId, sentimentType, set, add } = data
+
+		if (set !== undefined) {
+			this.setAffinityValue(playerId, npcId, sentimentType, set, client)
+		} else if (add !== undefined) {
+			this.changeAffinityValue(playerId, npcId, sentimentType, add, client)
+		}
+	}
+
+	private readonly handlePlayersCSConnect = (_data: unknown, client: EventClient): void => {
+		const listData = this.getAllNPCApproaches(client.id)
+		client.emit(Receiver.Sender, AffinityEvents.SC.List, listData)
+	}
+
+	/* METHODS */
 	public loadAffinityWeights(affinityWeights: Record<string, AffinitySentiments>) {
 		// Load weights from content file into the private map
 		Object.entries(affinityWeights).forEach(([npcId, weights]) => {

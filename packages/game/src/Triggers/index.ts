@@ -45,11 +45,15 @@ export class TriggerManager extends BaseManager<TriggerDeps> {
 	}
 
 	private setupEventHandlers() {
-		this.managers.event.on<Position>(Event.Players.CS.Move, (position, client) => {
-			this.checkTriggers(position, client)
-		})
+		this.managers.event.on<Position>(Event.Players.CS.Move, this.handlePlayersCSMove)
 	}
 
+	/* EVENT HANDLERS */
+	private readonly handlePlayersCSMove = (position: Position, client: EventClient): void => {
+		this.checkTriggers(position, client)
+	}
+
+	/* METHODS */
 	private getPlayerActiveTriggers(playerId: string): Set<string> {
 		let triggers = this.playerActiveTriggers.get(playerId)
 		if (!triggers) {

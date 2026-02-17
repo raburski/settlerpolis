@@ -16,20 +16,23 @@ export class FlagsManager {
 	}
 
 	private setupEventHandlers() {
-		// Handle server-to-server flag setting
-		this.event.on<SetFlagData>(FlagsEvents.SS.SetFlag, (data, client) => {
-			this.setFlag(client, data)
-		})
+		this.event.on<SetFlagData>(FlagsEvents.SS.SetFlag, this.handleFlagsSSSetFlag)
+		this.event.on<UnsetFlagData>(FlagsEvents.SS.UnsetFlag, this.handleFlagsSSUnsetFlag)
+	}
 
-		// Handle server-to-server flag unsetting
-		this.event.on<UnsetFlagData>(FlagsEvents.SS.UnsetFlag, (data, client) => {
-			this.unsetFlag(client, data)
-		})
+	/* EVENT HANDLERS */
+	private readonly handleFlagsSSSetFlag = (data: SetFlagData, client: EventClient): void => {
+		this.setFlag(client, data)
+	}
+
+	private readonly handleFlagsSSUnsetFlag = (data: UnsetFlagData, client: EventClient): void => {
+		this.unsetFlag(client, data)
 	}
 
 	/**
 	 * Get a unique key for a flag based on its scope and identifiers
 	 */
+	/* METHODS */
 	private getFlagKey(name: string, scope: FlagScope, playerId?: string, mapId?: string): string {
 		switch (scope) {
 			case FlagScope.Player:

@@ -73,32 +73,40 @@ export class TradeManager extends BaseManager<TradeDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			this.handleSimulationTick(data)
-		})
+		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.managers.event.on(TradeEvents.CS.CreateRoute, this.handleTradeCSCreateRoute)
+		this.managers.event.on(TradeEvents.CS.CancelRoute, this.handleTradeCSCancelRoute)
+		this.managers.event.on(TradeEvents.CS.RequestRoutes, this.handleTradeCSRequestRoutes)
+		this.managers.event.on(Event.Players.CS.Join, this.handlePlayersCSJoin)
+		this.managers.event.on(BuildingsEvents.SS.Removed, this.handleBuildingsSSRemoved)
+	}
 
-		this.managers.event.on(TradeEvents.CS.CreateRoute, (data: TradeRouteSelection, client: EventClient) => {
-			this.createOrQueueRoute(data, client)
-		})
+	/* EVENT HANDLERS */
+	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
+		this.handleSimulationTick(data)
+	}
 
-		this.managers.event.on(TradeEvents.CS.CancelRoute, (data: TradeRouteCancelled, client: EventClient) => {
-			this.cancelRoute(data, client)
-		})
+	private readonly handleTradeCSCreateRoute = (data: TradeRouteSelection, client: EventClient): void => {
+		this.createOrQueueRoute(data, client)
+	}
 
-		this.managers.event.on(TradeEvents.CS.RequestRoutes, (_data: unknown, client: EventClient) => {
-			this.sendRoutesToClient(client)
-		})
+	private readonly handleTradeCSCancelRoute = (data: TradeRouteCancelled, client: EventClient): void => {
+		this.cancelRoute(data, client)
+	}
 
-		this.managers.event.on(Event.Players.CS.Join, (_data: any, client: EventClient) => {
-			this.sendRoutesToClient(client)
-		})
+	private readonly handleTradeCSRequestRoutes = (_data: unknown, client: EventClient): void => {
+		this.sendRoutesToClient(client)
+	}
 
-		this.managers.event.on(BuildingsEvents.SS.Removed, (data: { buildingInstanceId?: string }) => {
-			if (!data?.buildingInstanceId) {
-				return
-			}
-			this.routesByBuilding.delete(data.buildingInstanceId)
-		})
+	private readonly handlePlayersCSJoin = (_data: unknown, client: EventClient): void => {
+		this.sendRoutesToClient(client)
+	}
+
+	private readonly handleBuildingsSSRemoved = (data: { buildingInstanceId?: string }): void => {
+		if (!data?.buildingInstanceId) {
+			return
+		}
+		this.routesByBuilding.delete(data.buildingInstanceId)
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {
@@ -111,6 +119,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 		this.tick()
 	}
 
+	/* METHODS */
 	private tick(): void {
 		for (const route of this.routesByBuilding.values()) {
 			const building = this.managers.buildings.getBuildingInstance(route.buildingInstanceId)

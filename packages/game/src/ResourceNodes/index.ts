@@ -91,27 +91,31 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			this.simulationTimeMs = data.nowMs
-			this.processNodeDecay()
-		})
-
-		this.managers.event.on<ResourceNodesQueryData>(Event.ResourceNodes.CS.Query, (data, client) => {
-			this.handleResourceNodeQuery(data, client)
-		})
-
-		this.managers.event.on<ResourceNodeProspectRequestData>(Event.ResourceNodes.CS.RequestProspecting, (data, client) => {
-			this.handleProspectingRequest(data, client)
-		})
-
-		this.managers.event.on<{ building: { id: string; buildingId: string; mapId: string; position: Position; resourceNodeId?: string } }>(
-			BuildingsEvents.SS.Placed,
-			(data) => {
-				this.handleBuildingPlaced(data?.building)
-			}
-		)
+		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.managers.event.on<ResourceNodesQueryData>(Event.ResourceNodes.CS.Query, this.handleResourceNodesCSQuery)
+		this.managers.event.on<ResourceNodeProspectRequestData>(Event.ResourceNodes.CS.RequestProspecting, this.handleResourceNodesCSRequestProspecting)
+		this.managers.event.on<{ building: { id: string; buildingId: string; mapId: string; position: Position; resourceNodeId?: string } }>(BuildingsEvents.SS.Placed, this.handleBuildingsSSPlaced)
 	}
 
+	/* EVENT HANDLERS */
+	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
+		this.simulationTimeMs = data.nowMs
+		this.processNodeDecay()
+	}
+
+	private readonly handleResourceNodesCSQuery = (data: ResourceNodesQueryData, client: EventClient): void => {
+		this.handleResourceNodeQuery(data, client)
+	}
+
+	private readonly handleResourceNodesCSRequestProspecting = (data: ResourceNodeProspectRequestData, client: EventClient): void => {
+		this.handleProspectingRequest(data, client)
+	}
+
+	private readonly handleBuildingsSSPlaced = (data: { building?: { id: string; buildingId: string; mapId: string; position: Position; resourceNodeId?: string } }): void => {
+		this.handleBuildingPlaced(data?.building)
+	}
+
+	/* METHODS */
 	public loadDefinitions(definitions: ResourceNodeDefinition[]): void {
 		this.definitions.clear()
 		definitions.forEach(def => {

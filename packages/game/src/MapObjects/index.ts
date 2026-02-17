@@ -36,22 +36,25 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 	}
 
 	private setupEventHandlers() {
-		// Handle removing objects from the world
-		this.managers.event.on<RemoveObjectData>(Event.MapObjects.CS.Remove, (data, client) => {
-			this.removeObject(data, client)
-		})
-
-		// Handle player joining a map to send existing objects
-		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
-			this.sendMapObjectsToClient(client, data.mapId)
-		})
-
-		// Handle player transitioning to a new scene
-		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
-			this.sendMapObjectsToClient(client, data.mapId)
-		})
+		this.managers.event.on<RemoveObjectData>(Event.MapObjects.CS.Remove, this.handleMapObjectsCSRemove)
+		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, this.handlePlayersCSJoin)
+		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, this.handlePlayersCSTransitionTo)
 	}
 
+	/* EVENT HANDLERS */
+	private readonly handleMapObjectsCSRemove = (data: RemoveObjectData, client: EventClient): void => {
+		this.removeObject(data, client)
+	}
+
+	private readonly handlePlayersCSJoin = (data: PlayerJoinData, client: EventClient): void => {
+		this.sendMapObjectsToClient(client, data.mapId)
+	}
+
+	private readonly handlePlayersCSTransitionTo = (data: PlayerTransitionData, client: EventClient): void => {
+		this.sendMapObjectsToClient(client, data.mapId)
+	}
+
+	/* METHODS */
 	private removeObject(data: RemoveObjectData, client: EventClient) {
 		const { objectId } = data
 		const mapId = client.currentGroup

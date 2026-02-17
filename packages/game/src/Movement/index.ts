@@ -34,15 +34,19 @@ export class MovementManager extends BaseManager<MovementDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			this.simulationTimeMs = data.nowMs
-			this.handleSimulationTick(data)
-		})
+		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+	}
+
+	/* EVENT HANDLERS */
+	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
+		this.simulationTimeMs = data.nowMs
+		this.handleSimulationTick(data)
 	}
 
 	/**
 	 * Register entity for movement
 	 */
+	/* METHODS */
 	public registerEntity(entity: MovementEntity): void {
 		this.entities.set(entity.id, entity)
 	}

@@ -114,29 +114,39 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			this.simulationTimeMs = data.nowMs
-			this.processDeerRespawns()
-		})
-		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			if (this.forestConfig.verifyIntervalMs <= 0) return
-			this.verifyElapsedMs += data.deltaMs
-			if (this.verifyElapsedMs < this.forestConfig.verifyIntervalMs) return
-			this.verifyElapsedMs = 0
-			this.verifyForestSpawnPoints()
-		})
-		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			if (this.forestConfig.roamIntervalMs <= 0) return
-			this.roamElapsedMs += data.deltaMs
-			if (this.roamElapsedMs < this.forestConfig.roamIntervalMs) return
-			this.roamElapsedMs = 0
-			this.roamDeer()
-		})
-		this.managers.event.on(WildlifeEvents.SS.DeerKilled, (data: { npcId: string }) => {
-			this.handleDeerKilled(data.npcId)
-		})
+		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.managers.event.on(WildlifeEvents.SS.DeerKilled, this.handleWildlifeSSDeerKilled)
 	}
 
+	/* EVENT HANDLERS */
+	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
+		this.simulationTimeMs = data.nowMs
+		this.processDeerRespawns()
+
+		if (this.forestConfig.verifyIntervalMs > 0) {
+			this.verifyElapsedMs += data.deltaMs
+			if (this.verifyElapsedMs >= this.forestConfig.verifyIntervalMs) {
+				this.verifyElapsedMs = 0
+				this.verifyForestSpawnPoints()
+			}
+		}
+
+		if (this.forestConfig.roamIntervalMs <= 0) {
+			return
+		}
+		this.roamElapsedMs += data.deltaMs
+		if (this.roamElapsedMs < this.forestConfig.roamIntervalMs) {
+			return
+		}
+		this.roamElapsedMs = 0
+		this.roamDeer()
+	}
+
+	private readonly handleWildlifeSSDeerKilled = (data: { npcId: string }): void => {
+		this.handleDeerKilled(data.npcId)
+	}
+
+	/* METHODS */
 	public initializeForestSpawns(): void {
 		const mapIds = this.managers.map.getMapIds()
 		if (mapIds.length === 0) {

@@ -161,76 +161,92 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.managers.event.on<RequestWorkerData>(PopulationEvents.CS.RequestWorker, (data, client) => {
-			this.requestWorker(data, client)
-		})
+		this.managers.event.on<RequestWorkerData>(PopulationEvents.CS.RequestWorker, this.handlePopulationCSRequestWorker)
+		this.managers.event.on<UnassignWorkerData>(PopulationEvents.CS.UnassignWorker, this.handlePopulationCSUnassignWorker)
+		this.managers.event.on(PopulationEvents.SS.SettlerDied, this.handlePopulationSSSettlerDied)
+		this.managers.event.on<SetProductionPausedData>(BuildingsEvents.CS.SetProductionPaused, this.handleBuildingsCSSetProductionPaused)
+		this.managers.event.on(BuildingsEvents.CS.Place, this.handleBuildingsCSPlace)
+		this.managers.event.on(BuildingsEvents.CS.Cancel, this.handleBuildingsCSCancel)
+		this.managers.event.on(BuildingsEvents.CS.SetStorageRequests, this.handleBuildingsCSSetStorageRequests)
+		this.managers.event.on(BuildingsEvents.SS.ConstructionCompleted, this.handleBuildingsSSConstructionCompleted)
+		this.managers.event.on(BuildingsEvents.SS.Removed, this.handleBuildingsSSRemoved)
+		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.managers.event.on(NeedsEvents.SS.ContextPauseRequested, this.handleNeedsSSContextPauseRequested)
+		this.managers.event.on(NeedsEvents.SS.ContextResumeRequested, this.handleNeedsSSContextResumeRequested)
+		this.managers.event.on(WorkProviderEvents.CS.SetLogisticsPriorities, this.handleWorkProviderCSSetLogisticsPriorities)
+		this.managers.event.on(WorkProviderEvents.SS.StepCompleted, this.handleWorkProviderSSStepCompleted)
+		this.managers.event.on(WorkProviderEvents.SS.StepFailed, this.handleWorkProviderSSStepFailed)
+	}
 
-		this.managers.event.on<UnassignWorkerData>(PopulationEvents.CS.UnassignWorker, (data) => {
-			this.unassignWorker(data)
-		})
+	/* EVENT HANDLERS */
+	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
+		this.handleSimulationTick(data)
+	}
 
-		this.managers.event.on(PopulationEvents.SS.SettlerDied, (data: { settlerId: string }) => {
-			this.handleSettlerDied(data)
-		})
+	private readonly handlePopulationCSRequestWorker = (data: RequestWorkerData, client: EventClient): void => {
+		this.requestWorker(data, client)
+	}
 
-		this.managers.event.on<SetProductionPausedData>(BuildingsEvents.CS.SetProductionPaused, (data) => {
-			this.productionTracker.handleProductionPaused(data)
-		})
+	private readonly handlePopulationCSUnassignWorker = (data: UnassignWorkerData): void => {
+		this.unassignWorker(data)
+	}
 
-		this.managers.event.on(BuildingsEvents.CS.Place, (_data, client) => {
-			this.logisticsCoordinator.markMapDirty(client.currentGroup)
-		})
+	private readonly handlePopulationSSSettlerDied = (data: { settlerId: string }): void => {
+		this.handleSettlerDied(data)
+	}
 
-		this.managers.event.on(BuildingsEvents.CS.Cancel, (data: { buildingInstanceId: string }) => {
-			this.logisticsCoordinator.markBuildingDirty(data.buildingInstanceId)
-		})
+	private readonly handleBuildingsCSSetProductionPaused = (data: SetProductionPausedData): void => {
+		this.productionTracker.handleProductionPaused(data)
+	}
 
-		this.managers.event.on(BuildingsEvents.CS.SetStorageRequests, (data: { buildingInstanceId: string }) => {
-			this.logisticsCoordinator.markBuildingDirty(data.buildingInstanceId, {
-				consumption: false,
-				construction: false,
-				warehouse: true
-			})
-		})
+	private readonly handleBuildingsCSPlace = (_data: unknown, client: EventClient): void => {
+		this.logisticsCoordinator.markMapDirty(client.currentGroup)
+	}
 
-		this.managers.event.on(BuildingsEvents.SS.ConstructionCompleted, (data: { buildingInstanceId: string, mapId?: string }) => {
-			this.constructionCoordinator.unassignAllForBuilding(data.buildingInstanceId)
-			this.logisticsCoordinator.markBuildingDirty(data.buildingInstanceId)
-			this.logisticsCoordinator.markMapDirty(data.mapId)
-		})
+	private readonly handleBuildingsCSCancel = (data: { buildingInstanceId: string }): void => {
+		this.logisticsCoordinator.markBuildingDirty(data.buildingInstanceId)
+	}
 
-		this.managers.event.on(BuildingsEvents.SS.Removed, (data: { buildingInstanceId: string, mapId?: string }) => {
-			this.constructionCoordinator.unassignAllForBuilding(data.buildingInstanceId)
-			this.logisticsCoordinator.markBuildingDirty(data.buildingInstanceId)
-			this.logisticsCoordinator.markMapDirty(data.mapId)
+	private readonly handleBuildingsCSSetStorageRequests = (data: { buildingInstanceId: string }): void => {
+		this.logisticsCoordinator.markBuildingDirty(data.buildingInstanceId, {
+			consumption: false,
+			construction: false,
+			warehouse: true
 		})
+	}
 
-		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			this.handleSimulationTick(data)
-		})
+	private readonly handleBuildingsSSConstructionCompleted = (data: { buildingInstanceId: string, mapId?: string }): void => {
+		this.constructionCoordinator.unassignAllForBuilding(data.buildingInstanceId)
+		this.logisticsCoordinator.markBuildingDirty(data.buildingInstanceId)
+		this.logisticsCoordinator.markMapDirty(data.mapId)
+	}
 
-		this.managers.event.on(NeedsEvents.SS.ContextPauseRequested, (data: ContextPauseRequestedEventData) => {
-			this.handleContextPauseRequested(data)
-		})
+	private readonly handleBuildingsSSRemoved = (data: { buildingInstanceId: string, mapId?: string }): void => {
+		this.constructionCoordinator.unassignAllForBuilding(data.buildingInstanceId)
+		this.logisticsCoordinator.markBuildingDirty(data.buildingInstanceId)
+		this.logisticsCoordinator.markMapDirty(data.mapId)
+	}
 
-		this.managers.event.on(NeedsEvents.SS.ContextResumeRequested, (data: ContextResumeRequestedEventData) => {
-			this.handleContextResumeRequested(data)
-		})
+	private readonly handleNeedsSSContextPauseRequested = (data: ContextPauseRequestedEventData): void => {
+		this.handleContextPauseRequested(data)
+	}
 
-		this.managers.event.on(WorkProviderEvents.CS.SetLogisticsPriorities, (data: { itemPriorities: string[] }) => {
-			const priorities = Array.isArray(data?.itemPriorities) ? data.itemPriorities : []
-			this.logisticsProvider.setItemPriorities(priorities)
-			this.logisticsCoordinator.broadcast()
-		})
+	private readonly handleNeedsSSContextResumeRequested = (data: ContextResumeRequestedEventData): void => {
+		this.handleContextResumeRequested(data)
+	}
 
-		this.managers.event.on(WorkProviderEvents.SS.StepCompleted, (data: { step: WorkStep }) => {
-			this.logisticsCoordinator.handleStepEvent(data.step)
-		})
+	private readonly handleWorkProviderCSSetLogisticsPriorities = (data: { itemPriorities: string[] }): void => {
+		const priorities = Array.isArray(data?.itemPriorities) ? data.itemPriorities : []
+		this.logisticsProvider.setItemPriorities(priorities)
+		this.logisticsCoordinator.broadcast()
+	}
 
-		this.managers.event.on(WorkProviderEvents.SS.StepFailed, (data: { step: WorkStep }) => {
-			this.logisticsCoordinator.handleStepEvent(data.step)
-		})
+	private readonly handleWorkProviderSSStepCompleted = (data: { step: WorkStep }): void => {
+		this.logisticsCoordinator.handleStepEvent(data.step)
+	}
 
+	private readonly handleWorkProviderSSStepFailed = (data: { step: WorkStep }): void => {
+		this.logisticsCoordinator.handleStepEvent(data.step)
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {
@@ -245,6 +261,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		this.dispatcher.processPendingDispatches()
 	}
 
+	/* METHODS */
 	private migrateWarehouseAssignments(): void {
 		const assignments = Array.from(this.assignments.getAll())
 		for (const assignment of assignments) {

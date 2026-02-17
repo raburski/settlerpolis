@@ -21,22 +21,25 @@ export class ItemsManager {
 	}
 
 	private setupEventHandlers() {
-		// Handle metadata requests
-		this.event.on<ItemTypeRequest>(Event.Items.CS.GetType, (data: ItemTypeRequest, client: EventClient) => {
-			const metadata = this.itemsMetadata[data.itemType] || null
-			
-			const response: ItemTypeResponse = {
-				itemType: data.itemType,
-				meta: metadata,
-			}
-			client.emit(Receiver.Sender, Event.Items.SC.Type, response)
-		})
+		this.event.on<ItemTypeRequest>(Event.Items.CS.GetType, this.handleItemsCSGetType)
+	}
+
+	/* EVENT HANDLERS */
+	private readonly handleItemsCSGetType = (data: ItemTypeRequest, client: EventClient): void => {
+		const metadata = this.itemsMetadata[data.itemType] || null
+
+		const response: ItemTypeResponse = {
+			itemType: data.itemType,
+			meta: metadata
+		}
+		client.emit(Receiver.Sender, Event.Items.SC.Type, response)
 	}
 
 	/**
 	 * Get item metadata by ID
 	 * @returns ItemMetadata if found, null otherwise
 	 */
+	/* METHODS */
 	public getItemMetadata(itemId: string): ItemMetadata | null {
 		return this.itemsMetadata[itemId] || null
 	}
