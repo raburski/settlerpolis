@@ -15,8 +15,6 @@ export class BuildingManagerState {
 	public resourceRequests: Map<string, Set<string>> = new Map()
 	public assignedWorkers: Map<string, Set<string>> = new Map()
 	public activeConstructionWorkers: Map<string, Set<string>> = new Map()
-	public simulationTimeMs = 0
-	public tickAccumulatorMs = 0
 	public autoProductionState = new Map<string, { status: ProductionStatus, progressMs: number, progress: number }>()
 	public unlockedFlagsByPlayerMap = new Map<string, Set<string>>()
 	public globalProductionPlansByPlayer = new Map<string, Map<BuildingId, ProductionPlan>>()
@@ -55,8 +53,6 @@ export class BuildingManagerState {
 				playerId,
 				Array.from(plans.entries())
 			])),
-			simulationTimeMs: this.simulationTimeMs,
-			tickAccumulatorMs: this.tickAccumulatorMs
 		}
 	}
 
@@ -105,8 +101,6 @@ export class BuildingManagerState {
 		for (const [playerId, plans] of state.globalProductionPlans ?? []) {
 			this.globalProductionPlansByPlayer.set(playerId, new Map(plans))
 		}
-		this.simulationTimeMs = state.simulationTimeMs
-		this.tickAccumulatorMs = state.tickAccumulatorMs
 	}
 
 	public reset(): void {
@@ -117,7 +111,5 @@ export class BuildingManagerState {
 		this.autoProductionState.clear()
 		this.buildingToMapObject.clear()
 		this.unlockedFlagsByPlayerMap.clear()
-		this.simulationTimeMs = 0
-		this.tickAccumulatorMs = 0
 	}
 }

@@ -4,8 +4,7 @@ import { AffinityEvents } from './events'
 import { Receiver } from '../types'
 import { getOverallNPCApproach } from './utils'
 import { Logger } from '../Logs'
-import { SimulationEvents } from '../Simulation/events'
-import type { SimulationTickData } from '../Simulation/types'
+import type { SimulationManager } from '../Simulation'
 import type { AffinitySnapshot } from '../state/types'
 import { AffinityState } from './AffinityState'
 
@@ -14,22 +13,18 @@ export class AffinityManager {
 
 	constructor(
 		private event: EventManager,
-		private logger: Logger
+		private logger: Logger,
+		private simulation: SimulationManager
 	) {
 		this.setupEventHandlers()
 	}
 
 	private setupEventHandlers() {
-		this.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
 		this.event.on(AffinityEvents.SS.Update, this.handleAffinitySSUpdate)
 		this.event.on(Event.Players.CS.Connect, this.handlePlayersCSConnect)
 	}
 
 	/* EVENT HANDLERS */
-	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
-		this.state.simulationTimeMs = data.nowMs
-	}
-
 	private readonly handleAffinitySSUpdate = (data: AffinityUpdateEventData, client: EventClient): void => {
 		const { playerId, npcId, sentimentType, set, add } = data
 
@@ -51,19 +46,20 @@ export class AffinityManager {
 	}
 
 	// Get or create affinity data for a player-NPC pair
-	private getOrCreateAffinityData(playerId: string, npcId: string): AffinityData {
-		return this.state.getOrCreateAffinityData(playerId, npcId)
+	private getOrCreateAffinityData(playerId: string, npcId: string, nowMs: number): AffinityData {
+		return this.state.getOrCreateAffinityData(playerId, npcId, nowMs)
 	}
 
 	// Set a specific value for a sentiment type
 	public setAffinityValue(playerId: string, npcId: string, sentimentType: AffinitySentimentType, value: number, client: EventClient): void {
-		const affinityData = this.getOrCreateAffinityData(playerId, npcId)
+		const nowMs = this.simulation.getSimulationTimeMs()
+		const affinityData = this.getOrCreateAffinityData(playerId, npcId, nowMs)
 		
 		// Clamp value between -100 and 100
 		const clampedValue = Math.max(-100, Math.min(100, value))
 		
 		affinityData.sentiments[sentimentType] = clampedValue
-		affinityData.lastUpdated = this.state.simulationTimeMs
+		affinityData.lastUpdated = nowMs
 		
 		const overallScore = this.calculateOverallScore(playerId, npcId)
 		const approach = getOverallNPCApproach(affinityData.sentiments)
@@ -86,14 +82,15 @@ export class AffinityManager {
 
 	// Change a sentiment value by a specific amount
 	public changeAffinityValue(playerId: string, npcId: string, sentimentType: AffinitySentimentType, change: number, client: EventClient): void {
-		const affinityData = this.getOrCreateAffinityData(playerId, npcId)
+		const nowMs = this.simulation.getSimulationTimeMs()
+		const affinityData = this.getOrCreateAffinityData(playerId, npcId, nowMs)
 		const currentValue = affinityData.sentiments[sentimentType]
 		
 		// Apply change and clamp between -100 and 100
 		const newValue = Math.max(-100, Math.min(100, currentValue + change))
 		
 		affinityData.sentiments[sentimentType] = newValue
-		affinityData.lastUpdated = this.state.simulationTimeMs
+		affinityData.lastUpdated = nowMs
 		
 		const overallScore = this.calculateOverallScore(playerId, npcId)
 		const approach = getOverallNPCApproach(affinityData.sentiments)
@@ -116,19 +113,19 @@ export class AffinityManager {
 
 	// Get the current value for a specific sentiment type
 	public getAffinityValue(playerId: string, npcId: string, sentimentType: AffinitySentimentType): number {
-		const affinityData = this.getOrCreateAffinityData(playerId, npcId)
+		const affinityData = this.getOrCreateAffinityData(playerId, npcId, this.simulation.getSimulationTimeMs())
 		return affinityData.sentiments[sentimentType]
 	}
 
 	// Get all sentiment values for a player-NPC pair
 	public getAllAffinityValues(playerId: string, npcId: string): Record<AffinitySentimentType, number> {
-		const affinityData = this.getOrCreateAffinityData(playerId, npcId)
+		const affinityData = this.getOrCreateAffinityData(playerId, npcId, this.simulation.getSimulationTimeMs())
 		return { ...affinityData.sentiments }
 	}
 
 	// Calculate the overall affinity score between a player and NPC
 	public calculateOverallScore(playerId: string, npcId: string): number {
-		const affinityData = this.getOrCreateAffinityData(playerId, npcId)
+		const affinityData = this.getOrCreateAffinityData(playerId, npcId, this.simulation.getSimulationTimeMs())
 		return this.calculateOverallScoreFromData(affinityData)
 	}
 

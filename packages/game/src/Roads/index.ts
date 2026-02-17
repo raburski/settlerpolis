@@ -5,11 +5,10 @@ import { Event } from '../events'
 import type { Logger } from '../Logs'
 import type { MapManager } from '../Map'
 import type { StorageManager } from '../Storage'
+import type { SimulationManager } from '../Simulation'
 import { RoadEvents } from './events'
 import { ROAD_SPEED_MULTIPLIERS, RoadType, type RoadBuildRequestData, type RoadData, type RoadTile, type RoadTilesSyncData, type RoadTilesUpdatedData, type RoadPendingSyncData, type RoadPendingUpdatedData, type RoadJobData } from './types'
 import { v4 as uuidv4 } from 'uuid'
-import { SimulationEvents } from '../Simulation/events'
-import type { SimulationTickData } from '../Simulation/types'
 import type { RoadsSnapshot } from '../state/types'
 import { RoadManagerState } from './RoadManagerState'
 
@@ -17,6 +16,7 @@ export interface RoadManagerDeps {
 	event: EventManager
 	map: MapManager
 	storage: StorageManager
+	simulation: SimulationManager
 }
 
 interface RoadJob {
@@ -46,17 +46,12 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
 		this.managers.event.on<RoadBuildRequestData>(RoadEvents.CS.Place, this.handleRoadCSPlace)
 		this.managers.event.on(Event.Players.CS.Join, this.handlePlayersCSJoin)
 		this.managers.event.on(Event.Players.CS.TransitionTo, this.handlePlayersCSTransitionTo)
 	}
 
 	/* EVENT HANDLERS */
-	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
-		this.state.simulationTimeMs = data.nowMs
-	}
-
 	private readonly handleRoadCSPlace = (data: RoadBuildRequestData, client: EventClient): void => {
 		this.handleRoadRequest(data, client)
 	}
@@ -271,7 +266,7 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 			tileX: tile.x,
 			tileY: tile.y,
 			roadType: data.roadType,
-			createdAt: this.state.simulationTimeMs
+			createdAt: this.managers.simulation.getSimulationTimeMs()
 		})
 
 		addedTiles.push({ x: tile.x, y: tile.y, roadType: data.roadType })

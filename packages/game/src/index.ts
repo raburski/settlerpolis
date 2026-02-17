@@ -107,7 +107,7 @@ export class GameManager {
 		this.managers.items = new ItemsManager(event, this.managers.logs.getLogger('ItemsManager'))
 		this.managers.inventory = new InventoryManager(this.managers, this.managers.logs.getLogger('InventoryManager'))
 		this.managers.flags = new FlagsManager(event, this.managers.logs.getLogger('FlagsManager'))
-		this.managers.affinity = new AffinityManager(event, this.managers.logs.getLogger('AffinityManager'))
+		this.managers.affinity = new AffinityManager(event, this.managers.logs.getLogger('AffinityManager'), this.managers.simulation)
 		this.managers.reputation = new ReputationManager(event)
 		this.managers.quest = new QuestManager(this.managers, this.managers.logs.getLogger('QuestManager'))
 		this.managers.loot = new LootManager(this.managers, this.managers.logs.getLogger('LootManager'))

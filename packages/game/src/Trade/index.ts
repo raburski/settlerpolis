@@ -68,7 +68,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.managers.event.on(SimulationEvents.SS.SlowTick, this.handleSimulationSSTick)
 		this.managers.event.on(TradeEvents.CS.CreateRoute, this.handleTradeCSCreateRoute)
 		this.managers.event.on(TradeEvents.CS.CancelRoute, this.handleTradeCSCancelRoute)
 		this.managers.event.on(TradeEvents.CS.RequestRoutes, this.handleTradeCSRequestRoutes)
@@ -106,11 +106,6 @@ export class TradeManager extends BaseManager<TradeDeps> {
 
 	private handleSimulationTick(data: SimulationTickData): void {
 		this.state.simulationTimeMs = data.nowMs
-		this.state.tickAccumulatorMs += data.deltaMs
-		if (this.state.tickAccumulatorMs < TICK_INTERVAL_MS) {
-			return
-		}
-		this.state.tickAccumulatorMs -= TICK_INTERVAL_MS
 		this.tick()
 	}
 

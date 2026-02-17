@@ -64,7 +64,6 @@ export type TradeShipmentArrivedData = {
 export type TradeSnapshot = {
 	routes: TradeRouteState[]
 	simulationTimeMs: number
-	tickAccumulatorMs: number
 	requestCounter: number
 	reputation?: Array<[PlayerId, number]>
 }

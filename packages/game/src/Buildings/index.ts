@@ -37,6 +37,7 @@ import type { LootManager } from '../Loot'
 import { Logger } from '../Logs'
 import { SimulationEvents } from '../Simulation/events'
 import { SimulationTickData } from '../Simulation/types'
+import type { SimulationManager } from '../Simulation'
 import type { StorageManager } from '../Storage'
 import { BaseManager } from '../Managers'
 import type { BuildingsSnapshot } from '../state/types'
@@ -58,6 +59,7 @@ export interface BuildingDeps {
 	loot: LootManager
 	storage: StorageManager
 	resourceNodes: ResourceNodesManager
+	simulation: SimulationManager
 }
 
 export class BuildingManager extends BaseManager<BuildingDeps> {
@@ -86,7 +88,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.managers.event.on<SetGlobalProductionPlanData>(BuildingsEvents.CS.SetGlobalProductionPlan, this.handleBuildingsCSSetGlobalProductionPlan)
 		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, this.handlePlayersCSJoin)
 		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, this.handlePlayersCSTransitionTo)
-		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.managers.event.on(SimulationEvents.SS.SlowTick, this.handleSimulationSSTick)
 		this.managers.event.on<CityCharterUnlockFlagsUpdated>(CityCharterEvents.SS.UnlockFlagsUpdated, this.handleCityCharterSSUnlockFlagsUpdated)
 	}
 
@@ -159,19 +161,13 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.state.unlockedFlagsByPlayerMap.set(key, new Set(data.unlockedFlags))
 	}
 
-	private handleSimulationTick(data: SimulationTickData) {
-		this.state.simulationTimeMs = data.nowMs
-		this.state.tickAccumulatorMs += data.deltaMs
-		if (this.state.tickAccumulatorMs < this.TICK_INTERVAL_MS) {
-			return
-		}
-		this.state.tickAccumulatorMs -= this.TICK_INTERVAL_MS
+	private handleSimulationTick(_data: SimulationTickData) {
 		this.tick()
 	}
 
 	/* METHODS */
 	private tick() {
-		const now = this.state.simulationTimeMs
+		const now = this.managers.simulation.getSimulationTimeMs()
 		const buildingsToUpdate: BuildingInstance[] = []
 
 		// Collect all buildings that need processing
@@ -305,6 +301,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 		// Generate building instance ID first so we can use it in metadata
 		const buildingInstanceId = uuidv4()
+		const nowMs = this.managers.simulation.getSimulationTimeMs()
 
 		// Place the building object on the map
 		// Store building footprint in metadata so MapObjectsManager can use it for collision
@@ -337,7 +334,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			stage: ConstructionStage.CollectingResources,
 			progress: 0,
 			startedAt: 0, // Will be set when construction starts (resources collected)
-			createdAt: this.state.simulationTimeMs,
+			createdAt: nowMs,
 			collectedResources: new Map(),
 			requiredResources: [],
 			productionPaused: false,
@@ -710,7 +707,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			this.logger.log(`[RESOURCE DELIVERY] All required resources collected for building ${buildingInstanceId}. Transitioning to Constructing stage.`)
 			// Transition to Constructing stage
 			building.stage = ConstructionStage.Constructing
-			building.startedAt = this.state.simulationTimeMs // Start construction timer
+			building.startedAt = this.managers.simulation.getSimulationTimeMs() // Start construction timer
 
 			// Emit stage changed event (this signals that all resources are collected)
 			this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.StageChanged, {
