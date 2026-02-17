@@ -21,6 +21,7 @@ import { BuildingsEvents } from '../Buildings/events'
 import { ConstructionStage } from '../Buildings/types'
 import { ProfessionType } from '../Population/types'
 import type { Settler } from '../Population/types'
+import { ResourceNodesManagerState } from './ResourceNodesManagerState'
 
 const TILE_SIZE = 32
 const WORLD_PLAYER_ID = 'world'
@@ -77,10 +78,27 @@ export interface ResourceNodesDeps {
 }
 
 export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
-	private definitions = new Map<string, ResourceNodeDefinition>()
-	private nodes = new Map<string, ResourceNodeInstance>()
-	private prospectingJobsByMap = new Map<string, ProspectingJob[]>()
-	private simulationTimeMs = 0
+	private readonly state = new ResourceNodesManagerState()
+
+	private get definitions(): Map<string, ResourceNodeDefinition> {
+		return this.state.definitions
+	}
+
+	private get nodes(): Map<string, ResourceNodeInstance> {
+		return this.state.nodes
+	}
+
+	private get prospectingJobsByMap(): Map<string, ProspectingJob[]> {
+		return this.state.prospectingJobsByMap
+	}
+
+	private get simulationTimeMs(): number {
+		return this.state.simulationTimeMs
+	}
+
+	private set simulationTimeMs(value: number) {
+		this.state.simulationTimeMs = value
+	}
 
 	constructor(
 		managers: ResourceNodesDeps,
@@ -892,35 +910,11 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	serialize(): ResourceNodesSnapshot {
-		return {
-			nodes: Array.from(this.nodes.values()).map(node => ({
-				...node,
-				position: { ...node.position }
-			})),
-			simulationTimeMs: this.simulationTimeMs,
-			prospectingJobsByMap: Array.from(this.prospectingJobsByMap.entries()).map(([mapId, jobs]) => ([
-				mapId,
-				jobs.map(job => ({ ...job }))
-			]))
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: ResourceNodesSnapshot): void {
-		this.nodes.clear()
-		this.prospectingJobsByMap.clear()
-		for (const node of state.nodes) {
-			this.nodes.set(node.id, {
-				...node,
-				position: { ...node.position }
-			})
-		}
-		this.simulationTimeMs = state.simulationTimeMs
-		const jobsByMap = (state as ResourceNodesSnapshot & { prospectingJobsByMap?: Array<[string, ProspectingJob[]]> }).prospectingJobsByMap
-		if (Array.isArray(jobsByMap)) {
-			for (const [mapId, jobs] of jobsByMap) {
-				this.prospectingJobsByMap.set(mapId, jobs.map(job => ({ ...job })))
-			}
-		}
+		this.state.deserialize(state)
 		this.restoreMissingMapObjects()
 	}
 
@@ -1243,8 +1237,8 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	reset(): void {
-		this.nodes.clear()
-		this.prospectingJobsByMap.clear()
-		this.simulationTimeMs = 0
+		this.state.reset()
 	}
 }
+
+export * from './ResourceNodesManagerState'

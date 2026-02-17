@@ -11,7 +11,7 @@ export * from './types'
 export * from './ReputationState'
 
 export class ReputationManager {
-	public state = new ReputationState()
+	private readonly state = new ReputationState()
 
 	constructor(
 		private event: EventManager

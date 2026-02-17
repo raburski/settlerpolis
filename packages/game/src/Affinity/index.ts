@@ -10,7 +10,7 @@ import type { AffinitySnapshot } from '../state/types'
 import { AffinityState } from './AffinityState'
 
 export class AffinityManager {
-	public state = new AffinityState()
+	private readonly state = new AffinityState()
 
 	constructor(
 		private event: EventManager,

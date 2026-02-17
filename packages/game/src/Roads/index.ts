@@ -10,7 +10,8 @@ import { ROAD_SPEED_MULTIPLIERS, RoadType, type RoadBuildRequestData, type RoadD
 import { v4 as uuidv4 } from 'uuid'
 import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
-import type { RoadsSnapshot, RoadJobSnapshot } from '../state/types'
+import type { RoadsSnapshot } from '../state/types'
+import { RoadManagerState } from './RoadManagerState'
 
 export interface RoadManagerDeps {
 	event: EventManager
@@ -34,9 +35,23 @@ const ROAD_UPGRADE_DURATION_MS = 1800
 const ROAD_UPGRADE_STONE_COST = 1
 
 export class RoadManager extends BaseManager<RoadManagerDeps> {
-	private roadsByMap = new Map<string, RoadData>()
-	private jobsByMap = new Map<string, RoadJob[]>()
-	private simulationTimeMs = 0
+	private readonly state = new RoadManagerState()
+
+	private get roadsByMap(): Map<string, RoadData> {
+		return this.state.roadsByMap
+	}
+
+	private get jobsByMap(): Map<string, RoadJob[]> {
+		return this.state.jobsByMap
+	}
+
+	private get simulationTimeMs(): number {
+		return this.state.simulationTimeMs
+	}
+
+	private set simulationTimeMs(value: number) {
+		this.state.simulationTimeMs = value
+	}
 
 	constructor(
 		managers: RoadManagerDeps,
@@ -441,49 +456,18 @@ private ensureRoadData(mapId: string): RoadData | null {
 	}
 
 	serialize(): RoadsSnapshot {
-		return {
-			roadsByMap: Array.from(this.roadsByMap.entries()),
-			jobsByMap: Array.from(this.jobsByMap.entries()).map(([mapId, jobs]) => ([
-				mapId,
-				jobs.map(job => ({
-					jobId: job.jobId,
-					mapId: job.mapId,
-					playerId: job.playerId,
-					tileX: job.tileX,
-					tileY: job.tileY,
-					roadType: job.roadType,
-					createdAt: job.createdAt,
-					assignedSettlerId: job.assignedSettlerId
-				} as RoadJobSnapshot))
-			])),
-			simulationTimeMs: this.simulationTimeMs
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: RoadsSnapshot): void {
-		this.roadsByMap = new Map(state.roadsByMap)
-		this.jobsByMap.clear()
-		for (const [mapId, jobs] of state.jobsByMap) {
-			this.jobsByMap.set(mapId, jobs.map(job => ({
-				jobId: job.jobId,
-				mapId: job.mapId,
-				playerId: job.playerId,
-				tileX: job.tileX,
-				tileY: job.tileY,
-				roadType: job.roadType,
-				createdAt: job.createdAt,
-				assignedSettlerId: job.assignedSettlerId
-			})))
-		}
-		this.simulationTimeMs = state.simulationTimeMs
+		this.state.deserialize(state)
 	}
 
 	reset(): void {
-		this.roadsByMap.clear()
-		this.jobsByMap.clear()
-		this.simulationTimeMs = 0
+		this.state.reset()
 	}
 }
 
 export * from './types'
 export * from './events'
+export * from './RoadManagerState'

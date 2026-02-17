@@ -28,6 +28,7 @@ import type { ItemType } from '../Items/types'
 import { LogisticsRequestType } from '../Settlers/WorkProvider/types'
 import type { LogisticsRequest } from '../Settlers/WorkProvider/types'
 import type { ReputationManager } from '../Reputation'
+import { TradeManagerState } from './TradeManagerState'
 
 export interface TradeDeps {
 	event: EventManager
@@ -44,13 +45,51 @@ const TICK_INTERVAL_MS = 1000
 const DEFAULT_COOLDOWN_SECONDS = 8
 
 export class TradeManager extends BaseManager<TradeDeps> {
-	private routesByBuilding = new Map<string, TradeRouteState>()
-	private worldMap: WorldMapData | null = null
-	private nodesById = new Map<string, WorldMapNode>()
-	private travelMsByNode = new Map<string, number>()
-	private simulationTimeMs = 0
-	private tickAccumulatorMs = 0
-	private requestCounter = 0
+	private readonly state = new TradeManagerState()
+
+	private get routesByBuilding(): Map<string, TradeRouteState> {
+		return this.state.routesByBuilding
+	}
+
+	private get worldMap(): WorldMapData | null {
+		return this.state.worldMap
+	}
+
+	private set worldMap(value: WorldMapData | null) {
+		this.state.worldMap = value
+	}
+
+	private get nodesById(): Map<string, WorldMapNode> {
+		return this.state.nodesById
+	}
+
+	private get travelMsByNode(): Map<string, number> {
+		return this.state.travelMsByNode
+	}
+
+	private get simulationTimeMs(): number {
+		return this.state.simulationTimeMs
+	}
+
+	private set simulationTimeMs(value: number) {
+		this.state.simulationTimeMs = value
+	}
+
+	private get tickAccumulatorMs(): number {
+		return this.state.tickAccumulatorMs
+	}
+
+	private set tickAccumulatorMs(value: number) {
+		this.state.tickAccumulatorMs = value
+	}
+
+	private get requestCounter(): number {
+		return this.state.requestCounter
+	}
+
+	private set requestCounter(value: number) {
+		this.state.requestCounter = value
+	}
 
 	constructor(
 		managers: TradeDeps,
@@ -606,32 +645,16 @@ export class TradeManager extends BaseManager<TradeDeps> {
 	}
 
 	serialize(): TradeSnapshot {
-		return {
-			routes: Array.from(this.routesByBuilding.values()).map(route => ({
-				...route,
-				offer: { ...route.offer }
-			})),
-			simulationTimeMs: this.simulationTimeMs,
-			tickAccumulatorMs: this.tickAccumulatorMs,
-			requestCounter: this.requestCounter
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: TradeSnapshot): void {
-		this.routesByBuilding.clear()
-		for (const route of state.routes) {
-			this.routesByBuilding.set(route.buildingInstanceId, { ...route, offer: { ...route.offer } })
-		}
-		this.simulationTimeMs = state.simulationTimeMs
-		this.tickAccumulatorMs = state.tickAccumulatorMs
-		this.requestCounter = state.requestCounter ?? 0
+		this.state.deserialize(state)
 	}
 
 	reset(): void {
-		this.routesByBuilding.clear()
-		this.travelMsByNode.clear()
-		this.simulationTimeMs = 0
-		this.tickAccumulatorMs = 0
-		this.requestCounter = 0
+		this.state.reset()
 	}
 }
+
+export * from './TradeManagerState'

@@ -11,6 +11,7 @@ import { BaseManager } from '../Managers'
 import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
 import type { LootSnapshot } from '../state/types'
+import { LootManagerState } from './LootManagerState'
 
 export interface LootDeps {
 	event: EventManager
@@ -18,13 +19,37 @@ export interface LootDeps {
 }
 
 export class LootManager extends BaseManager<LootDeps> {
-	private droppedItems = new Map<string, DroppedItem[]>()
-	private itemIdToMapId = new Map<string, string>()
-	private itemReservations = new Map<string, string>()
+	private readonly state = new LootManagerState()
 	private readonly DROPPED_ITEM_LIFESPAN = Number.POSITIVE_INFINITY
 	private readonly ITEM_CLEANUP_INTERVAL = 30 * 1000 // Check every 30 seconds
-	private simulationTimeMs = 0
-	private cleanupAccumulatorMs = 0
+
+	private get droppedItems(): Map<string, DroppedItem[]> {
+		return this.state.droppedItems
+	}
+
+	private get itemIdToMapId(): Map<string, string> {
+		return this.state.itemIdToMapId
+	}
+
+	private get itemReservations(): Map<string, string> {
+		return this.state.itemReservations
+	}
+
+	private get simulationTimeMs(): number {
+		return this.state.simulationTimeMs
+	}
+
+	private set simulationTimeMs(value: number) {
+		this.state.simulationTimeMs = value
+	}
+
+	private get cleanupAccumulatorMs(): number {
+		return this.state.cleanupAccumulatorMs
+	}
+
+	private set cleanupAccumulatorMs(value: number) {
+		this.state.cleanupAccumulatorMs = value
+	}
 
 	constructor(
 		managers: LootDeps,
@@ -375,43 +400,16 @@ export class LootManager extends BaseManager<LootDeps> {
 	}
 
 	serialize(): LootSnapshot {
-		return {
-			droppedItems: Array.from(this.droppedItems.entries()).map(([mapId, items]) => ([
-				mapId,
-				items.map(item => ({
-					...item,
-					position: { ...item.position }
-				}))
-			])),
-			itemReservations: Array.from(this.itemReservations.entries()),
-			cleanupAccumulatorMs: this.cleanupAccumulatorMs
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: LootSnapshot): void {
-		this.droppedItems.clear()
-		this.itemIdToMapId.clear()
-		this.itemReservations.clear()
-		this.cleanupAccumulatorMs = state.cleanupAccumulatorMs
-		for (const [mapId, items] of state.droppedItems) {
-			const nextItems = items.map(item => ({
-				...item,
-				position: { ...item.position }
-			}))
-			this.droppedItems.set(mapId, nextItems)
-			for (const item of nextItems) {
-				this.itemIdToMapId.set(item.id, mapId)
-			}
-		}
-		for (const [itemId, ownerId] of state.itemReservations) {
-			this.itemReservations.set(itemId, ownerId)
-		}
+		this.state.deserialize(state)
 	}
 
 	reset(): void {
-		this.droppedItems.clear()
-		this.itemIdToMapId.clear()
-		this.itemReservations.clear()
-		this.cleanupAccumulatorMs = 0
+		this.state.reset()
 	}
 }
+
+export * from './LootManagerState'

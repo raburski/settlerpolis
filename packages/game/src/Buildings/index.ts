@@ -39,11 +39,12 @@ import { SimulationEvents } from '../Simulation/events'
 import { SimulationTickData } from '../Simulation/types'
 import type { StorageManager } from '../Storage'
 import { BaseManager } from '../Managers'
-import type { BuildingsSnapshot, BuildingInstanceSnapshot } from '../state/types'
+import type { BuildingsSnapshot } from '../state/types'
 import { CityCharterEvents } from '../CityCharter/events'
 import type { CityCharterUnlockFlagsUpdated } from '../CityCharter/types'
 import { getProductionRecipes } from './work'
 import type { ResourceNodesManager } from '../ResourceNodes'
+import { BuildingManagerState } from './BuildingManagerState'
 
 const MINE_BUILDING_IDS = new Set(['coal_mine', 'iron_mine', 'gold_mine', 'stone_mine', 'quarry'])
 const RESOURCE_NODE_TYPES = new Set(['resource_deposit', 'stone_deposit'])
@@ -60,20 +61,76 @@ export interface BuildingDeps {
 }
 
 export class BuildingManager extends BaseManager<BuildingDeps> {
-	private buildings = new Map<string, BuildingInstance>() // buildingInstanceId -> BuildingInstance
-	private definitions = new Map<BuildingId, BuildingDefinition>() // buildingId -> BuildingDefinition
-	private buildingToMapObject = new Map<string, string>() // buildingInstanceId -> mapObjectId
+	private readonly state = new BuildingManagerState()
 	private readonly TICK_INTERVAL_MS = 1000 // Update construction progress every second
-	private resourceRequests: Map<string, Set<string>> = new Map() // buildingInstanceId -> Set<itemType> (resources still needed)
-	private assignedWorkers: Map<string, Set<string>> = new Map() // buildingInstanceId -> settlerIds
-	private activeConstructionWorkers: Map<string, Set<string>> = new Map() // buildingInstanceId -> settlerIds (present at building)
-	private simulationTimeMs = 0
-	private tickAccumulatorMs = 0
-	private autoProductionState = new Map<string, { status: ProductionStatus, progressMs: number, progress: number }>()
-	private unlockedFlagsByPlayerMap = new Map<string, Set<string>>()
-	private globalProductionPlansByPlayer = new Map<string, Map<BuildingId, ProductionPlan>>()
-	private defaultProductionPlans = new Map<BuildingId, ProductionPlan>()
-	private productionCountsByBuilding = new Map<string, Map<string, number>>()
+
+	private get buildings(): Map<string, BuildingInstance> {
+		return this.state.buildings
+	}
+
+	private get definitions(): Map<BuildingId, BuildingDefinition> {
+		return this.state.definitions
+	}
+
+	private get buildingToMapObject(): Map<string, string> {
+		return this.state.buildingToMapObject
+	}
+
+	private set buildingToMapObject(value: Map<string, string>) {
+		this.state.buildingToMapObject = value
+	}
+
+	private get resourceRequests(): Map<string, Set<string>> {
+		return this.state.resourceRequests
+	}
+
+	private get assignedWorkers(): Map<string, Set<string>> {
+		return this.state.assignedWorkers
+	}
+
+	private get activeConstructionWorkers(): Map<string, Set<string>> {
+		return this.state.activeConstructionWorkers
+	}
+
+	private get simulationTimeMs(): number {
+		return this.state.simulationTimeMs
+	}
+
+	private set simulationTimeMs(value: number) {
+		this.state.simulationTimeMs = value
+	}
+
+	private get tickAccumulatorMs(): number {
+		return this.state.tickAccumulatorMs
+	}
+
+	private set tickAccumulatorMs(value: number) {
+		this.state.tickAccumulatorMs = value
+	}
+
+	private get autoProductionState(): Map<string, { status: ProductionStatus, progressMs: number, progress: number }> {
+		return this.state.autoProductionState
+	}
+
+	private set autoProductionState(value: Map<string, { status: ProductionStatus, progressMs: number, progress: number }>) {
+		this.state.autoProductionState = value
+	}
+
+	private get unlockedFlagsByPlayerMap(): Map<string, Set<string>> {
+		return this.state.unlockedFlagsByPlayerMap
+	}
+
+	private get globalProductionPlansByPlayer(): Map<string, Map<BuildingId, ProductionPlan>> {
+		return this.state.globalProductionPlansByPlayer
+	}
+
+	private get defaultProductionPlans(): Map<BuildingId, ProductionPlan> {
+		return this.state.defaultProductionPlans
+	}
+
+	private get productionCountsByBuilding(): Map<string, Map<string, number>> {
+		return this.state.productionCountsByBuilding
+	}
 
 	constructor(
 		managers: BuildingDeps,
@@ -1821,89 +1878,11 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	serialize(): BuildingsSnapshot {
-		const buildings: BuildingInstanceSnapshot[] = Array.from(this.buildings.values()).map(building => ({
-			...building,
-			position: { ...building.position },
-			workAreaCenter: building.workAreaCenter ? { ...building.workAreaCenter } : undefined,
-			collectedResources: Array.from(building.collectedResources.entries())
-		}))
-
-		return {
-			buildings,
-			resourceRequests: Array.from(this.resourceRequests.entries()).map(([buildingId, needed]) => ([
-				buildingId,
-				Array.from(needed.values())
-			])),
-			assignedWorkers: Array.from(this.assignedWorkers.entries()).map(([buildingId, workers]) => ([
-				buildingId,
-				Array.from(workers.values())
-			])),
-			activeConstructionWorkers: Array.from(this.activeConstructionWorkers.entries()).map(([buildingId, workers]) => ([
-				buildingId,
-				Array.from(workers.values())
-			])),
-			autoProductionState: Array.from(this.autoProductionState.entries()),
-			buildingToMapObject: Array.from(this.buildingToMapObject.entries()),
-			productionCountsByBuilding: Array.from(this.productionCountsByBuilding.entries()).map(([buildingId, counts]) => ([
-				buildingId,
-				Array.from(counts.entries())
-			])),
-			globalProductionPlans: Array.from(this.globalProductionPlansByPlayer.entries()).map(([playerId, plans]) => ([
-				playerId,
-				Array.from(plans.entries())
-			])),
-			simulationTimeMs: this.simulationTimeMs,
-			tickAccumulatorMs: this.tickAccumulatorMs
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: BuildingsSnapshot): void {
-		this.buildings.clear()
-		for (const building of state.buildings) {
-			const collectedResources = new Map(building.collectedResources)
-			const restored: BuildingInstance = {
-				...building,
-				position: { ...building.position },
-				workAreaCenter: building.workAreaCenter ? { ...building.workAreaCenter } : undefined,
-				collectedResources
-			}
-			if (typeof restored.useGlobalProductionPlan !== 'boolean') {
-				const definition = this.definitions.get(restored.buildingId)
-				if (definition && getProductionRecipes(definition).length > 0) {
-					const hasLocalPlan = restored.productionPlan && Object.keys(restored.productionPlan).length > 0
-					restored.useGlobalProductionPlan = !hasLocalPlan
-				}
-			}
-			this.buildings.set(restored.id, restored)
-		}
-
-		this.resourceRequests.clear()
-		for (const [buildingId, needed] of state.resourceRequests) {
-			this.resourceRequests.set(buildingId, new Set(needed))
-		}
-
-		this.assignedWorkers.clear()
-		for (const [buildingId, workers] of state.assignedWorkers) {
-			this.assignedWorkers.set(buildingId, new Set(workers))
-		}
-
-		this.activeConstructionWorkers.clear()
-		for (const [buildingId, workers] of state.activeConstructionWorkers) {
-			this.activeConstructionWorkers.set(buildingId, new Set(workers))
-		}
-
-		this.autoProductionState = new Map(state.autoProductionState)
-		this.buildingToMapObject = new Map(state.buildingToMapObject)
-		this.productionCountsByBuilding.clear()
-		for (const [buildingId, counts] of state.productionCountsByBuilding ?? []) {
-			this.productionCountsByBuilding.set(buildingId, new Map(counts))
-		}
-		this.globalProductionPlansByPlayer.clear()
-		for (const [playerId, plans] of state.globalProductionPlans ?? []) {
-			this.globalProductionPlansByPlayer.set(playerId, new Map(plans))
-		}
-		this.simulationTimeMs = state.simulationTimeMs
-		this.tickAccumulatorMs = state.tickAccumulatorMs
+		this.state.deserialize(state)
 
 		this.initializeStorageForExistingBuildings()
 		this.initializeCollisionForExistingBuildings()
@@ -1961,15 +1940,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	reset(): void {
 		this.managers.map.resetConstructionPenalties()
-		this.buildings.clear()
-		this.resourceRequests.clear()
-		this.assignedWorkers.clear()
-		this.activeConstructionWorkers.clear()
-		this.autoProductionState.clear()
-		this.buildingToMapObject.clear()
-		this.unlockedFlagsByPlayerMap.clear()
-		this.simulationTimeMs = 0
-		this.tickAccumulatorMs = 0
+		this.state.reset()
 	}
 }
 
@@ -2000,3 +1971,5 @@ function rotatePointOffset(
 	}
 	return { x: height - offset.y, y: offset.x }
 }
+
+export * from './BuildingManagerState'

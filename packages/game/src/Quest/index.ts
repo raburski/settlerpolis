@@ -15,6 +15,7 @@ import type { ConditionEffectManager } from "../ConditionEffect"
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
 import type { QuestSnapshot } from '../state/types'
+import { QuestManagerState } from './QuestManagerState'
 
 export interface QuestDeps {
 	event: EventManager
@@ -22,10 +23,7 @@ export interface QuestDeps {
 }
 
 export class QuestManager extends BaseManager<QuestDeps> {
-	private quests: Map<string, Quest> = new Map()
-	private playerQuestStates: Map<string, PlayerQuestState> = new Map()
-	private globalQuestStates: Map<string, QuestProgress> = new Map()
-	private sharedQuestStates: Map<string, QuestProgress> = new Map()
+	private readonly state = new QuestManagerState()
 
 	constructor(
 		managers: QuestDeps,
@@ -51,7 +49,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 				}
 				return step
 			})
-			this.quests.set(quest.id, quest)
+			this.state.quests.set(quest.id, quest)
 		}
 	}
 
@@ -147,7 +145,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 			)
 		} else if (settings.scope === QuestScope.Global) {
 			// For global quests, mark as completed globally
-			this.globalQuestStates.set(quest.id, progress)
+			this.state.globalQuestStates.set(quest.id, progress)
 			
 			// Also mark as completed for the player
 			playerState.completedQuests.push(quest.id)
@@ -156,7 +154,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 			)
 		} else if (settings.scope === QuestScope.Shared) {
 			// For shared quests, mark as completed in shared state
-			this.sharedQuestStates.set(quest.id, progress)
+			this.state.sharedQuestStates.set(quest.id, progress)
 			
 			// Also mark as completed for the player
 			playerState.completedQuests.push(quest.id)
@@ -194,18 +192,18 @@ export class QuestManager extends BaseManager<QuestDeps> {
 	}
 
 	private savePlayerState(playerId: string, state: PlayerQuestState) {
-		this.playerQuestStates.set(playerId, state)
+		this.state.playerQuestStates.set(playerId, state)
 		// TODO: Persist to database
 	}
 
 	public getOrCreatePlayerState(playerId: string): PlayerQuestState {
-		if (!this.playerQuestStates.has(playerId)) {
-			this.playerQuestStates.set(playerId, {
+		if (!this.state.playerQuestStates.has(playerId)) {
+			this.state.playerQuestStates.set(playerId, {
 				activeQuests: [],
 				completedQuests: []
 			})
 		}
-		return this.playerQuestStates.get(playerId)!
+		return this.state.playerQuestStates.get(playerId)!
 	}
 
 	public findDialogueFor(npcId: string, playerId: string): { dialogueId: string, nodeId: string } | undefined {
@@ -250,7 +248,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 		
 		// Check player's active quests
 		for (const progress of playerState.activeQuests) {
-			const quest = this.quests.get(progress.questId)
+			const quest = this.state.quests.get(progress.questId)
 			if (!quest) {
 				this.logger.debug(`Quest ${progress.questId} not found in quests map`)
 				continue
@@ -261,8 +259,8 @@ export class QuestManager extends BaseManager<QuestDeps> {
 		}
 		
 		// Check global quests
-		for (const [questId, progress] of this.globalQuestStates.entries()) {
-			const quest = this.quests.get(questId)
+		for (const [questId, progress] of this.state.globalQuestStates.entries()) {
+			const quest = this.state.quests.get(questId)
 			if (!quest) continue
 			
 			// Get default settings if not provided
@@ -277,8 +275,8 @@ export class QuestManager extends BaseManager<QuestDeps> {
 		}
 		
 		// Check shared quests
-		for (const [questId, progress] of this.sharedQuestStates.entries()) {
-			const quest = this.quests.get(questId)
+		for (const [questId, progress] of this.state.sharedQuestStates.entries()) {
+			const quest = this.state.quests.get(questId)
 			if (!quest) continue
 			
 			// Get default settings if not provided
@@ -304,7 +302,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 	 */
 	public hasActiveQuest(questId: string, playerId: string): boolean {
 		// First check if the quest exists
-		const quest = this.quests.get(questId)
+		const quest = this.state.quests.get(questId)
 		if (!quest) return false
 		
 		// Get default settings if not provided
@@ -323,7 +321,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 		
 		// For shared quests, also check the shared quest state
 		if (settings.scope === QuestScope.Shared) {
-			const sharedQuestState = this.sharedQuestStates.get(questId)
+			const sharedQuestState = this.state.sharedQuestStates.get(questId)
 			if (sharedQuestState && !sharedQuestState.completed) {
 				return true
 			}
@@ -331,7 +329,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 		
 		// For global quests, check the global quest state
 		if (settings.scope === QuestScope.Global) {
-			const globalQuestState = this.globalQuestStates.get(questId)
+			const globalQuestState = this.state.globalQuestStates.get(questId)
 			if (globalQuestState && !globalQuestState.completed) {
 				return true
 			}
@@ -348,7 +346,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 	 */
 	public hasCompletedQuest(questId: string, playerId: string): boolean {
 		// First check if the quest exists
-		const quest = this.quests.get(questId)
+		const quest = this.state.quests.get(questId)
 		if (!quest) return false
 		
 		// Get default settings if not provided
@@ -370,7 +368,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 		if (settings.scope === QuestScope.Shared) {
 			if (isCompletedByPlayer) return true
 			
-			const sharedQuestState = this.sharedQuestStates.get(questId)
+			const sharedQuestState = this.state.sharedQuestStates.get(questId)
 			return sharedQuestState?.completed || false
 		}
 		
@@ -379,7 +377,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 		if (settings.scope === QuestScope.Global) {
 			if (isCompletedByPlayer) return true
 			
-			const globalQuestState = this.globalQuestStates.get(questId)
+			const globalQuestState = this.state.globalQuestStates.get(questId)
 			return globalQuestState?.completed || false
 		}
 		
@@ -395,7 +393,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 	public canStartQuest(questId: string, client: EventClient): boolean {
 		this.logger.debug(`Checking if quest ${questId} can be started for player ${client.id}`)
 		
-		const quest = this.quests.get(questId)
+		const quest = this.state.quests.get(questId)
 		if (!quest) {
 			this.logger.debug(`Quest ${questId} not found in quests map`)
 			return false
@@ -438,7 +436,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 		// For global quests (one instance for everyone)
 		if (settings.scope === QuestScope.Global) {
 			// Check if global quest is already active
-			const globalQuestState = this.globalQuestStates.get(questId)
+			const globalQuestState = this.state.globalQuestStates.get(questId)
 			this.logger.debug(`Global quest state:`, globalQuestState)
 			
 			if (globalQuestState && !globalQuestState.completed) {
@@ -462,7 +460,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 			}
 			
 			// Check if shared quest is already active
-			const sharedQuestState = this.sharedQuestStates.get(questId)
+			const sharedQuestState = this.state.sharedQuestStates.get(questId)
 			this.logger.debug(`Shared quest state:`, sharedQuestState)
 			
 			if (sharedQuestState && !sharedQuestState.completed) {
@@ -492,7 +490,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 	 * @param client The client to emit events to
 	 */
 	public startQuest(questId: string, playerId: string, client: EventClient): void {
-		const quest = this.quests.get(questId)
+		const quest = this.state.quests.get(questId)
 		if (!quest) return
 
 		// Check if quest can be started
@@ -542,17 +540,17 @@ export class QuestManager extends BaseManager<QuestDeps> {
 			this.savePlayerState(playerId, playerState)
 		} else if (settings.scope === QuestScope.Global) {
 			// For global quests, set the global quest state
-			this.globalQuestStates.set(questId, progress)
+			this.state.globalQuestStates.set(questId, progress)
 		} else if (settings.scope === QuestScope.Shared) {
 			// For shared quests, check if it's already active
-			const sharedQuestState = this.sharedQuestStates.get(questId)
+			const sharedQuestState = this.state.sharedQuestStates.get(questId)
 			if (sharedQuestState && !sharedQuestState.completed) {
 				// If quest is already active, just add player to it
 				playerState.activeQuests.push(progress)
 				this.savePlayerState(playerId, playerState)
 			} else {
 				// If quest is not active, create a new shared quest state
-				this.sharedQuestStates.set(questId, progress)
+				this.state.sharedQuestStates.set(questId, progress)
 				playerState.activeQuests.push(progress)
 				this.savePlayerState(playerId, playerState)
 			}
@@ -598,7 +596,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 	 */
 	public completeSpecificStep(questId: string, stepId: string, playerId: string, client: EventClient): void {
 		// Get the quest
-		const quest = this.quests.get(questId)
+		const quest = this.state.quests.get(questId)
 		if (!quest) {
 			this.logger.warn(`Cannot complete step: Quest ${questId} not found`)
 			return
@@ -612,10 +610,10 @@ export class QuestManager extends BaseManager<QuestDeps> {
 		
 		if (settings.scope === QuestScope.Global) {
 			// For global quests, get the global state
-			questProgress = this.globalQuestStates.get(questId)
+			questProgress = this.state.globalQuestStates.get(questId)
 		} else if (settings.scope === QuestScope.Shared) {
 			// For shared quests, get the shared state
-			questProgress = this.sharedQuestStates.get(questId)
+			questProgress = this.state.sharedQuestStates.get(questId)
 		}
 		
 		// If no global/shared progress found, or this is a player quest,
@@ -658,9 +656,9 @@ export class QuestManager extends BaseManager<QuestDeps> {
 		
 		// For global and shared quests, we need to update the specific state maps
 		if (settings.scope === QuestScope.Global) {
-			this.globalQuestStates.set(questId, questProgress)
+			this.state.globalQuestStates.set(questId, questProgress)
 		} else if (settings.scope === QuestScope.Shared) {
-			this.sharedQuestStates.set(questId, questProgress)
+			this.state.sharedQuestStates.set(questId, questProgress)
 		}
 	}
 
@@ -673,7 +671,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 	public checkAndProgressQuest(questId: string, playerId: string, client: EventClient): void {
 		this.logger.debug(`Checking quest progression for quest ${questId} and player ${playerId}`)
 		
-		const quest = this.quests.get(questId)
+		const quest = this.state.quests.get(questId)
 		if (!quest) {
 			this.logger.warn(`Cannot progress quest: Quest ${questId} not found`)
 			return
@@ -687,10 +685,10 @@ export class QuestManager extends BaseManager<QuestDeps> {
 		let questProgress: QuestProgress | undefined
 		
 		if (settings.scope === QuestScope.Global) {
-			questProgress = this.globalQuestStates.get(questId)
+			questProgress = this.state.globalQuestStates.get(questId)
 			this.logger.debug(`Global quest progress:`, questProgress)
 		} else if (settings.scope === QuestScope.Shared) {
-			questProgress = this.sharedQuestStates.get(questId)
+			questProgress = this.state.sharedQuestStates.get(questId)
 			this.logger.debug(`Shared quest progress:`, questProgress)
 		}
 		
@@ -761,14 +759,14 @@ export class QuestManager extends BaseManager<QuestDeps> {
 		
 		// Check player's active quests
 		for (const progress of playerState.activeQuests) {
-			const quest = this.quests.get(progress.questId)
+			const quest = this.state.quests.get(progress.questId)
 			if (!quest) continue
 			checkQuestStep(quest, progress)
 		}
 		
 		// Check global quests
-		for (const [questId, progress] of this.globalQuestStates.entries()) {
-			const quest = this.quests.get(questId)
+		for (const [questId, progress] of this.state.globalQuestStates.entries()) {
+			const quest = this.state.quests.get(questId)
 			if (!quest) continue
 			
 			// Get default settings if not provided
@@ -781,8 +779,8 @@ export class QuestManager extends BaseManager<QuestDeps> {
 		}
 		
 		// Check shared quests
-		for (const [questId, progress] of this.sharedQuestStates.entries()) {
-			const quest = this.quests.get(questId)
+		for (const [questId, progress] of this.state.sharedQuestStates.entries()) {
+			const quest = this.state.quests.get(questId)
 			if (!quest) continue
 			
 			// Get default settings if not provided
@@ -796,49 +794,14 @@ export class QuestManager extends BaseManager<QuestDeps> {
 	}
 
 	serialize(): QuestSnapshot {
-		return {
-			playerQuestStates: Array.from(this.playerQuestStates.entries()).map(([playerId, state]) => ([
-				playerId,
-				{
-					...state,
-					activeQuests: state.activeQuests.map(progress => ({ ...progress, completedSteps: [...progress.completedSteps] })),
-					completedQuests: [...state.completedQuests]
-				}
-			])),
-			globalQuestStates: Array.from(this.globalQuestStates.entries()).map(([questId, progress]) => ([
-				questId,
-				{ ...progress, completedSteps: [...progress.completedSteps] }
-			])),
-			sharedQuestStates: Array.from(this.sharedQuestStates.entries()).map(([questId, progress]) => ([
-				questId,
-				{ ...progress, completedSteps: [...progress.completedSteps] }
-			]))
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: QuestSnapshot): void {
-		this.playerQuestStates.clear()
-		this.globalQuestStates.clear()
-		this.sharedQuestStates.clear()
-
-		for (const [playerId, questState] of state.playerQuestStates) {
-			this.playerQuestStates.set(playerId, {
-				...questState,
-				activeQuests: questState.activeQuests.map(progress => ({ ...progress, completedSteps: [...progress.completedSteps] })),
-				completedQuests: [...questState.completedQuests]
-			})
-		}
-		for (const [questId, progress] of state.globalQuestStates) {
-			this.globalQuestStates.set(questId, { ...progress, completedSteps: [...progress.completedSteps] })
-		}
-		for (const [questId, progress] of state.sharedQuestStates) {
-			this.sharedQuestStates.set(questId, { ...progress, completedSteps: [...progress.completedSteps] })
-		}
+		this.state.deserialize(state)
 	}
 
 	reset(): void {
-		this.playerQuestStates.clear()
-		this.globalQuestStates.clear()
-		this.sharedQuestStates.clear()
+		this.state.reset()
 	}
 }

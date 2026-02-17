@@ -19,23 +19,13 @@ import { ConstructionStage } from '../Buildings/types'
 import type { CityCharterSnapshot } from '../state/types'
 import type { PlayerJoinData, PlayerTransitionData } from '../Players/types'
 import type { MapId, PlayerId } from '../ids'
+import { CityCharterManagerState, type CityCharterState } from './CityCharterManagerState'
 
 export interface CityCharterDeps {
 	event: EventManager
 	population: PopulationManager
 	buildings: BuildingManager
 	storage: StorageManager
-}
-
-type CityCharterState = {
-	playerId: PlayerId
-	mapId: MapId
-	currentTierId: string
-	claimedTierIds: string[]
-	unlockedFlags: string[]
-	currentTierRequirementsMet: boolean
-	buffsActive: boolean
-	isEligibleForNext: boolean
 }
 
 type RequirementsContext = {
@@ -45,12 +35,40 @@ type RequirementsContext = {
 }
 
 export class CityCharterManager extends BaseManager<CityCharterDeps> {
-	private tiers: CityCharterTier[] = []
-	private tiersById = new Map<string, CityCharterTier>()
-	private defaultTierId: string | null = null
-	private states = new Map<string, CityCharterState>()
+	private readonly state = new CityCharterManagerState()
 	private readonly TICK_INTERVAL_MS = 1000
-	private tickAccumulatorMs = 0
+
+	private get tiers(): CityCharterTier[] {
+		return this.state.tiers
+	}
+
+	private set tiers(value: CityCharterTier[]) {
+		this.state.tiers = value
+	}
+
+	private get tiersById(): Map<string, CityCharterTier> {
+		return this.state.tiersById
+	}
+
+	private get defaultTierId(): string | null {
+		return this.state.defaultTierId
+	}
+
+	private set defaultTierId(value: string | null) {
+		this.state.defaultTierId = value
+	}
+
+	private get states(): Map<string, CityCharterState> {
+		return this.state.states
+	}
+
+	private get tickAccumulatorMs(): number {
+		return this.state.tickAccumulatorMs
+	}
+
+	private set tickAccumulatorMs(value: number) {
+		this.state.tickAccumulatorMs = value
+	}
 
 	constructor(
 		managers: CityCharterDeps,
@@ -416,31 +434,12 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 	}
 
 	public serialize(): CityCharterSnapshot {
-		return {
-			states: Array.from(this.states.values()).map(state => ({
-				playerId: state.playerId,
-				mapId: state.mapId,
-				currentTierId: state.currentTierId,
-				claimedTierIds: [...state.claimedTierIds],
-				unlockedFlags: [...state.unlockedFlags]
-			}))
-		}
+		return this.state.serialize()
 	}
 
 	public deserialize(snapshot: CityCharterSnapshot): void {
-		this.states.clear()
-		for (const entry of snapshot.states) {
-			const state: CityCharterState = {
-				playerId: entry.playerId,
-				mapId: entry.mapId,
-				currentTierId: entry.currentTierId,
-				claimedTierIds: [...entry.claimedTierIds],
-				unlockedFlags: [...entry.unlockedFlags],
-				currentTierRequirementsMet: true,
-				buffsActive: true,
-				isEligibleForNext: false
-			}
-			this.states.set(this.getStateKey(entry.playerId, entry.mapId), state)
+		this.state.deserialize(snapshot)
+		for (const state of this.states.values()) {
 			this.rebuildUnlockFlags(state)
 			this.emitUnlockFlagsUpdated(state)
 		}
@@ -450,7 +449,8 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 	}
 
 	public reset(): void {
-		this.states.clear()
-		this.tickAccumulatorMs = 0
+		this.state.reset()
 	}
 }
+
+export * from './CityCharterManagerState'

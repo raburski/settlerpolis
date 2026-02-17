@@ -32,6 +32,7 @@ import type { PlayerJoinData } from '../Players/types'
 import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
 import type { PopulationSnapshot } from '../state/types'
+import { PopulationManagerState } from './PopulationManagerState'
 
 const SETTLER_SPEED = 80 // pixels per second (slower baseline)
 const TOMBSTONE_ITEM_TYPE = 'tombstone'
@@ -51,14 +52,44 @@ export interface PopulationDeps {
 }
 
 export class PopulationManager extends BaseManager<PopulationDeps> {
-	private settlers = new Map<string, Settler>() // settlerId -> Settler
-	private houseOccupants = new Map<string, Set<string>>() // houseId -> settlerIds
-	private professionTools = new Map<ProfessionType, ItemType>() // professionType -> itemType
-	private professions = new Map<ProfessionType, ProfessionDefinition>() // professionType -> ProfessionDefinition
+	private readonly state = new PopulationManagerState()
 	private stats: PopulationStats
-	private startingPopulation: Array<{ profession: ProfessionType, count: number }> = []
-	private houseSpawnSchedule = new Map<string, { nextSpawnAtMs: number, rateMs: number }>()
-	private simulationTimeMs = 0
+
+	private get settlers(): Map<string, Settler> {
+		return this.state.settlers
+	}
+
+	private get houseOccupants(): Map<string, Set<string>> {
+		return this.state.houseOccupants
+	}
+
+	private get professionTools(): Map<ProfessionType, ItemType> {
+		return this.state.professionTools
+	}
+
+	private get professions(): Map<ProfessionType, ProfessionDefinition> {
+		return this.state.professions
+	}
+
+	private get startingPopulation(): Array<{ profession: ProfessionType, count: number }> {
+		return this.state.startingPopulation
+	}
+
+	private set startingPopulation(value: Array<{ profession: ProfessionType, count: number }>) {
+		this.state.startingPopulation = value
+	}
+
+	private get houseSpawnSchedule(): Map<string, { nextSpawnAtMs: number, rateMs: number }> {
+		return this.state.houseSpawnSchedule
+	}
+
+	private get simulationTimeMs(): number {
+		return this.state.simulationTimeMs
+	}
+
+	private set simulationTimeMs(value: number) {
+		this.state.simulationTimeMs = value
+	}
 
 	constructor(
 		managers: PopulationDeps,
@@ -728,39 +759,12 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	}
 
 	serialize(): PopulationSnapshot {
-		return {
-			settlers: Array.from(this.settlers.values()).map(settler => ({
-				...settler,
-				position: { ...settler.position },
-				stateContext: { ...settler.stateContext },
-				needs: settler.needs ? { ...settler.needs } : undefined
-			})),
-			houseOccupants: Array.from(this.houseOccupants.entries()).map(([houseId, occupants]) => ([
-				houseId,
-				Array.from(occupants.values())
-			])),
-			houseSpawnSchedule: Array.from(this.houseSpawnSchedule.entries()),
-			simulationTimeMs: this.simulationTimeMs
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: PopulationSnapshot): void {
-		this.settlers.clear()
-		this.houseOccupants.clear()
-		this.houseSpawnSchedule.clear()
-		this.simulationTimeMs = state.simulationTimeMs
-
-		for (const settler of state.settlers) {
-			const restored: Settler = {
-				...settler,
-				position: { ...settler.position },
-				stateContext: { ...settler.stateContext },
-				needs: settler.needs ? { ...settler.needs } : undefined,
-				health: typeof settler.health === 'number'
-					? Math.max(0, Math.min(1, settler.health))
-					: 1
-			}
-			this.settlers.set(restored.id, restored)
+		const restoredSettlers = this.state.deserialize(state)
+		for (const restored of restoredSettlers) {
 			this.managers.movement.registerEntity({
 				id: restored.id,
 				position: restored.position,
@@ -769,20 +773,10 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			})
 		}
 
-		for (const [houseId, occupants] of state.houseOccupants) {
-			this.houseOccupants.set(houseId, new Set(occupants))
-		}
-
-		for (const [houseId, schedule] of state.houseSpawnSchedule) {
-			this.houseSpawnSchedule.set(houseId, { ...schedule })
-		}
 	}
 
 	reset(): void {
-		this.settlers.clear()
-		this.houseOccupants.clear()
-		this.houseSpawnSchedule.clear()
-		this.simulationTimeMs = 0
+		this.state.reset()
 	}
 
 	private getEmptyByProfession(): Record<ProfessionType, number> {
@@ -793,3 +787,5 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		return byProfession
 	}
 }
+
+export * from './PopulationManagerState'

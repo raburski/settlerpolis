@@ -1,6 +1,6 @@
 import { EventManager, Event, EventClient } from '../events'
 import { Receiver } from '../Receiver'
-import { DialogueNode, DialogueOption, DialogueTree, DialogueState, DialogueItem, DialogueEvent, DialogueContinueData, DialogueChoiceData } from './types'
+import { DialogueNode, DialogueOption, DialogueTree, DialogueItem, DialogueEvent, DialogueContinueData, DialogueChoiceData } from './types'
 import { DialogueEvents } from './events'
 import type { QuestManager } from "../Quest"
 import { v4 as uuidv4 } from 'uuid'
@@ -10,6 +10,7 @@ import type { ConditionEffectManager } from "../ConditionEffect"
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
 import type { DialogueSnapshot } from '../state/types'
+import { DialogueState } from './DialogueState'
 
 const DEFAULT_START_NODE = 'start'
 
@@ -20,9 +21,7 @@ export interface DialogueDeps {
 }
 
 export class DialogueManager extends BaseManager<DialogueDeps> {
-	private dialogues = new Map<string, DialogueTree>()
-	private activeDialogues = new Map<string, string>() // clientId -> dialogueId
-	private currentNodes = new Map<string, string>() // clientId -> nodeId
+	private readonly state = new DialogueState()
 
 	constructor(
 		managers: DialogueDeps,
@@ -116,10 +115,10 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 
 	/* EVENT HANDLERS */
 	private readonly handleDialogueCSContinue = (data: DialogueContinueData, client: EventClient): void => {
-		const dialogueId = this.activeDialogues.get(client.id)
+		const dialogueId = this.state.activeDialogues.get(client.id)
 		if (!dialogueId || dialogueId !== data.dialogueId) return
 
-		const dialogue = this.dialogues.get(dialogueId)
+		const dialogue = this.state.dialogues.get(dialogueId)
 		if (!dialogue) return
 
 		const currentNode = this.getCurrentNode(client.id)
@@ -138,7 +137,7 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 			this.handleDialogueItem(currentNode.item, client)
 		}
 
-		this.currentNodes.set(client.id, currentNode.next)
+		this.state.currentNodes.set(client.id, currentNode.next)
 		const filteredNode = this.filterOptionsByConditions(nextNode, client, dialogue.npcId)
 
 		client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
@@ -149,10 +148,10 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 	}
 
 	private readonly handleDialogueCSChoice = (data: DialogueChoiceData, client: EventClient): void => {
-		const dialogueId = this.activeDialogues.get(client.id)
+		const dialogueId = this.state.activeDialogues.get(client.id)
 		if (!dialogueId || dialogueId !== data.dialogueId) return
 
-		const dialogue = this.dialogues.get(dialogueId)
+		const dialogue = this.state.dialogues.get(dialogueId)
 		if (!dialogue) return
 
 		const currentNode = this.getCurrentNode(client.id)
@@ -180,7 +179,7 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 			this.handleDialogueItem(selectedOption.item, client)
 		}
 		this.applyDialogueEffects(selectedOption, client, dialogue.npcId)
-		this.currentNodes.set(client.id, selectedOption.next)
+		this.state.currentNodes.set(client.id, selectedOption.next)
 
 		const filteredNode = this.filterOptionsByConditions(nextNode, client, dialogue.npcId)
 		client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
@@ -191,7 +190,7 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 	}
 
 	private readonly handleDialogueCSEnd = (data: DialogueContinueData, client: EventClient): void => {
-		const dialogueId = this.activeDialogues.get(client.id)
+		const dialogueId = this.state.activeDialogues.get(client.id)
 		if (!dialogueId || dialogueId !== data.dialogueId) return
 
 		this.endDialogue(client)
@@ -199,7 +198,7 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 
 	/* METHODS */
 	public registerDialogue(dialogue: DialogueTree) {
-		this.dialogues.set(dialogue.id, dialogue)
+		this.state.dialogues.set(dialogue.id, dialogue)
 		this.logger.debug(`Registered dialogue: ${dialogue.id}`)
 	}
 
@@ -209,8 +208,8 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 		
 		// Find dialogue for this NPC - either quest-specific or default
 		const dialogue = questDialogue 
-			? this.dialogues.get(questDialogue.dialogueId)
-			: Array.from(this.dialogues.values()).find(d => d.npcId === npcId)
+			? this.state.dialogues.get(questDialogue.dialogueId)
+			: Array.from(this.state.dialogues.values()).find(d => d.npcId === npcId)
 			
 		if (!dialogue) return false
 
@@ -220,8 +219,8 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 		if (!startNode) return false
 
 		// Start the dialogue
-		this.activeDialogues.set(client.id, dialogue.id)
-		this.currentNodes.set(client.id, startNodeId)
+		this.state.activeDialogues.set(client.id, dialogue.id)
+		this.state.currentNodes.set(client.id, startNodeId)
 
 		// Filter options based on conditions
 		const filteredNode = this.filterOptionsByConditions(startNode, client, dialogue.npcId)
@@ -237,24 +236,24 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 	}
 
 	private getCurrentNode(clientId: string): DialogueNode | undefined {
-		const dialogueId = this.activeDialogues.get(clientId)
+		const dialogueId = this.state.activeDialogues.get(clientId)
 		if (!dialogueId) return
 
-		const dialogue = this.dialogues.get(dialogueId)
+		const dialogue = this.state.dialogues.get(dialogueId)
 		if (!dialogue) return
 
-		const nodeId = this.currentNodes.get(clientId)
+		const nodeId = this.state.currentNodes.get(clientId)
 		if (!nodeId) return
 
 		return dialogue.nodes[nodeId]
 	}
 
 	private endDialogue(client: EventClient) {
-		const dialogueId = this.activeDialogues.get(client.id)
+		const dialogueId = this.state.activeDialogues.get(client.id)
 		if (!dialogueId) return
 
-		this.activeDialogues.delete(client.id)
-		this.currentNodes.delete(client.id)
+		this.state.activeDialogues.delete(client.id)
+		this.state.currentNodes.delete(client.id)
 
 		client.emit(Receiver.Sender, DialogueEvents.SC.End, {
 			dialogueId
@@ -262,7 +261,7 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 	}
 
 	public getNPCActiveDialogues(npcId: string): string[] {
-		return Array.from(this.dialogues.values())
+		return Array.from(this.state.dialogues.values())
 			.filter(dialogue => dialogue.npcId === npcId)
 			.map(dialogue => dialogue.id)
 	}
@@ -276,7 +275,7 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 	 */
 	public hasActiveDialogue(playerId: string, dialogueId: string, nodeId?: string): boolean {
 		// Check if player has any active dialogue
-		const activeDialogueId = this.activeDialogues.get(playerId)
+		const activeDialogueId = this.state.activeDialogues.get(playerId)
 		if (!activeDialogueId || activeDialogueId !== dialogueId) {
 			return false
 		}
@@ -287,30 +286,19 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 		}
 
 		// Check if the player is at the specified node
-		const currentNodeId = this.currentNodes.get(playerId)
+		const currentNodeId = this.state.currentNodes.get(playerId)
 		return currentNodeId === nodeId
 	}
 
 	serialize(): DialogueSnapshot {
-		return {
-			activeDialogues: Array.from(this.activeDialogues.entries()),
-			currentNodes: Array.from(this.currentNodes.entries())
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: DialogueSnapshot): void {
-		this.activeDialogues.clear()
-		this.currentNodes.clear()
-		for (const [clientId, dialogueId] of state.activeDialogues) {
-			this.activeDialogues.set(clientId, dialogueId)
-		}
-		for (const [clientId, nodeId] of state.currentNodes) {
-			this.currentNodes.set(clientId, nodeId)
-		}
+		this.state.deserialize(state)
 	}
 
 	reset(): void {
-		this.activeDialogues.clear()
-		this.currentNodes.clear()
+		this.state.reset()
 	}
 }

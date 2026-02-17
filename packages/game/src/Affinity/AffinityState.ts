@@ -28,14 +28,14 @@ export class AffinityState {
 			})
 
 			affinityData = {
-				playerId,
-				npcId,
-				sentiments,
-				lastUpdated: this.simulationTimeMs
-			}
+					playerId,
+					npcId,
+					sentiments,
+					lastUpdated: this.simulationTimeMs
+				}
 
-			this.affinities.set(key, affinityData)
-		}
+				this.affinities.set(key, affinityData)
+			}
 
 		return affinityData
 	}

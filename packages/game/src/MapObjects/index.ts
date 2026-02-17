@@ -11,6 +11,7 @@ import { Position } from '../types'
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
 import type { MapObjectsSnapshot } from '../state/types'
+import { MapObjectsManagerState } from './MapObjectsManagerState'
 
 export interface MapObjectsDeps {
 	event: EventManager
@@ -20,12 +21,22 @@ export interface MapObjectsDeps {
 
 export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 	// Map of mapId to MapObject[]
-	private mapObjectsByMap = new Map<string, Map<string, MapObject>>()
-	private objectChunksByMap = new Map<string, Map<string, Set<MapObjectId>>>()
-	private chunkKeysByObjectByMap = new Map<string, Map<MapObjectId, string[]>>()
+	private readonly state = new MapObjectsManagerState()
 	private static readonly TILE_SIZE = 32
 	private static readonly CHUNK_SIZE_TILES = 16
 	private static readonly CHUNK_SIZE_PIXELS = MapObjectsManager.TILE_SIZE * MapObjectsManager.CHUNK_SIZE_TILES
+
+	private get mapObjectsByMap(): Map<string, Map<string, MapObject>> {
+		return this.state.mapObjectsByMap
+	}
+
+	private get objectChunksByMap(): Map<string, Map<string, Set<MapObjectId>>> {
+		return this.state.objectChunksByMap
+	}
+
+	private get chunkKeysByObjectByMap(): Map<string, Map<MapObjectId, string[]>> {
+		return this.state.chunkKeysByObjectByMap
+	}
 
 	constructor(
 		managers: MapObjectsDeps,
@@ -321,40 +332,15 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 	}
 
 	serialize(): MapObjectsSnapshot {
-		return {
-			objectsByMap: Array.from(this.mapObjectsByMap.entries()).map(([mapId, mapObjects]) => ([
-				mapId,
-				Array.from(mapObjects.values()).map(object => ({
-					...object,
-					position: { ...object.position },
-					item: { ...object.item },
-					metadata: object.metadata ? { ...object.metadata } : undefined
-				}))
-			]))
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: MapObjectsSnapshot): void {
-		this.mapObjectsByMap.clear()
-		this.objectChunksByMap.clear()
-		this.chunkKeysByObjectByMap.clear()
-		for (const [mapId, objects] of state.objectsByMap) {
-			for (const object of objects) {
-				this.addObjectToMap({
-					...object,
-					mapId,
-					position: { ...object.position },
-					item: { ...object.item },
-					metadata: object.metadata ? { ...object.metadata } : undefined
-				})
-			}
-		}
+		this.state.deserialize(state, object => this.addObjectToMap(object))
 	}
 
 	reset(): void {
-		this.mapObjectsByMap.clear()
-		this.objectChunksByMap.clear()
-		this.chunkKeysByObjectByMap.clear()
+		this.state.reset()
 	}
 
 	private getObjectSizeInPixels(item?: Item, metadata?: Record<string, any>): { width: number, height: number } {
@@ -454,3 +440,5 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 		return chunkKeys
 	}
 }
+
+export * from './MapObjectsManagerState'

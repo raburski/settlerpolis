@@ -7,7 +7,7 @@ import type { FlagsSnapshot } from '../state/types'
 import { FlagsState } from './FlagsState'
 
 export class FlagsManager {
-	public state = new FlagsState()
+	private readonly state = new FlagsState()
 
 	constructor(
 		private event: EventManager,

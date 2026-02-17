@@ -12,6 +12,7 @@ import { NeedsSystem } from './NeedsSystem'
 import { NeedPlanner } from './NeedPlanner'
 import { NeedInterruptController } from './NeedInterruptController'
 import type { NeedsSnapshot } from '../state/types'
+import { NeedsManagerState } from './NeedsManagerState'
 
 export interface NeedsDeps {
 	event: EventManager
@@ -28,6 +29,7 @@ export class NeedsManager extends BaseManager<NeedsDeps> {
 	public system: NeedsSystem
 	public planner: NeedPlanner
 	public interrupts: NeedInterruptController
+	private readonly state = new NeedsManagerState()
 
 	constructor(
 		managers: NeedsDeps,
@@ -41,29 +43,29 @@ export class NeedsManager extends BaseManager<NeedsDeps> {
 
 	serialize(): NeedsSnapshot {
 		const systemSnapshot = this.system.serialize()
-		return {
-			needsBySettler: systemSnapshot.needsBySettler,
-			lastLevels: systemSnapshot.lastLevels,
-			interrupts: this.interrupts.serialize()
-		}
+		this.state.capture(systemSnapshot, this.interrupts.serialize())
+		return this.state.serialize()
 	}
 
 	deserialize(state: NeedsSnapshot): void {
+		this.state.deserialize(state)
 		this.system.deserialize({
-			needsBySettler: state.needsBySettler,
-			lastLevels: state.lastLevels
+			needsBySettler: this.state.needsBySettler,
+			lastLevels: this.state.lastLevels
 		})
-		this.interrupts.deserialize(state.interrupts)
+		this.interrupts.deserialize(this.state.interrupts)
 	}
 
 	reset(): void {
 		this.system.reset()
 		this.interrupts.reset()
+		this.state.reset()
 	}
 }
 
 export * from './NeedTypes'
 export * from './NeedMeter'
+export * from './NeedsManagerState'
 export * from './NeedsState'
 export * from './events'
 export * from './types'

@@ -16,7 +16,8 @@ import type { Position } from '../types'
 import type { Item } from '../Items/types'
 import { ConstructionStage } from '../Buildings/types'
 import type { BuildingDefinition } from '../Buildings/types'
-import type { StorageSnapshot, BuildingStorageSnapshot } from '../state/types'
+import type { StorageSnapshot } from '../state/types'
+import { StorageManagerState } from './StorageManagerState'
 
 export interface StorageDeps {
 	event: EventManager
@@ -27,13 +28,34 @@ export interface StorageDeps {
 }
 
 export class StorageManager extends BaseManager<StorageDeps> {
-	private buildingStorages: Map<string, BuildingStorage> = new Map() // buildingInstanceId -> BuildingStorage
-	private reservations: Map<string, StorageReservation> = new Map()  // reservationId -> StorageReservation
+	private readonly state = new StorageManagerState()
 	private readonly STORAGE_TICK_INTERVAL_MS = 5000
 	private readonly GAME_DAY_MS = 24 * 60 * 1000
-	private tickAccumulatorMs = 0
-	private simulationTimeMs = 0
 	private readonly WILDCARD_ITEM_TYPE = '*'
+
+	private get buildingStorages(): Map<string, BuildingStorage> {
+		return this.state.buildingStorages
+	}
+
+	private get reservations(): Map<string, StorageReservation> {
+		return this.state.reservations
+	}
+
+	private get tickAccumulatorMs(): number {
+		return this.state.tickAccumulatorMs
+	}
+
+	private set tickAccumulatorMs(value: number) {
+		this.state.tickAccumulatorMs = value
+	}
+
+	private get simulationTimeMs(): number {
+		return this.state.simulationTimeMs
+	}
+
+	private set simulationTimeMs(value: number) {
+		this.state.simulationTimeMs = value
+	}
 
 	constructor(
 		managers: StorageDeps,
@@ -1025,57 +1047,11 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	serialize(): StorageSnapshot {
-		const storages: BuildingStorageSnapshot[] = []
-		for (const storage of this.buildingStorages.values()) {
-			storages.push({
-				buildingInstanceId: storage.buildingInstanceId,
-				slots: Array.from(storage.slots.values()).map(slot => ({
-					...slot,
-					position: { ...slot.position },
-					batches: slot.batches.map(batch => ({ ...batch }))
-				})),
-				slotsByItem: Array.from(storage.slotsByItem.entries()).map(([itemType, slotIds]) => ([
-					itemType,
-					[...slotIds]
-				]))
-			})
-		}
-
-		return {
-			storages,
-			reservations: Array.from(this.reservations.values()).map(reservation => ({ ...reservation })),
-			simulationTimeMs: this.simulationTimeMs,
-			tickAccumulatorMs: this.tickAccumulatorMs
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: StorageSnapshot): void {
-		this.buildingStorages.clear()
-		this.reservations.clear()
-		for (const storage of state.storages) {
-			const slots = new Map<string, StorageSlot>()
-			for (const slot of storage.slots) {
-				slots.set(slot.slotId, {
-					...slot,
-					position: { ...slot.position },
-					batches: slot.batches.map(batch => ({ ...batch }))
-				})
-			}
-			const slotsByItem = new Map<string, string[]>()
-			for (const [itemType, slotIds] of storage.slotsByItem) {
-				slotsByItem.set(itemType, [...slotIds])
-			}
-			this.buildingStorages.set(storage.buildingInstanceId, {
-				buildingInstanceId: storage.buildingInstanceId,
-				slots,
-				slotsByItem
-			})
-		}
-		for (const reservation of state.reservations) {
-			this.reservations.set(reservation.reservationId, { ...reservation })
-		}
-		this.simulationTimeMs = state.simulationTimeMs
-		this.tickAccumulatorMs = state.tickAccumulatorMs
+		this.state.deserialize(state)
 
 		this.initializeStorageForMissingBuildings()
 		this.releaseStalePendingReservations()
@@ -1157,10 +1133,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	reset(): void {
-		this.buildingStorages.clear()
-		this.reservations.clear()
-		this.simulationTimeMs = 0
-		this.tickAccumulatorMs = 0
+		this.state.reset()
 	}
 }
 
@@ -1172,3 +1145,5 @@ function normalizeQuarterTurns(rotation: number): number {
 	const normalized = ((turns % 4) + 4) % 4
 	return normalized
 }
+
+export * from './StorageManagerState'

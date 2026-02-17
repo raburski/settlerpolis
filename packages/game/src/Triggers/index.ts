@@ -8,6 +8,7 @@ import type { MapManager } from '../Map'
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
 import type { TriggersSnapshot } from '../state/types'
+import { TriggerManagerState } from './TriggerManagerState'
 
 const PROXIMITY_DEACTIVATION_BUFFER = 50 // pixels
 
@@ -18,12 +19,31 @@ export interface TriggerDeps {
 }
 
 export class TriggerManager extends BaseManager<TriggerDeps> {
-	private triggers: Map<string, Trigger> = new Map()
-	private activeTriggers: Set<string> = new Set()
-	private activeProximityTriggers: Set<string> = new Set()
-	private usedTriggers: Set<string> = new Set()
-	private playerActiveTriggers: Map<string, Set<string>> = new Map() // playerId -> Set<triggerId>
-	private playerConditionTriggers: Map<string, Map<string, boolean>> = new Map() // playerId -> Map<triggerId, wasValid>
+	private readonly state = new TriggerManagerState()
+
+	private get triggers(): Map<string, Trigger> {
+		return this.state.triggers
+	}
+
+	private get activeTriggers(): Set<string> {
+		return this.state.activeTriggers
+	}
+
+	private get activeProximityTriggers(): Set<string> {
+		return this.state.activeProximityTriggers
+	}
+
+	private get usedTriggers(): Set<string> {
+		return this.state.usedTriggers
+	}
+
+	private get playerActiveTriggers(): Map<string, Set<string>> {
+		return this.state.playerActiveTriggers
+	}
+
+	private get playerConditionTriggers(): Map<string, Map<string, boolean>> {
+		return this.state.playerConditionTriggers
+	}
 
 	constructor(
 		managers: TriggerDeps,
@@ -281,56 +301,16 @@ export class TriggerManager extends BaseManager<TriggerDeps> {
 	}
 
 	serialize(): TriggersSnapshot {
-		return {
-			triggers: Array.from(this.triggers.values()).map(trigger => ({ ...trigger })),
-			activeTriggers: Array.from(this.activeTriggers.values()),
-			activeProximityTriggers: Array.from(this.activeProximityTriggers.values()),
-			usedTriggers: Array.from(this.usedTriggers.values()),
-			playerActiveTriggers: Array.from(this.playerActiveTriggers.entries()).map(([playerId, triggers]) => ([
-				playerId,
-				Array.from(triggers.values())
-			])),
-			playerConditionTriggers: Array.from(this.playerConditionTriggers.entries()).map(([playerId, triggers]) => ([
-				playerId,
-				Array.from(triggers.entries())
-			]))
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: TriggersSnapshot): void {
-		this.triggers.clear()
-		this.activeTriggers.clear()
-		this.activeProximityTriggers.clear()
-		this.usedTriggers.clear()
-		this.playerActiveTriggers.clear()
-		this.playerConditionTriggers.clear()
-
-		for (const trigger of state.triggers) {
-			this.triggers.set(trigger.id, { ...trigger })
-		}
-		for (const triggerId of state.activeTriggers) {
-			this.activeTriggers.add(triggerId)
-		}
-		for (const triggerId of state.activeProximityTriggers) {
-			this.activeProximityTriggers.add(triggerId)
-		}
-		for (const triggerId of state.usedTriggers) {
-			this.usedTriggers.add(triggerId)
-		}
-		for (const [playerId, triggers] of state.playerActiveTriggers) {
-			this.playerActiveTriggers.set(playerId, new Set(triggers))
-		}
-		for (const [playerId, triggers] of state.playerConditionTriggers) {
-			this.playerConditionTriggers.set(playerId, new Map(triggers))
-		}
+		this.state.deserialize(state)
 	}
 
 	reset(): void {
-		this.triggers.clear()
-		this.activeTriggers.clear()
-		this.activeProximityTriggers.clear()
-		this.usedTriggers.clear()
-		this.playerActiveTriggers.clear()
-		this.playerConditionTriggers.clear()
+		this.state.reset()
 	}
 }
+
+export * from './TriggerManagerState'

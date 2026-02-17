@@ -11,6 +11,7 @@ import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
 import type { RoadManager } from '../Roads'
 import type { MovementSnapshot, MovementTaskSnapshot } from '../state/types'
+import { MovementManagerState } from './MovementManagerState'
 
 const MOVEMENT_STEP_LAG = 100 // milliseconds between steps
 
@@ -21,9 +22,23 @@ export interface MovementDeps {
 }
 
 export class MovementManager extends BaseManager<MovementDeps> {
-	private entities: Map<string, MovementEntity> = new Map()
-	private tasks: Map<string, MovementTask> = new Map()
-	private simulationTimeMs = 0
+	private readonly state = new MovementManagerState()
+
+	private get entities(): Map<string, MovementEntity> {
+		return this.state.entities
+	}
+
+	private get tasks(): Map<string, MovementTask> {
+		return this.state.tasks
+	}
+
+	private get simulationTimeMs(): number {
+		return this.state.simulationTimeMs
+	}
+
+	private set simulationTimeMs(value: number) {
+		this.state.simulationTimeMs = value
+	}
 
 	constructor(
 		managers: MovementDeps,
@@ -381,41 +396,11 @@ export class MovementManager extends BaseManager<MovementDeps> {
 	}
 
 	serialize(): MovementSnapshot {
-		const activeMoves: MovementTaskSnapshot[] = []
-		for (const task of this.tasks.values()) {
-			const lastStep = task.path.length > 0 ? task.path[task.path.length - 1] : this.entities.get(task.entityId)?.position
-			if (!lastStep) {
-				continue
-			}
-			activeMoves.push({
-				entityId: task.entityId,
-				targetPosition: { ...lastStep },
-				targetType: task.targetType,
-				targetId: task.targetId
-			})
-		}
-
-		return {
-			entities: Array.from(this.entities.values()).map(entity => ({
-				...entity,
-				position: { ...entity.position }
-			})),
-			activeMoves,
-			simulationTimeMs: this.simulationTimeMs
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: MovementSnapshot): void {
-		this.entities.clear()
-		this.tasks.clear()
-		for (const entity of state.entities) {
-			this.entities.set(entity.id, {
-				...entity,
-				position: { ...entity.position }
-			})
-		}
-		this.simulationTimeMs = state.simulationTimeMs
-		const activeMoves = state.activeMoves ?? []
+		const activeMoves = this.state.deserialize(state)
 		for (const move of activeMoves) {
 			if (!this.entities.has(move.entityId)) {
 				continue
@@ -428,9 +413,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 	}
 
 	reset(): void {
-		this.entities.clear()
-		this.tasks.clear()
-		this.simulationTimeMs = 0
+		this.state.reset()
 	}
 
 	/**
@@ -468,3 +451,4 @@ export class MovementManager extends BaseManager<MovementDeps> {
 // Export types and events for use by other modules
 export * from './types'
 export * from './events'
+export * from './MovementManagerState'

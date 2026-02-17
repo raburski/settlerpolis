@@ -9,7 +9,7 @@ import type { TimeSnapshot } from '../state/types'
 import { TimeState } from './TimeState'
 
 export class TimeManager {
-	public state = new TimeState()
+	private readonly state = new TimeState()
 
 	constructor(
 		private event: EventManager,

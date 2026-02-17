@@ -20,6 +20,7 @@ import { BaseManager } from '../Managers'
 import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
 import type { NPCSnapshot } from '../state/types'
+import { NPCManagerState } from './NPCManagerState'
 
 export interface NPCDeps {
 	event: EventManager
@@ -31,9 +32,7 @@ export interface NPCDeps {
 }
 
 export class NPCManager extends BaseManager<NPCDeps> {
-	private npcs: Map<string, NPC> = new Map()
-	private pausedRoutines: Map<string, NPCRoutineStep> = new Map()
-	private lastRoutineCheckKey: string | null = null
+	private readonly state = new NPCManagerState()
 
 	constructor(
 		managers: NPCDeps,
@@ -67,7 +66,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 				}
 			}
 			
-			this.npcs.set(npc.id, npc)
+			this.state.npcs.set(npc.id, npc)
 
 			// Register NPC with MovementManager
 			const movementEntity: MovementEntity = {
@@ -115,14 +114,14 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	}
 
 	private readonly handleMovementSSStepComplete = (data: { entityId: string, position: Position }): void => {
-		const npc = this.npcs.get(data.entityId)
+		const npc = this.state.npcs.get(data.entityId)
 		if (npc) {
 			npc.position = data.position
 		}
 	}
 
 	private readonly handleMovementSSPathComplete = (data: { entityId: string, targetType?: MoveTargetType, targetId?: string }): void => {
-		const npc = this.npcs.get(data.entityId)
+		const npc = this.state.npcs.get(data.entityId)
 		if (npc && npc.state === NPCState.Moving) {
 			npc.state = NPCState.Idle
 			const finalPosition = this.managers.movement.getEntityPosition(data.entityId)
@@ -135,13 +134,13 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	private readonly handleDialogueSCEnd = (data: DialogueContinueData): void => {
 		const activeDialogues = this.managers.dialogue.getNPCActiveDialogues(data.dialogueId)
 		if (activeDialogues.length === 0) {
-			const pausedStep = this.pausedRoutines.get(data.dialogueId)
+			const pausedStep = this.state.pausedRoutines.get(data.dialogueId)
 			if (pausedStep) {
 				const currentTime = this.managers.time.getFormattedTime()
 				if (currentTime === pausedStep.time) {
 					this.executeRoutineStep(data.dialogueId, pausedStep)
 				}
-				this.pausedRoutines.delete(data.dialogueId)
+				this.state.pausedRoutines.delete(data.dialogueId)
 			}
 		}
 	}
@@ -158,7 +157,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	private sendMapNPCsToClient(mapId: string, client: EventClient, logJoin: boolean): void {
 		const mapNPCs = this.getMapNPCs(mapId)
 		if (logJoin) {
-			this.logger.debug('ON PLAYER JOIN', this.npcs)
+			this.logger.debug('ON PLAYER JOIN', this.state.npcs)
 		}
 		if (mapNPCs.length > 0) {
 			client.emit(Receiver.Sender, NPCEvents.SC.List, { npcs: mapNPCs })
@@ -167,19 +166,19 @@ export class NPCManager extends BaseManager<NPCDeps> {
 
 	private handleSimulationTick(_data: SimulationTickData): void {
 		const currentKey = this.managers.time.getFormattedTime()
-		if (currentKey === this.lastRoutineCheckKey) {
+		if (currentKey === this.state.lastRoutineCheckKey) {
 			return
 		}
-		this.lastRoutineCheckKey = currentKey
+		this.state.lastRoutineCheckKey = currentKey
 		this.checkAllRoutines()
 	}
 
 	public getMapNPCs(mapId: string): NPC[] {
-		return Array.from(this.npcs.values()).filter(npc => npc.mapId === mapId && npc.active !== false)
+		return Array.from(this.state.npcs.values()).filter(npc => npc.mapId === mapId && npc.active !== false)
 	}
 
 	private handleGoEvent(data: NPCGoData) {
-		const npc = this.npcs.get(data.npcId)
+		const npc = this.state.npcs.get(data.npcId)
 		if (!npc || !npc.active) return
 
 		let targetPosition: Position | undefined
@@ -225,7 +224,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 			npc.active = true
 		}
 
-		this.npcs.set(npc.id, npc)
+		this.state.npcs.set(npc.id, npc)
 
 		// Register NPC with MovementManager
 		const movementEntity: MovementEntity = {
@@ -242,14 +241,14 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	}
 
 	public removeNPC(npcId: string) {
-		const npc = this.npcs.get(npcId)
+		const npc = this.state.npcs.get(npcId)
 		if (!npc) {
 			return
 		}
 
 		// Unregister from MovementManager
 		this.managers.movement.unregisterEntity(npcId)
-		this.npcs.delete(npcId)
+		this.state.npcs.delete(npcId)
 
 		if (npc.active !== false) {
 			this.managers.event.emit(Receiver.Group, NPCEvents.SC.Despawn, { npc }, npc.mapId)
@@ -257,13 +256,13 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	}
 
 	public getNPC(npcId: string): NPC | undefined {
-		return this.npcs.get(npcId)
+		return this.state.npcs.get(npcId)
 	}
 
 	private checkAllRoutines() {
 		const currentTime = this.managers.time.getFormattedTime()
 
-		for (const npc of this.npcs.values()) {
+		for (const npc of this.state.npcs.values()) {
 			if (npc.routine && npc.active) {
 				const currentStep = npc.routine.steps.find(step => step.time === currentTime)
 				if (currentStep) {
@@ -271,7 +270,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 					const activeDialogues = this.managers.dialogue.getNPCActiveDialogues(npc.id)
 					if (activeDialogues.length > 0) {
 						// Pause the routine step for later
-						this.pausedRoutines.set(npc.id, currentStep)
+						this.state.pausedRoutines.set(npc.id, currentStep)
 					} else {
 						this.executeRoutineStep(npc.id, currentStep)
 					}
@@ -281,7 +280,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	}
 
 	private executeRoutineStep(npcId: string, step: NPCRoutineStep) {
-		const npc = this.npcs.get(npcId)
+		const npc = this.state.npcs.get(npcId)
 		if (!npc) return
 
 		// Move NPC to the spot
@@ -301,37 +300,37 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	}
 
 	public setNPCRoutine(npcId: string, routine: NPCRoutine) {
-		const npc = this.npcs.get(npcId)
+		const npc = this.state.npcs.get(npcId)
 		if (!npc) return
 
 		npc.routine = routine
 		// Reset current action and clear any paused routine
 		npc.currentAction = undefined
-		this.pausedRoutines.delete(npcId)
+		this.state.pausedRoutines.delete(npcId)
 		this.checkAllRoutines() // Check immediately to see if any steps should be executed
 	}
 
 	public removeNPCRoutine(npcId: string) {
-		const npc = this.npcs.get(npcId)
+		const npc = this.state.npcs.get(npcId)
 		if (npc) {
 			delete npc.routine
 			delete npc.currentAction
-			this.pausedRoutines.delete(npcId)
+			this.state.pausedRoutines.delete(npcId)
 		}
 	}
 
 	public cleanup() {
 		// Unregister all NPCs from MovementManager
-		for (const npcId of this.npcs.keys()) {
+		for (const npcId of this.state.npcs.keys()) {
 			this.managers.movement.unregisterEntity(npcId)
 		}
 
 		// Clear paused routines
-		this.pausedRoutines.clear()
+		this.state.pausedRoutines.clear()
 	}
 
 	public updateNPC(npcId: string, updates: Partial<NPC>) {
-		const npc = this.npcs.get(npcId)
+		const npc = this.state.npcs.get(npcId)
 		if (!npc) return
 		
 		// Apply updates, handling complex objects like attributes properly
@@ -355,7 +354,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	 * Get NPC attribute value
 	 */
 	public getNPCAttribute(npcId: string, attributeName: string): any | undefined {
-		const npc = this.npcs.get(npcId)
+		const npc = this.state.npcs.get(npcId)
 		if (!npc || !npc.attributes) return undefined
 		return npc.attributes[attributeName]
 	}
@@ -364,7 +363,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	 * Set NPC attribute value
 	 */
 	public setNPCAttribute(npcId: string, attributeName: string, value: any) {
-		const npc = this.npcs.get(npcId)
+		const npc = this.state.npcs.get(npcId)
 		if (!npc) return
 		
 		// Initialize attributes if not present
@@ -379,14 +378,14 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	 * Remove NPC attribute
 	 */
 	public removeNPCAttribute(npcId: string, attributeName: string) {
-		const npc = this.npcs.get(npcId)
+		const npc = this.state.npcs.get(npcId)
 		if (!npc || !npc.attributes) return
 		
 		delete npc.attributes[attributeName]
 	}
 
 	private handleNPCInteraction(data: NPCInteractData, client: EventClient) {
-		const npc = this.npcs.get(data.npcId)
+		const npc = this.state.npcs.get(data.npcId)
 		if (!npc || !npc.active) return
 
 		// Try to trigger dialogue first
@@ -417,32 +416,12 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	}
 
 	serialize(): NPCSnapshot {
-		return {
-			npcs: Array.from(this.npcs.values()).map(npc => ({
-				...npc,
-				position: { ...npc.position },
-				attributes: npc.attributes ? { ...npc.attributes } : undefined
-			})),
-			pausedRoutines: Array.from(this.pausedRoutines.entries()).map(([npcId, step]) => ([
-				npcId,
-				{ ...step }
-			])),
-			lastRoutineCheckKey: this.lastRoutineCheckKey
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: NPCSnapshot): void {
-		this.npcs.clear()
-		this.pausedRoutines.clear()
-		this.lastRoutineCheckKey = state.lastRoutineCheckKey
-
-		for (const npc of state.npcs) {
-			const restored: NPC = {
-				...npc,
-				position: { ...npc.position },
-				attributes: npc.attributes ? { ...npc.attributes } : undefined
-			}
-			this.npcs.set(restored.id, restored)
+		this.state.deserialize(state)
+		for (const restored of this.state.npcs.values()) {
 			this.managers.movement.registerEntity({
 				id: restored.id,
 				position: restored.position,
@@ -451,15 +430,10 @@ export class NPCManager extends BaseManager<NPCDeps> {
 			})
 		}
 
-		for (const [npcId, step] of state.pausedRoutines) {
-			this.pausedRoutines.set(npcId, { ...step })
-		}
 	}
 
 	reset(): void {
-		this.npcs.clear()
-		this.pausedRoutines.clear()
-		this.lastRoutineCheckKey = null
+		this.state.reset()
 	}
 
 	private handleNPCGo(data: NPCGoData) {
@@ -470,7 +444,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	 * Set an NPC's state
 	 */
 	public setNPCState(npcId: string, state: NPCState) {
-		const npc = this.npcs.get(npcId)
+		const npc = this.state.npcs.get(npcId)
 		if (!npc) return
 		
 		// Only accept Idle or Moving states for now
@@ -484,7 +458,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	 * Set NPC active state and notify all players in the map
 	 */
 	public setNPCActive(npcId: string, active: boolean) {
-		const npc = this.npcs.get(npcId)
+		const npc = this.state.npcs.get(npcId)
 		if (!npc) return
 
 		// Only proceed if the active state is actually changing
@@ -496,7 +470,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 		// If NPC is being deactivated, cancel any ongoing movement or routines
 		if (!active) {
 			this.managers.movement.cancelMovement(npcId)
-			this.pausedRoutines.delete(npcId)
+			this.state.pausedRoutines.delete(npcId)
 		}
 
 		// Notify all players in the map about the NPC state change
