@@ -38,13 +38,14 @@ These are in content and now supported by the new system:
 
 ## Implemented architecture (authoritative)
 ### Core modules
-- Orchestration + assignment: `packages/game/src/Settlers/WorkProvider/index.ts` (`WorkProviderManager`)
+- Orchestration + assignment: `packages/game/src/Settlers/Work/index.ts` (`SettlerWorkManager`)
 - Providers:
-  - Building: `packages/game/src/Settlers/WorkProvider/providers/BuildingProvider.ts`
-  - Logistics: `packages/game/src/Settlers/WorkProvider/providers/LogisticsProvider.ts`
-- Action execution: `packages/game/src/Settlers/WorkProvider/ActionSystem.ts`
-- Reservations: `packages/game/src/Settlers/WorkProvider/ReservationSystem.ts`
-- Types/events: `packages/game/src/Settlers/WorkProvider/types.ts`, `packages/game/src/Settlers/WorkProvider/events.ts`
+  - Building: `packages/game/src/Settlers/Work/providers/BuildingProvider.ts`
+  - Logistics: `packages/game/src/Settlers/Work/providers/LogisticsProvider.ts`
+- Behavior dispatch: `packages/game/src/Settlers/Behaviour/index.ts` (`SettlerBehaviourManager`)
+- Action execution: `packages/game/src/Settlers/Actions/index.ts` (`SettlerActionsManager`)
+- Reservations helpers: `packages/game/src/Settlers/Work/reservations.ts`
+- Types/events: `packages/game/src/Settlers/Work/types.ts`, `packages/game/src/Settlers/Work/events.ts`
 
 ### Work/needs split (current + future)
 - Work is the execution lane for assigned settlers.
@@ -53,16 +54,18 @@ These are in content and now supported by the new system:
 
 ### Orchestration (“brain”)
 We evaluated three options (central orchestrator, goal planner, behavior graph). We implemented the **central orchestrator** pattern with strict boundaries:
-- `WorkProviderManager` owns assignment + step orchestration.
+- `SettlerWorkManager` owns assignment + provider orchestration.
 - Providers own domain logic (building vs logistics).
-- ActionSystem owns execution details.
+- `SettlerBehaviourManager` owns dispatch/preemption orchestration.
+- `SettlerActionsManager` owns execution details.
 This keeps the flow readable while avoiding a giant state machine.
 
 ## Runtime flow (server)
 1. UI requests worker -> `PopulationEvents.CS.RequestWorker`.
-2. `WorkProviderManager` assigns settler, records `WorkAssignment`, sets state to `Assigned`.
+2. `SettlerWorkManager` assigns settler, records `WorkAssignment`, sets state to `Assigned`.
 3. Provider returns a `WorkStep` via `requestNextStep`.
-4. Step compiles to `WorkAction[]` and is executed by `ActionSystem`.
+4. Step compiles to `WorkAction[]` and is dispatched by `SettlerBehaviourManager`.
+5. `SettlerActionsManager` executes the queued actions.
 5. On completion, provider is queried again for the next step.
 
 ## Work steps (concrete, in code)

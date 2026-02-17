@@ -30,7 +30,7 @@ import { ReservationSystem } from './Reservation'
 import { RoadManager } from './Roads'
 import { SimulationManager } from './Simulation'
 import { ResourceNodesManager } from './ResourceNodes'
-import { WorkProviderManager } from './Settlers/WorkProvider'
+import { SettlerWorkManager } from './Settlers/Work'
 import { NeedsManager } from './Needs'
 import { ManagersHub } from './Managers'
 import { WildlifeManager } from './Wildlife'
@@ -45,7 +45,9 @@ export * from './types'
 export * from './events'
 export * from './consts'
 export * from './utils'
-export * from './Settlers/WorkProvider'
+export * from './Settlers/Work'
+export * from './Settlers/Behaviour'
+export * from './Settlers/Actions'
 export * from './Needs'
 export * from './Roads'
 export * from './Wildlife'
@@ -147,10 +149,10 @@ export class GameManager {
 		// Create ReservationSystem after Storage/Loot/ResourceNodes/Population
 		this.managers.reservations = new ReservationSystem(this.managers)
 
-		// Create WorkProviderManager after BuildingManager, PopulationManager, StorageManager, and ReservationSystem
-		this.managers.work = new WorkProviderManager(this.managers, this.managers.logs.getLogger('WorkProviderManager'))
+		// Create SettlerWorkManager after BuildingManager, PopulationManager, StorageManager, and ReservationSystem
+		this.managers.work = new SettlerWorkManager(this.managers, this.managers.logs.getLogger('SettlerWorkManager'))
 
-		// Create NeedsManager after WorkProviderManager so it can preempt action queues
+		// Create NeedsManager after SettlerWorkManager so it can preempt action queues
 		this.managers.needs = new NeedsManager(this.managers, this.managers.logs.getLogger('NeedsManager'))
 		
 		this.managers.trigger = new TriggerManager(this.managers, this.managers.logs.getLogger('TriggerManager'))
@@ -194,9 +196,9 @@ export class GameManager {
 		this.managers.logs.setManagerLevel('MovementManager', LogLevel.Info)
 		this.managers.logs.setManagerLevel('PopulationManager', LogLevel.Info)
 		
-		// Resource collection debugging - enable BuildingManager and WorkProviderManager at Info level
+		// Resource collection debugging - enable BuildingManager and SettlerWorkManager at Info level
 		this.managers.logs.setManagerLevel('BuildingManager', LogLevel.Info)
-		this.managers.logs.setManagerLevel('WorkProviderManager', LogLevel.Info)
+		this.managers.logs.setManagerLevel('SettlerWorkManager', LogLevel.Info)
 		
 		// Set most other managers to Warn level (only show warnings and errors)
 		const quietManagers = [
@@ -223,7 +225,7 @@ export class GameManager {
 			'StorageManager',
 			'SimulationManager',
 			'ResourceNodesManager',
-			'WorkProviderManager',
+			'SettlerWorkManager',
 			'NeedsManager',
 			'CityCharterManager',
 			'TradeManager',

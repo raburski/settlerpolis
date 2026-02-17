@@ -3,7 +3,7 @@ import { Receiver } from '../Receiver'
 import type { Logger } from '../Logs'
 import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
-import type { WorkProviderManager } from '../Settlers/WorkProvider'
+import type { SettlerWorkManager } from '../Settlers/Work'
 import { NeedsEvents } from './events'
 import { NeedType, NeedPriority } from './NeedTypes'
 import type { NeedsSystem } from './NeedsSystem'
@@ -40,7 +40,7 @@ export class NeedInterruptController {
 		private event: EventManager,
 		private needs: NeedsSystem,
 		private planner: NeedPlanner,
-		private work: WorkProviderManager,
+		private work: SettlerWorkManager,
 		private logger: Logger
 	) {
 		this.setupEventHandlers()

@@ -17,7 +17,7 @@ import { WorkerRequestFailureReason } from '../../Population/types'
 import type { BuildingDefinition, BuildingInstance, SetProductionPausedData } from '../../Buildings/types'
 import { ConstructionStage } from '../../Buildings/types'
 import { ProviderRegistry } from './ProviderRegistry'
-import { ActionSystem, type ActionQueueContextResolver } from './ActionSystem'
+import { SettlerActionsManager, type ActionQueueContextResolver } from '../Actions'
 import { WorkProviderEvents } from './events'
 import type { WorkAssignment, WorkAction, LogisticsRequest, WorkStep, WorkProvider } from './types'
 import { WorkProviderType, WorkAssignmentStatus } from './types'
@@ -28,7 +28,7 @@ import { AssignmentStore } from './AssignmentStore'
 import { ProviderFactory } from './ProviderFactory'
 import { PolicyEngine } from './PolicyEngine'
 import { ProductionTracker } from './ProductionTracker'
-import { DispatchCoordinator } from './coordinators/DispatchCoordinator'
+import { SettlerBehaviourManager } from '../Behaviour'
 import { LogisticsCoordinator } from './coordinators/LogisticsCoordinator'
 import { ConstructionCoordinator } from './coordinators/ConstructionCoordinator'
 import { RoadCoordinator } from './coordinators/RoadCoordinator'
@@ -37,15 +37,15 @@ import { LogisticsProvider } from './providers/LogisticsProvider'
 import { CriticalNeedsPolicy } from './policies/CriticalNeedsPolicy'
 import { HomeRelocationPolicy } from './policies/HomeRelocationPolicy'
 
-export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
+export class SettlerWorkManager extends BaseManager<WorkProviderDeps> {
 	private registry = new ProviderRegistry()
 	private assignments = new AssignmentStore()
 	private providers: ProviderFactory
 	private logisticsProvider: LogisticsProvider
-	private actionSystem: ActionSystem
+	private actionSystem: SettlerActionsManager
 	private policyEngine: PolicyEngine
 	private productionTracker: ProductionTracker
-	private dispatcher: DispatchCoordinator
+	private dispatcher: SettlerBehaviourManager
 	private logisticsCoordinator: LogisticsCoordinator
 	private constructionCoordinator: ConstructionCoordinator
 	private roadCoordinator: RoadCoordinator
@@ -69,7 +69,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		)
 		this.registry.register(this.logisticsProvider)
 
-		this.actionSystem = new ActionSystem(
+		this.actionSystem = new SettlerActionsManager(
 			this.managers,
 			this.managers.event,
 			this.logger
@@ -82,7 +82,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			new HomeRelocationPolicy()
 		]
 
-		let dispatcherRef: DispatchCoordinator
+		let dispatcherRef: SettlerBehaviourManager
 		const dispatchNextStep = (settlerId: string) => dispatcherRef.dispatchNextStep(settlerId)
 
 		this.policyEngine = new PolicyEngine(
@@ -100,7 +100,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			dispatchNextStep
 		)
 
-		this.dispatcher = new DispatchCoordinator(
+		this.dispatcher = new SettlerBehaviourManager(
 			this.managers,
 			this.managers.event,
 			this.assignments,
@@ -829,6 +829,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 	}
 }
 
+export { SettlerWorkManager as WorkProviderManager }
 export { WorkProviderEvents }
 export * from './types'
 export * from './deps'

@@ -10,14 +10,15 @@ Scope: Work/harvest/production/transport + tool pickup (no needs yet)
 - Replaced all work orchestration with the WorkProvider system.
 
 ## Code map (authoritative modules)
-- Orchestrator + assignment: `packages/game/src/Settlers/WorkProvider/index.ts` (`WorkProviderManager`)
-- Provider registry: `packages/game/src/Settlers/WorkProvider/ProviderRegistry.ts`
+- Orchestrator + assignment: `packages/game/src/Settlers/Work/index.ts` (`SettlerWorkManager`)
+- Provider registry: `packages/game/src/Settlers/Work/ProviderRegistry.ts`
 - Providers:
-  - Building: `packages/game/src/Settlers/WorkProvider/providers/BuildingProvider.ts`
-  - Logistics: `packages/game/src/Settlers/WorkProvider/providers/LogisticsProvider.ts`
-- Action execution: `packages/game/src/Settlers/WorkProvider/ActionSystem.ts`
-- Reservations: `packages/game/src/Settlers/WorkProvider/ReservationSystem.ts`
-- Types/events: `packages/game/src/Settlers/WorkProvider/types.ts`, `packages/game/src/Settlers/WorkProvider/events.ts`
+  - Building: `packages/game/src/Settlers/Work/providers/BuildingProvider.ts`
+  - Logistics: `packages/game/src/Settlers/Work/providers/LogisticsProvider.ts`
+- Behavior dispatch: `packages/game/src/Settlers/Behaviour/index.ts` (`SettlerBehaviourManager`)
+- Action execution: `packages/game/src/Settlers/Actions/index.ts` (`SettlerActionsManager`)
+- Reservations helpers: `packages/game/src/Settlers/Work/reservations.ts`
+- Types/events: `packages/game/src/Settlers/Work/types.ts`, `packages/game/src/Settlers/Work/events.ts`
 
 Population + Building integration:
 - Settler assignment + state: `packages/game/src/Population/index.ts`
@@ -26,10 +27,10 @@ Population + Building integration:
 
 ## Runtime flow (server)
 1. UI requests worker -> `PopulationEvents.CS.RequestWorker`.
-2. `WorkProviderManager` selects settler, creates `WorkAssignment`, sets state to `Assigned`, and binds to a provider.
+2. `SettlerWorkManager` selects settler, creates `WorkAssignment`, sets state to `Assigned`, and binds to a provider.
 3. Provider emits a `WorkStep` via `requestNextStep`.
-4. `WorkProviderManager` compiles step into `WorkAction[]` and enqueues to `ActionSystem`.
-5. `ActionSystem` executes actions (move/harvest/produce/transport) and emits action events.
+4. `SettlerBehaviourManager` compiles step into `WorkAction[]` and enqueues to `SettlerActionsManager`.
+5. `SettlerActionsManager` executes actions (move/harvest/produce/transport) and emits action events.
 6. Step completion -> next step requested; logistics workers unassign if no pending requests.
 
 ## Behavior coverage (concrete, in code)
@@ -62,7 +63,7 @@ Population + Building integration:
 ## Tool pickup semantics (capability, not work)
 - Assignment happens immediately; settler remains assigned while prerequisites are satisfied.
 - Provider returns `acquire_tool` when profession mismatch.
-- `WorkProviderManager` reserves tool from loot and issues move + pickup + change profession actions.
+- `SettlerWorkManager` reserves tool from loot and issues move + pickup + change profession actions.
 - If no tool available, settler waits and retries; assignment stays reserved.
 
 ## Data-driven dependencies

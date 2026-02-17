@@ -12,7 +12,7 @@ import {
 	WorkerRequestFailureReason
 } from '@rugged/game'
 import { buildingService } from './BuildingService'
-import type { WorkAssignment } from '@rugged/game/Settlers/WorkProvider/types'
+import type { WorkAssignment } from '@rugged/game/Settlers/Work/types'
 import { UiEvents } from '../uiEvents'
 import { getAutoRequestWorker } from './GameplaySettings'
 

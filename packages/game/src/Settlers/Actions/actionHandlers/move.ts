@@ -1,4 +1,4 @@
-import { WorkActionType } from '../types'
+import { WorkActionType } from '../../Work/types'
 import { MoveTargetType } from '../../../Movement/types'
 import { ConstructionStage } from '../../../Buildings/types'
 import { calculateDistance } from '../../../utils'

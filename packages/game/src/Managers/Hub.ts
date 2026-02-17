@@ -24,7 +24,7 @@ import type { StorageManager } from '../Storage'
 import type { SimulationManager } from '../Simulation'
 import type { ResourceNodesManager } from '../ResourceNodes'
 import type { ReservationSystem } from '../Reservation'
-import type { WorkProviderManager } from '../Settlers/WorkProvider'
+import type { SettlerWorkManager } from '../Settlers/Work'
 import type { NeedsManager } from '../Needs'
 import type { RoadManager } from '../Roads'
 import type { EventManager } from '../events'
@@ -63,7 +63,7 @@ export interface Managers {
 	resourceNodes: ResourceNodesManager
 	reservations: ReservationSystem
 	roads: RoadManager
-	work: WorkProviderManager
+	work: SettlerWorkManager
 	needs: NeedsManager
 	wildlife: WildlifeManager
 	cityCharter: CityCharterManager
@@ -101,7 +101,7 @@ export class ManagersHub implements Managers {
 	resourceNodes!: ResourceNodesManager
 	reservations!: ReservationSystem
 	roads!: RoadManager
-	work!: WorkProviderManager
+	work!: SettlerWorkManager
 	needs!: NeedsManager
 	wildlife!: WildlifeManager
 	cityCharter!: CityCharterManager

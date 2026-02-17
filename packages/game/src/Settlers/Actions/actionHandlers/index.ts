@@ -1,5 +1,5 @@
 import type { ActionHandler } from './types'
-import { WorkActionType } from '../types'
+import { WorkActionType } from '../../Work/types'
 import { MoveActionHandler } from './move'
 import { FollowPathActionHandler } from './followPath'
 import { WaitActionHandler } from './wait'

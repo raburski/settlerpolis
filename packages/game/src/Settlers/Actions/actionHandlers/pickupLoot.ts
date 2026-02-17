@@ -1,10 +1,10 @@
-import { WorkActionType } from '../types'
+import { WorkActionType } from '../../Work/types'
 import type { ActionHandler } from './types'
 
-export const PickupToolActionHandler: ActionHandler = {
-	type: WorkActionType.PickupTool,
+export const PickupLootActionHandler: ActionHandler = {
+	type: WorkActionType.PickupLoot,
 	start: ({ settlerId, action, managers, complete, fail }) => {
-		if (action.type !== WorkActionType.PickupTool) {
+		if (action.type !== WorkActionType.PickupLoot) {
 			return
 		}
 		const client = managers.population.getServerClient()
@@ -13,7 +13,7 @@ export const PickupToolActionHandler: ActionHandler = {
 			fail('loot_pickup_failed')
 			return
 		}
-		managers.population.setSettlerEquippedItem(settlerId, item.itemType, 1)
+		managers.population.setSettlerCarryingItem(settlerId, item.itemType, 1)
 		complete()
 	}
 }

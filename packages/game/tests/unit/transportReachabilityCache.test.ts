@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { TransportHandler } from '../../src/Settlers/WorkProvider/stepHandlers/transport'
+import { TransportHandler } from '../../src/Settlers/Work/stepHandlers/transport'
 import {
 	TransportSourceType,
 	TransportTargetType,
 	WorkAssignmentStatus,
 	WorkProviderType,
 	WorkStepType
-} from '../../src/Settlers/WorkProvider/types'
+} from '../../src/Settlers/Work/types'
 import { SettlerState } from '../../src/Population/types'
 
 describe('TransportHandler reachability memoization', () => {

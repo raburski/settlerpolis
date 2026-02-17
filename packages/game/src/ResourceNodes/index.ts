@@ -5,7 +5,7 @@ import type { MapManager } from '../Map'
 import type { ItemsManager } from '../Items'
 import type { BuildingManager } from '../Buildings'
 import type { PopulationManager } from '../Population'
-import type { WorkProviderManager } from '../Settlers/WorkProvider'
+import type { SettlerWorkManager } from '../Settlers/Work'
 import { Item } from '../Items/types'
 import { Position } from '../types'
 import { ResourceDepositType, ResourceNodeDefinition, ResourceNodeInstance, ResourceNodeSpawn, ResourceNodeBounds, ResourceNodeProspectRequestData, ResourceNodesQueryData } from './types'
@@ -74,7 +74,7 @@ export interface ResourceNodesDeps {
 	items: ItemsManager
 	buildings: BuildingManager
 	population: PopulationManager
-	work: WorkProviderManager
+	work: SettlerWorkManager
 }
 
 export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {

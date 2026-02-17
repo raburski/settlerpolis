@@ -1,4 +1,4 @@
-import { WorkActionType } from '../types'
+import { WorkActionType } from '../../Work/types'
 import type { ActionHandler } from './types'
 
 export const BuildRoadActionHandler: ActionHandler = {

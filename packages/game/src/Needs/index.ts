@@ -7,7 +7,7 @@ import type { StorageManager } from '../Storage'
 import type { PopulationManager } from '../Population'
 import type { ItemsManager } from '../Items'
 import type { ReservationSystem } from '../Reservation'
-import type { WorkProviderManager } from '../Settlers/WorkProvider'
+import type { SettlerWorkManager } from '../Settlers/Work'
 import { NeedsSystem } from './NeedsSystem'
 import { NeedPlanner } from './NeedPlanner'
 import { NeedInterruptController } from './NeedInterruptController'
@@ -22,7 +22,7 @@ export interface NeedsDeps {
 	population: PopulationManager
 	items: ItemsManager
 	reservations: ReservationSystem
-	work: WorkProviderManager
+	work: SettlerWorkManager
 }
 
 export class NeedsManager extends BaseManager<NeedsDeps> {

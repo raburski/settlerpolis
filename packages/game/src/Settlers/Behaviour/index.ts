@@ -1,26 +1,26 @@
-import { Receiver } from '../../../Receiver'
-import type { EventManager } from '../../../events'
-import type { WorkProviderDeps } from '../deps'
-import type { AssignmentStore } from '../AssignmentStore'
-import type { ProviderRegistry } from '../ProviderRegistry'
-import { WorkProviderEvents } from '../events'
-import type { WorkAssignment, WorkStep, WorkAction } from '../types'
-import { TransportTargetType, WorkProviderType, WorkStepType, WorkWaitReason } from '../types'
-import { SettlerState } from '../../../Population/types'
-import { StepHandlers } from '../stepHandlers'
-import type { ActionSystem } from '../ActionSystem'
-import type { LogisticsProvider } from '../providers/LogisticsProvider'
-import type { PolicyEngine } from '../PolicyEngine'
-import type { ProductionTracker } from '../ProductionTracker'
-import type { ActionQueueContext } from '../../../state/types'
-import { ActionQueueContextKind } from '../../../state/types'
-import type { WorkPolicyContext } from '../policies/types'
-import { WorkPolicyPhase } from '../policies/constants'
-import type { PausedContext } from '../../../Needs/types'
-import type { SettlerId } from '../../../ids'
-import { calculateDistance } from '../../../utils'
-import type { BuildingDefinition, BuildingInstance } from '../../../Buildings/types'
-import type { MapData } from '../../../Map/types'
+import { Receiver } from '../../Receiver'
+import type { EventManager } from '../../events'
+import type { WorkProviderDeps } from '../Work/deps'
+import type { AssignmentStore } from '../Work/AssignmentStore'
+import type { ProviderRegistry } from '../Work/ProviderRegistry'
+import { WorkProviderEvents } from '../Work/events'
+import type { WorkAssignment, WorkStep, WorkAction } from '../Work/types'
+import { TransportTargetType, WorkProviderType, WorkStepType, WorkWaitReason } from '../Work/types'
+import { SettlerState } from '../../Population/types'
+import { StepHandlers } from '../Work/stepHandlers'
+import type { SettlerActionsManager } from '../Actions'
+import type { LogisticsProvider } from '../Work/providers/LogisticsProvider'
+import type { PolicyEngine } from '../Work/PolicyEngine'
+import type { ProductionTracker } from '../Work/ProductionTracker'
+import type { ActionQueueContext } from '../../state/types'
+import { ActionQueueContextKind } from '../../state/types'
+import type { WorkPolicyContext } from '../Work/policies/types'
+import { WorkPolicyPhase } from '../Work/policies/constants'
+import type { PausedContext } from '../../Needs/types'
+import type { SettlerId } from '../../ids'
+import { calculateDistance } from '../../utils'
+import type { BuildingDefinition, BuildingInstance } from '../../Buildings/types'
+import type { MapData } from '../../Map/types'
 
 const MOVEMENT_RECOVERY_COOLDOWN_MS = 8000
 const MOVEMENT_FAILURE_MAX_RETRIES = 3
@@ -54,7 +54,7 @@ const isSettlerInConstructionArea = (
 	return calculateDistance(settlerPosition, center) <= radius
 }
 
-export class DispatchCoordinator {
+export class SettlerBehaviourManager {
 	private movementRecoveryUntil = new Map<SettlerId, number>()
 	private movementRecoveryReason = new Map<SettlerId, WorkWaitReason>()
 	private movementFailureCounts = new Map<SettlerId, number>()
@@ -65,7 +65,7 @@ export class DispatchCoordinator {
 		private event: EventManager,
 		private assignments: AssignmentStore,
 		private registry: ProviderRegistry,
-		private actionSystem: ActionSystem,
+		private actionSystem: SettlerActionsManager,
 		private logisticsProvider: LogisticsProvider,
 		private policyEngine: PolicyEngine,
 		private productionTracker: ProductionTracker,
@@ -426,3 +426,5 @@ export class DispatchCoordinator {
 		})
 	}
 }
+
+export { SettlerBehaviourManager as DispatchCoordinator }

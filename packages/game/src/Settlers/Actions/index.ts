@@ -9,12 +9,12 @@ import type { RoadManager } from '../../Roads'
 import type { ReservationSystem } from '../../Reservation'
 import type { NPCManager } from '../../NPC'
 import type { WildlifeManager } from '../../Wildlife'
-import type { WorkAction } from './types'
-import { WorkActionType } from './types'
+import type { WorkAction } from '../Work/types'
+import { WorkActionType } from '../Work/types'
 import { MoveTargetType } from '../../Movement/types'
 import type { Logger } from '../../Logs'
 import { Receiver } from '../../Receiver'
-import { WorkProviderEvents } from './events'
+import { WorkProviderEvents } from '../Work/events'
 import { ActionHandlers } from './actionHandlers'
 import type { ActionQueueContext, ActionSystemSnapshot } from '../../state/types'
 import type { MapManager } from '../../Map'
@@ -39,7 +39,7 @@ interface ActiveQueue {
 	onFail?: (reason: string) => void
 }
 
-export interface ActionSystemDeps {
+export interface SettlerActionsDeps {
 	movement: MovementManager
 	loot: LootManager
 	storage: StorageManager
@@ -53,13 +53,13 @@ export interface ActionSystemDeps {
 	wildlife: WildlifeManager
 }
 
-export class ActionSystem {
+export class SettlerActionsManager {
 	private queues = new Map<string, ActiveQueue>()
 	private contextResolvers = new Map<ActionQueueContext['kind'], ActionQueueContextResolver>()
 	private nowMs = 0
 
 	constructor(
-		private managers: ActionSystemDeps,
+		private managers: SettlerActionsDeps,
 		private event: EventManager,
 		private logger: Logger
 	) {}
@@ -207,7 +207,7 @@ export class ActionSystem {
 				nowMs: this.nowMs
 			}, reason)
 		}
-		this.logger.warn(`[ActionSystem] Action failed for ${settlerId}: ${action.type} (${reason})`)
+			this.logger.warn(`[SettlerActions] Action failed for ${settlerId}: ${action.type} (${reason})`)
 		this.event.emit(Receiver.All, WorkProviderEvents.SS.ActionFailed, { settlerId, action, reason })
 		this.finishQueue(settlerId, reason)
 	}
@@ -322,3 +322,6 @@ export class ActionSystem {
 		}
 	}
 }
+
+export type ActionSystemDeps = SettlerActionsDeps
+export { SettlerActionsManager as ActionSystem }

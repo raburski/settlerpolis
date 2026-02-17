@@ -1,6 +1,6 @@
 import { EventBus } from '../EventBus'
 import { Event } from '@rugged/game'
-import type { LogisticsRequest } from '@rugged/game/Settlers/WorkProvider/types'
+import type { LogisticsRequest } from '@rugged/game/Settlers/Work/types'
 import { UiEvents } from '../uiEvents'
 
 class LogisticsService {

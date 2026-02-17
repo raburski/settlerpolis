@@ -1,5 +1,5 @@
-import type { WorkAction, WorkActionType } from '../types'
-import type { ActionSystemDeps } from '../ActionSystem'
+import type { WorkAction, WorkActionType } from '../../Work/types'
+import type { ActionSystemDeps } from '..'
 
 export interface InProgressAction {
 	type: WorkActionType.Wait | WorkActionType.Construct | WorkActionType.BuildRoad | WorkActionType.Consume | WorkActionType.Sleep
