@@ -26,18 +26,6 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 	private static readonly CHUNK_SIZE_TILES = 16
 	private static readonly CHUNK_SIZE_PIXELS = MapObjectsManager.TILE_SIZE * MapObjectsManager.CHUNK_SIZE_TILES
 
-	private get mapObjectsByMap(): Map<string, Map<string, MapObject>> {
-		return this.state.mapObjectsByMap
-	}
-
-	private get objectChunksByMap(): Map<string, Map<string, Set<MapObjectId>>> {
-		return this.state.objectChunksByMap
-	}
-
-	private get chunkKeysByObjectByMap(): Map<string, Map<MapObjectId, string[]>> {
-		return this.state.chunkKeysByObjectByMap
-	}
-
 	constructor(
 		managers: MapObjectsDeps,
 		private logger: Logger
@@ -96,7 +84,7 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 	}
 
 	private checkCollision(mapId: string, position: Position, item?: Item, metadata?: Record<string, any>): boolean {
-		const objects = this.mapObjectsByMap.get(mapId)
+		const objects = this.state.mapObjectsByMap.get(mapId)
 		if (!objects) return false
 		const allowOverlapResourceNodes = Boolean(metadata?.allowOverlapResourceNodes)
 
@@ -164,10 +152,10 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 		const { mapId, id } = mapObject
 		
 		// Get or create the map's object collection
-		let mapObjects = this.mapObjectsByMap.get(mapId)
+		let mapObjects = this.state.mapObjectsByMap.get(mapId)
 		if (!mapObjects) {
 			mapObjects = new Map<string, MapObject>()
-			this.mapObjectsByMap.set(mapId, mapObjects)
+			this.state.mapObjectsByMap.set(mapId, mapObjects)
 		}
 		
 		// Add the object to the map
@@ -176,14 +164,14 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 	}
 
 	private removeObjectFromMap(objectId: string, mapId: string) {
-		const mapObjects = this.mapObjectsByMap.get(mapId)
+		const mapObjects = this.state.mapObjectsByMap.get(mapId)
 		if (mapObjects) {
 			mapObjects.delete(objectId)
 			this.unindexObject(objectId, mapId)
 			
 			// Clean up empty map collections
 			if (mapObjects.size === 0) {
-				this.mapObjectsByMap.delete(mapId)
+				this.state.mapObjectsByMap.delete(mapId)
 			}
 		}
 	}
@@ -210,7 +198,7 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 	}
 
 	private getMapObjects(mapId: string): Map<string, MapObject> | undefined {
-		return this.mapObjectsByMap.get(mapId)
+		return this.state.mapObjectsByMap.get(mapId)
 	}
 
 	public sendMapObjectsToClient(
@@ -243,7 +231,7 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 		const mapObjects = this.getMapObjects(mapId)
 		if (!mapObjects || mapObjects.size === 0) return []
 
-		const chunkMap = this.objectChunksByMap.get(mapId)
+		const chunkMap = this.state.objectChunksByMap.get(mapId)
 		if (!chunkMap) {
 			return Array.from(mapObjects.values())
 		}
@@ -273,7 +261,7 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 	public getAllObjects(): MapObject[] {
 		const allObjects: MapObject[] = []
 		
-		for (const mapObjects of this.mapObjectsByMap.values()) {
+		for (const mapObjects of this.state.mapObjectsByMap.values()) {
 			allObjects.push(...Array.from(mapObjects.values()))
 		}
 		
@@ -283,7 +271,7 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 	// Get a specific map object by ID
 	public getObjectById(objectId: string): MapObject | undefined {
 		// Search through all maps for the object
-		for (const mapObjects of this.mapObjectsByMap.values()) {
+		for (const mapObjects of this.state.mapObjectsByMap.values()) {
 			const object = mapObjects.get(objectId)
 			if (object) return object
 		}
@@ -379,10 +367,10 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 	}
 
 	private unindexObject(objectId: MapObjectId, mapId: string): void {
-		const chunkKeysByObject = this.chunkKeysByObjectByMap.get(mapId)
+		const chunkKeysByObject = this.state.chunkKeysByObjectByMap.get(mapId)
 		if (!chunkKeysByObject) return
 
-		const chunkMap = this.objectChunksByMap.get(mapId)
+		const chunkMap = this.state.objectChunksByMap.get(mapId)
 		const chunkKeys = chunkKeysByObject.get(objectId) || []
 
 		for (const chunkKey of chunkKeys) {
@@ -398,27 +386,27 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 		chunkKeysByObject.delete(objectId)
 
 		if (chunkMap && chunkMap.size === 0) {
-			this.objectChunksByMap.delete(mapId)
+			this.state.objectChunksByMap.delete(mapId)
 		}
 		if (chunkKeysByObject.size === 0) {
-			this.chunkKeysByObjectByMap.delete(mapId)
+			this.state.chunkKeysByObjectByMap.delete(mapId)
 		}
 	}
 
 	private getOrCreateChunkMap(mapId: string): Map<string, Set<MapObjectId>> {
-		let chunkMap = this.objectChunksByMap.get(mapId)
+		let chunkMap = this.state.objectChunksByMap.get(mapId)
 		if (!chunkMap) {
 			chunkMap = new Map<string, Set<MapObjectId>>()
-			this.objectChunksByMap.set(mapId, chunkMap)
+			this.state.objectChunksByMap.set(mapId, chunkMap)
 		}
 		return chunkMap
 	}
 
 	private getOrCreateChunkKeysByObjectMap(mapId: string): Map<MapObjectId, string[]> {
-		let chunkKeysByObject = this.chunkKeysByObjectByMap.get(mapId)
+		let chunkKeysByObject = this.state.chunkKeysByObjectByMap.get(mapId)
 		if (!chunkKeysByObject) {
 			chunkKeysByObject = new Map<MapObjectId, string[]>()
-			this.chunkKeysByObjectByMap.set(mapId, chunkKeysByObject)
+			this.state.chunkKeysByObjectByMap.set(mapId, chunkKeysByObject)
 		}
 		return chunkKeysByObject
 	}

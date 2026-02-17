@@ -1,3 +1,5 @@
+import { LogsManagerState } from './LogsManagerState'
+
 export enum LogLevel {
 	Debug = 0,
 	Info = 1,
@@ -28,12 +30,7 @@ interface LoggerConfig {
 }
 
 export class LogsManager {
-	private loggers = new Map<string, Logger>()
-	private configs = new Map<string, LoggerConfig>()
-	private globalLevel: LogLevel = LogLevel.Info
-	private globalEnabled: boolean = true
-	private allowedManagers: Set<string> | null = null
-	private eventEmitter: ((payload: LogEventPayload) => void) | null = null
+	private readonly state = new LogsManagerState(LogLevel.Info)
 
 	/**
 	 * Get a logger instance for a manager
@@ -43,8 +40,8 @@ export class LogsManager {
 	 */
 	public getLogger(managerName: string): Logger {
 		// Return existing logger if already created
-		if (this.loggers.has(managerName)) {
-			return this.loggers.get(managerName)!
+		if (this.state.loggers.has(managerName)) {
+			return this.state.loggers.get(managerName)!
 		}
 
 		// Create new logger instance bound to this manager name
@@ -56,13 +53,13 @@ export class LogsManager {
 			debug: (...args: any[]) => this.log(managerName, LogLevel.Debug, ...args),
 		}
 
-		this.loggers.set(managerName, logger)
+		this.state.loggers.set(managerName, logger)
 		
 		// Initialize config for this manager (enabled by default, uses global level)
-		if (!this.configs.has(managerName)) {
-			this.configs.set(managerName, {
+		if (!this.state.configs.has(managerName)) {
+			this.state.configs.set(managerName, {
 				enabled: true,
-				level: this.globalLevel
+				level: this.state.globalLevel
 			})
 		}
 
@@ -73,19 +70,19 @@ export class LogsManager {
 	 * Internal method to handle logging
 	 */
 	private log(managerName: string, level: LogLevel, ...args: any[]): void {
-		if (this.allowedManagers && !this.allowedManagers.has(managerName)) {
+		if (this.state.allowedManagers && !this.state.allowedManagers.has(managerName)) {
 			return
 		}
 
 		// Check if logging is globally disabled
-		if (!this.globalEnabled) {
+		if (!this.state.globalEnabled) {
 			return
 		}
 
 		// Get config for this manager (default to global settings)
-		const config = this.configs.get(managerName) || {
+		const config = this.state.configs.get(managerName) || {
 			enabled: true,
-			level: this.globalLevel
+			level: this.state.globalLevel
 		}
 
 		// Check if this manager's logging is disabled
@@ -103,7 +100,7 @@ export class LogsManager {
 		const prefix = `[${managerName}]`
 		const formattedArgs = [prefix, ...args]
 		const serializedArgs = args.map(arg => this.serializeArg(arg))
-		const eventPayload = this.eventEmitter
+		const eventPayload = this.state.eventEmitter
 			? {
 				manager: managerName,
 				level: this.levelToString(level),
@@ -130,7 +127,7 @@ export class LogsManager {
 		}
 
 		if (eventPayload) {
-			this.eventEmitter?.(eventPayload)
+			this.state.eventEmitter?.(eventPayload)
 		}
 	}
 
@@ -140,12 +137,12 @@ export class LogsManager {
 	 * @param enabled Whether logging should be enabled
 	 */
 	public setManagerEnabled(managerName: string, enabled: boolean): void {
-		const config = this.configs.get(managerName) || {
+		const config = this.state.configs.get(managerName) || {
 			enabled: true,
-			level: this.globalLevel
+			level: this.state.globalLevel
 		}
 		config.enabled = enabled
-		this.configs.set(managerName, config)
+		this.state.configs.set(managerName, config)
 	}
 
 	/**
@@ -154,12 +151,12 @@ export class LogsManager {
 	 * @param level Log level (Debug, Info, Warn, Error, None)
 	 */
 	public setManagerLevel(managerName: string, level: LogLevel): void {
-		const config = this.configs.get(managerName) || {
+		const config = this.state.configs.get(managerName) || {
 			enabled: true,
-			level: this.globalLevel
+			level: this.state.globalLevel
 		}
 		config.level = level
-		this.configs.set(managerName, config)
+		this.state.configs.set(managerName, config)
 	}
 
 	/**
@@ -167,7 +164,7 @@ export class LogsManager {
 	 * @param enabled Whether logging should be enabled globally
 	 */
 	public setGlobalEnabled(enabled: boolean): void {
-		this.globalEnabled = enabled
+		this.state.globalEnabled = enabled
 	}
 
 	/**
@@ -175,10 +172,10 @@ export class LogsManager {
 	 * @param level Log level (Debug, Info, Warn, Error, None)
 	 */
 	public setGlobalLevel(level: LogLevel): void {
-		this.globalLevel = level
+		this.state.globalLevel = level
 		// Update all managers that don't have a specific level set
-		for (const [managerName, config] of this.configs.entries()) {
-			if (config.level === this.globalLevel) {
+		for (const [managerName, config] of this.state.configs.entries()) {
+			if (config.level === this.state.globalLevel) {
 				config.level = level
 			}
 		}
@@ -190,7 +187,7 @@ export class LogsManager {
 	 * @returns Configuration object or null if not found
 	 */
 	public getManagerConfig(managerName: string): LoggerConfig | null {
-		return this.configs.get(managerName) || null
+		return this.state.configs.get(managerName) || null
 	}
 
 	/**
@@ -198,7 +195,7 @@ export class LogsManager {
 	 * @returns Map of manager names to their configurations
 	 */
 	public getAllConfigs(): Map<string, LoggerConfig> {
-		return new Map(this.configs)
+		return new Map(this.state.configs)
 	}
 
 	/**
@@ -224,7 +221,7 @@ export class LogsManager {
 	}
 
 	public setEventEmitter(emitter: ((payload: LogEventPayload) => void) | null): void {
-		this.eventEmitter = emitter
+		this.state.eventEmitter = emitter
 	}
 
 	/**
@@ -233,10 +230,10 @@ export class LogsManager {
 	 */
 	public setAllowedManagers(managerNames?: string[] | null): void {
 		if (!managerNames || managerNames.length === 0) {
-			this.allowedManagers = null
+			this.state.allowedManagers = null
 			return
 		}
-		this.allowedManagers = new Set(managerNames)
+		this.state.allowedManagers = new Set(managerNames)
 	}
 
 	private levelToString(level: LogLevel): LogEventPayload['level'] {
@@ -267,3 +264,5 @@ export class LogsManager {
 		}
 	}
 }
+
+export * from './LogsManagerState'

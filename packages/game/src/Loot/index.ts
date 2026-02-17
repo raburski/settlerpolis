@@ -23,34 +23,6 @@ export class LootManager extends BaseManager<LootDeps> {
 	private readonly DROPPED_ITEM_LIFESPAN = Number.POSITIVE_INFINITY
 	private readonly ITEM_CLEANUP_INTERVAL = 30 * 1000 // Check every 30 seconds
 
-	private get droppedItems(): Map<string, DroppedItem[]> {
-		return this.state.droppedItems
-	}
-
-	private get itemIdToMapId(): Map<string, string> {
-		return this.state.itemIdToMapId
-	}
-
-	private get itemReservations(): Map<string, string> {
-		return this.state.itemReservations
-	}
-
-	private get simulationTimeMs(): number {
-		return this.state.simulationTimeMs
-	}
-
-	private set simulationTimeMs(value: number) {
-		this.state.simulationTimeMs = value
-	}
-
-	private get cleanupAccumulatorMs(): number {
-		return this.state.cleanupAccumulatorMs
-	}
-
-	private set cleanupAccumulatorMs(value: number) {
-		this.state.cleanupAccumulatorMs = value
-	}
-
 	constructor(
 		managers: LootDeps,
 		private logger: Logger
@@ -128,7 +100,7 @@ export class LootManager extends BaseManager<LootDeps> {
 			return
 		}
 
-		const mapDroppedItems = this.droppedItems.get(mapId) || []
+		const mapDroppedItems = this.state.droppedItems.get(mapId) || []
 		if (mapDroppedItems.length > 0) {
 			mapDroppedItems.forEach(item => {
 				client.emit(Receiver.Sender, Event.Loot.SC.Spawn, { item } as LootSpawnEventPayload)
@@ -137,12 +109,12 @@ export class LootManager extends BaseManager<LootDeps> {
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {
-		this.simulationTimeMs = data.nowMs
-		this.cleanupAccumulatorMs += data.deltaMs
-		if (this.cleanupAccumulatorMs < this.ITEM_CLEANUP_INTERVAL) {
+		this.state.simulationTimeMs = data.nowMs
+		this.state.cleanupAccumulatorMs += data.deltaMs
+		if (this.state.cleanupAccumulatorMs < this.ITEM_CLEANUP_INTERVAL) {
 			return
 		}
-		this.cleanupAccumulatorMs -= this.ITEM_CLEANUP_INTERVAL
+		this.state.cleanupAccumulatorMs -= this.ITEM_CLEANUP_INTERVAL
 		this.cleanupExpiredItems()
 	}
 
@@ -152,25 +124,25 @@ export class LootManager extends BaseManager<LootDeps> {
 			return false
 		}
 
-		const existingOwner = this.itemReservations.get(itemId)
+		const existingOwner = this.state.itemReservations.get(itemId)
 		if (existingOwner && existingOwner !== ownerId) {
 			return false
 		}
 
-		this.itemReservations.set(itemId, ownerId)
+		this.state.itemReservations.set(itemId, ownerId)
 		return true
 	}
 
 	public releaseReservation(itemId: string, ownerId?: string): void {
-		if (!this.itemReservations.has(itemId)) {
+		if (!this.state.itemReservations.has(itemId)) {
 			return
 		}
 
-		if (ownerId && this.itemReservations.get(itemId) !== ownerId) {
+		if (ownerId && this.state.itemReservations.get(itemId) !== ownerId) {
 			return
 		}
 
-		this.itemReservations.delete(itemId)
+		this.state.itemReservations.delete(itemId)
 	}
 
 	public isReservationValid(itemId: string, ownerId: string): boolean {
@@ -178,7 +150,7 @@ export class LootManager extends BaseManager<LootDeps> {
 			return false
 		}
 
-		return this.itemReservations.get(itemId) === ownerId
+		return this.state.itemReservations.get(itemId) === ownerId
 	}
 
 	public isItemAvailable(itemId: string): boolean {
@@ -186,11 +158,11 @@ export class LootManager extends BaseManager<LootDeps> {
 			return false
 		}
 
-		return !this.itemReservations.has(itemId)
+		return !this.state.itemReservations.has(itemId)
 	}
 
 	public getAvailableItemByType(mapId: string, itemType: string): DroppedItem | undefined {
-		const mapItems = this.droppedItems.get(mapId)
+		const mapItems = this.state.droppedItems.get(mapId)
 		if (!mapItems || mapItems.length === 0) {
 			return undefined
 		}
@@ -216,7 +188,7 @@ export class LootManager extends BaseManager<LootDeps> {
 
 	pickItem(itemId: string, client: EventClient): Item | undefined {
 		// Get the correct mapId from our mapping, not from client's current group
-		const mapId = this.itemIdToMapId.get(itemId)
+		const mapId = this.state.itemIdToMapId.get(itemId)
 		
 		if (!mapId) {
 			return undefined
@@ -234,14 +206,14 @@ export class LootManager extends BaseManager<LootDeps> {
 		const targetItem = mapItems[itemIndex]
 		if (targetItem.quantity > 1) {
 			targetItem.quantity -= 1
-			this.droppedItems.set(mapId, mapItems)
+			this.state.droppedItems.set(mapId, mapItems)
 
 			// Broadcast quantity update
 			client.emit(Receiver.Group, Event.Loot.SC.Update, { item: targetItem } as LootUpdateEventPayload)
 		} else {
 			mapItems.splice(itemIndex, 1)
-			this.droppedItems.set(mapId, mapItems)
-			this.itemIdToMapId.delete(itemId)
+			this.state.droppedItems.set(mapId, mapItems)
+			this.state.itemIdToMapId.delete(itemId)
 
 			// Broadcast to all players in the map that an item was picked up
 			client.emit(Receiver.Group, Event.Loot.SC.Despawn, { itemId } as LootDespawnEventPayload)
@@ -254,7 +226,7 @@ export class LootManager extends BaseManager<LootDeps> {
 	}
 
 	getMapItems(mapId: string): DroppedItem[] {
-		return this.droppedItems.get(mapId) || []
+		return this.state.droppedItems.get(mapId) || []
 	}
 
 	private addOrMergeDroppedItem(
@@ -269,7 +241,7 @@ export class LootManager extends BaseManager<LootDeps> {
 	): void {
 		if (quantity <= 0) return
 
-		const mapDroppedItems = this.droppedItems.get(mapId) || []
+		const mapDroppedItems = this.state.droppedItems.get(mapId) || []
 		const maxStackSize = this.getMaxStackSize(itemType)
 		const stackable = this.canStack(itemType)
 
@@ -298,12 +270,12 @@ export class LootManager extends BaseManager<LootDeps> {
 					id: preferredItemId || uuidv4(),
 					itemType,
 					position,
-					droppedAt: this.simulationTimeMs,
+					droppedAt: this.state.simulationTimeMs,
 					quantity: 1,
 					metadata: metadata ? { ...metadata } : undefined
 				}
 				mapDroppedItems.push(item)
-				this.itemIdToMapId.set(item.id, mapId)
+				this.state.itemIdToMapId.set(item.id, mapId)
 				emitSpawn({ item })
 				remaining -= 1
 				preferredItemId = undefined
@@ -315,26 +287,26 @@ export class LootManager extends BaseManager<LootDeps> {
 				id: preferredItemId || uuidv4(),
 				itemType,
 				position,
-				droppedAt: this.simulationTimeMs,
+				droppedAt: this.state.simulationTimeMs,
 				quantity: stackQuantity,
 				metadata: metadata ? { ...metadata } : undefined
 			}
 			mapDroppedItems.push(item)
-			this.itemIdToMapId.set(item.id, mapId)
+			this.state.itemIdToMapId.set(item.id, mapId)
 			emitSpawn({ item })
 			remaining -= stackQuantity
 			preferredItemId = undefined
 		}
 
-		this.droppedItems.set(mapId, mapDroppedItems)
+		this.state.droppedItems.set(mapId, mapDroppedItems)
 	}
 
 	private cleanupExpiredItems() {
 		if (!Number.isFinite(this.DROPPED_ITEM_LIFESPAN)) {
 			return
 		}
-		const now = this.simulationTimeMs
-		this.droppedItems.forEach((items, mapId) => {
+		const now = this.state.simulationTimeMs
+		this.state.droppedItems.forEach((items, mapId) => {
 			const expiredItemIds = items
 				.filter(item => now - item.droppedAt > this.DROPPED_ITEM_LIFESPAN)
 				.map(item => item.id)
@@ -348,18 +320,18 @@ export class LootManager extends BaseManager<LootDeps> {
 	private removeExpiredItems(mapId: string, expiredItemIds: string[]) {
 		if (expiredItemIds.length === 0) return
 
-		const mapItems = this.droppedItems.get(mapId)
+		const mapItems = this.state.droppedItems.get(mapId)
 		if (mapItems) {
 			// Remove expired items
-			this.droppedItems.set(
+			this.state.droppedItems.set(
 				mapId,
 				mapItems.filter(item => !expiredItemIds.includes(item.id))
 			)
 
 			// Clean up the itemIdToMapId map
 			expiredItemIds.forEach(id => {
-				this.itemIdToMapId.delete(id)
-				this.itemReservations.delete(id)
+				this.state.itemIdToMapId.delete(id)
+				this.state.itemReservations.delete(id)
 			})
 
 			// Send individual despawn events for each expired item
@@ -370,20 +342,20 @@ export class LootManager extends BaseManager<LootDeps> {
 	}
 
 	getItem(id: string): DroppedItem | undefined {
-		let mapId = this.itemIdToMapId.get(id)
+		let mapId = this.state.itemIdToMapId.get(id)
 		
 		// Fix for "undefined" mapId
 		if (mapId === 'undefined') {
-			this.itemIdToMapId.delete(id)
+			this.state.itemIdToMapId.delete(id)
 			mapId = undefined
 		}
 		
 		// If we don't have the map ID, try to find the item in all maps
 		if (!mapId) {
-			for (const [currentMapId, items] of this.droppedItems.entries()) {
+			for (const [currentMapId, items] of this.state.droppedItems.entries()) {
 				const item = items.find(item => item.id === id)
 				if (item) {
-					this.itemIdToMapId.set(id, currentMapId)
+					this.state.itemIdToMapId.set(id, currentMapId)
 					mapId = currentMapId
 					break
 				}
@@ -394,7 +366,7 @@ export class LootManager extends BaseManager<LootDeps> {
 			}
 		}
 
-		const mapItems = this.droppedItems.get(mapId)
+		const mapItems = this.state.droppedItems.get(mapId)
 		const foundItem = mapItems?.find(item => item.id === id)
 		return foundItem
 	}

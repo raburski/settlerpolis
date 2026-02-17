@@ -47,22 +47,6 @@ interface HouseSlotReservation {
 export class ReservationSystem extends BaseManager<ReservationSystemDeps> {
 	private readonly state = new ReservationSystemState()
 
-	private get amenityReservations(): Map<string, AmenitySlotReservation> {
-		return this.state.amenityReservations
-	}
-
-	private get amenitySlotsByBuilding(): Map<string, Map<number, string>> {
-		return this.state.amenitySlotsByBuilding
-	}
-
-	private get houseReservations(): Map<string, HouseSlotReservation> {
-		return this.state.houseReservations
-	}
-
-	private get houseReservationsByHouse(): Map<string, Map<string, string>> {
-		return this.state.houseReservationsByHouse
-	}
-
 	constructor(managers: ReservationSystemDeps) {
 		super(managers)
 	}
@@ -162,7 +146,7 @@ export class ReservationSystem extends BaseManager<ReservationSystemDeps> {
 			createdAt: this.managers.simulation.getSimulationTimeMs()
 		}
 
-		this.amenityReservations.set(reservationId, reservation)
+		this.state.amenityReservations.set(reservationId, reservation)
 		reservedSlots.set(slotIndex, reservationId)
 
 		return {
@@ -173,14 +157,14 @@ export class ReservationSystem extends BaseManager<ReservationSystemDeps> {
 	}
 
 	public releaseAmenitySlot(reservationId: string): void {
-		const reservation = this.amenityReservations.get(reservationId)
+		const reservation = this.state.amenityReservations.get(reservationId)
 		if (!reservation) {
 			return
 		}
 
-		const reservedSlots = this.amenitySlotsByBuilding.get(reservation.buildingInstanceId)
+		const reservedSlots = this.state.amenitySlotsByBuilding.get(reservation.buildingInstanceId)
 		reservedSlots?.delete(reservation.slotIndex)
-		this.amenityReservations.delete(reservationId)
+		this.state.amenityReservations.delete(reservationId)
 	}
 
 	public canReserveHouseSlot(houseId: string): boolean {
@@ -212,24 +196,24 @@ export class ReservationSystem extends BaseManager<ReservationSystemDeps> {
 			createdAt: this.managers.simulation.getSimulationTimeMs()
 		}
 
-		this.houseReservations.set(reservationId, reservation)
+		this.state.houseReservations.set(reservationId, reservation)
 		reservedByHouse.set(settlerId, reservationId)
 		return reservationId
 	}
 
 	public releaseHouseReservation(reservationId: string): void {
-		const reservation = this.houseReservations.get(reservationId)
+		const reservation = this.state.houseReservations.get(reservationId)
 		if (!reservation) {
 			return
 		}
 
-		const reservedByHouse = this.houseReservationsByHouse.get(reservation.houseId)
+		const reservedByHouse = this.state.houseReservationsByHouse.get(reservation.houseId)
 		reservedByHouse?.delete(reservation.settlerId)
-		this.houseReservations.delete(reservationId)
+		this.state.houseReservations.delete(reservationId)
 	}
 
 	public commitHouseReservation(reservationId: string, expectedHouseId?: string): boolean {
-		const reservation = this.houseReservations.get(reservationId)
+		const reservation = this.state.houseReservations.get(reservationId)
 		if (!reservation) {
 			return false
 		}
@@ -249,19 +233,19 @@ export class ReservationSystem extends BaseManager<ReservationSystemDeps> {
 	}
 
 	private getAmenitySlotsForBuilding(buildingInstanceId: string): Map<number, string> {
-		let reserved = this.amenitySlotsByBuilding.get(buildingInstanceId)
+		let reserved = this.state.amenitySlotsByBuilding.get(buildingInstanceId)
 		if (!reserved) {
 			reserved = new Map<number, string>()
-			this.amenitySlotsByBuilding.set(buildingInstanceId, reserved)
+			this.state.amenitySlotsByBuilding.set(buildingInstanceId, reserved)
 		}
 		return reserved
 	}
 
 	private getHouseReservationsForHouse(houseId: string): Map<string, string> {
-		let reserved = this.houseReservationsByHouse.get(houseId)
+		let reserved = this.state.houseReservationsByHouse.get(houseId)
 		if (!reserved) {
 			reserved = new Map<string, string>()
-			this.houseReservationsByHouse.set(houseId, reserved)
+			this.state.houseReservationsByHouse.set(houseId, reserved)
 		}
 		return reserved
 	}

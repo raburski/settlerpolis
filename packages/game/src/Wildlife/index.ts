@@ -15,6 +15,7 @@ import { Position } from '../types'
 import type { SimulationTickData } from '../Simulation/types'
 import { v4 as uuidv4 } from 'uuid'
 import { WildlifeEvents } from './events'
+import { WildlifeManagerState } from './WildlifeManagerState'
 
 interface ForestMask {
 	width: number
@@ -92,16 +93,7 @@ const DEER_NODE_TYPE = 'deer'
 const DEER_NPC_SPEED = 90
 
 export class WildlifeManager extends BaseManager<WildlifeDeps> {
-	private forestConfig: ForestSpawnConfig
-	private forestMasks = new Map<string, ForestMask>()
-	private forestDensity = new Map<string, ForestDensityData>()
-	private deerSpawnPoints = new Map<string, ForestSpawnPoint[]>()
-	private deerNodeKeysByMap = new Map<string, Set<string>>()
-	private deerNodeStates = new Map<string, DeerNodeState>()
-	private deerNpcToNodeKey = new Map<string, string>()
-	private verifyElapsedMs = 0
-	private roamElapsedMs = 0
-	private simulationTimeMs = 0
+	private readonly state: WildlifeManagerState
 
 	constructor(
 		managers: WildlifeDeps,
@@ -109,7 +101,7 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 		config: Partial<ForestSpawnConfig> = {}
 	) {
 		super(managers)
-		this.forestConfig = { ...DEFAULT_FOREST_CONFIG, ...config }
+		this.state = new WildlifeManagerState({ ...DEFAULT_FOREST_CONFIG, ...config })
 		this.setupEventHandlers()
 	}
 
@@ -120,25 +112,25 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 
 	/* EVENT HANDLERS */
 	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
-		this.simulationTimeMs = data.nowMs
+		this.state.simulationTimeMs = data.nowMs
 		this.processDeerRespawns()
 
-		if (this.forestConfig.verifyIntervalMs > 0) {
-			this.verifyElapsedMs += data.deltaMs
-			if (this.verifyElapsedMs >= this.forestConfig.verifyIntervalMs) {
-				this.verifyElapsedMs = 0
+		if (this.state.forestConfig.verifyIntervalMs > 0) {
+			this.state.verifyElapsedMs += data.deltaMs
+			if (this.state.verifyElapsedMs >= this.state.forestConfig.verifyIntervalMs) {
+				this.state.verifyElapsedMs = 0
 				this.verifyForestSpawnPoints()
 			}
 		}
 
-		if (this.forestConfig.roamIntervalMs <= 0) {
+		if (this.state.forestConfig.roamIntervalMs <= 0) {
 			return
 		}
-		this.roamElapsedMs += data.deltaMs
-		if (this.roamElapsedMs < this.forestConfig.roamIntervalMs) {
+		this.state.roamElapsedMs += data.deltaMs
+		if (this.state.roamElapsedMs < this.state.forestConfig.roamIntervalMs) {
 			return
 		}
-		this.roamElapsedMs = 0
+		this.state.roamElapsedMs = 0
 		this.roamDeer()
 	}
 
@@ -160,15 +152,15 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 	}
 
 	public getDeerSpawnPoints(mapId: string): Position[] {
-		return (this.deerSpawnPoints.get(mapId) || []).map(spawn => spawn.position)
+		return (this.state.deerSpawnPoints.get(mapId) || []).map(spawn => spawn.position)
 	}
 
 	public getDeerSpawnDetails(mapId: string): ForestSpawnPoint[] {
-		return this.deerSpawnPoints.get(mapId) || []
+		return this.state.deerSpawnPoints.get(mapId) || []
 	}
 
 	private verifyForestSpawnPoints(): void {
-		for (const [mapId, spawns] of this.deerSpawnPoints.entries()) {
+		for (const [mapId, spawns] of this.state.deerSpawnPoints.entries()) {
 			if (spawns.length === 0) continue
 
 			const mapData = this.managers.map.getMap(mapId)
@@ -176,20 +168,20 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 
 			const mask = this.buildForestMask(mapId, mapData)
 			if (!mask) {
-				this.forestMasks.delete(mapId)
-				this.forestDensity.delete(mapId)
-				this.deerSpawnPoints.set(mapId, [])
+				this.state.forestMasks.delete(mapId)
+				this.state.forestDensity.delete(mapId)
+				this.state.deerSpawnPoints.set(mapId, [])
 				this.managers.resourceNodes.removeNodesByType(mapId, DEER_NODE_TYPE)
 				this.syncDeerNpcsForMap(mapId, [])
 				continue
 			}
 
-			this.forestMasks.set(mapId, mask)
+			this.state.forestMasks.set(mapId, mask)
 			const density = this.buildForestDensity(mask)
-			this.forestDensity.set(mapId, density)
+			this.state.forestDensity.set(mapId, density)
 			const migrated = this.migrateSpawnPoints(mapId, mapData, mask, density, spawns)
 			const changed = this.haveSpawnPointsChanged(spawns, migrated)
-			this.deerSpawnPoints.set(mapId, migrated)
+			this.state.deerSpawnPoints.set(mapId, migrated)
 			if (!changed) continue
 
 			this.logger.debug(`[WildlifeManager] Migrating deer spawns for ${mapId} (forest changed)`)
@@ -205,20 +197,20 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 		const mask = this.buildForestMask(mapId, mapData)
 		if (!mask) {
 			this.logger.debug(`[WildlifeManager] No forest nodes found for ${mapId}`)
-			this.forestMasks.delete(mapId)
-			this.forestDensity.delete(mapId)
-			this.deerSpawnPoints.set(mapId, [])
+			this.state.forestMasks.delete(mapId)
+			this.state.forestDensity.delete(mapId)
+			this.state.deerSpawnPoints.set(mapId, [])
 			this.managers.resourceNodes.removeNodesByType(mapId, DEER_NODE_TYPE)
 			this.syncDeerNpcsForMap(mapId, [])
 			return
 		}
 
-		this.forestMasks.set(mapId, mask)
+		this.state.forestMasks.set(mapId, mask)
 		const density = this.buildForestDensity(mask)
-		this.forestDensity.set(mapId, density)
+		this.state.forestDensity.set(mapId, density)
 
 		const spawns = this.selectSpawnPoints(mapId, mapData, mask, density)
-		this.deerSpawnPoints.set(mapId, spawns)
+		this.state.deerSpawnPoints.set(mapId, spawns)
 		this.syncDeerNodesForMap(mapId, spawns)
 		this.syncDeerNpcsForMap(mapId, spawns)
 
@@ -241,12 +233,12 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 
 	private syncDeerNpcsForMap(mapId: string, spawns: ForestSpawnPoint[]): void {
 		const desiredKeys = new Set<string>()
-		const maxNpcsPerNode = Math.max(0, this.forestConfig.maxNpcsPerNode)
+		const maxNpcsPerNode = Math.max(0, this.state.forestConfig.maxNpcsPerNode)
 
 		for (const spawn of spawns) {
 			const key = this.getDeerNodeKey(mapId, spawn.tileX, spawn.tileY)
 			desiredKeys.add(key)
-			let state = this.deerNodeStates.get(key)
+			let state = this.state.deerNodeStates.get(key)
 			if (!state) {
 				state = {
 					mapId,
@@ -256,7 +248,7 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 					npcIds: new Set<string>(),
 					pendingRespawns: []
 				}
-				this.deerNodeStates.set(key, state)
+				this.state.deerNodeStates.set(key, state)
 				if (maxNpcsPerNode > 0) {
 					this.spawnDeerNpcsForNode(state, maxNpcsPerNode)
 				}
@@ -267,17 +259,17 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 			}
 		}
 
-		const existingKeys = this.deerNodeKeysByMap.get(mapId) || new Set<string>()
+		const existingKeys = this.state.deerNodeKeysByMap.get(mapId) || new Set<string>()
 		for (const key of existingKeys) {
 			if (!desiredKeys.has(key)) {
 				this.removeDeerNode(key)
 			}
 		}
 
-		this.deerNodeKeysByMap.set(mapId, desiredKeys)
+		this.state.deerNodeKeysByMap.set(mapId, desiredKeys)
 
 		for (const key of desiredKeys) {
-			const state = this.deerNodeStates.get(key)
+			const state = this.state.deerNodeStates.get(key)
 			if (!state) continue
 			this.trimDeerNpcsForNode(state, maxNpcsPerNode)
 		}
@@ -288,7 +280,7 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 	}
 
 	private spawnDeerNpcsForNode(state: DeerNodeState, count: number): void {
-		const maxNpcsPerNode = Math.max(0, this.forestConfig.maxNpcsPerNode)
+		const maxNpcsPerNode = Math.max(0, this.state.forestConfig.maxNpcsPerNode)
 		for (let i = 0; i < count; i += 1) {
 			if (state.npcIds.size >= maxNpcsPerNode) {
 				break
@@ -298,7 +290,7 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 	}
 
 	private spawnDeerNpcForNode(state: DeerNodeState): void {
-		const maxNpcsPerNode = Math.max(0, this.forestConfig.maxNpcsPerNode)
+		const maxNpcsPerNode = Math.max(0, this.state.forestConfig.maxNpcsPerNode)
 		if (state.npcIds.size >= maxNpcsPerNode) {
 			return
 		}
@@ -322,7 +314,7 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 
 		this.managers.npc.addNPC(npc)
 		state.npcIds.add(npc.id)
-		this.deerNpcToNodeKey.set(npc.id, nodeKey)
+		this.state.deerNpcToNodeKey.set(npc.id, nodeKey)
 	}
 
 	private trimDeerNpcsForNode(state: DeerNodeState, maxNpcsPerNode: number): void {
@@ -347,19 +339,19 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 	}
 
 	private removeDeerNode(nodeKey: string): void {
-		const state = this.deerNodeStates.get(nodeKey)
+		const state = this.state.deerNodeStates.get(nodeKey)
 		if (!state) return
 
 		for (const npcId of Array.from(state.npcIds)) {
 			this.despawnDeerNpc(npcId, false)
 		}
 
-		this.deerNodeStates.delete(nodeKey)
+		this.state.deerNodeStates.delete(nodeKey)
 	}
 
 	private despawnDeerNpc(npcId: string, scheduleRespawn: boolean): void {
-		const nodeKey = this.deerNpcToNodeKey.get(npcId)
-		const state = nodeKey ? this.deerNodeStates.get(nodeKey) : undefined
+		const nodeKey = this.state.deerNpcToNodeKey.get(npcId)
+		const state = nodeKey ? this.state.deerNodeStates.get(nodeKey) : undefined
 
 		if (state) {
 			state.npcIds.delete(npcId)
@@ -368,26 +360,26 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 			}
 		}
 
-		this.deerNpcToNodeKey.delete(npcId)
+		this.state.deerNpcToNodeKey.delete(npcId)
 		this.managers.npc.removeNPC(npcId)
 	}
 
 	private scheduleDeerRespawn(state: DeerNodeState): void {
-		const maxNpcsPerNode = Math.max(0, this.forestConfig.maxNpcsPerNode)
+		const maxNpcsPerNode = Math.max(0, this.state.forestConfig.maxNpcsPerNode)
 		if (maxNpcsPerNode <= 0) return
 
 		const currentTotal = state.npcIds.size + state.pendingRespawns.length
 		if (currentTotal >= maxNpcsPerNode) return
 
-		const respawnAt = this.simulationTimeMs + Math.max(0, this.forestConfig.npcRespawnMs)
+		const respawnAt = this.state.simulationTimeMs + Math.max(0, this.state.forestConfig.npcRespawnMs)
 		state.pendingRespawns.push(respawnAt)
 	}
 
 	private processDeerRespawns(): void {
-		const now = this.simulationTimeMs
-		const maxNpcsPerNode = Math.max(0, this.forestConfig.maxNpcsPerNode)
+		const now = this.state.simulationTimeMs
+		const maxNpcsPerNode = Math.max(0, this.state.forestConfig.maxNpcsPerNode)
 
-		for (const state of this.deerNodeStates.values()) {
+		for (const state of this.state.deerNodeStates.values()) {
 			if (maxNpcsPerNode <= 0) {
 				this.trimDeerNpcsForNode(state, maxNpcsPerNode)
 				continue
@@ -437,7 +429,7 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 	): ForestSpawnPoint[] {
 		if (spawns.length === 0) return []
 
-		const minDistance = Math.max(0, this.forestConfig.minDistanceTiles)
+		const minDistance = Math.max(0, this.state.forestConfig.minDistanceTiles)
 		const minDistanceSq = minDistance * minDistance
 		const sorted = [...spawns].sort((a, b) => b.density - a.density)
 		const migrated: ForestSpawnPoint[] = []
@@ -463,10 +455,10 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 			}
 		}
 
-		if (migrated.length < this.forestConfig.maxSpawnPoints) {
+		if (migrated.length < this.state.forestConfig.maxSpawnPoints) {
 			const fallback = this.selectSpawnPoints(mapId, mapData, mask, density)
 			for (const candidate of fallback) {
-				if (migrated.length >= this.forestConfig.maxSpawnPoints) break
+				if (migrated.length >= this.state.forestConfig.maxSpawnPoints) break
 				if (this.isTooClose(candidate, migrated, minDistanceSq)) continue
 				migrated.push(candidate)
 			}
@@ -484,9 +476,9 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 		currentDensity: number,
 		currentValid: boolean
 	): ForestSpawnPoint[] {
-		const radius = Math.max(1, this.forestConfig.migrationRadiusTiles)
-		const minDensity = this.forestConfig.minDensity
-		const minGain = this.forestConfig.migrationMinDensityGain
+		const radius = Math.max(1, this.state.forestConfig.migrationRadiusTiles)
+		const minDensity = this.state.forestConfig.minDensity
+		const minGain = this.state.forestConfig.migrationMinDensityGain
 		const candidates: Array<{ x: number; y: number; density: number; distSq: number }> = []
 
 		for (let dy = -radius; dy <= radius; dy += 1) {
@@ -559,17 +551,17 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 	}
 
 	private roamDeer(): void {
-		for (const [mapId, nodeKeys] of this.deerNodeKeysByMap.entries()) {
+		for (const [mapId, nodeKeys] of this.state.deerNodeKeysByMap.entries()) {
 			if (nodeKeys.size === 0) continue
 
 			const mapData = this.managers.map.getMap(mapId)
 			if (!mapData) continue
-			const mask = this.forestMasks.get(mapId)
-			const density = this.forestDensity.get(mapId)
+			const mask = this.state.forestMasks.get(mapId)
+			const density = this.state.forestDensity.get(mapId)
 			if (!mask || !density) continue
 
 			for (const key of nodeKeys) {
-				const state = this.deerNodeStates.get(key)
+				const state = this.state.deerNodeStates.get(key)
 				if (!state || state.npcIds.size === 0) continue
 				const homeDensity = this.getDensityAt(state.tileX, state.tileY, density)
 				const home: ForestSpawnPoint = {
@@ -584,7 +576,7 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 					if (!npc || npc.attributes?.reservedBy) {
 						continue
 					}
-					if (Math.random() > this.forestConfig.roamChance) continue
+					if (Math.random() > this.state.forestConfig.roamChance) continue
 					const target = this.findRoamTarget(mapId, mapData, mask, density, home)
 					if (!target) continue
 					this.managers.event.emit(Receiver.All, NPCEvents.SS.Go, { npcId, position: target })
@@ -600,8 +592,8 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 		density: ForestDensityData,
 		spawn: ForestSpawnPoint
 	): Position | null {
-		const radius = Math.max(1, this.forestConfig.roamRadiusTiles)
-		const minDensity = this.forestConfig.minDensity
+		const radius = Math.max(1, this.state.forestConfig.roamRadiusTiles)
+		const minDensity = this.state.forestConfig.minDensity
 		const candidates: Array<{ x: number; y: number; density: number }> = []
 
 		for (let dy = -radius; dy <= radius; dy += 1) {
@@ -650,7 +642,7 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 		const height = mapData.tiledMap.height
 		const mask = new Uint8Array(width * height)
 
-		const nodeTypes = this.forestConfig.nodeTypes.length > 0 ? this.forestConfig.nodeTypes : ['tree']
+		const nodeTypes = this.state.forestConfig.nodeTypes.length > 0 ? this.state.forestConfig.nodeTypes : ['tree']
 		let hasNodes = false
 
 		for (const nodeType of nodeTypes) {
@@ -688,20 +680,20 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 			}
 		}
 
-		const radius = this.forestConfig.densityRadiusTiles
+		const radius = this.state.forestConfig.densityRadiusTiles
 		const windowSize = (radius * 2 + 1) ** 2
 		return { width, height, prefixSum, radius, windowSize }
 	}
 
 	private selectSpawnPoints(mapId: string, mapData: MapData, mask: ForestMask, density: ForestDensityData): ForestSpawnPoint[] {
-		if (this.forestConfig.maxSpawnPoints <= 0) {
+		if (this.state.forestConfig.maxSpawnPoints <= 0) {
 			return []
 		}
 
 		const candidates: Array<{ x: number, y: number, density: number }> = []
 		const radius = density.radius
-		const minDensity = this.forestConfig.minDensity
-		const requireFullWindow = this.forestConfig.requireFullWindow
+		const minDensity = this.state.forestConfig.minDensity
+		const requireFullWindow = this.state.forestConfig.requireFullWindow
 
 		const startX = requireFullWindow ? radius : 0
 		const startY = requireFullWindow ? radius : 0
@@ -729,7 +721,7 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 		})
 
 		const selected: ForestSpawnPoint[] = []
-		const minDistance = Math.max(0, this.forestConfig.minDistanceTiles)
+		const minDistance = Math.max(0, this.state.forestConfig.minDistanceTiles)
 		const minDistanceSq = minDistance * minDistance
 		const tileWidth = mapData.tiledMap.tilewidth
 		const tileHeight = mapData.tiledMap.tileheight
@@ -757,7 +749,7 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 				density: candidate.density
 			})
 
-			if (selected.length >= this.forestConfig.maxSpawnPoints) break
+			if (selected.length >= this.state.forestConfig.maxSpawnPoints) break
 		}
 
 		return selected
@@ -773,7 +765,7 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 		let x1 = x + radius
 		let y1 = y + radius
 
-		if (!this.forestConfig.requireFullWindow) {
+		if (!this.state.forestConfig.requireFullWindow) {
 			if (x0 < 0) x0 = 0
 			if (y0 < 0) y0 = 0
 			if (x1 >= width) x1 = width - 1
@@ -792,7 +784,7 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 			prefix[(y1 + 1) * rowSize + x0] +
 			prefix[y0 * rowSize + x0]
 
-		const total = this.forestConfig.requireFullWindow
+		const total = this.state.forestConfig.requireFullWindow
 			? density.windowSize
 			: (x1 - x0 + 1) * (y1 - y0 + 1)
 
@@ -826,6 +818,8 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 		if (!this.canSpawnAt(mapId, mapData, spawn.tileX, spawn.tileY)) return false
 
 		const tileDensity = this.getDensityAt(spawn.tileX, spawn.tileY, density)
-		return tileDensity >= this.forestConfig.minDensity
+		return tileDensity >= this.state.forestConfig.minDensity
 	}
 }
+
+export * from './WildlifeManagerState'

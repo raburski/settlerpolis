@@ -21,6 +21,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { calculateDistance } from '../utils'
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
+import { ConditionEffectManagerState } from './ConditionEffectManagerState'
 
 export interface ConditionEffectDeps {
 	event: EventManager
@@ -35,6 +36,8 @@ export interface ConditionEffectDeps {
 }
 
 export class ConditionEffectManager extends BaseManager<ConditionEffectDeps> {
+	private readonly state = new ConditionEffectManagerState()
+
 	constructor(
 		managers: ConditionEffectDeps,
 		private logger: Logger
@@ -822,4 +825,6 @@ export class ConditionEffectManager extends BaseManager<ConditionEffectDeps> {
 			this.applyNPCAttributeEffect(effect.id, effect.attributes)
 		}
 	}
-} 
+}
+
+export * from './ConditionEffectManagerState'

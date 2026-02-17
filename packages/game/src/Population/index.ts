@@ -55,54 +55,18 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	private readonly state = new PopulationManagerState()
 	private stats: PopulationStats
 
-	private get settlers(): Map<string, Settler> {
-		return this.state.settlers
-	}
-
-	private get houseOccupants(): Map<string, Set<string>> {
-		return this.state.houseOccupants
-	}
-
-	private get professionTools(): Map<ProfessionType, ItemType> {
-		return this.state.professionTools
-	}
-
-	private get professions(): Map<ProfessionType, ProfessionDefinition> {
-		return this.state.professions
-	}
-
-	private get startingPopulation(): Array<{ profession: ProfessionType, count: number }> {
-		return this.state.startingPopulation
-	}
-
-	private set startingPopulation(value: Array<{ profession: ProfessionType, count: number }>) {
-		this.state.startingPopulation = value
-	}
-
-	private get houseSpawnSchedule(): Map<string, { nextSpawnAtMs: number, rateMs: number }> {
-		return this.state.houseSpawnSchedule
-	}
-
-	private get simulationTimeMs(): number {
-		return this.state.simulationTimeMs
-	}
-
-	private set simulationTimeMs(value: number) {
-		this.state.simulationTimeMs = value
-	}
-
 	constructor(
 		managers: PopulationDeps,
 		startingPopulation: Array<{ profession: ProfessionType, count: number }>,
 		private logger: Logger
 	) {
 		super(managers)
-		this.startingPopulation = startingPopulation || []
+		this.state.startingPopulation = startingPopulation || []
 
 		this.stats = new PopulationStats(
 			managers.event,
 			(mapId: string, playerId: string) => {
-				return Array.from(this.settlers.values()).filter(
+				return Array.from(this.state.settlers.values()).filter(
 					s => s.mapId === mapId && s.playerId === playerId
 				)
 			},
@@ -158,7 +122,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 
 	/* METHODS */
 	private syncSettlerPosition(data: { entityId: string, position: Position }): void {
-		const settler = this.settlers.get(data.entityId)
+		const settler = this.state.settlers.get(data.entityId)
 		if (!settler) {
 			return
 		}
@@ -166,28 +130,28 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {
-		this.simulationTimeMs = data.nowMs
+		this.state.simulationTimeMs = data.nowMs
 		this.processHouseSpawns()
 	}
 
 	private processHouseSpawns(): void {
-		if (this.houseSpawnSchedule.size === 0) {
+		if (this.state.houseSpawnSchedule.size === 0) {
 			return
 		}
 
-		for (const [houseId, schedule] of this.houseSpawnSchedule.entries()) {
-			if (this.simulationTimeMs < schedule.nextSpawnAtMs) {
+		for (const [houseId, schedule] of this.state.houseSpawnSchedule.entries()) {
+			if (this.state.simulationTimeMs < schedule.nextSpawnAtMs) {
 				continue
 			}
 
 			const house = this.managers.buildings.getBuildingInstance(houseId)
 			if (!house) {
-				this.houseSpawnSchedule.delete(houseId)
+				this.state.houseSpawnSchedule.delete(houseId)
 				continue
 			}
 
 			// Catch up if the simulation advanced past multiple intervals
-			while (this.simulationTimeMs >= schedule.nextSpawnAtMs) {
+			while (this.state.simulationTimeMs >= schedule.nextSpawnAtMs) {
 				this.spawnSettler({ houseBuildingInstanceId: houseId })
 				schedule.nextSpawnAtMs += schedule.rateMs
 			}
@@ -196,32 +160,32 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 
 	// Public method to load profession tools (called from ContentLoader)
 	public loadProfessionTools(tools: ProfessionToolDefinition[]): void {
-		this.professionTools.clear()
+		this.state.professionTools.clear()
 		tools.forEach(tool => {
-			this.professionTools.set(tool.targetProfession, tool.itemType)
+			this.state.professionTools.set(tool.targetProfession, tool.itemType)
 		})
 		this.logger.log(`Loaded ${tools.length} profession tools`)
 	}
 
 	// Public method to load professions (called from ContentLoader)
 	public loadProfessions(professions: ProfessionDefinition[]): void {
-		this.professions.clear()
+		this.state.professions.clear()
 		professions.forEach(prof => {
-			this.professions.set(prof.type, prof)
+			this.state.professions.set(prof.type, prof)
 		})
 		this.logger.log(`Loaded ${professions.length} professions`)
 	}
 
 	public getSettler(settlerId: string): Settler | undefined {
-		return this.settlers.get(settlerId)
+		return this.state.settlers.get(settlerId)
 	}
 
 	public getSettlers(): Settler[] {
-		return Array.from(this.settlers.values())
+		return Array.from(this.state.settlers.values())
 	}
 
 	private hasAnySettlersForPlayer(playerId: string): boolean {
-		for (const settler of this.settlers.values()) {
+		for (const settler of this.state.settlers.values()) {
 			if (settler.playerId === playerId) {
 				return true
 			}
@@ -230,7 +194,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	}
 
 	public getAvailableSettlers(mapId: string, playerId: string): Settler[] {
-		return Array.from(this.settlers.values())
+		return Array.from(this.state.settlers.values())
 			.filter(settler => settler.mapId === mapId && settler.playerId === playerId)
 			.filter(settler => settler.state === SettlerState.Idle)
 			.filter(settler => !this.isSettlerCritical(settler))
@@ -272,16 +236,16 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	}
 
 	private getHouseOccupants(houseId: string): Set<string> {
-		let occupants = this.houseOccupants.get(houseId)
+		let occupants = this.state.houseOccupants.get(houseId)
 		if (!occupants) {
 			occupants = new Set<string>()
-			this.houseOccupants.set(houseId, occupants)
+			this.state.houseOccupants.set(houseId, occupants)
 		}
 		return occupants
 	}
 
 	public getHouseOccupantCount(houseId: string): number {
-		const occupants = this.houseOccupants.get(houseId)
+		const occupants = this.state.houseOccupants.get(houseId)
 		return occupants ? occupants.size : 0
 	}
 
@@ -290,17 +254,17 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	}
 
 	private removeSettlerFromHouse(settlerId: string): void {
-		const settler = this.settlers.get(settlerId)
+		const settler = this.state.settlers.get(settlerId)
 		if (!settler?.houseId) {
 			return
 		}
-		const occupants = this.houseOccupants.get(settler.houseId)
+		const occupants = this.state.houseOccupants.get(settler.houseId)
 		occupants?.delete(settlerId)
 		this.patchSettler(settlerId, { houseId: undefined })
 	}
 
 	private assignSettlerToHouse(settlerId: string, houseId: string): boolean {
-		const settler = this.settlers.get(settlerId)
+		const settler = this.state.settlers.get(settlerId)
 		if (!settler) {
 			return false
 		}
@@ -334,7 +298,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		if (available <= 0) {
 			return
 		}
-		const homeless = Array.from(this.settlers.values())
+		const homeless = Array.from(this.state.settlers.values())
 			.filter(settler => settler.mapId === building.mapId && settler.playerId === building.playerId)
 			.filter(settler => !settler.houseId)
 			.sort((a, b) => a.createdAt - b.createdAt)
@@ -373,7 +337,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	}
 
 	private patchSettler(settlerId: string, patch: SettlerPatch): void {
-		const settler = this.settlers.get(settlerId)
+		const settler = this.state.settlers.get(settlerId)
 		if (!settler) {
 			return
 		}
@@ -449,7 +413,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	}
 
 	public getSettlerCarryCapacity(settlerId: string): number {
-		const settler = this.settlers.get(settlerId)
+		const settler = this.state.settlers.get(settlerId)
 		if (!settler) {
 			return BASE_CARRY_CAPACITY
 		}
@@ -505,7 +469,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	}
 
 	public setSettlerHealth(settlerId: string, health: number): boolean {
-		const settler = this.settlers.get(settlerId)
+		const settler = this.state.settlers.get(settlerId)
 		if (!settler) {
 			return false
 		}
@@ -523,7 +487,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	}
 
 	public addSettlerHealthDelta(settlerId: string, delta: number): boolean {
-		const settler = this.settlers.get(settlerId)
+		const settler = this.state.settlers.get(settlerId)
 		if (!settler) {
 			return false
 		}
@@ -532,7 +496,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	}
 
 	public setSettlerProfession(settlerId: string, profession: ProfessionType): void {
-		const settler = this.settlers.get(settlerId)
+		const settler = this.state.settlers.get(settlerId)
 		if (!settler) {
 			return
 		}
@@ -547,7 +511,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	}
 
 	public getToolItemType(profession: ProfessionType): ItemType | null {
-		return this.professionTools.get(profession) ?? null
+		return this.state.professionTools.get(profession) ?? null
 	}
 
 	public findAvailableToolOnMap(mapId: string, itemType: ItemType): { id: string, position: Position } | null {
@@ -585,7 +549,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		this.managers.event.emit(Receiver.All, PopulationEvents.SS.SettlerDied, { settlerId: settler.id })
 
 		if (settler.houseId) {
-			const occupants = this.houseOccupants.get(settler.houseId)
+			const occupants = this.state.houseOccupants.get(settler.houseId)
 			occupants?.delete(settler.id)
 		}
 
@@ -625,7 +589,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			{ settlerId: settler.id }
 		)
 
-		this.settlers.delete(settler.id)
+		this.state.settlers.delete(settler.id)
 
 		this.managers.event.emit(Receiver.Group, PopulationEvents.SC.SettlerDied, { settlerId: settler.id }, settler.mapId)
 	}
@@ -637,14 +601,14 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		}
 
 		const spawnRateMs = buildingDef.spawnRate * 1000
-		if (this.houseSpawnSchedule.has(buildingInstanceId)) {
+		if (this.state.houseSpawnSchedule.has(buildingInstanceId)) {
 			return
 		}
 
 		this.assignHomelessToHouse(buildingInstanceId)
 		this.spawnSettler({ houseBuildingInstanceId: buildingInstanceId })
-		this.houseSpawnSchedule.set(buildingInstanceId, {
-			nextSpawnAtMs: this.simulationTimeMs + spawnRateMs,
+		this.state.houseSpawnSchedule.set(buildingInstanceId, {
+			nextSpawnAtMs: this.state.simulationTimeMs + spawnRateMs,
 			rateMs: spawnRateMs
 		})
 	}
@@ -671,10 +635,10 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			health: 1,
 			houseId: house.id,
 			speed: SETTLER_SPEED,
-			createdAt: this.simulationTimeMs
+			createdAt: this.state.simulationTimeMs
 		}
 
-		this.settlers.set(id, settler)
+		this.state.settlers.set(id, settler)
 		this.getHouseOccupants(house.id).add(id)
 		this.managers.movement.registerEntity({
 			id: settler.id,
@@ -688,9 +652,9 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		}
 
 	public spawnInitialPopulation(mapId: string, playerId: string, spawnPosition: Position): void {
-		const now = this.simulationTimeMs
-		for (const popEntry of this.startingPopulation) {
-			if (!this.professions.has(popEntry.profession)) {
+		const now = this.state.simulationTimeMs
+		for (const popEntry of this.state.startingPopulation) {
+			if (!this.state.professions.has(popEntry.profession)) {
 				this.logger.warn(`Starting population profession ${popEntry.profession} does not exist, skipping`)
 				continue
 			}
@@ -715,7 +679,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 					createdAt: now
 				}
 
-				this.settlers.set(settlerId, settler)
+				this.state.settlers.set(settlerId, settler)
 				this.managers.movement.registerEntity({
 					id: settler.id,
 					position: settler.position,
@@ -729,7 +693,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		}
 
 	private sendPopulationList(client: EventClient): void {
-		const settlers = Array.from(this.settlers.values())
+		const settlers = Array.from(this.state.settlers.values())
 		const totalCount = settlers.length
 		const byProfession = this.getEmptyByProfession()
 		const byProfessionActive = this.getEmptyByProfession()

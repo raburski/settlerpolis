@@ -47,50 +47,6 @@ const DEFAULT_COOLDOWN_SECONDS = 8
 export class TradeManager extends BaseManager<TradeDeps> {
 	private readonly state = new TradeManagerState()
 
-	private get routesByBuilding(): Map<string, TradeRouteState> {
-		return this.state.routesByBuilding
-	}
-
-	private get worldMap(): WorldMapData | null {
-		return this.state.worldMap
-	}
-
-	private set worldMap(value: WorldMapData | null) {
-		this.state.worldMap = value
-	}
-
-	private get nodesById(): Map<string, WorldMapNode> {
-		return this.state.nodesById
-	}
-
-	private get travelMsByNode(): Map<string, number> {
-		return this.state.travelMsByNode
-	}
-
-	private get simulationTimeMs(): number {
-		return this.state.simulationTimeMs
-	}
-
-	private set simulationTimeMs(value: number) {
-		this.state.simulationTimeMs = value
-	}
-
-	private get tickAccumulatorMs(): number {
-		return this.state.tickAccumulatorMs
-	}
-
-	private set tickAccumulatorMs(value: number) {
-		this.state.tickAccumulatorMs = value
-	}
-
-	private get requestCounter(): number {
-		return this.state.requestCounter
-	}
-
-	private set requestCounter(value: number) {
-		this.state.requestCounter = value
-	}
-
 	constructor(
 		managers: TradeDeps,
 		private logger: Logger
@@ -100,14 +56,14 @@ export class TradeManager extends BaseManager<TradeDeps> {
 	}
 
 	public loadWorldMap(worldMap?: WorldMapData): void {
-		this.worldMap = worldMap || null
-		this.nodesById.clear()
-		this.travelMsByNode.clear()
-		if (!this.worldMap) {
+		this.state.worldMap = worldMap || null
+		this.state.nodesById.clear()
+		this.state.travelMsByNode.clear()
+		if (!this.state.worldMap) {
 			return
 		}
-		for (const node of this.worldMap.nodes) {
-			this.nodesById.set(node.id, node)
+		for (const node of this.state.worldMap.nodes) {
+			this.state.nodesById.set(node.id, node)
 		}
 	}
 
@@ -145,32 +101,32 @@ export class TradeManager extends BaseManager<TradeDeps> {
 		if (!data?.buildingInstanceId) {
 			return
 		}
-		this.routesByBuilding.delete(data.buildingInstanceId)
+		this.state.routesByBuilding.delete(data.buildingInstanceId)
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {
-		this.simulationTimeMs = data.nowMs
-		this.tickAccumulatorMs += data.deltaMs
-		if (this.tickAccumulatorMs < TICK_INTERVAL_MS) {
+		this.state.simulationTimeMs = data.nowMs
+		this.state.tickAccumulatorMs += data.deltaMs
+		if (this.state.tickAccumulatorMs < TICK_INTERVAL_MS) {
 			return
 		}
-		this.tickAccumulatorMs -= TICK_INTERVAL_MS
+		this.state.tickAccumulatorMs -= TICK_INTERVAL_MS
 		this.tick()
 	}
 
 	/* METHODS */
 	private tick(): void {
-		for (const route of this.routesByBuilding.values()) {
+		for (const route of this.state.routesByBuilding.values()) {
 			const building = this.managers.buildings.getBuildingInstance(route.buildingInstanceId)
 			if (!building) {
-				this.routesByBuilding.delete(route.buildingInstanceId)
+				this.state.routesByBuilding.delete(route.buildingInstanceId)
 				continue
 			}
 			const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
 			const routeType = this.resolveTradeRouteType(definition)
 			if (!routeType) {
 				this.logger.warn('[TradeManager] Building does not support trade routes:', building.buildingId)
-				this.routesByBuilding.delete(route.buildingInstanceId)
+				this.state.routesByBuilding.delete(route.buildingInstanceId)
 				continue
 			}
 
@@ -219,7 +175,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 			}
 
 			if (didUpdate) {
-				route.lastUpdatedAtMs = this.simulationTimeMs
+				route.lastUpdatedAtMs = this.state.simulationTimeMs
 				this.emitRouteUpdated(route)
 			}
 		}
@@ -367,7 +323,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 	}
 
 	private enqueueLogisticsInput(route: TradeRouteState, itemType: ItemType, quantity: number): void {
-		const requestId = `trade:${route.routeId}:${this.requestCounter++}`
+		const requestId = `trade:${route.routeId}:${this.state.requestCounter++}`
 		const request: LogisticsRequest = {
 			id: requestId,
 			type: LogisticsRequestType.Input,
@@ -375,13 +331,13 @@ export class TradeManager extends BaseManager<TradeDeps> {
 			itemType,
 			quantity,
 			priority: 75,
-			createdAtMs: this.simulationTimeMs
+			createdAtMs: this.state.simulationTimeMs
 		}
 		this.managers.work.enqueueLogisticsRequest(request)
 	}
 
 	private createOrQueueRoute(data: TradeRouteSelection, client: EventClient): void {
-		if (!this.worldMap) {
+		if (!this.state.worldMap) {
 			this.logger.warn('[TradeManager] World map data not loaded; cannot create route.')
 			return
 		}
@@ -409,7 +365,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 			return
 		}
 
-		const node = this.nodesById.get(data.nodeId)
+		const node = this.state.nodesById.get(data.nodeId)
 		if (!node) {
 			this.logger.warn('[TradeManager] Unknown trade node:', data.nodeId)
 			return
@@ -426,7 +382,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 			return
 		}
 
-		const existing = this.routesByBuilding.get(data.buildingInstanceId)
+		const existing = this.state.routesByBuilding.get(data.buildingInstanceId)
 		if (existing) {
 			if (existing.status === TradeRouteStatus.Idle) {
 				this.applySelection(existing, data, offer)
@@ -447,15 +403,15 @@ export class TradeManager extends BaseManager<TradeDeps> {
 			offerId: data.offerId,
 			offer,
 			status: TradeRouteStatus.Idle,
-			lastUpdatedAtMs: this.simulationTimeMs
+			lastUpdatedAtMs: this.state.simulationTimeMs
 		}
 
-		this.routesByBuilding.set(route.buildingInstanceId, route)
+		this.state.routesByBuilding.set(route.buildingInstanceId, route)
 		this.emitRouteUpdated(route)
 	}
 
 	private applyPendingSelection(route: TradeRouteState, pending: { nodeId: string; offerId: string }, routeType: WorldMapLinkType): boolean {
-		const node = this.nodesById.get(pending.nodeId)
+		const node = this.state.nodesById.get(pending.nodeId)
 		const offer = node?.tradeOffers?.find(entry => entry.id === pending.offerId)
 		if (!node || !offer) {
 			return false
@@ -479,14 +435,14 @@ export class TradeManager extends BaseManager<TradeDeps> {
 	}
 
 	private cancelRoute(data: TradeRouteCancelled, client: EventClient): void {
-		const route = this.routesByBuilding.get(data.buildingInstanceId)
+		const route = this.state.routesByBuilding.get(data.buildingInstanceId)
 		if (!route) {
 			return
 		}
 		if (route.playerId !== client.id) {
 			return
 		}
-		this.routesByBuilding.delete(data.buildingInstanceId)
+		this.state.routesByBuilding.delete(data.buildingInstanceId)
 		this.sendRoutesToClient(client)
 	}
 
@@ -495,31 +451,31 @@ export class TradeManager extends BaseManager<TradeDeps> {
 	}
 
 	private sendRoutesToClient(client: EventClient): void {
-		const routes = Array.from(this.routesByBuilding.values()).filter(route => route.playerId === client.id)
+		const routes = Array.from(this.state.routesByBuilding.values()).filter(route => route.playerId === client.id)
 		const payload: TradeRouteListData = { routes }
 		client.emit(Receiver.Sender, TradeEvents.SC.RouteList, payload)
 	}
 
 	private getTravelMs(nodeId: string, linkType: WorldMapLinkType): number {
-		if (!this.worldMap) {
+		if (!this.state.worldMap) {
 			return 0
 		}
 		const cacheKey = `${linkType}:${nodeId}`
-		const cached = this.travelMsByNode.get(cacheKey)
+		const cached = this.state.travelMsByNode.get(cacheKey)
 		if (typeof cached === 'number') {
 			return cached
 		}
 		const distance = this.findShortestDistance(nodeId, linkType)
-		const travelMs = Math.max(0, distance * this.worldMap.travelSecondsPerUnit * 1000)
-		this.travelMsByNode.set(cacheKey, travelMs)
+		const travelMs = Math.max(0, distance * this.state.worldMap.travelSecondsPerUnit * 1000)
+		this.state.travelMsByNode.set(cacheKey, travelMs)
 		return travelMs
 	}
 
 	private findShortestDistance(targetNodeId: string, linkType: WorldMapLinkType): number {
-		if (!this.worldMap) {
+		if (!this.state.worldMap) {
 			return 0
 		}
-		const start = this.worldMap.homeNodeId
+		const start = this.state.worldMap.homeNodeId
 		if (start === targetNodeId) {
 			return 0
 		}
@@ -530,7 +486,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 
 		const getNeighbors = (nodeId: string): Array<{ id: string; distance: number }> => {
 			const neighbors: Array<{ id: string; distance: number }> = []
-			for (const link of this.worldMap?.links || []) {
+			for (const link of this.state.worldMap?.links || []) {
 				if (link.type !== linkType) {
 					continue
 				}
@@ -543,7 +499,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 			return neighbors
 		}
 
-		while (visited.size < (this.worldMap?.nodes.length || 0)) {
+		while (visited.size < (this.state.worldMap?.nodes.length || 0)) {
 			let current: string | null = null
 			let currentDistance = Number.POSITIVE_INFINITY
 			for (const [nodeId, distance] of distances.entries()) {
@@ -584,11 +540,11 @@ export class TradeManager extends BaseManager<TradeDeps> {
 		if (typeof link.distance === 'number') {
 			return link.distance
 		}
-		if (!this.worldMap) {
+		if (!this.state.worldMap) {
 			return 0
 		}
-		const from = this.nodesById.get(link.fromId)
-		const to = this.nodesById.get(link.toId)
+		const from = this.state.nodesById.get(link.fromId)
+		const to = this.state.nodesById.get(link.toId)
 		if (!from || !to) {
 			return 0
 		}
@@ -598,10 +554,10 @@ export class TradeManager extends BaseManager<TradeDeps> {
 	}
 
 	private isReachableByLinkType(targetNodeId: string, linkType: WorldMapLinkType): boolean {
-		if (!this.worldMap) {
+		if (!this.state.worldMap) {
 			return false
 		}
-		const start = this.worldMap.homeNodeId
+		const start = this.state.worldMap.homeNodeId
 		const queue: string[] = [start]
 		const visited = new Set<string>([start])
 		while (queue.length > 0) {
@@ -612,7 +568,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 			if (current === targetNodeId) {
 				return true
 			}
-			for (const link of this.worldMap.links) {
+			for (const link of this.state.worldMap.links) {
 				if (link.type !== linkType) {
 					continue
 				}

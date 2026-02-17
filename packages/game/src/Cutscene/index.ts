@@ -7,11 +7,10 @@ import { Receiver } from "../Receiver"
 import { Logger } from '../Logs'
 import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
+import { CutsceneManagerState } from './CutsceneManagerState'
 
 export class CutsceneManager {
-	private cutscenes: Map<string, Cutscene> = new Map()
-	private activeCutscenes: Map<string, { cutscene: Cutscene, currentStep: number, nextStepAtMs?: number, client: EventClient }> = new Map()
-	private simulationTimeMs = 0
+	private readonly state = new CutsceneManagerState()
 
 	constructor(
 		private eventManager: EventManager,
@@ -22,7 +21,7 @@ export class CutsceneManager {
 
 	public loadCutscenes(cutscenes: Cutscene[]) {
 		cutscenes.forEach(cutscene => {
-			this.cutscenes.set(cutscene.id, cutscene)
+			this.state.cutscenes.set(cutscene.id, cutscene)
 		})
 	}
 
@@ -41,18 +40,18 @@ export class CutsceneManager {
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {
-		this.simulationTimeMs = data.nowMs
+		this.state.simulationTimeMs = data.nowMs
 		this.processActiveCutscenes()
 	}
 
 	/* METHODS */
 	private processActiveCutscenes(): void {
-		for (const [clientId, active] of this.activeCutscenes.entries()) {
+		for (const [clientId, active] of this.state.activeCutscenes.entries()) {
 			if (active.currentStep >= active.cutscene.steps.length) {
-				this.activeCutscenes.delete(clientId)
+				this.state.activeCutscenes.delete(clientId)
 				continue
 			}
-			if (active.nextStepAtMs === undefined || this.simulationTimeMs < active.nextStepAtMs) {
+			if (active.nextStepAtMs === undefined || this.state.simulationTimeMs < active.nextStepAtMs) {
 				continue
 			}
 			active.currentStep += 1
@@ -61,7 +60,7 @@ export class CutsceneManager {
 	}
 
 	private startCutscene(client: EventClient, cutsceneId: string) {
-		const cutscene = this.cutscenes.get(cutsceneId)
+		const cutscene = this.state.cutscenes.get(cutsceneId)
 		
 		if (!cutscene) {
 			this.logger.error(`Cutscene with ID ${cutsceneId} not found`)
@@ -69,10 +68,10 @@ export class CutsceneManager {
 		}
 
 		// Store the active cutscene
-		this.activeCutscenes.set(client.id, {
+		this.state.activeCutscenes.set(client.id, {
 			cutscene,
 			currentStep: 0,
-			nextStepAtMs: this.simulationTimeMs,
+			nextStepAtMs: this.state.simulationTimeMs,
 			client
 		})
 
@@ -81,7 +80,7 @@ export class CutsceneManager {
 	}
 
 	private executeStep(client: EventClient) {
-		const activeCutscene = this.activeCutscenes.get(client.id)
+		const activeCutscene = this.state.activeCutscenes.get(client.id)
 		
 		if (!activeCutscene) {
 			return
@@ -103,17 +102,19 @@ export class CutsceneManager {
 
 		// Move to the next step after the specified duration or default to 0ms
 		const duration = step.duration || 0
-		activeCutscene.nextStepAtMs = this.simulationTimeMs + duration
+		activeCutscene.nextStepAtMs = this.state.simulationTimeMs + duration
 	}
 
 	private endCutscene(client: EventClient) {
-		const activeCutscene = this.activeCutscenes.get(client.id)
+		const activeCutscene = this.state.activeCutscenes.get(client.id)
 		
 		if (!activeCutscene) {
 			return
 		}
 
 		// Remove the active cutscene
-		this.activeCutscenes.delete(client.id)
+		this.state.activeCutscenes.delete(client.id)
 	}
-} 
+}
+
+export * from './CutsceneManagerState'

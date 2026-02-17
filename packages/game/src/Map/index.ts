@@ -10,17 +10,13 @@ import fs from 'fs'
 import path from 'path'
 import { Pathfinder } from './pathfinding'
 import { Logger } from '../Logs'
+import { MapManagerState } from './MapManagerState'
 
 const FETCH = true//typeof window !== 'undefined'
 
 export class MapManager {
-	private maps: Map<string, MapData> = new Map()
-	private baseCollision: Map<string, number[]> = new Map()
-	private dynamicCollisionCounts: Map<string, Int16Array> = new Map()
-	private constructionPenaltyCounts: Map<string, Int16Array> = new Map()
+	private readonly state = new MapManagerState()
 	private readonly MAPS_DIR = '/assets/maps/'//FETCH ? '/assets/maps/' : path.join(__dirname, '../../../assets/maps')
-	private debug = true
-	private defaultMapId: string = 'town' // Default starting map
 	private readonly groundColumnOrder: GroundType[] = [
 		'grass',
 		'dirt',
@@ -250,7 +246,7 @@ export class MapManager {
 	}
 
 	// private async loadMapForClient(mapId: string, client: EventClient) {
-	// 	const mapData = this.maps.get(mapId)
+	// 	const mapData = this.state.maps.get(mapId)
 	// 	if (!mapData) {
 	// 		console.error(`Map not found: ${mapId}`)
 	// 		return
@@ -279,7 +275,7 @@ export class MapManager {
 
 	private async handleMapTransition(data: MapTransitionData, client: EventClient) {
 		const { toMapId, position } = data
-		const toMap = this.maps.get(toMapId)
+		const toMap = this.state.maps.get(toMapId)
 
 		if (!toMap) {
 			this.logger.error(`Target map not found: ${toMapId}`)
@@ -330,24 +326,24 @@ export class MapManager {
 	}
 
 	public getMap(mapId: string): MapData | undefined {
-		return this.maps.get(mapId)
+		return this.state.maps.get(mapId)
 	}
 
 	public setDynamicCollision(mapId: string, tileX: number, tileY: number, blocked: boolean): void {
-		const map = this.maps.get(mapId)
+		const map = this.state.maps.get(mapId)
 		if (!map) return
 
 		if (tileX < 0 || tileY < 0 || tileX >= map.collision.width || tileY >= map.collision.height) {
 			return
 		}
 
-		const base = this.baseCollision.get(mapId)
+		const base = this.state.baseCollision.get(mapId)
 		if (!base) return
 
-		let counts = this.dynamicCollisionCounts.get(mapId)
+		let counts = this.state.dynamicCollisionCounts.get(mapId)
 		if (!counts) {
 			counts = new Int16Array(map.collision.data.length)
-			this.dynamicCollisionCounts.set(mapId, counts)
+			this.state.dynamicCollisionCounts.set(mapId, counts)
 		}
 
 		const index = tileY * map.collision.width + tileX
@@ -371,28 +367,28 @@ export class MapManager {
 	}
 
 	public resetDynamicCollision(mapId: string): void {
-		const map = this.maps.get(mapId)
+		const map = this.state.maps.get(mapId)
 		if (!map) return
 
-		const base = this.baseCollision.get(mapId)
+		const base = this.state.baseCollision.get(mapId)
 		if (!base) return
 
 		map.collision.data = base.slice()
-		this.dynamicCollisionCounts.set(mapId, new Int16Array(map.collision.data.length))
+		this.state.dynamicCollisionCounts.set(mapId, new Int16Array(map.collision.data.length))
 	}
 
 	public setConstructionPenalty(mapId: string, tileX: number, tileY: number, penalize: boolean): void {
-		const map = this.maps.get(mapId)
+		const map = this.state.maps.get(mapId)
 		if (!map) return
 
 		if (tileX < 0 || tileY < 0 || tileX >= map.collision.width || tileY >= map.collision.height) {
 			return
 		}
 
-		let counts = this.constructionPenaltyCounts.get(mapId)
+		let counts = this.state.constructionPenaltyCounts.get(mapId)
 		if (!counts) {
 			counts = new Int16Array(map.collision.data.length)
-			this.constructionPenaltyCounts.set(mapId, counts)
+			this.state.constructionPenaltyCounts.set(mapId, counts)
 		}
 
 		const index = tileY * map.collision.width + tileX
@@ -410,13 +406,13 @@ export class MapManager {
 	}
 
 	public getConstructionPenaltyData(mapId: string): CostData | undefined {
-		const map = this.maps.get(mapId)
+		const map = this.state.maps.get(mapId)
 		if (!map) return undefined
 
-		let counts = this.constructionPenaltyCounts.get(mapId)
+		let counts = this.state.constructionPenaltyCounts.get(mapId)
 		if (!counts) {
 			counts = new Int16Array(map.collision.data.length)
-			this.constructionPenaltyCounts.set(mapId, counts)
+			this.state.constructionPenaltyCounts.set(mapId, counts)
 		}
 
 		return {
@@ -428,23 +424,23 @@ export class MapManager {
 
 	public resetConstructionPenalties(mapId?: string): void {
 		if (mapId) {
-			const map = this.maps.get(mapId)
+			const map = this.state.maps.get(mapId)
 			if (!map) return
-			this.constructionPenaltyCounts.set(mapId, new Int16Array(map.collision.data.length))
+			this.state.constructionPenaltyCounts.set(mapId, new Int16Array(map.collision.data.length))
 			return
 		}
 
-		for (const [id, map] of this.maps.entries()) {
-			this.constructionPenaltyCounts.set(id, new Int16Array(map.collision.data.length))
+		for (const [id, map] of this.state.maps.entries()) {
+			this.state.constructionPenaltyCounts.set(id, new Int16Array(map.collision.data.length))
 		}
 	}
 
 	public getMapIds(): string[] {
-		return Array.from(this.maps.keys())
+		return Array.from(this.state.maps.keys())
 	}
 
 	public getRandomSpawnPoint(mapId: string): Position | undefined {
-		const map = this.maps.get(mapId)
+		const map = this.state.maps.get(mapId)
 		if (!map || map.spawnPoints.length === 0) return undefined
 
 		const randomIndex = Math.floor(Math.random() * map.spawnPoints.length)
@@ -452,7 +448,7 @@ export class MapManager {
 	}
 
 	public isCollision(mapId: string, x: number, y: number): boolean {
-		const map = this.maps.get(mapId)
+		const map = this.state.maps.get(mapId)
 		if (!map) return true
 
 		const index = y * map.collision.width + x
@@ -460,7 +456,7 @@ export class MapManager {
 	}
 
 	public getGroundTypeAt(mapId: string, x: number, y: number): GroundType | null {
-		const map = this.maps.get(mapId)
+		const map = this.state.maps.get(mapId)
 		if (!map) return null
 
 		const groundLayer = map.tiledMap.layers.find((layer) => layer.name === 'ground' && Array.isArray(layer.data))
@@ -506,7 +502,7 @@ export class MapManager {
 	}
 
 	public findPath(mapId: string, start: Position, end: Position, options?: { roadData?: RoadData, allowDiagonal?: boolean }): Position[] {
-		const map = this.maps.get(mapId)
+		const map = this.state.maps.get(mapId)
 		if (!map) return []
 
 		// Convert positions to tile coordinates
@@ -535,7 +531,7 @@ export class MapManager {
 	}
 
 	public findNearestWalkablePosition(mapId: string, position: Position, maxRadiusTiles: number = 2): Position | null {
-		const map = this.maps.get(mapId)
+		const map = this.state.maps.get(mapId)
 		if (!map) return null
 
 		const tileWidth = map.tiledMap.tilewidth
@@ -581,21 +577,21 @@ export class MapManager {
 	}
 
 	public getNPCSpot(mapId: string, npcId: string, spotName: string): NPCSpot | undefined {
-		const map = this.maps.get(mapId)
+		const map = this.state.maps.get(mapId)
 		if (!map) return undefined
 
 		return map.npcSpots[npcId]?.[spotName]
 	}
 
 	public getNPCSpots(mapId: string, npcId: string): { [spotName: string]: NPCSpot } | undefined {
-		const map = this.maps.get(mapId)
+		const map = this.state.maps.get(mapId)
 		if (!map) return undefined
 
 		return map.npcSpots[npcId]
 	}
 
 	public getTriggersAtPosition(mapId: string, position: Position): MapTrigger[] {
-		const map = this.maps.get(mapId)
+		const map = this.state.maps.get(mapId)
 		if (!map) return []
 
 		return map.triggers.filter(trigger => {
@@ -606,14 +602,14 @@ export class MapManager {
 	}
 
 	public getTriggerById(mapId: string, triggerId: string): any | undefined {
-		const map = this.maps.get(mapId)
+		const map = this.state.maps.get(mapId)
 		if (!map) return undefined
 
 		return map.triggers.find(trigger => trigger.id === triggerId)
 	}
 
 	public async loadMaps(maps: Record<string, TiledMap>) {
-		if (this.debug) {
+		if (this.state.debug) {
 			this.logger.log('Loading maps from content')
 		}
 
@@ -639,17 +635,17 @@ export class MapManager {
 					resourceNodes: this.extractResourceNodes(tiledMap, mapId)
 				}
 
-				this.maps.set(mapId, mapData)
-				this.baseCollision.set(mapId, mapData.collision.data.slice())
-				this.dynamicCollisionCounts.set(mapId, new Int16Array(mapData.collision.data.length))
-				this.constructionPenaltyCounts.set(mapId, new Int16Array(mapData.collision.data.length))
+				this.state.maps.set(mapId, mapData)
+				this.state.baseCollision.set(mapId, mapData.collision.data.slice())
+				this.state.dynamicCollisionCounts.set(mapId, new Int16Array(mapData.collision.data.length))
+				this.state.constructionPenaltyCounts.set(mapId, new Int16Array(mapData.collision.data.length))
 			} catch (error) {
 				this.logger.error(`Error loading map ${mapId}:`, error)
 			}
 		}
 
-		if (this.debug) {
-			this.logger.log('Loaded maps:', Array.from(this.maps.keys()))
+		if (this.state.debug) {
+			this.logger.log('Loaded maps:', Array.from(this.state.maps.keys()))
 		}
 	}
 
@@ -670,7 +666,7 @@ export class MapManager {
 	 */
 	public loadPlayerMap(client: EventClient, mapId?: string, position?: Position): void {
 		// Use provided mapId or default
-		const targetMapId = mapId || this.defaultMapId
+		const targetMapId = mapId || this.state.defaultMapId
 		
 		// Get map URL if available
 		const mapUrl = this.getMapUrl(targetMapId)
@@ -690,7 +686,7 @@ export class MapManager {
 			}
 		}
 		
-		if (this.debug) {
+		if (this.state.debug) {
 			this.logger.debug(`Loading map for player: ${targetMapId} with URL: ${mapUrl || 'N/A'}`)
 			this.logger.debug(`Initial position: x=${playerPosition.x}, y=${playerPosition.y}`)
 		}
@@ -708,7 +704,7 @@ export class MapManager {
 	 * @returns The default map ID
 	 */
 	public getDefaultMapId(): string {
-		return this.defaultMapId
+		return this.state.defaultMapId
 	}
 
 	/**
@@ -716,13 +712,15 @@ export class MapManager {
 	 * @param mapId The map ID to use as the default
 	 */
 	public setDefaultMapId(mapId: string): void {
-		if (this.debug) {
+		if (this.state.debug) {
 			this.logger.debug(`Setting default map ID to ${mapId}`)
 		}
-		if (this.maps.has(mapId)) {
-			this.defaultMapId = mapId
+		if (this.state.maps.has(mapId)) {
+			this.state.defaultMapId = mapId
 		} else {
 			this.logger.warn(`Could not set default map ID to ${mapId} as it doesn't exist`)
 		}
 	}
-} 
+}
+
+export * from './MapManagerState'
