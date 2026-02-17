@@ -30,6 +30,7 @@ import type { LogisticsRequest } from '../Settlers/WorkProvider/types'
 import type { ReputationManager } from '../Reputation'
 
 export interface TradeDeps {
+	event: EventManager
 	buildings: BuildingManager
 	storage: StorageManager
 	work: WorkProviderManager
@@ -53,7 +54,6 @@ export class TradeManager extends BaseManager<TradeDeps> {
 
 	constructor(
 		managers: TradeDeps,
-		private event: EventManager,
 		private logger: Logger
 	) {
 		super(managers)
@@ -73,27 +73,27 @@ export class TradeManager extends BaseManager<TradeDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.handleSimulationTick(data)
 		})
 
-		this.event.on(TradeEvents.CS.CreateRoute, (data: TradeRouteSelection, client: EventClient) => {
+		this.managers.event.on(TradeEvents.CS.CreateRoute, (data: TradeRouteSelection, client: EventClient) => {
 			this.createOrQueueRoute(data, client)
 		})
 
-		this.event.on(TradeEvents.CS.CancelRoute, (data: TradeRouteCancelled, client: EventClient) => {
+		this.managers.event.on(TradeEvents.CS.CancelRoute, (data: TradeRouteCancelled, client: EventClient) => {
 			this.cancelRoute(data, client)
 		})
 
-		this.event.on(TradeEvents.CS.RequestRoutes, (_data: unknown, client: EventClient) => {
+		this.managers.event.on(TradeEvents.CS.RequestRoutes, (_data: unknown, client: EventClient) => {
 			this.sendRoutesToClient(client)
 		})
 
-		this.event.on(Event.Players.CS.Join, (_data: any, client: EventClient) => {
+		this.managers.event.on(Event.Players.CS.Join, (_data: any, client: EventClient) => {
 			this.sendRoutesToClient(client)
 		})
 
-		this.event.on(BuildingsEvents.SS.Removed, (data: { buildingInstanceId?: string }) => {
+		this.managers.event.on(BuildingsEvents.SS.Removed, (data: { buildingInstanceId?: string }) => {
 			if (!data?.buildingInstanceId) {
 				return
 			}
@@ -239,7 +239,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 			offerId: route.offerId,
 			travelMs
 		}
-		this.event.emit(Receiver.Client, TradeEvents.SC.ShipmentStarted, shipmentData, route.playerId)
+		this.managers.event.emit(Receiver.Client, TradeEvents.SC.ShipmentStarted, shipmentData, route.playerId)
 		return true
 	}
 
@@ -296,7 +296,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 			nodeId: route.nodeId,
 			offerId: route.offerId
 		}
-		this.event.emit(Receiver.Client, TradeEvents.SC.ShipmentArrived, arrivalData, route.playerId)
+		this.managers.event.emit(Receiver.Client, TradeEvents.SC.ShipmentArrived, arrivalData, route.playerId)
 		this.managers.reputation.addReputation(route.playerId, offer.reputation)
 
 		const cooldownSeconds = offer.cooldownSeconds ?? DEFAULT_COOLDOWN_SECONDS
@@ -443,7 +443,7 @@ export class TradeManager extends BaseManager<TradeDeps> {
 	}
 
 	private emitRouteUpdated(route: TradeRouteState): void {
-		this.event.emit(Receiver.Client, TradeEvents.SC.RouteUpdated, { route } satisfies TradeRouteUpdatedData, route.playerId)
+		this.managers.event.emit(Receiver.Client, TradeEvents.SC.RouteUpdated, { route } satisfies TradeRouteUpdatedData, route.playerId)
 	}
 
 	private sendRoutesToClient(client: EventClient): void {

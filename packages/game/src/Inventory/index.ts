@@ -55,6 +55,7 @@ function getSlotAtPosition(inventory: Inventory, position: Position): InventoryS
 }
 
 export interface InventoryDeps {
+	event: EventManager
 	items: ItemsManager
 }
 
@@ -63,7 +64,6 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 
 	constructor(
 		managers: InventoryDeps,
-		private event: EventManager,
 		private logger: Logger
 	) {
 		super(managers)
@@ -194,7 +194,7 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 
 	private setupEventHandlers() {
 		// Handle client lifecycle
-		this.event.onJoined((client) => {
+		this.managers.event.onJoined((client) => {
 			// Create initial inventory
 			const initialInventory = createEmptyInventory()
 			
@@ -238,12 +238,12 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 			// to ensure the client has the inventory immediately
 		})
 
-		this.event.onLeft((client) => {
+		this.managers.event.onLeft((client) => {
 			this.inventories.delete(client.id)
 		})
 
 		// Handle player join to send initial inventory
-		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (_, client) => {
+		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, (_, client) => {
 			const inventory = this.inventories.get(client.id)
 			if (inventory) {
 				client.emit(Receiver.Sender, Event.Inventory.SC.Update, { inventory })
@@ -251,7 +251,7 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 		})
 
 		// Handle item consume
-		this.event.on<ConsumeItemData>(Event.Inventory.CS.Consume, (data, client) => {
+		this.managers.event.on<ConsumeItemData>(Event.Inventory.CS.Consume, (data, client) => {
 			const inventory = this.inventories.get(client.id)
 			if (!inventory) return
 
@@ -269,7 +269,7 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 		})
 
 		// Handle item add from dialogue or other server events
-		this.event.on(Event.Inventory.SS.Add, (item: Item, client) => {
+		this.managers.event.on(Event.Inventory.SS.Add, (item: Item, client) => {
 			const inventory = this.inventories.get(client.id)
 			if (!inventory) return
 
@@ -280,13 +280,13 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 		})
 		
 		// Handle moving items between slots
-		this.event.on<MoveItemData>(Event.Inventory.CS.MoveItem, (data, client) => {
+		this.managers.event.on<MoveItemData>(Event.Inventory.CS.MoveItem, (data, client) => {
 			this.logger.debug('Received MoveItem event:', data)
 			this.moveItem(data, client)
 		})
 
 		// Handle remove item by type
-		this.event.on<RemoveByTypePayload>(Event.Inventory.SS.RemoveByType, (data, client) => {
+		this.managers.event.on<RemoveByTypePayload>(Event.Inventory.SS.RemoveByType, (data, client) => {
 			this.removeItemByType(client, data.itemType, data.quantity)
 		})
 	}

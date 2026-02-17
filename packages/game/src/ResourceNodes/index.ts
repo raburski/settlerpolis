@@ -67,6 +67,7 @@ const hash2D = (x: number, y: number, seed: number): number => {
 }
 
 export interface ResourceNodesDeps {
+	event: EventManager
 	map: MapManager
 	mapObjects: MapObjectsManager
 	items: ItemsManager
@@ -83,7 +84,6 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 
 	constructor(
 		managers: ResourceNodesDeps,
-		private event: EventManager,
 		private logger: Logger
 	) {
 		super(managers)
@@ -91,20 +91,20 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.simulationTimeMs = data.nowMs
 			this.processNodeDecay()
 		})
 
-		this.event.on<ResourceNodesQueryData>(Event.ResourceNodes.CS.Query, (data, client) => {
+		this.managers.event.on<ResourceNodesQueryData>(Event.ResourceNodes.CS.Query, (data, client) => {
 			this.handleResourceNodeQuery(data, client)
 		})
 
-		this.event.on<ResourceNodeProspectRequestData>(Event.ResourceNodes.CS.RequestProspecting, (data, client) => {
+		this.managers.event.on<ResourceNodeProspectRequestData>(Event.ResourceNodes.CS.RequestProspecting, (data, client) => {
 			this.handleProspectingRequest(data, client)
 		})
 
-		this.event.on<{ building: { id: string; buildingId: string; mapId: string; position: Position; resourceNodeId?: string } }>(
+		this.managers.event.on<{ building: { id: string; buildingId: string; mapId: string; position: Position; resourceNodeId?: string } }>(
 			BuildingsEvents.SS.Placed,
 			(data) => {
 				this.handleBuildingPlaced(data?.building)
@@ -169,7 +169,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 				id: WORLD_PLAYER_ID,
 				currentGroup: spawn.mapId,
 				emit: (receiver, event, data, target) => {
-					this.event.emit(receiver, event, data, target)
+					this.managers.event.emit(receiver, event, data, target)
 				},
 				setGroup: () => {
 					// No-op for fake client
@@ -712,7 +712,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			id: WORLD_PLAYER_ID,
 			currentGroup: options.mapId,
 			emit: (receiver, event, data, target) => {
-				this.event.emit(receiver, event, data, target)
+				this.managers.event.emit(receiver, event, data, target)
 			},
 			setGroup: () => {
 				// No-op for fake client
@@ -821,7 +821,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			id: WORLD_PLAYER_ID,
 			currentGroup: node.mapId,
 			emit: (receiver, event, data, target) => {
-				this.event.emit(receiver, event, data, target)
+				this.managers.event.emit(receiver, event, data, target)
 			},
 			setGroup: () => {
 				// No-op for fake client
@@ -1114,7 +1114,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		}
 		const mapObject = this.ensureNodeMapObject(node, def)
 		if (!mapObject) return
-		this.event.emit(Receiver.Group, Event.MapObjects.SC.Spawn, { object: mapObject }, node.mapId)
+		this.managers.event.emit(Receiver.Group, Event.MapObjects.SC.Spawn, { object: mapObject }, node.mapId)
 	}
 
 	private rollDepositType(mapId: string, position: Position): ResourceDepositType {

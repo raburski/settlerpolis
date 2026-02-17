@@ -35,6 +35,7 @@ import type { TradeManager } from '../Trade'
 import type { ReputationManager } from '../Reputation'
 
 export interface Managers {
+	event: EventManager
 	chat: ChatManager
 	players: PlayersManager
 	inventory: InventoryManager
@@ -71,7 +72,7 @@ export interface Managers {
 }
 
 export class ManagersHub implements Managers {
-	event?: EventManager
+	event!: EventManager
 	logger?: Logger
 	chat!: ChatManager
 	players!: PlayersManager

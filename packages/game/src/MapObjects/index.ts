@@ -13,6 +13,7 @@ import { BaseManager } from '../Managers'
 import type { MapObjectsSnapshot } from '../state/types'
 
 export interface MapObjectsDeps {
+	event: EventManager
 	items: ItemsManager
 	inventory: InventoryManager
 }
@@ -28,7 +29,6 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 
 	constructor(
 		managers: MapObjectsDeps,
-		private event: EventManager,
 		private logger: Logger
 	) {
 		super(managers)
@@ -37,17 +37,17 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 
 	private setupEventHandlers() {
 		// Handle removing objects from the world
-		this.event.on<RemoveObjectData>(Event.MapObjects.CS.Remove, (data, client) => {
+		this.managers.event.on<RemoveObjectData>(Event.MapObjects.CS.Remove, (data, client) => {
 			this.removeObject(data, client)
 		})
 
 		// Handle player joining a map to send existing objects
-		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
+		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
 			this.sendMapObjectsToClient(client, data.mapId)
 		})
 
 		// Handle player transitioning to a new scene
-		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
+		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
 			this.sendMapObjectsToClient(client, data.mapId)
 		})
 	}
@@ -76,7 +76,7 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 		this.removeObjectFromMap(mapObject.id, mapId)
 
 		// Notify all clients in the same map about the removed object
-		this.event.emit(Receiver.Group, Event.MapObjects.SC.Despawn, { objectId }, mapId)
+		this.managers.event.emit(Receiver.Group, Event.MapObjects.SC.Despawn, { objectId }, mapId)
 
 		this.logger.debug('Object removed:', mapObject)
 	}
@@ -190,7 +190,7 @@ export class MapObjectsManager extends BaseManager<MapObjectsDeps> {
 		this.removeObjectFromMap(objectId, mapId)
 
 		// Notify all clients in the same map about the removed object
-		this.event.emit(Receiver.Group, Event.MapObjects.SC.Despawn, { objectId }, mapId)
+		this.managers.event.emit(Receiver.Group, Event.MapObjects.SC.Despawn, { objectId }, mapId)
 
 		return true
 	}

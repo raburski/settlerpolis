@@ -13,6 +13,7 @@ import type { SimulationTickData } from '../Simulation/types'
 import type { RoadsSnapshot, RoadJobSnapshot } from '../state/types'
 
 export interface RoadManagerDeps {
+	event: EventManager
 	map: MapManager
 	storage: StorageManager
 }
@@ -39,7 +40,6 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 
 	constructor(
 		managers: RoadManagerDeps,
-		private event: EventManager,
 		private logger: Logger
 	) {
 		super(managers)
@@ -47,21 +47,21 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.simulationTimeMs = data.nowMs
 		})
 
-		this.event.on<RoadBuildRequestData>(RoadEvents.CS.Place, (data, client) => {
+		this.managers.event.on<RoadBuildRequestData>(RoadEvents.CS.Place, (data, client) => {
 			this.handleRoadRequest(data, client)
 		})
 
-	this.event.on(Event.Players.CS.Join, (data: { mapId?: string }, client: EventClient) => {
+	this.managers.event.on(Event.Players.CS.Join, (data: { mapId?: string }, client: EventClient) => {
 		const mapId = data.mapId || client.currentGroup
 		this.sendRoadSync(mapId, client)
 		this.sendPendingRoadSync(mapId, client)
 	})
 
-	this.event.on(Event.Players.CS.TransitionTo, (data: { mapId?: string }, client: EventClient) => {
+	this.managers.event.on(Event.Players.CS.TransitionTo, (data: { mapId?: string }, client: EventClient) => {
 		const mapId = data.mapId || client.currentGroup
 		this.sendRoadSync(mapId, client)
 		this.sendPendingRoadSync(mapId, client)
@@ -272,7 +272,7 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 	}
 
 	if (addedTiles.length > 0) {
-		this.event.emit(Receiver.Group, RoadEvents.SC.PendingUpdated, {
+		this.managers.event.emit(Receiver.Group, RoadEvents.SC.PendingUpdated, {
 			mapId,
 			tiles: addedTiles
 		} as RoadPendingUpdatedData, mapId)
@@ -312,7 +312,7 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 		const index = tileY * roadData.width + tileX
 		roadData.data[index] = roadType
 
-		this.event.emit(Receiver.Group, RoadEvents.SC.Updated, {
+		this.managers.event.emit(Receiver.Group, RoadEvents.SC.Updated, {
 			mapId,
 			tiles: [{ x: tileX, y: tileY, roadType }]
 		} as RoadTilesUpdatedData, mapId)
@@ -343,7 +343,7 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 		if (client) {
 			client.emit(Receiver.Sender, RoadEvents.SC.Sync, payload)
 		} else {
-			this.event.emit(Receiver.Group, RoadEvents.SC.Sync, payload, mapId)
+			this.managers.event.emit(Receiver.Group, RoadEvents.SC.Sync, payload, mapId)
 		}
 }
 
@@ -357,7 +357,7 @@ private sendPendingRoadSync(mapId: string, client?: EventClient): void {
 		if (client) {
 			client.emit(Receiver.Sender, RoadEvents.SC.PendingSync, payload)
 		} else {
-			this.event.emit(Receiver.Group, RoadEvents.SC.PendingSync, payload, mapId)
+			this.managers.event.emit(Receiver.Group, RoadEvents.SC.PendingSync, payload, mapId)
 		}
 		return
 	}
@@ -375,12 +375,12 @@ private sendPendingRoadSync(mapId: string, client?: EventClient): void {
 	if (client) {
 		client.emit(Receiver.Sender, RoadEvents.SC.PendingSync, payload)
 	} else {
-		this.event.emit(Receiver.Group, RoadEvents.SC.PendingSync, payload, mapId)
+		this.managers.event.emit(Receiver.Group, RoadEvents.SC.PendingSync, payload, mapId)
 	}
 }
 
 private emitPendingRemoval(mapId: string, tileX: number, tileY: number): void {
-	this.event.emit(Receiver.Group, RoadEvents.SC.PendingUpdated, {
+	this.managers.event.emit(Receiver.Group, RoadEvents.SC.PendingUpdated, {
 		mapId,
 		tiles: [{ x: tileX, y: tileY, roadType: RoadType.None }]
 	} as RoadPendingUpdatedData, mapId)

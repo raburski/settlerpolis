@@ -12,8 +12,10 @@ import type { RoadManager } from '../../Roads'
 import type { SimulationManager } from '../../Simulation'
 import type { NPCManager } from '../../NPC'
 import type { WildlifeManager } from '../../Wildlife'
+import type { EventManager } from '../../events'
 
 export interface WorkProviderDeps {
+	event: EventManager
 	buildings: BuildingManager
 	population: PopulationManager
 	movement: MovementManager

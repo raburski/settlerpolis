@@ -17,6 +17,7 @@ import { BaseManager } from '../Managers'
 import type { QuestSnapshot } from '../state/types'
 
 export interface QuestDeps {
+	event: EventManager
 	conditionEffect: ConditionEffectManager
 }
 
@@ -28,7 +29,6 @@ export class QuestManager extends BaseManager<QuestDeps> {
 
 	constructor(
 		managers: QuestDeps,
-		private event: EventManager,
 		private logger: Logger
 	) {
 		super(managers)
@@ -56,7 +56,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 	}
 
 	private setupEventHandlers() {
-		this.event.on<QuestStartRequest>(
+		this.managers.event.on<QuestStartRequest>(
 			QuestEvents.SS.Start,
 			(data: QuestStartRequest, client: EventClient) => {
 				this.startQuest(data.questId, data.playerId, client)
@@ -64,7 +64,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 		)
 
 		// Handle player connection
-		this.event.on(
+		this.managers.event.on(
 			Event.Players.CS.Connect,
 			(data: {}, client: EventClient) => {
 				const playerState = this.getOrCreatePlayerState(client.id)
@@ -169,7 +169,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 			// Emit reward events
 			// if (quest.reward.items) {
 			// 	for (const item of quest.reward.items) {
-			// 		this.event.emit(Receiver.All, 'ss:inventory:add', {
+			// 		this.managers.event.emit(Receiver.All, 'ss:inventory:add', {
 			// 			playerId,
 			// 			itemId: item.id,
 			// 			quantity: item.qty
@@ -178,7 +178,7 @@ export class QuestManager extends BaseManager<QuestDeps> {
 			// }
 
 			// if (quest.reward.exp) {
-			// 	this.event.emit(Receiver.All, 'ss:player:add_exp', {
+			// 	this.managers.event.emit(Receiver.All, 'ss:player:add_exp', {
 			// 		playerId,
 			// 		exp: quest.reward.exp
 			// 	})

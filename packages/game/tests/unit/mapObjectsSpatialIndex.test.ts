@@ -25,10 +25,10 @@ const createManager = (itemMetadataByType: Record<string, ItemMetadata | null> =
 
 	return new MapObjectsManager(
 		{
+			event: eventManager,
 			items: itemsManager as any,
 			inventory: inventoryManager as any
 		},
-		eventManager,
 		logger
 	)
 }

@@ -13,6 +13,7 @@ import type { SimulationTickData } from '../Simulation/types'
 import type { LootSnapshot } from '../state/types'
 
 export interface LootDeps {
+	event: EventManager
 	items: ItemsManager
 }
 
@@ -27,7 +28,6 @@ export class LootManager extends BaseManager<LootDeps> {
 
 	constructor(
 		managers: LootDeps,
-		private event: EventManager,
 		private logger: Logger
 	) {
 		super(managers)
@@ -62,12 +62,12 @@ export class LootManager extends BaseManager<LootDeps> {
 	}
 
 	private setupEventHandlers() {
-		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.handleSimulationTick(data)
 		})
 
 		// Handle player join and map transition to send items
-		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
+		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
 			const mapId = data.mapId
 			if (!mapId) {
 				this.logger.warn('Received Join event with undefined mapId. Ignoring event.')
@@ -83,7 +83,7 @@ export class LootManager extends BaseManager<LootDeps> {
 			}
 		})
 
-		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
+		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
 			const mapId = data.mapId
 			if (!mapId) {
 				this.logger.warn('Received TransitionTo event with undefined mapId. Ignoring event.')
@@ -100,7 +100,7 @@ export class LootManager extends BaseManager<LootDeps> {
 		})
 
 		// Handle scheduled item spawns
-		this.event.on(LootEvents.SS.Spawn, (data: LootSpawnPayload) => {
+		this.managers.event.on(LootEvents.SS.Spawn, (data: LootSpawnPayload) => {
 			if (!data.mapId) {
 				this.logger.warn('Received SS.Spawn event with undefined mapId. Ignoring event.')
 				return
@@ -109,9 +109,9 @@ export class LootManager extends BaseManager<LootDeps> {
 			const quantity = data.quantity ?? 1
 			const position = this.resolvePosition(data.position)
 			this.addOrMergeDroppedItem(data.mapId, data.itemType, position, quantity, (payload) => {
-				this.event.emit(Receiver.Group, Event.Loot.SC.Spawn, payload, data.mapId)
+				this.managers.event.emit(Receiver.Group, Event.Loot.SC.Spawn, payload, data.mapId)
 			}, (payload) => {
-				this.event.emit(Receiver.Group, Event.Loot.SC.Update, payload, data.mapId)
+				this.managers.event.emit(Receiver.Group, Event.Loot.SC.Update, payload, data.mapId)
 			})
 		})
 	}
@@ -344,7 +344,7 @@ export class LootManager extends BaseManager<LootDeps> {
 
 			// Send individual despawn events for each expired item
 			expiredItemIds.forEach(itemId => {
-				this.event.emit(Receiver.Group, Event.Loot.SC.Despawn, { itemId } as LootDespawnEventPayload, mapId)
+				this.managers.event.emit(Receiver.Group, Event.Loot.SC.Despawn, { itemId } as LootDespawnEventPayload, mapId)
 			})
 		}
 	}

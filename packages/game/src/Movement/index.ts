@@ -15,6 +15,7 @@ import type { MovementSnapshot, MovementTaskSnapshot } from '../state/types'
 const MOVEMENT_STEP_LAG = 100 // milliseconds between steps
 
 export interface MovementDeps {
+	event: EventManager
 	map: MapManager
 	roads: RoadManager
 }
@@ -26,7 +27,6 @@ export class MovementManager extends BaseManager<MovementDeps> {
 
 	constructor(
 		managers: MovementDeps,
-		private event: EventManager,
 		private logger: Logger
 	) {
 		super(managers)
@@ -34,7 +34,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.simulationTimeMs = data.nowMs
 			this.handleSimulationTick(data)
 		})
@@ -262,7 +262,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 			if (previousPosition) {
 				const segmentDistance = calculateDistance(previousPosition, entity.position)
 				task.traveledDistance = (task.traveledDistance || 0) + segmentDistance
-				this.event.emit(Receiver.All, MovementEvents.SS.SegmentComplete, {
+				this.managers.event.emit(Receiver.All, MovementEvents.SS.SegmentComplete, {
 					entityId: entity.id,
 					position: { ...entity.position },
 					segmentDistance,
@@ -293,7 +293,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 			nextPosition
 		)
 
-		this.event.emit(Receiver.Group, MovementEvents.SC.MoveToPosition, {
+		this.managers.event.emit(Receiver.Group, MovementEvents.SC.MoveToPosition, {
 			entityId: entity.id,
 			targetPosition: nextPosition,
 			mapId: entity.mapId,
@@ -332,7 +332,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		this.logger.debug(`Task removed for ${entityId} before emitting events`)
 
 		// Emit step complete event for entity managers to sync final position
-		this.event.emit(Receiver.All, MovementEvents.SS.StepComplete, {
+		this.managers.event.emit(Receiver.All, MovementEvents.SS.StepComplete, {
 			entityId: entity.id,
 			position: finalPosition
 		})
@@ -345,7 +345,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		// Emit path complete event with optional target info
 		// If target exists, managers can handle it as an arrival
 		this.logger.log(`[PATH COMPLETE EVENT] Emitting PathComplete event for ${entityId} | targetType=${targetType || 'none'} | targetId=${targetId || 'none'} | time=${completionTime}`)
-		this.event.emit(Receiver.All, MovementEvents.SS.PathComplete, {
+		this.managers.event.emit(Receiver.All, MovementEvents.SS.PathComplete, {
 			entityId,
 			targetType,
 			targetId
@@ -453,7 +453,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		entity.position = { ...position }
 
 		// Emit position update to clients (teleport/sync, no interpolation)
-		this.event.emit(Receiver.Group, MovementEvents.SC.PositionUpdated, {
+		this.managers.event.emit(Receiver.Group, MovementEvents.SC.PositionUpdated, {
 			entityId: entity.id,
 			position: entity.position,
 			mapId: entity.mapId
