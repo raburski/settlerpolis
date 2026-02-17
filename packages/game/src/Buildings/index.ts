@@ -39,11 +39,12 @@ import { SimulationEvents } from '../Simulation/events'
 import { SimulationTickData } from '../Simulation/types'
 import type { StorageManager } from '../Storage'
 import { BaseManager } from '../Managers'
-import type { BuildingsSnapshot, BuildingInstanceSnapshot } from '../state/types'
+import type { BuildingsSnapshot } from '../state/types'
 import { CityCharterEvents } from '../CityCharter/events'
 import type { CityCharterUnlockFlagsUpdated } from '../CityCharter/types'
 import { getProductionRecipes } from './work'
 import type { ResourceNodesManager } from '../ResourceNodes'
+import { BuildingManagerState } from './BuildingManagerState'
 
 const MINE_BUILDING_IDS = new Set(['coal_mine', 'iron_mine', 'gold_mine', 'stone_mine', 'quarry'])
 const RESOURCE_NODE_TYPES = new Set(['resource_deposit', 'stone_deposit'])
@@ -60,20 +61,8 @@ export interface BuildingDeps {
 }
 
 export class BuildingManager extends BaseManager<BuildingDeps> {
-	private buildings = new Map<string, BuildingInstance>() // buildingInstanceId -> BuildingInstance
-	private definitions = new Map<BuildingId, BuildingDefinition>() // buildingId -> BuildingDefinition
-	private buildingToMapObject = new Map<string, string>() // buildingInstanceId -> mapObjectId
+	private readonly state = new BuildingManagerState()
 	private readonly TICK_INTERVAL_MS = 1000 // Update construction progress every second
-	private resourceRequests: Map<string, Set<string>> = new Map() // buildingInstanceId -> Set<itemType> (resources still needed)
-	private assignedWorkers: Map<string, Set<string>> = new Map() // buildingInstanceId -> settlerIds
-	private activeConstructionWorkers: Map<string, Set<string>> = new Map() // buildingInstanceId -> settlerIds (present at building)
-	private simulationTimeMs = 0
-	private tickAccumulatorMs = 0
-	private autoProductionState = new Map<string, { status: ProductionStatus, progressMs: number, progress: number }>()
-	private unlockedFlagsByPlayerMap = new Map<string, Set<string>>()
-	private globalProductionPlansByPlayer = new Map<string, Map<BuildingId, ProductionPlan>>()
-	private defaultProductionPlans = new Map<BuildingId, ProductionPlan>()
-	private productionCountsByBuilding = new Map<string, Map<string, number>>()
 
 	constructor(
 		managers: BuildingDeps,
@@ -103,7 +92,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	/* EVENT HANDLERS */
 	private readonly handleLifecycleJoined = (client: EventClient): void => {
-		if (this.definitions.size > 0) {
+		if (this.state.definitions.size > 0) {
 			this.sendBuildingCatalog(client)
 		}
 	}
@@ -121,7 +110,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	private readonly handleBuildingsCSSetStorageRequests = (data: SetStorageRequestsData, client: EventClient): void => {
-		const building = this.buildings.get(data.buildingInstanceId)
+		const building = this.state.buildings.get(data.buildingInstanceId)
 		if (!building) {
 			return
 		}
@@ -129,7 +118,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			this.logger.error(`Player ${client.id} does not own building ${data.buildingInstanceId}`)
 			return
 		}
-		const definition = this.definitions.get(building.buildingId)
+		const definition = this.state.definitions.get(building.buildingId)
 		if (!definition) {
 			return
 		}
@@ -167,26 +156,26 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	private readonly handleCityCharterSSUnlockFlagsUpdated = (data: CityCharterUnlockFlagsUpdated): void => {
 		const key = this.getPlayerMapKey(data.playerId, data.mapId)
-		this.unlockedFlagsByPlayerMap.set(key, new Set(data.unlockedFlags))
+		this.state.unlockedFlagsByPlayerMap.set(key, new Set(data.unlockedFlags))
 	}
 
 	private handleSimulationTick(data: SimulationTickData) {
-		this.simulationTimeMs = data.nowMs
-		this.tickAccumulatorMs += data.deltaMs
-		if (this.tickAccumulatorMs < this.TICK_INTERVAL_MS) {
+		this.state.simulationTimeMs = data.nowMs
+		this.state.tickAccumulatorMs += data.deltaMs
+		if (this.state.tickAccumulatorMs < this.TICK_INTERVAL_MS) {
 			return
 		}
-		this.tickAccumulatorMs -= this.TICK_INTERVAL_MS
+		this.state.tickAccumulatorMs -= this.TICK_INTERVAL_MS
 		this.tick()
 	}
 
 	/* METHODS */
 	private tick() {
-		const now = this.simulationTimeMs
+		const now = this.state.simulationTimeMs
 		const buildingsToUpdate: BuildingInstance[] = []
 
 		// Collect all buildings that need processing
-		for (const building of this.buildings.values()) {
+		for (const building of this.state.buildings.values()) {
 			if (building.stage === ConstructionStage.Constructing) {
 				// Check if construction can progress
 				if (this.canConstructionProgress(building)) {
@@ -198,7 +187,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 		// Update progress for buildings in Constructing stage with builders
 		for (const building of buildingsToUpdate) {
-			const definition = this.definitions.get(building.buildingId)
+			const definition = this.state.definitions.get(building.buildingId)
 			if (!definition) continue
 
 			const deltaSeconds = this.TICK_INTERVAL_MS / 1000
@@ -223,11 +212,11 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 
 		// Handle auto-production for completed buildings
-		for (const building of this.buildings.values()) {
+		for (const building of this.state.buildings.values()) {
 			if (building.stage !== ConstructionStage.Completed) {
 				continue
 			}
-			const definition = this.definitions.get(building.buildingId)
+			const definition = this.state.definitions.get(building.buildingId)
 			if (!definition?.autoProduction) {
 				continue
 			}
@@ -242,7 +231,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	private placeBuilding(data: PlaceBuildingData, client: EventClient) {
 		const { buildingId, position, resourceNodeId } = data
 		const rotation = typeof data.rotation === 'number' ? data.rotation : 0
-		const definition = this.definitions.get(buildingId)
+		const definition = this.state.definitions.get(buildingId)
 
 		if (!definition) {
 			this.logger.error(`Building definition not found: ${buildingId}`)
@@ -252,7 +241,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 		if (definition.unlockFlags && definition.unlockFlags.length > 0) {
 			const key = this.getPlayerMapKey(client.id, client.currentGroup)
-			const unlockedFlags = this.unlockedFlagsByPlayerMap.get(key)
+			const unlockedFlags = this.state.unlockedFlagsByPlayerMap.get(key)
 			const isUnlocked = definition.unlockFlags.every(flag => unlockedFlags?.has(flag))
 			if (!isUnlocked) {
 				this.logger.warn(`Building ${buildingId} is locked for player ${client.id} on map ${client.currentGroup}`)
@@ -348,7 +337,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			stage: ConstructionStage.CollectingResources,
 			progress: 0,
 			startedAt: 0, // Will be set when construction starts (resources collected)
-			createdAt: this.simulationTimeMs,
+			createdAt: this.state.simulationTimeMs,
 			collectedResources: new Map(),
 			requiredResources: [],
 			productionPaused: false,
@@ -376,14 +365,14 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 
 		// Store mapping between building instance and map object
-		this.buildingToMapObject.set(buildingInstance.id, placedObject.id)
+		this.state.buildingToMapObject.set(buildingInstance.id, placedObject.id)
 
 		// Note: Resources are NOT removed from inventory on placement
 		// Resources are collected from the ground by carriers and delivered to the building
 		// The building costs are just a blueprint of what's needed
 
 		// Store building instance
-		this.buildings.set(buildingInstance.id, buildingInstance)
+		this.state.buildings.set(buildingInstance.id, buildingInstance)
 		if (buildingInstance.stage !== ConstructionStage.Completed) {
 			this.updateConstructionPenalty(buildingInstance, true)
 		}
@@ -404,7 +393,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	private cancelBuilding(data: CancelBuildingData, client: EventClient) {
 		const { buildingInstanceId } = data
-		const building = this.buildings.get(buildingInstanceId)
+		const building = this.state.buildings.get(buildingInstanceId)
 
 		if (!building) {
 			this.logger.error(`Building instance not found: ${buildingInstanceId}`)
@@ -450,7 +439,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	private calculateDemolitionRefund(building: BuildingInstance): BuildingCost[] {
-		const definition = this.definitions.get(building.buildingId)
+		const definition = this.state.definitions.get(building.buildingId)
 		if (!definition) {
 			return []
 		}
@@ -503,11 +492,11 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			this.updateBlockedTiles(building, false)
 		}
 		// Clean up resource requests and worker tracking
-		this.resourceRequests.delete(building.id)
-		this.assignedWorkers.delete(building.id)
-		this.activeConstructionWorkers.delete(building.id)
-		this.autoProductionState.delete(building.id)
-		this.productionCountsByBuilding.delete(building.id)
+		this.state.resourceRequests.delete(building.id)
+		this.state.assignedWorkers.delete(building.id)
+		this.state.activeConstructionWorkers.delete(building.id)
+		this.state.autoProductionState.delete(building.id)
+		this.state.productionCountsByBuilding.delete(building.id)
 
 		// Remove storage piles/records before deleting the building
 		if (this.managers.storage) {
@@ -515,19 +504,19 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 
 		// Remove building from map objects
-		const mapObjectId = this.buildingToMapObject.get(building.id)
+		const mapObjectId = this.state.buildingToMapObject.get(building.id)
 		if (mapObjectId) {
 			this.managers.mapObjects.removeObjectById(mapObjectId, building.mapId)
-			this.buildingToMapObject.delete(building.id)
+			this.state.buildingToMapObject.delete(building.id)
 		}
 
 		// Remove building instance
-		this.buildings.delete(building.id)
+		this.state.buildings.delete(building.id)
 	}
 
 	private setWorkArea(data: SetWorkAreaData, client: EventClient) {
 		const { buildingInstanceId, center } = data
-		const building = this.buildings.get(buildingInstanceId)
+		const building = this.state.buildings.get(buildingInstanceId)
 		if (!building) {
 			this.logger.error(`Building instance not found: ${buildingInstanceId}`)
 			return
@@ -550,7 +539,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	private setProductionPlan(data: SetProductionPlanData, client: EventClient): void {
-		const building = this.buildings.get(data.buildingInstanceId)
+		const building = this.state.buildings.get(data.buildingInstanceId)
 		if (!building) {
 			return
 		}
@@ -558,7 +547,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			this.logger.error(`Player ${client.id} does not own building ${data.buildingInstanceId}`)
 			return
 		}
-		const definition = this.definitions.get(building.buildingId)
+		const definition = this.state.definitions.get(building.buildingId)
 		if (!definition) {
 			return
 		}
@@ -590,7 +579,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	private setGlobalProductionPlan(data: SetGlobalProductionPlanData, client: EventClient): void {
-		const definition = this.definitions.get(data.buildingId)
+		const definition = this.state.definitions.get(data.buildingId)
 		if (!definition) {
 			return
 		}
@@ -630,7 +619,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		for (const cost of building.requiredResources) {
 			neededResources.add(cost.itemType)
 		}
-		this.resourceRequests.set(building.id, neededResources)
+		this.state.resourceRequests.set(building.id, neededResources)
 
 		// Set stage to CollectingResources
 		building.stage = ConstructionStage.CollectingResources
@@ -660,7 +649,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 		
 		if (neededResources.size > 0) {
-			this.resourceRequests.set(building.id, neededResources)
+			this.state.resourceRequests.set(building.id, neededResources)
 			this.logger.log(`[RESOURCE COLLECTION] Rebuilt resourceRequests for building ${building.id}: [${Array.from(neededResources).join(', ')}]`)
 		} else {
 			this.logger.log(`[RESOURCE COLLECTION] Rebuilt resourceRequests for building ${building.id}: all resources collected`)
@@ -669,14 +658,14 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	// Add resource to building (called when carrier delivers)
 	public addResourceToBuilding(buildingInstanceId: string, itemType: string, quantity: number): boolean {
-		const building = this.buildings.get(buildingInstanceId)
+		const building = this.state.buildings.get(buildingInstanceId)
 		if (!building) {
 			this.logger.warn(`[RESOURCE DELIVERY] Building not found: ${buildingInstanceId}`)
 			return false
 		}
 
 		// Check if building still needs this resource
-		const neededResources = this.resourceRequests.get(buildingInstanceId)
+		const neededResources = this.state.resourceRequests.get(buildingInstanceId)
 		if (!neededResources || !neededResources.has(itemType)) {
 			this.logger.log(`[RESOURCE DELIVERY] Building ${buildingInstanceId} doesn't need ${itemType} anymore (neededResources: ${neededResources ? Array.from(neededResources).join(', ') : 'null'})`)
 			return false // Building doesn't need this resource anymore
@@ -702,7 +691,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			neededResources.delete(itemType)
 			if (neededResources.size === 0) {
 				this.logger.log(`[RESOURCE DELIVERY] All resources collected for building ${buildingInstanceId}. Deleting resourceRequests entry.`)
-				this.resourceRequests.delete(buildingInstanceId)
+				this.state.resourceRequests.delete(buildingInstanceId)
 			} else {
 				this.logger.log(`[RESOURCE DELIVERY] Building ${buildingInstanceId} still needs: [${Array.from(neededResources).join(', ')}]`)
 			}
@@ -721,7 +710,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			this.logger.log(`[RESOURCE DELIVERY] All required resources collected for building ${buildingInstanceId}. Transitioning to Constructing stage.`)
 			// Transition to Constructing stage
 			building.stage = ConstructionStage.Constructing
-			building.startedAt = this.simulationTimeMs // Start construction timer
+			building.startedAt = this.state.simulationTimeMs // Start construction timer
 
 			// Emit stage changed event (this signals that all resources are collected)
 			this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.StageChanged, {
@@ -730,7 +719,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			}, building.mapId)
 
 			// Update MapObject metadata
-			const mapObjectId = this.buildingToMapObject.get(building.id)
+			const mapObjectId = this.state.buildingToMapObject.get(building.id)
 			if (mapObjectId) {
 				const mapObject = this.managers.mapObjects.getObjectById(mapObjectId)
 				if (mapObject && mapObject.metadata) {
@@ -760,7 +749,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 
 		// Check if builder is present at building
-		const activeBuilders = this.activeConstructionWorkers.get(building.id)
+		const activeBuilders = this.state.activeConstructionWorkers.get(building.id)
 		if (!activeBuilders || activeBuilders.size === 0) {
 			return false
 		}
@@ -789,7 +778,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 
 		// Update MapObject metadata to reflect completion
-		const mapObjectId = this.buildingToMapObject.get(building.id)
+		const mapObjectId = this.state.buildingToMapObject.get(building.id)
 		if (mapObjectId) {
 			const mapObject = this.managers.mapObjects.getObjectById(mapObjectId)
 			if (mapObject && mapObject.metadata) {
@@ -801,7 +790,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 
 		// Check if this is a house
-		const buildingDef = this.definitions.get(building.buildingId)
+		const buildingDef = this.state.definitions.get(building.buildingId)
 		if (buildingDef && buildingDef.spawnsSettlers) {
 			this.logger.log(`✓ House building completed: ${building.buildingId} (${building.id})`)
 			
@@ -838,7 +827,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	private updateBlockedTiles(building: BuildingInstance, blocked: boolean): void {
-		const definition = this.definitions.get(building.buildingId)
+		const definition = this.state.definitions.get(building.buildingId)
 		if (!definition?.blockedTiles || definition.blockedTiles.length === 0) {
 			return
 		}
@@ -883,7 +872,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	private updateConstructionPenalty(building: BuildingInstance, penalize: boolean): void {
-		const definition = this.definitions.get(building.buildingId)
+		const definition = this.state.definitions.get(building.buildingId)
 		if (!definition) {
 			return
 		}
@@ -917,7 +906,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 
 		const productionTimeMs = Math.max(1, (recipe.productionTime ?? 1) * 1000)
-		const state = this.autoProductionState.get(building.id) || {
+		const state = this.state.autoProductionState.get(building.id) || {
 			status: ProductionStatus.Idle,
 			progressMs: 0,
 			progress: 0
@@ -1000,18 +989,18 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	private emitAutoProductionStatus(building: BuildingInstance, status: ProductionStatus, progress: number, progressMs: number): void {
-		const current = this.autoProductionState.get(building.id)
+		const current = this.state.autoProductionState.get(building.id)
 		const nextProgress = typeof progress === 'number' ? progress : (current?.progress ?? 0)
 		const nextProgressMs = typeof progressMs === 'number' ? progressMs : (current?.progressMs ?? 0)
 
 		if (current && current.status === status && current.progress === nextProgress) {
 			if (current.progressMs !== nextProgressMs) {
-				this.autoProductionState.set(building.id, { status, progress: nextProgress, progressMs: nextProgressMs })
+				this.state.autoProductionState.set(building.id, { status, progress: nextProgress, progressMs: nextProgressMs })
 			}
 			return
 		}
 
-		this.autoProductionState.set(building.id, { status, progress: nextProgress, progressMs: nextProgressMs })
+		this.state.autoProductionState.set(building.id, { status, progress: nextProgress, progressMs: nextProgressMs })
 		this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionStatusChanged, {
 			buildingInstanceId: building.id,
 			status
@@ -1044,7 +1033,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 		// Check collision with existing buildings
 		for (const building of existingBuildings) {
-			const def = this.definitions.get(building.buildingId)
+			const def = this.state.definitions.get(building.buildingId)
 			if (!def) continue
 
 			const existingFootprint = this.getRotatedFootprint(def, typeof building.rotation === 'number' ? building.rotation : 0)
@@ -1218,7 +1207,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			}
 
 			for (const building of existingBuildings) {
-				const def = this.definitions.get(building.buildingId)
+				const def = this.state.definitions.get(building.buildingId)
 				if (!def) continue
 
 				const existingFootprint = this.getRotatedFootprint(def, typeof building.rotation === 'number' ? building.rotation : 0)
@@ -1292,7 +1281,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	private calculateRefund(building: BuildingInstance): BuildingCost[] {
-		const definition = this.definitions.get(building.buildingId)
+		const definition = this.state.definitions.get(building.buildingId)
 		if (!definition) return []
 
 		// Calculate refund based on remaining progress
@@ -1315,7 +1304,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	private sendBuildingsToClient(client: EventClient, mapId?: string) {
 		const targetMap = mapId || client.currentGroup
-		const buildingsInMap = Array.from(this.buildings.values()).filter(
+		const buildingsInMap = Array.from(this.state.buildings.values()).filter(
 			building => building.mapId === targetMap
 		)
 
@@ -1352,16 +1341,16 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	public loadBuildings(definitions: BuildingDefinition[]): void {
 		this.logger.log(`Loading ${definitions.length} building definitions`)
-		this.defaultProductionPlans.clear()
+		this.state.defaultProductionPlans.clear()
 		for (const definition of definitions) {
-			this.definitions.set(definition.id, definition)
+			this.state.definitions.set(definition.id, definition)
 			const defaultPlan = this.buildDefaultProductionPlan(definition)
 			if (defaultPlan) {
-				this.defaultProductionPlans.set(definition.id, defaultPlan)
+				this.state.defaultProductionPlans.set(definition.id, defaultPlan)
 			}
 			this.logger.debug(`Loaded building: ${definition.id} - ${definition.name}`)
 		}
-		this.logger.log(`Total building definitions: ${this.definitions.size}`)
+		this.logger.log(`Total building definitions: ${this.state.definitions.size}`)
 
 		this.initializeStorageForExistingBuildings()
 		
@@ -1378,19 +1367,19 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	public getBuildingDefinition(buildingId: BuildingId): BuildingDefinition | undefined {
-		return this.definitions.get(buildingId)
+		return this.state.definitions.get(buildingId)
 	}
 
 	public getAllBuildingDefinitions(): BuildingDefinition[] {
-		return Array.from(this.definitions.values())
+		return Array.from(this.state.definitions.values())
 	}
 
 	public getBuildingInstance(buildingInstanceId: string): BuildingInstance | undefined {
-		return this.buildings.get(buildingInstanceId)
+		return this.state.buildings.get(buildingInstanceId)
 	}
 
 	public hasConstructionNeedForItem(mapId: string, playerId: string, itemType: ItemType): boolean {
-		for (const building of this.buildings.values()) {
+		for (const building of this.state.buildings.values()) {
 			if (building.mapId !== mapId || building.playerId !== playerId) {
 				continue
 			}
@@ -1410,20 +1399,20 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	public getStorageRequestCandidates(buildingInstanceId: string): ItemType[] {
-		const building = this.buildings.get(buildingInstanceId)
+		const building = this.state.buildings.get(buildingInstanceId)
 		if (!building) {
 			return []
 		}
-		const definition = this.definitions.get(building.buildingId)
+		const definition = this.state.definitions.get(building.buildingId)
 		return this.getWarehouseItemTypes(definition)
 	}
 
 	public getStorageRequestItems(buildingInstanceId: string): ItemType[] {
-		const building = this.buildings.get(buildingInstanceId)
+		const building = this.state.buildings.get(buildingInstanceId)
 		if (!building) {
 			return []
 		}
-		const definition = this.definitions.get(building.buildingId)
+		const definition = this.state.definitions.get(building.buildingId)
 		if (!definition) {
 			return []
 		}
@@ -1437,12 +1426,12 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	public isProductionPaused(buildingInstanceId: string): boolean {
-		const building = this.buildings.get(buildingInstanceId)
+		const building = this.state.buildings.get(buildingInstanceId)
 		return Boolean(building?.productionPaused)
 	}
 
 	public setProductionPaused(buildingInstanceId: string, paused: boolean): void {
-		const building = this.buildings.get(buildingInstanceId)
+		const building = this.state.buildings.get(buildingInstanceId)
 		if (!building) {
 			return
 		}
@@ -1453,11 +1442,11 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	public getEffectiveProductionPlan(buildingInstanceId: string): ProductionPlan | undefined {
-		const building = this.buildings.get(buildingInstanceId)
+		const building = this.state.buildings.get(buildingInstanceId)
 		if (!building) {
 			return undefined
 		}
-		const definition = this.definitions.get(building.buildingId)
+		const definition = this.state.definitions.get(building.buildingId)
 		if (!definition) {
 			return undefined
 		}
@@ -1473,7 +1462,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	public getProductionCounts(buildingInstanceId: string): Record<string, number> {
-		const counts = this.productionCountsByBuilding.get(buildingInstanceId)
+		const counts = this.state.productionCountsByBuilding.get(buildingInstanceId)
 		if (!counts) {
 			return {}
 		}
@@ -1484,23 +1473,23 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		if (!recipeId || quantity <= 0) {
 			return
 		}
-		let counts = this.productionCountsByBuilding.get(buildingInstanceId)
+		let counts = this.state.productionCountsByBuilding.get(buildingInstanceId)
 		if (!counts) {
 			counts = new Map<string, number>()
-			this.productionCountsByBuilding.set(buildingInstanceId, counts)
+			this.state.productionCountsByBuilding.set(buildingInstanceId, counts)
 		}
 		const current = counts.get(recipeId) || 0
 		counts.set(recipeId, current + quantity)
 	}
 
 	public getBuildingsForMap(mapId: string): BuildingInstance[] {
-		return Array.from(this.buildings.values()).filter(
+		return Array.from(this.state.buildings.values()).filter(
 			building => building.mapId === mapId
 		)
 	}
 
 	public getAllBuildings(): BuildingInstance[] {
-		return Array.from(this.buildings.values())
+		return Array.from(this.state.buildings.values())
 	}
 
 	// Get building instance (alias for consistency)
@@ -1588,7 +1577,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			return false
 		}
 
-		const definition = this.definitions.get(building.buildingId)
+		const definition = this.state.definitions.get(building.buildingId)
 		if (!definition) {
 			return false
 		}
@@ -1602,7 +1591,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	// Building needs workers if it's completed and has worker slots available
 	if (building.stage === ConstructionStage.Completed && definition.workerSlots) {
-		const currentWorkers = this.assignedWorkers.get(buildingInstanceId)?.size || 0
+		const currentWorkers = this.state.assignedWorkers.get(buildingInstanceId)?.size || 0
 		return currentWorkers < definition.workerSlots
 	}
 
@@ -1610,7 +1599,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	public buildingNeedsResource(buildingInstanceId: string, itemType: string): boolean {
-		const neededResources = this.resourceRequests.get(buildingInstanceId)
+		const neededResources = this.state.resourceRequests.get(buildingInstanceId)
 		if (!neededResources) {
 			return false
 		}
@@ -1618,10 +1607,10 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	public setAssignedWorker(buildingInstanceId: string, settlerId: string, assigned: boolean): void {
-		if (!this.assignedWorkers.has(buildingInstanceId)) {
-			this.assignedWorkers.set(buildingInstanceId, new Set())
+		if (!this.state.assignedWorkers.has(buildingInstanceId)) {
+			this.state.assignedWorkers.set(buildingInstanceId, new Set())
 		}
-		const set = this.assignedWorkers.get(buildingInstanceId)!
+		const set = this.state.assignedWorkers.get(buildingInstanceId)!
 		if (assigned) {
 			set.add(settlerId)
 		} else {
@@ -1630,23 +1619,23 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	public setConstructionWorkerActive(buildingInstanceId: string, settlerId: string, active: boolean): void {
-		if (!this.activeConstructionWorkers.has(buildingInstanceId)) {
-			this.activeConstructionWorkers.set(buildingInstanceId, new Set())
+		if (!this.state.activeConstructionWorkers.has(buildingInstanceId)) {
+			this.state.activeConstructionWorkers.set(buildingInstanceId, new Set())
 		}
-		const set = this.activeConstructionWorkers.get(buildingInstanceId)!
+		const set = this.state.activeConstructionWorkers.get(buildingInstanceId)!
 		if (active) {
 			set.add(settlerId)
 		} else {
 			set.delete(settlerId)
 			if (set.size === 0) {
-				this.activeConstructionWorkers.delete(buildingInstanceId)
+				this.state.activeConstructionWorkers.delete(buildingInstanceId)
 			}
 		}
 	}
 
 	public getBuildingsNeedingResources(): string[] {
 		const results: string[] = []
-		for (const [buildingId, needed] of this.resourceRequests.entries()) {
+		for (const [buildingId, needed] of this.state.resourceRequests.entries()) {
 			if (needed.size > 0) {
 				results.push(buildingId)
 			}
@@ -1655,11 +1644,11 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	public getNeededResources(buildingInstanceId: string): Array<{ itemType: string, remaining: number }> {
-		const building = this.buildings.get(buildingInstanceId)
+		const building = this.state.buildings.get(buildingInstanceId)
 		if (!building) {
 			return []
 		}
-		const neededResources = this.resourceRequests.get(buildingInstanceId)
+		const neededResources = this.state.resourceRequests.get(buildingInstanceId)
 		if (!neededResources) {
 			return []
 		}
@@ -1680,7 +1669,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	// Get workers for building
 	public getBuildingWorkers(buildingInstanceId: string): string[] {
-		const workers = this.assignedWorkers.get(buildingInstanceId)
+		const workers = this.state.assignedWorkers.get(buildingInstanceId)
 		if (!workers) {
 			return []
 		}
@@ -1689,12 +1678,12 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	// Update tick to account for worker speedup
 	private calculateConstructionProgress(building: BuildingInstance, deltaSeconds: number): number {
-		const definition = this.definitions.get(building.buildingId)
+		const definition = this.state.definitions.get(building.buildingId)
 		if (!definition) {
 			return building.progress
 		}
 
-		const workerCount = this.activeConstructionWorkers.get(building.id)?.size || 0
+		const workerCount = this.state.activeConstructionWorkers.get(building.id)?.size || 0
 		
 		// Apply speedup: each worker doubles construction speed (up to 4x with 2 workers for now)
 		const speedup = 1 + (workerCount * 0.5) // 1x base, 1.5x with 1 worker, 2x with 2 workers, etc.
@@ -1741,22 +1730,22 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	private getOrCreateGlobalPlansForPlayer(playerId: string): Map<BuildingId, ProductionPlan> {
-		let plans = this.globalProductionPlansByPlayer.get(playerId)
+		let plans = this.state.globalProductionPlansByPlayer.get(playerId)
 		if (!plans) {
 			plans = new Map<BuildingId, ProductionPlan>()
-			this.globalProductionPlansByPlayer.set(playerId, plans)
+			this.state.globalProductionPlansByPlayer.set(playerId, plans)
 		}
 		return plans
 	}
 
 	private ensureGlobalPlansForPlayer(playerId: string): Map<BuildingId, ProductionPlan> {
 		const plans = this.getOrCreateGlobalPlansForPlayer(playerId)
-		for (const definition of this.definitions.values()) {
-			if (!this.defaultProductionPlans.has(definition.id)) {
+		for (const definition of this.state.definitions.values()) {
+			if (!this.state.defaultProductionPlans.has(definition.id)) {
 				continue
 			}
 			if (!plans.has(definition.id)) {
-				const defaultPlan = this.defaultProductionPlans.get(definition.id)
+				const defaultPlan = this.state.defaultProductionPlans.get(definition.id)
 				if (defaultPlan) {
 					plans.set(definition.id, { ...defaultPlan })
 				}
@@ -1771,7 +1760,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		if (existing) {
 			return existing
 		}
-		const defaultPlan = this.defaultProductionPlans.get(definition.id) ?? this.buildDefaultProductionPlan(definition)
+		const defaultPlan = this.state.defaultProductionPlans.get(definition.id) ?? this.buildDefaultProductionPlan(definition)
 		const plan = defaultPlan ? { ...defaultPlan } : {}
 		plans.set(definition.id, plan)
 		return plan
@@ -1821,89 +1810,11 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	serialize(): BuildingsSnapshot {
-		const buildings: BuildingInstanceSnapshot[] = Array.from(this.buildings.values()).map(building => ({
-			...building,
-			position: { ...building.position },
-			workAreaCenter: building.workAreaCenter ? { ...building.workAreaCenter } : undefined,
-			collectedResources: Array.from(building.collectedResources.entries())
-		}))
-
-		return {
-			buildings,
-			resourceRequests: Array.from(this.resourceRequests.entries()).map(([buildingId, needed]) => ([
-				buildingId,
-				Array.from(needed.values())
-			])),
-			assignedWorkers: Array.from(this.assignedWorkers.entries()).map(([buildingId, workers]) => ([
-				buildingId,
-				Array.from(workers.values())
-			])),
-			activeConstructionWorkers: Array.from(this.activeConstructionWorkers.entries()).map(([buildingId, workers]) => ([
-				buildingId,
-				Array.from(workers.values())
-			])),
-			autoProductionState: Array.from(this.autoProductionState.entries()),
-			buildingToMapObject: Array.from(this.buildingToMapObject.entries()),
-			productionCountsByBuilding: Array.from(this.productionCountsByBuilding.entries()).map(([buildingId, counts]) => ([
-				buildingId,
-				Array.from(counts.entries())
-			])),
-			globalProductionPlans: Array.from(this.globalProductionPlansByPlayer.entries()).map(([playerId, plans]) => ([
-				playerId,
-				Array.from(plans.entries())
-			])),
-			simulationTimeMs: this.simulationTimeMs,
-			tickAccumulatorMs: this.tickAccumulatorMs
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: BuildingsSnapshot): void {
-		this.buildings.clear()
-		for (const building of state.buildings) {
-			const collectedResources = new Map(building.collectedResources)
-			const restored: BuildingInstance = {
-				...building,
-				position: { ...building.position },
-				workAreaCenter: building.workAreaCenter ? { ...building.workAreaCenter } : undefined,
-				collectedResources
-			}
-			if (typeof restored.useGlobalProductionPlan !== 'boolean') {
-				const definition = this.definitions.get(restored.buildingId)
-				if (definition && getProductionRecipes(definition).length > 0) {
-					const hasLocalPlan = restored.productionPlan && Object.keys(restored.productionPlan).length > 0
-					restored.useGlobalProductionPlan = !hasLocalPlan
-				}
-			}
-			this.buildings.set(restored.id, restored)
-		}
-
-		this.resourceRequests.clear()
-		for (const [buildingId, needed] of state.resourceRequests) {
-			this.resourceRequests.set(buildingId, new Set(needed))
-		}
-
-		this.assignedWorkers.clear()
-		for (const [buildingId, workers] of state.assignedWorkers) {
-			this.assignedWorkers.set(buildingId, new Set(workers))
-		}
-
-		this.activeConstructionWorkers.clear()
-		for (const [buildingId, workers] of state.activeConstructionWorkers) {
-			this.activeConstructionWorkers.set(buildingId, new Set(workers))
-		}
-
-		this.autoProductionState = new Map(state.autoProductionState)
-		this.buildingToMapObject = new Map(state.buildingToMapObject)
-		this.productionCountsByBuilding.clear()
-		for (const [buildingId, counts] of state.productionCountsByBuilding ?? []) {
-			this.productionCountsByBuilding.set(buildingId, new Map(counts))
-		}
-		this.globalProductionPlansByPlayer.clear()
-		for (const [playerId, plans] of state.globalProductionPlans ?? []) {
-			this.globalProductionPlansByPlayer.set(playerId, new Map(plans))
-		}
-		this.simulationTimeMs = state.simulationTimeMs
-		this.tickAccumulatorMs = state.tickAccumulatorMs
+		this.state.deserialize(state)
 
 		this.initializeStorageForExistingBuildings()
 		this.initializeCollisionForExistingBuildings()
@@ -1911,11 +1822,11 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	private initializeStorageForExistingBuildings(): void {
-		if (!this.managers.storage || this.definitions.size === 0) {
+		if (!this.managers.storage || this.state.definitions.size === 0) {
 			return
 		}
-		for (const building of this.buildings.values()) {
-			const definition = this.definitions.get(building.buildingId)
+		for (const building of this.state.buildings.values()) {
+			const definition = this.state.definitions.get(building.buildingId)
 			if (definition) {
 				const normalized = this.normalizeStorageRequests(definition, building.storageRequests)
 				if (normalized) {
@@ -1936,10 +1847,10 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	private initializeCollisionForExistingBuildings(): void {
-		if (this.definitions.size === 0) {
+		if (this.state.definitions.size === 0) {
 			return
 		}
-		for (const building of this.buildings.values()) {
+		for (const building of this.state.buildings.values()) {
 			if (building.stage !== ConstructionStage.Completed) {
 				continue
 			}
@@ -1948,10 +1859,10 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	private initializeConstructionPenaltyForExistingBuildings(): void {
-		if (this.definitions.size === 0) {
+		if (this.state.definitions.size === 0) {
 			return
 		}
-		for (const building of this.buildings.values()) {
+		for (const building of this.state.buildings.values()) {
 			if (building.stage === ConstructionStage.Completed) {
 				continue
 			}
@@ -1961,15 +1872,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	reset(): void {
 		this.managers.map.resetConstructionPenalties()
-		this.buildings.clear()
-		this.resourceRequests.clear()
-		this.assignedWorkers.clear()
-		this.activeConstructionWorkers.clear()
-		this.autoProductionState.clear()
-		this.buildingToMapObject.clear()
-		this.unlockedFlagsByPlayerMap.clear()
-		this.simulationTimeMs = 0
-		this.tickAccumulatorMs = 0
+		this.state.reset()
 	}
 }
 
@@ -2000,3 +1903,5 @@ function rotatePointOffset(
 	}
 	return { x: height - offset.y, y: offset.x }
 }
+
+export * from './BuildingManagerState'

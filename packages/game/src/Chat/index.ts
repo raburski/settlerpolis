@@ -1,8 +1,11 @@
 import { EventManager, Event, EventClient } from '../events'
 import { Receiver, ChatMessageData, ChatSystemMessageData, ChatMessageType } from '../types'
 import { Logger } from '../Logs'
+import { ChatManagerState } from './ChatManagerState'
 
 export class ChatManager {
+	private readonly state = new ChatManagerState()
+
 	constructor(
 		private event: EventManager,
 		private logger: Logger
@@ -46,3 +49,5 @@ export class ChatManager {
 		}
 	}
 }
+
+export * from './ChatManagerState'

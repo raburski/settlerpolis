@@ -12,6 +12,7 @@ import { BaseManager } from '../Managers'
 import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
 import type { SchedulerSnapshot } from '../state/types'
+import { SchedulerState } from './SchedulerState'
 
 export interface SchedulerDeps {
 	event: EventManager
@@ -20,8 +21,7 @@ export interface SchedulerDeps {
 }
 
 export class Scheduler extends BaseManager<SchedulerDeps> {
-	private scheduledEvents: Map<string, ScheduledEvent> = new Map()
-	private simulationTimeMs = 0
+	private readonly state = new SchedulerState()
 
 	constructor(
 		managers: SchedulerDeps,
@@ -61,7 +61,7 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 	}
 
 	private handleSimulationTick(data: SimulationTickData) {
-		this.simulationTimeMs = data.nowMs
+		this.state.simulationTimeMs = data.nowMs
 		this.processDueEvents()
 	}
 
@@ -94,7 +94,7 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 		const currentKey = this.getGameTimeKey(currentTime)
 		const toExecute: ScheduledEvent[] = []
 
-		for (const event of this.scheduledEvents.values()) {
+		for (const event of this.state.scheduledEvents.values()) {
 			if (!event.isActive) continue
 
 			if (event.schedule.type === ScheduleType.GameTime) {
@@ -104,7 +104,7 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 				continue
 			}
 
-			if (event.nextRunAtSimMs !== undefined && this.simulationTimeMs >= event.nextRunAtSimMs) {
+			if (event.nextRunAtSimMs !== undefined && this.state.simulationTimeMs >= event.nextRunAtSimMs) {
 				toExecute.push(event)
 			}
 		}
@@ -153,21 +153,21 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 		const nextDate = interval.next().toDate()
 		const diffMinutes = Math.max(1, Math.ceil((nextDate.getTime() - baseDate.getTime()) / (60 * 1000)))
 		const timeSpeed = this.managers.time.getTimeSpeed()
-		return this.simulationTimeMs + diffMinutes * timeSpeed
+		return this.state.simulationTimeMs + diffMinutes * timeSpeed
 	}
 
 	private calculateNextRunAtSimMs(event: ScheduledEvent): number | undefined {
 		switch (event.schedule.type) {
 			case ScheduleType.Interval:
-				return this.simulationTimeMs + (event.schedule.value as number)
+				return this.state.simulationTimeMs + (event.schedule.value as number)
 			case ScheduleType.Cron:
 				return this.getCronNextRunAtSimMs(event)
 			case ScheduleType.Once: {
 				const value = event.schedule.value as number
-				if (value >= this.simulationTimeMs) {
+				if (value >= this.state.simulationTimeMs) {
 					return value
 				}
-				return this.simulationTimeMs + value
+				return this.state.simulationTimeMs + value
 			}
 			case ScheduleType.GameTime:
 				return undefined
@@ -190,7 +190,7 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 		}
 
 		// Store the event
-		this.scheduledEvents.set(id, event)
+		this.state.scheduledEvents.set(id, event)
 
 		// Calculate next run time for sim-time schedules
 		if (event.schedule.type !== ScheduleType.GameTime) {
@@ -252,7 +252,7 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 		}
 
 		// Update last run time
-		event.lastRunAtSimMs = this.simulationTimeMs
+		event.lastRunAtSimMs = this.state.simulationTimeMs
 		if (event.schedule.type === ScheduleType.GameTime && gameTimeKey) {
 			event.lastRunAtGameTimeKey = gameTimeKey
 		}
@@ -274,7 +274,7 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 			event.nextRunAtSimMs = this.calculateNextRunAtSimMs(event)
 		} else if (event.schedule.type === ScheduleType.Once) {
 			// Remove one-time events after execution
-			this.scheduledEvents.delete(event.id)
+			this.state.scheduledEvents.delete(event.id)
 		}
 	}
 	
@@ -289,7 +289,7 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 	}
 
 	private cancel(id: string, client: EventClient): void {
-		const event = this.scheduledEvents.get(id)
+		const event = this.state.scheduledEvents.get(id)
 		if (!event) {
 			client.emit(Receiver.Sender, SchedulerEvents.SS.Cancelled, {
 				success: false,
@@ -299,7 +299,7 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 		}
 
 		// Remove the event 
-		this.scheduledEvents.delete(id)
+		this.state.scheduledEvents.delete(id)
 
 		// Notify client
 		client.emit(Receiver.Sender, SchedulerEvents.SS.Cancelled, {
@@ -309,7 +309,7 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 	}
 	
 	private enableEvent(id: string, client: EventClient): void {
-		const event = this.scheduledEvents.get(id)
+		const event = this.state.scheduledEvents.get(id)
 		if (!event) {
 			client.emit(Receiver.Sender, SchedulerEvents.SS.Enable, {
 				success: false,
@@ -330,7 +330,7 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 			}
 			
 			// Update the event
-			this.scheduledEvents.set(id, event)
+			this.state.scheduledEvents.set(id, event)
 		}
 		
 		// Notify client
@@ -342,7 +342,7 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 	}
 	
 	private disableEvent(id: string, client: EventClient): void {
-		const event = this.scheduledEvents.get(id)
+		const event = this.state.scheduledEvents.get(id)
 		if (!event) {
 			client.emit(Receiver.Sender, SchedulerEvents.SS.Disable, {
 				success: false,
@@ -358,7 +358,7 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 			event.isActive = false
 			
 			// Update the event
-			this.scheduledEvents.set(id, event)
+			this.state.scheduledEvents.set(id, event)
 		}
 		
 		// Notify client
@@ -369,39 +369,22 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 	}
 
 	public getScheduledEvents(): ScheduledEvent[] {
-		return Array.from(this.scheduledEvents.values())
+		return Array.from(this.state.scheduledEvents.values())
 	}
 
 	public getEventById(id: string): ScheduledEvent | undefined {
-		return this.scheduledEvents.get(id)
+		return this.state.scheduledEvents.get(id)
 	}
 
 	serialize(): SchedulerSnapshot {
-		return {
-			events: Array.from(this.scheduledEvents.values()).map(event => ({
-				...event,
-				createdAt: { ...event.createdAt },
-				nextRunAtSimMs: event.nextRunAtSimMs,
-				lastRunAtSimMs: event.lastRunAtSimMs,
-				lastRunAtGameTimeKey: event.lastRunAtGameTimeKey
-			})),
-			simulationTimeMs: this.simulationTimeMs
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: SchedulerSnapshot): void {
-		this.scheduledEvents.clear()
-		for (const event of state.events) {
-			this.scheduledEvents.set(event.id, {
-				...event,
-				createdAt: { ...event.createdAt }
-			})
-		}
-		this.simulationTimeMs = state.simulationTimeMs
+		this.state.deserialize(state)
 	}
 
 	reset(): void {
-		this.scheduledEvents.clear()
-		this.simulationTimeMs = 0
+		this.state.reset()
 	}
 }

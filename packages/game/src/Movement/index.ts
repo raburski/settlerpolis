@@ -11,6 +11,7 @@ import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
 import type { RoadManager } from '../Roads'
 import type { MovementSnapshot, MovementTaskSnapshot } from '../state/types'
+import { MovementManagerState } from './MovementManagerState'
 
 const MOVEMENT_STEP_LAG = 100 // milliseconds between steps
 
@@ -21,9 +22,7 @@ export interface MovementDeps {
 }
 
 export class MovementManager extends BaseManager<MovementDeps> {
-	private entities: Map<string, MovementEntity> = new Map()
-	private tasks: Map<string, MovementTask> = new Map()
-	private simulationTimeMs = 0
+	private readonly state = new MovementManagerState()
 
 	constructor(
 		managers: MovementDeps,
@@ -39,7 +38,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 
 	/* EVENT HANDLERS */
 	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
-		this.simulationTimeMs = data.nowMs
+		this.state.simulationTimeMs = data.nowMs
 		this.handleSimulationTick(data)
 	}
 
@@ -48,7 +47,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 	 */
 	/* METHODS */
 	public registerEntity(entity: MovementEntity): void {
-		this.entities.set(entity.id, entity)
+		this.state.entities.set(entity.id, entity)
 	}
 
 	/**
@@ -58,7 +57,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		// Cancel any ongoing movement
 		this.cancelMovement(entityId)
 		// Remove entity
-		this.entities.delete(entityId)
+		this.state.entities.delete(entityId)
 	}
 
 	/**
@@ -72,17 +71,17 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		targetPosition: Position,
 		options?: MoveToPositionOptions
 	): boolean {
-		const entity = this.entities.get(entityId)
+		const entity = this.state.entities.get(entityId)
 		if (!entity) {
 			this.logger.error(`Entity not found: ${entityId}`)
 			return false
 		}
 
-		const timestamp = this.simulationTimeMs
+		const timestamp = this.state.simulationTimeMs
 		this.logger.log(`[MOVEMENT START] entityId=${entityId} | from=(${Math.round(entity.position.x)},${Math.round(entity.position.y)}) | to=(${Math.round(targetPosition.x)},${Math.round(targetPosition.y)}) | targetType=${options?.targetType || 'none'} | targetId=${options?.targetId || 'none'} | time=${timestamp}`)
 
 		// Cancel any existing movement
-		const hadExistingMovement = this.tasks.has(entityId)
+		const hadExistingMovement = this.state.tasks.has(entityId)
 		if (hadExistingMovement) {
 			this.logger.warn(`[MOVEMENT CANCELLED] Cancelling existing movement for ${entityId} before starting new movement`)
 		}
@@ -120,7 +119,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		path: Position[],
 		options?: MoveToPositionOptions
 	): boolean {
-		const entity = this.entities.get(entityId)
+		const entity = this.state.entities.get(entityId)
 		if (!entity) {
 			this.logger.error(`Entity not found: ${entityId}`)
 			return false
@@ -131,11 +130,11 @@ export class MovementManager extends BaseManager<MovementDeps> {
 			return false
 		}
 
-		const timestamp = this.simulationTimeMs
+		const timestamp = this.state.simulationTimeMs
 		const targetPosition = path[path.length - 1]
 		this.logger.log(`[MOVEMENT START] entityId=${entityId} | from=(${Math.round(entity.position.x)},${Math.round(entity.position.y)}) | to=(${Math.round(targetPosition.x)},${Math.round(targetPosition.y)}) | targetType=${options?.targetType || 'none'} | targetId=${options?.targetId || 'none'} | time=${timestamp}`)
 
-		const hadExistingMovement = this.tasks.has(entityId)
+		const hadExistingMovement = this.state.tasks.has(entityId)
 		if (hadExistingMovement) {
 			this.logger.warn(`[MOVEMENT CANCELLED] Cancelling existing movement for ${entityId} before starting new movement`)
 		}
@@ -154,7 +153,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		options: MoveToPositionOptions | undefined,
 		targetPosition: Position
 	): boolean {
-		const entity = this.entities.get(entityId)
+		const entity = this.state.entities.get(entityId)
 		if (!entity) {
 			return false
 		}
@@ -181,11 +180,11 @@ export class MovementManager extends BaseManager<MovementDeps> {
 			onStepComplete: callbacks?.onStepComplete ? (task, position) => callbacks.onStepComplete!(position) : undefined,
 			onPathComplete: callbacks?.onPathComplete ? (task) => callbacks.onPathComplete!(task) : undefined,
 			onCancelled: callbacks?.onCancelled ? (task) => callbacks.onCancelled!() : undefined,
-			createdAt: this.simulationTimeMs,
-			lastProcessed: this.simulationTimeMs
+			createdAt: this.state.simulationTimeMs,
+			lastProcessed: this.state.simulationTimeMs
 		}
 
-		this.tasks.set(entityId, task)
+		this.state.tasks.set(entityId, task)
 		this.logger.log(`[MOVEMENT TASK CREATED] entityId=${entityId} | pathLength=${path.length} | createdAt=${task.createdAt}`)
 
 		entity.position = { ...path[0] }
@@ -203,7 +202,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 	 * Cancel movement for entity
 	 */
 	public cancelMovement(entityId: string): void {
-		const task = this.tasks.get(entityId)
+		const task = this.state.tasks.get(entityId)
 		if (task) {
 			this.logger.debug(`cancelMovement: entityId=${entityId}`)
 			// Call cancelled callback
@@ -212,7 +211,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 			}
 
 			// Remove task
-			this.tasks.delete(entityId)
+			this.state.tasks.delete(entityId)
 			this.logger.debug(`cancelMovement: Task removed for ${entityId}`)
 		} else {
 			this.logger.debug(`cancelMovement: No task found for ${entityId}`)
@@ -220,15 +219,15 @@ export class MovementManager extends BaseManager<MovementDeps> {
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {
-		if (this.tasks.size === 0) {
+		if (this.state.tasks.size === 0) {
 			return
 		}
 
-		for (const task of Array.from(this.tasks.values())) {
-			const entity = this.entities.get(task.entityId)
+		for (const task of Array.from(this.state.tasks.values())) {
+			const entity = this.state.entities.get(task.entityId)
 			if (!entity) {
 				this.logger.warn(`handleSimulationTick: No entity for ${task.entityId}`)
-				this.tasks.delete(task.entityId)
+				this.state.tasks.delete(task.entityId)
 				continue
 			}
 			this.processTaskTick(task, entity, data.deltaMs, data.nowMs)
@@ -314,14 +313,14 @@ export class MovementManager extends BaseManager<MovementDeps> {
 	 * If there's a target, we've arrived at it (path always ends at the target or nearest walkable tile)
 	 */
 	private completePath(entityId: string): void {
-		const task = this.tasks.get(entityId)
-		const entity = this.entities.get(entityId)
+		const task = this.state.tasks.get(entityId)
+		const entity = this.state.entities.get(entityId)
 		if (!task || !entity) {
 			this.logger.warn(`completePath: No task or entity for ${entityId}`)
 			return
 		}
 
-		const completionTime = this.simulationTimeMs
+		const completionTime = this.state.simulationTimeMs
 		const movementDuration = completionTime - task.createdAt
 		this.logger.log(`[MOVEMENT COMPLETE] entityId=${entityId} | finalPosition=(${Math.round(entity.position.x)},${Math.round(entity.position.y)}) | targetType=${task.targetType || 'none'} | targetId=${task.targetId || 'none'} | duration=${movementDuration}ms | time=${completionTime}`)
 
@@ -332,7 +331,7 @@ export class MovementManager extends BaseManager<MovementDeps> {
 
 		// Remove task BEFORE emitting events to prevent race conditions
 		// If a new movement starts during event handling, it won't conflict with this task
-		this.tasks.delete(entityId)
+		this.state.tasks.delete(entityId)
 		this.logger.debug(`Task removed for ${entityId} before emitting events`)
 
 		// Emit step complete event for entity managers to sync final position
@@ -376,48 +375,18 @@ export class MovementManager extends BaseManager<MovementDeps> {
 	 * Get entity position (for entity managers)
 	 */
 	public getEntityPosition(entityId: string): Position | null {
-		const entity = this.entities.get(entityId)
+		const entity = this.state.entities.get(entityId)
 		return entity ? entity.position : null
 	}
 
 	serialize(): MovementSnapshot {
-		const activeMoves: MovementTaskSnapshot[] = []
-		for (const task of this.tasks.values()) {
-			const lastStep = task.path.length > 0 ? task.path[task.path.length - 1] : this.entities.get(task.entityId)?.position
-			if (!lastStep) {
-				continue
-			}
-			activeMoves.push({
-				entityId: task.entityId,
-				targetPosition: { ...lastStep },
-				targetType: task.targetType,
-				targetId: task.targetId
-			})
-		}
-
-		return {
-			entities: Array.from(this.entities.values()).map(entity => ({
-				...entity,
-				position: { ...entity.position }
-			})),
-			activeMoves,
-			simulationTimeMs: this.simulationTimeMs
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: MovementSnapshot): void {
-		this.entities.clear()
-		this.tasks.clear()
-		for (const entity of state.entities) {
-			this.entities.set(entity.id, {
-				...entity,
-				position: { ...entity.position }
-			})
-		}
-		this.simulationTimeMs = state.simulationTimeMs
-		const activeMoves = state.activeMoves ?? []
+		const activeMoves = this.state.deserialize(state)
 		for (const move of activeMoves) {
-			if (!this.entities.has(move.entityId)) {
+			if (!this.state.entities.has(move.entityId)) {
 				continue
 			}
 			this.moveToPosition(move.entityId, move.targetPosition, {
@@ -428,23 +397,21 @@ export class MovementManager extends BaseManager<MovementDeps> {
 	}
 
 	reset(): void {
-		this.entities.clear()
-		this.tasks.clear()
-		this.simulationTimeMs = 0
+		this.state.reset()
 	}
 
 	/**
 	 * Check if entity has an active movement task
 	 */
 	public hasActiveMovement(entityId: string): boolean {
-		return this.tasks.has(entityId)
+		return this.state.tasks.has(entityId)
 	}
 
 	/**
 	 * Update entity position (for teleport/sync)
 	 */
 	public updateEntityPosition(entityId: string, position: Position): void {
-		const entity = this.entities.get(entityId)
+		const entity = this.state.entities.get(entityId)
 		if (!entity) {
 			this.logger.error(`Entity not found: ${entityId}`)
 			return
@@ -468,3 +435,4 @@ export class MovementManager extends BaseManager<MovementDeps> {
 // Export types and events for use by other modules
 export * from './types'
 export * from './events'
+export * from './MovementManagerState'

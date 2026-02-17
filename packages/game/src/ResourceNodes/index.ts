@@ -21,6 +21,7 @@ import { BuildingsEvents } from '../Buildings/events'
 import { ConstructionStage } from '../Buildings/types'
 import { ProfessionType } from '../Population/types'
 import type { Settler } from '../Population/types'
+import { ResourceNodesManagerState } from './ResourceNodesManagerState'
 
 const TILE_SIZE = 32
 const WORLD_PLAYER_ID = 'world'
@@ -77,10 +78,7 @@ export interface ResourceNodesDeps {
 }
 
 export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
-	private definitions = new Map<string, ResourceNodeDefinition>()
-	private nodes = new Map<string, ResourceNodeInstance>()
-	private prospectingJobsByMap = new Map<string, ProspectingJob[]>()
-	private simulationTimeMs = 0
+	private readonly state = new ResourceNodesManagerState()
 
 	constructor(
 		managers: ResourceNodesDeps,
@@ -99,7 +97,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 
 	/* EVENT HANDLERS */
 	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
-		this.simulationTimeMs = data.nowMs
+		this.state.simulationTimeMs = data.nowMs
 		this.processNodeDecay()
 	}
 
@@ -117,9 +115,9 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 
 	/* METHODS */
 	public loadDefinitions(definitions: ResourceNodeDefinition[]): void {
-		this.definitions.clear()
+		this.state.definitions.clear()
 		definitions.forEach(def => {
-			this.definitions.set(def.id, def)
+			this.state.definitions.set(def.id, def)
 		})
 		this.logger.log(`[ResourceNodesManager] Loaded ${definitions.length} resource node definitions`)
 	}
@@ -130,7 +128,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		}
 
 		for (const spawn of spawns) {
-			const def = this.definitions.get(spawn.nodeType)
+			const def = this.state.definitions.get(spawn.nodeType)
 			if (!def) {
 				this.logger.warn(`[ResourceNodesManager] Missing definition for node type ${spawn.nodeType}`)
 				continue
@@ -195,11 +193,11 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 
 			node.mapObjectId = mapObject.id
 
-			this.nodes.set(nodeId, node)
+			this.state.nodes.set(nodeId, node)
 		}
 
 		this.rebuildBlockingCollision()
-		this.logger.log(`[ResourceNodesManager] Spawned ${this.nodes.size} resource nodes`)
+		this.logger.log(`[ResourceNodesManager] Spawned ${this.state.nodes.size} resource nodes`)
 	}
 
 	public removeNodesByType(mapId: string, nodeType: string): void {
@@ -207,9 +205,9 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			return
 		}
 
-		const def = this.definitions.get(nodeType)
+		const def = this.state.definitions.get(nodeType)
 		const toRemove: ResourceNodeInstance[] = []
-		for (const node of this.nodes.values()) {
+		for (const node of this.state.nodes.values()) {
 			if (node.mapId !== mapId) continue
 			if (node.nodeType !== nodeType) continue
 			toRemove.push(node)
@@ -226,7 +224,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			if (def) {
 				this.updateCollisionForNode(node, def, false)
 			}
-			this.nodes.delete(node.id)
+			this.state.nodes.delete(node.id)
 		}
 
 		this.rebuildBlockingCollision(mapId)
@@ -239,12 +237,12 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		if (def) {
 			this.updateCollisionForNode(node, def, false)
 		}
-		this.nodes.delete(node.id)
+		this.state.nodes.delete(node.id)
 	}
 
 	private handleProspectingRequest(data: ResourceNodeProspectRequestData, client: EventClient): void {
 		if (!data?.nodeId) return
-		const node = this.nodes.get(data.nodeId)
+		const node = this.state.nodes.get(data.nodeId)
 		if (!node) return
 		if (node.mapId !== client.currentGroup) return
 		if (node.nodeType !== RESOURCE_DEPOSIT_NODE) return
@@ -257,7 +255,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			mapId: node.mapId,
 			playerId: client.id,
 			nodeId: node.id,
-			createdAt: this.simulationTimeMs
+			createdAt: this.state.simulationTimeMs
 		}
 		const jobs = this.getProspectingJobsForMap(node.mapId)
 		jobs.push(job)
@@ -304,7 +302,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			if (node.nodeType === STONE_DEPOSIT_NODE && depositType !== 'stone') {
 				continue
 			}
-			const def = this.definitions.get(node.nodeType)
+			const def = this.state.definitions.get(node.nodeType)
 			this.claimNodeForBuilding(node, def, building.id ?? building.buildingId)
 			removed += 1
 		}
@@ -327,7 +325,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	private findDepositNodesById(mapId: string, nodeId: string): ResourceNodeInstance[] {
-		const node = this.nodes.get(nodeId)
+		const node = this.state.nodes.get(nodeId)
 		if (!node) return []
 		if (node.mapId !== mapId) return []
 		if (node.nodeType !== RESOURCE_DEPOSIT_NODE && node.nodeType !== STONE_DEPOSIT_NODE) return []
@@ -338,7 +336,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		const width = widthTiles * TILE_SIZE
 		const height = heightTiles * TILE_SIZE
 		const nodes: ResourceNodeInstance[] = []
-		for (const node of this.nodes.values()) {
+		for (const node of this.state.nodes.values()) {
 			if (node.mapId !== mapId) continue
 			if (node.nodeType !== RESOURCE_DEPOSIT_NODE && node.nodeType !== STONE_DEPOSIT_NODE) continue
 			const withinX = node.position.x >= position.x && node.position.x < position.x + width
@@ -351,17 +349,17 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	private getProspectingJobsForMap(mapId: string): ProspectingJob[] {
-		let jobs = this.prospectingJobsByMap.get(mapId)
+		let jobs = this.state.prospectingJobsByMap.get(mapId)
 		if (!jobs) {
 			jobs = []
-			this.prospectingJobsByMap.set(mapId, jobs)
+			this.state.prospectingJobsByMap.set(mapId, jobs)
 		}
 		return jobs
 	}
 
 	public getPendingProspectingGroups(): Array<{ mapId: string; playerId: string; count: number }> {
 		const groups = new Map<string, { mapId: string; playerId: string; count: number }>()
-		for (const jobs of this.prospectingJobsByMap.values()) {
+		for (const jobs of this.state.prospectingJobsByMap.values()) {
 			for (const job of jobs) {
 				if (job.assignedSettlerId) continue
 				const key = `${job.mapId}:${job.playerId}`
@@ -377,7 +375,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	public getProspectingJobForSettler(settlerId: string): ProspectingJob | null {
-		for (const jobs of this.prospectingJobsByMap.values()) {
+		for (const jobs of this.state.prospectingJobsByMap.values()) {
 			const job = jobs.find(candidate => candidate.assignedSettlerId === settlerId)
 			if (job) {
 				return job
@@ -387,7 +385,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	public claimProspectingJob(mapId: string, playerId: string, settlerId: string): { jobId: string; nodeId: string; position: Position; durationMs: number } | null {
-		const jobs = this.prospectingJobsByMap.get(mapId)
+		const jobs = this.state.prospectingJobsByMap.get(mapId)
 		if (!jobs || jobs.length === 0) {
 			return null
 		}
@@ -403,7 +401,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 				if (candidate.assignedSettlerId || candidate.playerId !== playerId) {
 					continue
 				}
-				const node = this.nodes.get(candidate.nodeId)
+				const node = this.state.nodes.get(candidate.nodeId)
 				if (!node) continue
 				const distance = calculateDistance(settler.position, node.position)
 				if (distance < bestDistance) {
@@ -420,7 +418,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		if (!job) {
 			return null
 		}
-		const node = this.nodes.get(job.nodeId)
+		const node = this.state.nodes.get(job.nodeId)
 		if (!node) {
 			return null
 		}
@@ -502,11 +500,11 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	public releaseProspectingJob(jobId: string): void {
-		for (const jobs of this.prospectingJobsByMap.values()) {
+		for (const jobs of this.state.prospectingJobsByMap.values()) {
 			const job = jobs.find(candidate => candidate.jobId === jobId)
 			if (job) {
 				job.assignedSettlerId = undefined
-				const node = this.nodes.get(job.nodeId)
+				const node = this.state.nodes.get(job.nodeId)
 				if (node && node.prospectingStatus === 'in_progress') {
 					node.prospectingStatus = 'queued'
 					node.prospectingSettlerId = undefined
@@ -518,7 +516,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	public completeProspectingJob(nodeId: string): void {
-		const node = this.nodes.get(nodeId)
+		const node = this.state.nodes.get(nodeId)
 		if (!node || node.nodeType !== RESOURCE_DEPOSIT_NODE) {
 			return
 		}
@@ -529,12 +527,12 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 
 		const jobId = node.prospectingJobId
 		if (jobId) {
-			for (const [mapId, jobs] of this.prospectingJobsByMap.entries()) {
+			for (const [mapId, jobs] of this.state.prospectingJobsByMap.entries()) {
 				const index = jobs.findIndex(job => job.jobId === jobId)
 				if (index >= 0) {
 					jobs.splice(index, 1)
 					if (jobs.length === 0) {
-						this.prospectingJobsByMap.delete(mapId)
+						this.state.prospectingJobsByMap.delete(mapId)
 					}
 					break
 				}
@@ -545,15 +543,15 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	public getNode(nodeId: string): ResourceNodeInstance | undefined {
-		return this.nodes.get(nodeId)
+		return this.state.nodes.get(nodeId)
 	}
 
 	public getDefinition(nodeType: string): ResourceNodeDefinition | undefined {
-		return this.definitions.get(nodeType)
+		return this.state.definitions.get(nodeType)
 	}
 
 	public getAvailableNodes(mapId: string, nodeType?: string): ResourceNodeInstance[] {
-		return Array.from(this.nodes.values()).filter(node => {
+		return Array.from(this.state.nodes.values()).filter(node => {
 			if (node.mapId !== mapId) return false
 			if (nodeType && node.nodeType !== nodeType) return false
 			if (node.remainingHarvests <= 0) return false
@@ -585,7 +583,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	public reserveNode(nodeId: string, jobId: string): boolean {
-		const node = this.nodes.get(nodeId)
+		const node = this.state.nodes.get(nodeId)
 		if (!node) return false
 		if (node.remainingHarvests <= 0) return false
 		if (node.isSpoiled) return false
@@ -597,21 +595,21 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	public releaseReservation(nodeId: string, jobId?: string): void {
-		const node = this.nodes.get(nodeId)
+		const node = this.state.nodes.get(nodeId)
 		if (!node) return
 		if (jobId && node.reservedBy !== jobId) return
 		node.reservedBy = undefined
 	}
 
 	public harvestNode(nodeId: string, jobId?: string): Item | null {
-		const node = this.nodes.get(nodeId)
+		const node = this.state.nodes.get(nodeId)
 		if (!node) return null
 		if (node.remainingHarvests <= 0) return null
 		if (node.isSpoiled) return null
 		if (!this.isNodeMature(node)) return null
 		if (jobId && node.reservedBy && node.reservedBy !== jobId) return null
 
-		const def = this.definitions.get(node.nodeType)
+		const def = this.state.definitions.get(node.nodeType)
 		if (!def) return null
 
 		node.remainingHarvests -= 1
@@ -624,7 +622,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 				}
 				this.updateCollisionForNode(node, def, false)
 				node.mapObjectId = undefined
-				node.matureAtMs = this.simulationTimeMs + def.regenTimeMs
+				node.matureAtMs = this.state.simulationTimeMs + def.regenTimeMs
 				node.isSpoiled = false
 				node.remainingHarvests = 0
 				return {
@@ -636,7 +634,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 				this.managers.mapObjects.removeObjectById(node.mapObjectId, node.mapId)
 			}
 			this.updateCollisionForNode(node, def, false)
-			this.nodes.delete(node.id)
+			this.state.nodes.delete(node.id)
 		}
 
 		return {
@@ -646,7 +644,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	public consumeDeposit(nodeId: string, amount: number = 1): number {
-		const node = this.nodes.get(nodeId)
+		const node = this.state.nodes.get(nodeId)
 		if (!node) {
 			return 0
 		}
@@ -662,7 +660,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	public plantNode(options: { nodeType: string, mapId: string, position: Position, growTimeMs?: number, spoilTimeMs?: number, despawnTimeMs?: number, tileBased?: boolean }): ResourceNodeInstance | null {
-		const def = this.definitions.get(options.nodeType)
+		const def = this.state.definitions.get(options.nodeType)
 		if (!def) {
 			this.logger.warn(`[ResourceNodesManager] Missing definition for node type ${options.nodeType}`)
 			return null
@@ -679,7 +677,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			tileBased: options.tileBased
 		}) : options.position
 
-		const existingAtPosition = Array.from(this.nodes.values()).find(node =>
+		const existingAtPosition = Array.from(this.state.nodes.values()).find(node =>
 			node.mapId === options.mapId &&
 			node.position.x === position.x &&
 			node.position.y === position.y &&
@@ -696,7 +694,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			return null
 		}
 
-		const matureAtMs = this.simulationTimeMs + Math.max(0, options.growTimeMs ?? 0)
+		const matureAtMs = this.state.simulationTimeMs + Math.max(0, options.growTimeMs ?? 0)
 		const node: ResourceNodeInstance = {
 			id: nodeId,
 			nodeType: def.id,
@@ -704,7 +702,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			position,
 			remainingHarvests,
 			matureAtMs,
-			plantedAtMs: this.simulationTimeMs
+			plantedAtMs: this.state.simulationTimeMs
 		}
 
 		const item: Item = {
@@ -744,13 +742,13 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			node.despawnAtMs = base + Math.max(0, options.despawnTimeMs)
 		}
 
-		this.nodes.set(nodeId, node)
+		this.state.nodes.set(nodeId, node)
 		this.updateCollisionForNode(node, def, true)
 		return node
 	}
 
 	public getNodes(mapId?: string, nodeType?: string): ResourceNodeInstance[] {
-		return Array.from(this.nodes.values()).filter(node => {
+		return Array.from(this.state.nodes.values()).filter(node => {
 			if (mapId && node.mapId !== mapId) return false
 			if (nodeType && node.nodeType !== nodeType) return false
 			if (node.remainingHarvests <= 0) return false
@@ -762,18 +760,18 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		if (node.matureAtMs === undefined) {
 			return true
 		}
-		return this.simulationTimeMs >= node.matureAtMs
+		return this.state.simulationTimeMs >= node.matureAtMs
 	}
 
 	private processNodeDecay(): void {
-		if (this.nodes.size === 0) {
+		if (this.state.nodes.size === 0) {
 			return
 		}
 
-		for (const node of this.nodes.values()) {
+		for (const node of this.state.nodes.values()) {
 			if (node.remainingHarvests <= 0) {
-				const def = this.definitions.get(node.nodeType)
-				if (def?.regenTimeMs && def.regenTimeMs > 0 && node.matureAtMs !== undefined && this.simulationTimeMs >= node.matureAtMs) {
+				const def = this.state.definitions.get(node.nodeType)
+				if (def?.regenTimeMs && def.regenTimeMs > 0 && node.matureAtMs !== undefined && this.state.simulationTimeMs >= node.matureAtMs) {
 					const nextHarvests = Math.max(1, def.maxHarvests)
 					node.remainingHarvests = nextHarvests
 					node.matureAtMs = 0
@@ -784,7 +782,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 						this.updateCollisionForNode(node, def, true)
 					} else {
 						node.remainingHarvests = 0
-						node.matureAtMs = this.simulationTimeMs + def.regenTimeMs
+						node.matureAtMs = this.state.simulationTimeMs + def.regenTimeMs
 					}
 				}
 				continue
@@ -792,7 +790,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 
 			if (node.isSpoiled || node.spoilAtMs === undefined) {
 				// skip spoil check
-			} else if (this.simulationTimeMs >= node.spoilAtMs) {
+			} else if (this.state.simulationTimeMs >= node.spoilAtMs) {
 				node.isSpoiled = true
 				node.reservedBy = undefined
 			}
@@ -800,18 +798,18 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 			if (node.despawnAtMs === undefined) {
 				continue
 			}
-			if (this.simulationTimeMs < node.despawnAtMs) {
+			if (this.state.simulationTimeMs < node.despawnAtMs) {
 				continue
 			}
 
 			if (node.mapObjectId) {
 				this.managers.mapObjects.removeObjectById(node.mapObjectId, node.mapId)
 			}
-			const def = this.definitions.get(node.nodeType)
+			const def = this.state.definitions.get(node.nodeType)
 			if (def) {
 				this.updateCollisionForNode(node, def, false)
 			}
-			this.nodes.delete(node.id)
+			this.state.nodes.delete(node.id)
 		}
 	}
 
@@ -859,7 +857,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	public rebuildBlockingCollision(mapId?: string): void {
-		const nodes = Array.from(this.nodes.values())
+		const nodes = Array.from(this.state.nodes.values())
 		const mapIds = new Set<string>()
 
 		for (const node of nodes) {
@@ -873,7 +871,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 
 		for (const node of nodes) {
 			if (mapId && node.mapId !== mapId) continue
-			const def = this.definitions.get(node.nodeType)
+			const def = this.state.definitions.get(node.nodeType)
 			if (!def) continue
 			this.updateCollisionForNode(node, def, true)
 		}
@@ -892,44 +890,20 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	serialize(): ResourceNodesSnapshot {
-		return {
-			nodes: Array.from(this.nodes.values()).map(node => ({
-				...node,
-				position: { ...node.position }
-			})),
-			simulationTimeMs: this.simulationTimeMs,
-			prospectingJobsByMap: Array.from(this.prospectingJobsByMap.entries()).map(([mapId, jobs]) => ([
-				mapId,
-				jobs.map(job => ({ ...job }))
-			]))
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: ResourceNodesSnapshot): void {
-		this.nodes.clear()
-		this.prospectingJobsByMap.clear()
-		for (const node of state.nodes) {
-			this.nodes.set(node.id, {
-				...node,
-				position: { ...node.position }
-			})
-		}
-		this.simulationTimeMs = state.simulationTimeMs
-		const jobsByMap = (state as ResourceNodesSnapshot & { prospectingJobsByMap?: Array<[string, ProspectingJob[]]> }).prospectingJobsByMap
-		if (Array.isArray(jobsByMap)) {
-			for (const [mapId, jobs] of jobsByMap) {
-				this.prospectingJobsByMap.set(mapId, jobs.map(job => ({ ...job })))
-			}
-		}
+		this.state.deserialize(state)
 		this.restoreMissingMapObjects()
 	}
 
 	private restoreMissingMapObjects(): void {
-		for (const node of this.nodes.values()) {
+		for (const node of this.state.nodes.values()) {
 			if (!this.shouldSyncNode(node)) {
 				continue
 			}
-			const def = this.definitions.get(node.nodeType)
+			const def = this.state.definitions.get(node.nodeType)
 			if (!def) {
 				this.logger.warn(`[ResourceNodesManager] Missing definition for node type ${node.nodeType} during restore`)
 				continue
@@ -1008,7 +982,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 
 	private collectNodesInBounds(mapId: string, bounds: ResourceNodeBounds): MapObject[] {
 		const results: MapObject[] = []
-		for (const node of this.nodes.values()) {
+		for (const node of this.state.nodes.values()) {
 			if (node.mapId !== mapId) continue
 			if (!this.shouldSyncNode(node)) continue
 
@@ -1018,7 +992,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 				continue
 			}
 
-			const def = this.definitions.get(node.nodeType)
+			const def = this.state.definitions.get(node.nodeType)
 			if (!def) {
 				this.logger.warn(`[ResourceNodesManager] Missing definition for node type ${node.nodeType} when syncing to client`)
 				continue
@@ -1036,7 +1010,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		if (node.isSpoiled) return false
 		if (node.claimedByBuildingId) return false
 		if (!this.isNodeMature(node)) {
-			const def = this.definitions.get(node.nodeType)
+			const def = this.state.definitions.get(node.nodeType)
 			if (def?.id !== 'tree') {
 				return false
 			}
@@ -1046,7 +1020,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 
 	private sendNodesToClient(client: EventClient, mapId?: string): void {
 		const targetMap = mapId || client.currentGroup
-		for (const node of this.nodes.values()) {
+		for (const node of this.state.nodes.values()) {
 			if (node.mapId !== targetMap) {
 				continue
 			}
@@ -1054,7 +1028,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 				continue
 			}
 
-			const def = this.definitions.get(node.nodeType)
+			const def = this.state.definitions.get(node.nodeType)
 			if (!def) {
 				this.logger.warn(`[ResourceNodesManager] Missing definition for node type ${node.nodeType} when syncing to client`)
 				continue
@@ -1074,7 +1048,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 		if (node.plantedAtMs === undefined || node.matureAtMs === undefined) return null
 		const durationMs = Math.max(0, node.matureAtMs - node.plantedAtMs)
 		if (durationMs <= 0) return null
-		const elapsedMs = Math.min(durationMs, Math.max(0, this.simulationTimeMs - node.plantedAtMs))
+		const elapsedMs = Math.min(durationMs, Math.max(0, this.state.simulationTimeMs - node.plantedAtMs))
 		return { durationMs, elapsedMs }
 	}
 
@@ -1111,7 +1085,7 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	private broadcastNodeUpdate(node: ResourceNodeInstance): void {
-		const def = this.definitions.get(node.nodeType)
+		const def = this.state.definitions.get(node.nodeType)
 		if (!def) {
 			this.logger.warn(`[ResourceNodesManager] Missing definition for node type ${node.nodeType} during broadcast`)
 			return
@@ -1243,8 +1217,8 @@ export class ResourceNodesManager extends BaseManager<ResourceNodesDeps> {
 	}
 
 	reset(): void {
-		this.nodes.clear()
-		this.prospectingJobsByMap.clear()
-		this.simulationTimeMs = 0
+		this.state.reset()
 	}
 }
+
+export * from './ResourceNodesManagerState'

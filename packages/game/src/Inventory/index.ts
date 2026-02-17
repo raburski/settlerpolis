@@ -9,6 +9,7 @@ import { INVENTORY_GRID_ROWS, INVENTORY_GRID_COLUMNS } from '../consts'
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
 import type { InventorySnapshot } from '../state/types'
+import { InventoryState } from './InventoryState'
 
 const DEFAULT_INVENTORY_ITEM_NAME = 'chainfolk_rug'
 
@@ -60,7 +61,7 @@ export interface InventoryDeps {
 }
 
 export class InventoryManager extends BaseManager<InventoryDeps> {
-	private inventories = new Map<string, Inventory>()
+	private readonly state = new InventoryState()
 
 	constructor(
 		managers: InventoryDeps,
@@ -75,7 +76,7 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 	}
 
 	public doesHave(itemType: string, quantity: number, playerId: string): boolean {
-		const inventory = this.inventories.get(playerId)
+		const inventory = this.state.inventories.get(playerId)
 		if (!inventory) return false
 
 		// Count how many items of this type the player has
@@ -91,7 +92,7 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 	}
 
 	removeItem(client: EventClient, itemId: string): Item | undefined {
-		const inventory = this.inventories.get(client.id)
+		const inventory = this.state.inventories.get(client.id)
 		if (!inventory) return undefined
 
 		// Find the slot containing this item
@@ -110,7 +111,7 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 		const { itemId, sourcePosition, targetPosition } = data
 		this.logger.debug('Processing MoveItem request:', { itemId, sourcePosition, targetPosition })
 		
-		const inventory = this.inventories.get(client.id)
+		const inventory = this.state.inventories.get(client.id)
 		if (!inventory) {
 			this.logger.debug('Inventory not found for client:', client.id)
 			return
@@ -156,7 +157,7 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 	}
 
 	public removeItemByType(client: EventClient, itemType: string, quantity: number = 1): boolean {
-		const inventory = this.inventories.get(client.id)
+		const inventory = this.state.inventories.get(client.id)
 		if (!inventory) {
 			this.logger.warn(`Cannot remove items: inventory not found for player ${client.id}`)
 			return false
@@ -205,22 +206,22 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 	/* EVENT HANDLERS */
 	private readonly handleLifecycleJoined = (client: EventClient): void => {
 		const initialInventory = this.createInitialInventory()
-		this.inventories.set(client.id, initialInventory)
+		this.state.inventories.set(client.id, initialInventory)
 	}
 
 	private readonly handleLifecycleLeft = (client: EventClient): void => {
-		this.inventories.delete(client.id)
+		this.state.inventories.delete(client.id)
 	}
 
 	private readonly handlePlayersCSJoin = (_data: PlayerJoinData, client: EventClient): void => {
-		const inventory = this.inventories.get(client.id)
+		const inventory = this.state.inventories.get(client.id)
 		if (inventory) {
 			client.emit(Receiver.Sender, Event.Inventory.SC.Update, { inventory })
 		}
 	}
 
 	private readonly handleInventoryCSConsume = (data: ConsumeItemData, client: EventClient): void => {
-		const inventory = this.inventories.get(client.id)
+		const inventory = this.state.inventories.get(client.id)
 		if (!inventory) return
 
 		const slot = inventory.slots.find(candidate => candidate.item?.id === data.itemId)
@@ -234,7 +235,7 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 	}
 
 	private readonly handleInventorySSAdd = (item: Item, client: EventClient): void => {
-		const inventory = this.inventories.get(client.id)
+		const inventory = this.state.inventories.get(client.id)
 		if (!inventory) return
 
 		const emptySlot = this.findFirstEmptySlot(client.id)
@@ -289,14 +290,14 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 	}
 
 	public getSlotAtPosition(playerId: string, position: Position): InventorySlot | undefined {
-		const inventory = this.inventories.get(playerId)
+		const inventory = this.state.inventories.get(playerId)
 		if (!inventory) return undefined
 		
 		return getSlotAtPosition(inventory, position)
 	}
 
 	public findFirstEmptySlot(playerId: string): Position | undefined {
-		const inventory = this.inventories.get(playerId)
+		const inventory = this.state.inventories.get(playerId)
 		if (!inventory) return undefined
 		
 		// Search for the first empty slot
@@ -313,7 +314,7 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 	}
 
 	public addItemToPosition(client: EventClient, item: Item, position: Position) {
-		const inventory = this.inventories.get(client.id)
+		const inventory = this.state.inventories.get(client.id)
 		if (!inventory) return
 		
 		const slot = getSlotAtPosition(inventory, position)
@@ -329,14 +330,14 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 	}
 
 	public getSlotForItem(playerId: string, itemId: string): InventorySlot | undefined {
-		const inventory = this.inventories.get(playerId)
+		const inventory = this.state.inventories.get(playerId)
 		if (!inventory) return undefined
 
 		return inventory.slots.find(slot => slot.item?.id === itemId)
 	}
 
 	public getItem(playerId: string, itemId: string): Item | undefined {
-		const inventory = this.inventories.get(playerId)
+		const inventory = this.state.inventories.get(playerId)
 		if (!inventory) return undefined
 
 		const slot = inventory.slots.find(slot => slot.item?.id === itemId)
@@ -344,27 +345,14 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 	}
 
 	serialize(): InventorySnapshot {
-		return {
-			inventories: Array.from(this.inventories.entries()).map(([playerId, inventory]) => ([
-				playerId,
-				{ slots: inventory.slots.map(slot => ({ position: { ...slot.position }, item: slot.item ? { ...slot.item } : null })) }
-			]))
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: InventorySnapshot): void {
-		this.inventories.clear()
-		for (const [playerId, inventory] of state.inventories) {
-			this.inventories.set(playerId, {
-				slots: inventory.slots.map(slot => ({
-					position: { ...slot.position },
-					item: slot.item ? { ...slot.item } : null
-				}))
-			})
-		}
+		this.state.deserialize(state)
 	}
 
 	reset(): void {
-		this.inventories.clear()
+		this.state.reset()
 	}
 }

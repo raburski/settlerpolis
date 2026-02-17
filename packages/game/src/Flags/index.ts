@@ -4,9 +4,10 @@ import { Flag, SetFlagData, UnsetFlagData, FlagScope } from './types'
 import { Receiver } from '../Receiver'
 import { Logger } from '../Logs'
 import type { FlagsSnapshot } from '../state/types'
+import { FlagsState } from './FlagsState'
 
 export class FlagsManager {
-	private flags: Map<string, Flag> = new Map()
+	private readonly state = new FlagsState()
 
 	constructor(
 		private event: EventManager,
@@ -29,68 +30,27 @@ export class FlagsManager {
 		this.unsetFlag(client, data)
 	}
 
-	/**
-	 * Get a unique key for a flag based on its scope and identifiers
-	 */
 	/* METHODS */
-	private getFlagKey(name: string, scope: FlagScope, playerId?: string, mapId?: string): string {
-		switch (scope) {
-			case FlagScope.Player:
-				return `player:${playerId}:${name}`
-			case FlagScope.Map:
-				return `map:${mapId}:${name}`
-			case FlagScope.Global:
-				return `global:${name}`
-			default:
-				return `${scope}:${name}`
-		}
-	}
 
 	/**
 	 * Get all flags matching the specified scope and identifiers
 	 */
 	public getFlags(scope: FlagScope, playerId?: string, mapId?: string): Flag[] {
-		const result: Flag[] = []
-		
-		for (const flag of this.flags.values()) {
-			if (flag.scope === scope) {
-				if (scope === FlagScope.Player && flag.playerId === playerId) {
-					result.push(flag)
-				} else if (scope === FlagScope.Map && flag.mapId === mapId) {
-					result.push(flag)
-				} else if (scope === FlagScope.Global) {
-					result.push(flag)
-				}
-			}
-		}
-		
-		return result
+		return this.state.getFlags(scope, playerId, mapId)
 	}
 
 	/**
 	 * Get a specific flag by name and scope
 	 */
 	public getFlag(name: string, scope: FlagScope, playerId?: string, mapId?: string): Flag | undefined {
-		const key = this.getFlagKey(name, scope, playerId, mapId)
-		return this.flags.get(key)
+		return this.state.getFlag(name, scope, playerId, mapId)
 	}
 
 	/**
 	 * Set a flag with the specified name, value, scope, and identifiers
 	 */
 	public setFlag(client: EventClient, data: SetFlagData): void {
-		const { name, value, scope, playerId, mapId } = data
-		const key = this.getFlagKey(name, scope, playerId, mapId)
-		
-		const flag = {
-			name,
-			value,
-			scope,
-			playerId,
-			mapId
-		}
-		
-		this.flags.set(key, flag)
+		const { key, flag } = this.state.setFlag(data)
 		
 		// Emit FlagSet event
 		client.emit(Receiver.All, FlagsEvents.SS.FlagSet, {
@@ -103,14 +63,7 @@ export class FlagsManager {
 	 * Unset a flag with the specified name, scope, and identifiers
 	 */
 	public unsetFlag(client: EventClient, data: UnsetFlagData): void {
-		const { name, scope, playerId, mapId } = data
-		const key = this.getFlagKey(name, scope, playerId, mapId)
-		
-		// Get the flag before deleting it
-		const flag = this.flags.get(key)
-		
-		// Delete the flag
-		this.flags.delete(key)
+		const { key, flag } = this.state.unsetFlag(data)
 		
 		// Emit FlagUnset event if the flag existed
 		if (flag) {
@@ -125,16 +78,14 @@ export class FlagsManager {
 	 * Check if a flag exists
 	 */
 	public hasFlag(name: string, scope: FlagScope, playerId?: string, mapId?: string): boolean {
-		const key = this.getFlagKey(name, scope, playerId, mapId)
-		return this.flags.has(key)
+		return this.state.hasFlag(name, scope, playerId, mapId)
 	}
 
 	/**
 	 * Get the value of a flag
 	 */
 	public getFlagValue(name: string, scope: FlagScope, playerId?: string, mapId?: string): any {
-		const flag = this.getFlag(name, scope, playerId, mapId)
-		return flag ? flag.value : undefined
+		return this.state.getFlagValue(name, scope, playerId, mapId)
 	}
 
 	public loadFlags() {
@@ -142,20 +93,14 @@ export class FlagsManager {
 	}
 
 	serialize(): FlagsSnapshot {
-		return {
-			flags: Array.from(this.flags.values()).map(flag => ({ ...flag }))
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: FlagsSnapshot): void {
-		this.flags.clear()
-		for (const flag of state.flags) {
-			const key = this.getFlagKey(flag.name, flag.scope, flag.playerId, flag.mapId)
-			this.flags.set(key, { ...flag })
-		}
+		this.state.deserialize(state)
 	}
 
 	reset(): void {
-		this.flags.clear()
+		this.state.reset()
 	}
-} 
+}

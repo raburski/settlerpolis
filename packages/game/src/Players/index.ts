@@ -14,6 +14,7 @@ import type { MapManager } from '../Map'
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
 import type { PlayersSnapshot } from '../state/types'
+import { PlayersState } from './PlayersState'
 
 // Define missing types
 interface PlayerTransitionData {
@@ -44,9 +45,7 @@ export interface PlayersDeps {
 }
 
 export class PlayersManager extends BaseManager<PlayersDeps> {
-	private players = new Map<string, Player>()
-	private startingItems: StartingItem[] = []
-	private connectedClients = new Set<string>()
+	private readonly state = new PlayersState()
 
 	constructor(
 		managers: PlayersDeps,
@@ -54,23 +53,23 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 		private logger: Logger
 	) {
 		super(managers)
-		this.startingItems = startingItems || []
+		this.state.startingItems = startingItems || []
 		this.setupEventHandlers()
 	}
 
 	getPlayer(playerId: string): Player | undefined {
-		return this.players.get(playerId)
+		return this.state.players.get(playerId)
 	}
 
 	// Spawn starting items at player start location
 	private spawnStartingItems(playerPosition: Position, mapId: string, client: EventClient): void {
-		if (this.startingItems.length === 0) {
+		if (this.state.startingItems.length === 0) {
 			return // No starting items configured
 		}
 
 		const TILE_SIZE = 32
 
-		this.startingItems.forEach((startingItem) => {
+		this.state.startingItems.forEach((startingItem) => {
 			// Check if item type exists
 			if (!this.managers.items.itemExists(startingItem.itemType)) {
 				this.logger.warn(`Starting item type ${startingItem.itemType} does not exist, skipping spawn`)
@@ -132,10 +131,10 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 
 	/* EVENT HANDLERS */
 	private readonly handlePlayersCSConnect = (_data: unknown, client: EventClient): void => {
-		if (this.connectedClients.has(client.id)) {
+		if (this.state.connectedClients.has(client.id)) {
 			return
 		}
-		this.connectedClients.add(client.id)
+		this.state.connectedClients.add(client.id)
 		this.logger.debug('[PLAYERS] on CONNECT', client.id)
 		client.emit(Receiver.Sender, Event.Players.SC.Connected, { playerId: client.id })
 		this.managers.map.loadPlayerMap(client)
@@ -143,10 +142,10 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 
 	private readonly handleLifecycleLeft = (client: EventClient): void => {
 		this.logger.debug('[PLAYERS] on LEFT', client.id)
-		this.connectedClients.delete(client.id)
-		const player = this.players.get(client.id)
+		this.state.connectedClients.delete(client.id)
+		const player = this.state.players.get(client.id)
 		if (player) {
-			this.players.delete(client.id)
+			this.state.players.delete(client.id)
 			client.emit(Receiver.NoSenderGroup, Event.Players.SC.Left, { playerId: client.id })
 		}
 	}
@@ -157,11 +156,11 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 
 	private readonly handlePlayersCSJoin = (data: PlayerJoinData, client: EventClient): void => {
 		const playerId = client.id
-		const existingPlayer = this.players.get(playerId)
+		const existingPlayer = this.state.players.get(playerId)
 		const mapId = data.mapId || this.managers.map.getDefaultMapId()
 		client.setGroup(mapId)
 
-		this.players.set(playerId, {
+		this.state.players.set(playerId, {
 			playerId,
 			position: data.position,
 			mapId,
@@ -183,7 +182,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 	}
 
 	private readonly handlePlayersCSMove = (data: PlayerMoveData, client: EventClient): void => {
-		const player = this.players.get(client.id)
+		const player = this.state.players.get(client.id)
 		if (player) {
 			player.position = data
 			client.emit(Receiver.NoSenderGroup, Event.Players.SC.Move, data)
@@ -192,7 +191,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 
 	private readonly handlePlayersCSTransitionTo = (data: PlayerTransitionData, client: EventClient): void => {
 		const playerId = client.id
-		const player = this.players.get(playerId)
+		const player = this.state.players.get(playerId)
 
 		if (player) {
 			client.emit(Receiver.NoSenderGroup, Event.Players.SC.Left, {})
@@ -206,7 +205,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 	}
 
 	private readonly handlePlayersCSDropItem = async (data: DropItemData, client: EventClient): Promise<void> => {
-		const player = this.players.get(client.id)
+		const player = this.state.players.get(client.id)
 		if (!player) return
 
 		const removedItem = this.managers.inventory.removeItem(client, data.itemId)
@@ -216,7 +215,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 	}
 
 	private readonly handlePlayersCSPickupItem = (data: PickupItemData, client: EventClient): void => {
-		const player = this.players.get(client.id)
+		const player = this.state.players.get(client.id)
 		if (!player) return
 
 		const item = this.managers.loot.getItem(data.itemId)
@@ -248,7 +247,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 	}
 
 	private readonly handlePlayersCSEquip = (data: EquipItemData, client: EventClient): void => {
-		const player = this.players.get(client.id)
+		const player = this.state.players.get(client.id)
 		if (!player) return
 
 		if (!player.equipment) {
@@ -282,7 +281,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 	}
 
 	private readonly handlePlayersCSUnequip = (data: UnequipItemData, client: EventClient): void => {
-		const player = this.players.get(client.id)
+		const player = this.state.players.get(client.id)
 		if (!player || !player.equipment) return
 
 		const equippedItem = player.equipment[data.slotType]
@@ -321,7 +320,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 	}
 
 	private handlePlace = (data: PlaceObjectData, client: EventClient) => {
-		const player = this.players.get(client.id)
+		const player = this.state.players.get(client.id)
 		if (!player) return
 
 		// Check if player has equipment
@@ -367,7 +366,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 	 */
 	/* METHODS */
 	private sendPlayers(mapId: string, client: EventClient) {
-		const mapPlayers = Array.from(this.players.values())
+		const mapPlayers = Array.from(this.state.players.values())
 			.filter(p => p.mapId === mapId && p.playerId !== client.id)
 			.forEach(player => {
 				client.emit(Receiver.Sender, Event.Players.SC.Joined, player)
@@ -388,27 +387,14 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 	}
 
 	serialize(): PlayersSnapshot {
-		return {
-			players: Array.from(this.players.values()).map(player => ({
-				...player,
-				position: { ...player.position },
-				equipment: player.equipment ? { ...player.equipment } : player.equipment
-			}))
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: PlayersSnapshot): void {
-		this.players.clear()
-		for (const player of state.players) {
-			this.players.set(player.playerId, {
-				...player,
-				position: { ...player.position },
-				equipment: player.equipment ? { ...player.equipment } : player.equipment
-			})
-		}
+		this.state.deserialize(state)
 	}
 
 	reset(): void {
-		this.players.clear()
+		this.state.reset()
 	}
 } 

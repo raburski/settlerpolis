@@ -16,7 +16,8 @@ import type { Position } from '../types'
 import type { Item } from '../Items/types'
 import { ConstructionStage } from '../Buildings/types'
 import type { BuildingDefinition } from '../Buildings/types'
-import type { StorageSnapshot, BuildingStorageSnapshot } from '../state/types'
+import type { StorageSnapshot } from '../state/types'
+import { StorageManagerState } from './StorageManagerState'
 
 export interface StorageDeps {
 	event: EventManager
@@ -27,12 +28,9 @@ export interface StorageDeps {
 }
 
 export class StorageManager extends BaseManager<StorageDeps> {
-	private buildingStorages: Map<string, BuildingStorage> = new Map() // buildingInstanceId -> BuildingStorage
-	private reservations: Map<string, StorageReservation> = new Map()  // reservationId -> StorageReservation
+	private readonly state = new StorageManagerState()
 	private readonly STORAGE_TICK_INTERVAL_MS = 5000
 	private readonly GAME_DAY_MS = 24 * 60 * 1000
-	private tickAccumulatorMs = 0
-	private simulationTimeMs = 0
 	private readonly WILDCARD_ITEM_TYPE = '*'
 
 	constructor(
@@ -58,12 +56,12 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {
-		this.simulationTimeMs = data.nowMs
-		this.tickAccumulatorMs += data.deltaMs
-		if (this.tickAccumulatorMs < this.STORAGE_TICK_INTERVAL_MS) {
+		this.state.simulationTimeMs = data.nowMs
+		this.state.tickAccumulatorMs += data.deltaMs
+		if (this.state.tickAccumulatorMs < this.STORAGE_TICK_INTERVAL_MS) {
 			return
 		}
-		this.tickAccumulatorMs -= this.STORAGE_TICK_INTERVAL_MS
+		this.state.tickAccumulatorMs -= this.STORAGE_TICK_INTERVAL_MS
 		this.managers.event.emit(Receiver.All, StorageEvents.SS.StorageTick, {})
 	}
 
@@ -197,11 +195,11 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		if (!reservationId) {
 			return null
 		}
-		const reservation = this.reservations.get(reservationId)
+		const reservation = this.state.reservations.get(reservationId)
 		if (!reservation?.slotId) {
 			return null
 		}
-		const storage = this.buildingStorages.get(reservation.buildingInstanceId)
+		const storage = this.state.buildingStorages.get(reservation.buildingInstanceId)
 		if (!storage) {
 			return null
 		}
@@ -316,7 +314,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			return
 		}
 
-		if (this.buildingStorages.has(buildingInstanceId)) {
+		if (this.state.buildingStorages.has(buildingInstanceId)) {
 			this.logger.log(`[StorageManager] Storage already initialized for building ${buildingInstanceId}`)
 			return
 		}
@@ -369,18 +367,18 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			this.addSlotToIndex(storage, slotDef.itemType, slotId)
 		}
 
-		this.buildingStorages.set(buildingInstanceId, storage)
+		this.state.buildingStorages.set(buildingInstanceId, storage)
 		this.logger.log(`[StorageManager] Initialized storage with ${storage.slots.size} slots for building ${buildingInstanceId}`)
 	}
 
 	// Get building storage
 	public getBuildingStorage(buildingInstanceId: string): BuildingStorage | undefined {
-		return this.buildingStorages.get(buildingInstanceId)
+		return this.state.buildingStorages.get(buildingInstanceId)
 	}
 
 	// Remove storage for a demolished/removed building
 	public removeBuildingStorage(buildingInstanceId: string): void {
-		const storage = this.buildingStorages.get(buildingInstanceId)
+		const storage = this.state.buildingStorages.get(buildingInstanceId)
 		if (!storage) {
 			return
 		}
@@ -395,18 +393,18 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			}
 		}
 
-		for (const [reservationId, reservation] of this.reservations.entries()) {
+		for (const [reservationId, reservation] of this.state.reservations.entries()) {
 			if (reservation.buildingInstanceId === buildingInstanceId) {
-				this.reservations.delete(reservationId)
+				this.state.reservations.delete(reservationId)
 			}
 		}
 
-		this.buildingStorages.delete(buildingInstanceId)
+		this.state.buildingStorages.delete(buildingInstanceId)
 	}
 
 	// Reserve storage space for delivery (incoming or outgoing) at a specific slot
 	public reserveStorage(buildingInstanceId: string, itemType: string, quantity: number, reservedBy: string, isOutgoing: boolean = false, allowInternal: boolean = false, directionOverride?: StorageSlotRole): StorageReservationResult | null {
-		const storage = this.buildingStorages.get(buildingInstanceId)
+		const storage = this.state.buildingStorages.get(buildingInstanceId)
 		if (!storage) {
 			this.logger.warn(`[StorageManager] Cannot reserve storage: Building ${buildingInstanceId} has no storage`)
 			return null
@@ -466,12 +464,12 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			quantity,
 			reservedBy,
 			status: StorageReservationStatus.Pending,
-			createdAt: this.simulationTimeMs,
+			createdAt: this.state.simulationTimeMs,
 			isOutgoing,
 			slotId: slot.slotId
 		}
 
-		this.reservations.set(reservationId, reservation)
+		this.state.reservations.set(reservationId, reservation)
 
 		this.logger.log(`[StorageManager] Reserved ${quantity} ${itemType} in slot ${slot.slotId} for building ${buildingInstanceId} (reservation: ${reservationId}, outgoing: ${isOutgoing})`)
 
@@ -548,7 +546,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		if (quantity <= 0) {
 			return
 		}
-		slot.batches.push({ quantity, storedAtMs: this.simulationTimeMs })
+		slot.batches.push({ quantity, storedAtMs: this.state.simulationTimeMs })
 	}
 
 	private removeFromSlotBatches(slot: StorageSlot, quantity: number): void {
@@ -604,7 +602,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		slot.quantity = Math.max(0, slot.quantity - removed)
 		this.removeFromSlotBatches(slot, removed)
 		this.updatePileForSlot(slot)
-		const storage = this.buildingStorages.get(slot.buildingInstanceId)
+		const storage = this.state.buildingStorages.get(slot.buildingInstanceId)
 		if (storage) {
 			this.maybeResetWildcardSlot(storage, slot)
 		}
@@ -639,7 +637,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			return
 		}
 
-		const ageMs = this.simulationTimeMs - oldestBatch.storedAtMs
+		const ageMs = this.state.simulationTimeMs - oldestBatch.storedAtMs
 		if (ageMs <= 0) {
 			return
 		}
@@ -686,7 +684,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 	// Add items to building storage
 	public addToStorage(buildingInstanceId: string, itemType: string, quantity: number, reservationId?: string, direction: StorageSlotRole = 'incoming'): boolean {
-		const storage = this.buildingStorages.get(buildingInstanceId)
+		const storage = this.state.buildingStorages.get(buildingInstanceId)
 		if (!storage) {
 			this.logger.warn(`[StorageManager] Cannot add to storage: Building ${buildingInstanceId} has no storage`)
 			return false
@@ -736,7 +734,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 	// Remove items from building storage
 	public removeFromStorage(buildingInstanceId: string, itemType: string, quantity: number, reservationId?: string, direction: StorageSlotRole = 'any'): boolean {
-		const storage = this.buildingStorages.get(buildingInstanceId)
+		const storage = this.state.buildingStorages.get(buildingInstanceId)
 		if (!storage) {
 			this.logger.warn(`[StorageManager] Cannot remove from storage: Building ${buildingInstanceId} has no storage`)
 			return false
@@ -781,7 +779,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 	// Check if building has available storage for item type
 	public hasAvailableStorage(buildingInstanceId: string, itemType: string, quantity: number, direction: StorageSlotRole = 'incoming'): boolean {
-		const storage = this.buildingStorages.get(buildingInstanceId)
+		const storage = this.state.buildingStorages.get(buildingInstanceId)
 		if (!storage) {
 			return false
 		}
@@ -797,7 +795,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 	// Get storage capacity for item type (reads from BuildingDefinition)
 	public getStorageCapacity(buildingInstanceId: string, itemType: string, direction: StorageSlotRole = 'any'): number {
-		const storage = this.buildingStorages.get(buildingInstanceId)
+		const storage = this.state.buildingStorages.get(buildingInstanceId)
 		if (storage) {
 			const slots = this.getSlotsForItem(storage, itemType, direction)
 			return slots.reduce((sum, slot) => sum + slot.pileSize, 0)
@@ -834,7 +832,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	// Returns: current items in storage minus items reserved for outgoing transport
 	// This is used to check if a building has items that can be transported to other buildings
 	public getAvailableQuantity(buildingInstanceId: string, itemType: string, direction: StorageSlotRole = 'outgoing'): number {
-		const storage = this.buildingStorages.get(buildingInstanceId)
+		const storage = this.state.buildingStorages.get(buildingInstanceId)
 		if (!storage) {
 			return 0
 		}
@@ -844,7 +842,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 	// Get current quantity for an item type
 	public getCurrentQuantity(buildingInstanceId: string, itemType: string, direction: StorageSlotRole = 'any'): number {
-		const storage = this.buildingStorages.get(buildingInstanceId)
+		const storage = this.state.buildingStorages.get(buildingInstanceId)
 		if (!storage) {
 			return 0
 		}
@@ -873,7 +871,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			if (building.stage !== ConstructionStage.Completed) {
 				continue
 			}
-			const storage = this.buildingStorages.get(building.id)
+			const storage = this.state.buildingStorages.get(building.id)
 			if (!storage) {
 				continue
 			}
@@ -914,7 +912,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 	// Release storage reservation
 	public releaseReservation(reservationId: string): void {
-		const reservation = this.reservations.get(reservationId)
+		const reservation = this.state.reservations.get(reservationId)
 		if (!reservation) {
 			this.logger.warn(`[StorageManager] Cannot release reservation: Reservation ${reservationId} not found`)
 			return
@@ -922,7 +920,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		if (reservation.status === StorageReservationStatus.Cancelled || reservation.status === StorageReservationStatus.Delivered) {
 			return
 		}
-		const storage = this.buildingStorages.get(reservation.buildingInstanceId)
+		const storage = this.state.buildingStorages.get(reservation.buildingInstanceId)
 		if (storage && reservation.slotId) {
 			const slot = storage.slots.get(reservation.slotId)
 			if (slot) {
@@ -936,7 +934,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		}
 
 		reservation.status = StorageReservationStatus.Cancelled
-		this.reservations.delete(reservationId)
+		this.state.reservations.delete(reservationId)
 
 		this.logger.log(`[StorageManager] Released reservation ${reservationId}`)
 
@@ -953,14 +951,14 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	public completeReservation(reservationId: string): void {
-		const reservation = this.reservations.get(reservationId)
+		const reservation = this.state.reservations.get(reservationId)
 		if (!reservation) {
 			return
 		}
 		if (reservation.status === StorageReservationStatus.Cancelled || reservation.status === StorageReservationStatus.Delivered) {
 			return
 		}
-		const storage = this.buildingStorages.get(reservation.buildingInstanceId)
+		const storage = this.state.buildingStorages.get(reservation.buildingInstanceId)
 		if (storage && reservation.slotId) {
 			const slot = storage.slots.get(reservation.slotId)
 			if (slot) {
@@ -978,14 +976,14 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	public hasReservation(reservationId: string): boolean {
-		return this.reservations.has(reservationId)
+		return this.state.reservations.has(reservationId)
 	}
 
 	// Get all buildings with available items of a specific type
 	public getBuildingsWithAvailableItems(itemType: string, quantity: number, mapId: string, playerId: string): string[] {
 		const buildings: string[] = []
 
-		for (const [buildingInstanceId, storage] of this.buildingStorages.entries()) {
+		for (const [buildingInstanceId, storage] of this.state.buildingStorages.entries()) {
 			const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
 			if (!building || building.mapId !== mapId || building.playerId !== playerId) {
 				continue
@@ -1007,17 +1005,17 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	private storageTick(): void {
 		// Periodic storage management tasks
 		// For now, just cleanup old cancelled reservations
-		const now = this.simulationTimeMs
+		const now = this.state.simulationTimeMs
 		const RESERVATION_CLEANUP_AGE = 60000 // 1 minute
 
-		for (const [reservationId, reservation] of this.reservations.entries()) {
+		for (const [reservationId, reservation] of this.state.reservations.entries()) {
 			if ((reservation.status === StorageReservationStatus.Cancelled || reservation.status === StorageReservationStatus.Delivered) &&
 				(now - reservation.createdAt) > RESERVATION_CLEANUP_AGE) {
-				this.reservations.delete(reservationId)
+				this.state.reservations.delete(reservationId)
 			}
 		}
 
-		for (const storage of this.buildingStorages.values()) {
+		for (const storage of this.state.buildingStorages.values()) {
 			for (const slot of storage.slots.values()) {
 				this.maybeSpoilSlot(slot)
 			}
@@ -1025,57 +1023,11 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	serialize(): StorageSnapshot {
-		const storages: BuildingStorageSnapshot[] = []
-		for (const storage of this.buildingStorages.values()) {
-			storages.push({
-				buildingInstanceId: storage.buildingInstanceId,
-				slots: Array.from(storage.slots.values()).map(slot => ({
-					...slot,
-					position: { ...slot.position },
-					batches: slot.batches.map(batch => ({ ...batch }))
-				})),
-				slotsByItem: Array.from(storage.slotsByItem.entries()).map(([itemType, slotIds]) => ([
-					itemType,
-					[...slotIds]
-				]))
-			})
-		}
-
-		return {
-			storages,
-			reservations: Array.from(this.reservations.values()).map(reservation => ({ ...reservation })),
-			simulationTimeMs: this.simulationTimeMs,
-			tickAccumulatorMs: this.tickAccumulatorMs
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: StorageSnapshot): void {
-		this.buildingStorages.clear()
-		this.reservations.clear()
-		for (const storage of state.storages) {
-			const slots = new Map<string, StorageSlot>()
-			for (const slot of storage.slots) {
-				slots.set(slot.slotId, {
-					...slot,
-					position: { ...slot.position },
-					batches: slot.batches.map(batch => ({ ...batch }))
-				})
-			}
-			const slotsByItem = new Map<string, string[]>()
-			for (const [itemType, slotIds] of storage.slotsByItem) {
-				slotsByItem.set(itemType, [...slotIds])
-			}
-			this.buildingStorages.set(storage.buildingInstanceId, {
-				buildingInstanceId: storage.buildingInstanceId,
-				slots,
-				slotsByItem
-			})
-		}
-		for (const reservation of state.reservations) {
-			this.reservations.set(reservation.reservationId, { ...reservation })
-		}
-		this.simulationTimeMs = state.simulationTimeMs
-		this.tickAccumulatorMs = state.tickAccumulatorMs
+		this.state.deserialize(state)
 
 		this.initializeStorageForMissingBuildings()
 		this.releaseStalePendingReservations()
@@ -1092,7 +1044,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			if (!definition?.storageSlots || definition.storageSlots.length === 0) {
 				continue
 			}
-			if (this.buildingStorages.has(building.id)) {
+			if (this.state.buildingStorages.has(building.id)) {
 				continue
 			}
 			this.initializeBuildingStorage(building.id)
@@ -1101,11 +1053,11 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 	private releaseStalePendingReservations(): void {
 		const MAX_PENDING_AGE_MS = 2 * 60 * 1000
-		for (const reservation of this.reservations.values()) {
+		for (const reservation of this.state.reservations.values()) {
 			if (reservation.status !== StorageReservationStatus.Pending) {
 				continue
 			}
-			if (this.simulationTimeMs - reservation.createdAt < MAX_PENDING_AGE_MS) {
+			if (this.state.simulationTimeMs - reservation.createdAt < MAX_PENDING_AGE_MS) {
 				continue
 			}
 			this.releaseReservation(reservation.reservationId)
@@ -1113,7 +1065,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	private syncSlotCapacitiesFromDefinitions(): void {
-		for (const [buildingInstanceId, storage] of this.buildingStorages.entries()) {
+		for (const [buildingInstanceId, storage] of this.state.buildingStorages.entries()) {
 			const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
 			if (!building) {
 				continue
@@ -1157,10 +1109,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	reset(): void {
-		this.buildingStorages.clear()
-		this.reservations.clear()
-		this.simulationTimeMs = 0
-		this.tickAccumulatorMs = 0
+		this.state.reset()
 	}
 }
 
@@ -1172,3 +1121,5 @@ function normalizeQuarterTurns(rotation: number): number {
 	const normalized = ((turns % 4) + 4) % 4
 	return normalized
 }
+
+export * from './StorageManagerState'

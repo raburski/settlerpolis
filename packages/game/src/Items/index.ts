@@ -2,9 +2,10 @@ import { EventManager, Event, EventClient } from '../events'
 import { ItemCategory, ItemMetadata, ItemTypeRequest, ItemTypeResponse } from './types'
 import { Receiver } from '../Receiver'
 import { Logger } from '../Logs'
+import { ItemsManagerState } from './ItemsManagerState'
 
 export class ItemsManager {
-	private itemsMetadata: Record<string, ItemMetadata> = {}
+	private readonly state = new ItemsManagerState()
 
 	constructor(
 		private event: EventManager,
@@ -14,7 +15,7 @@ export class ItemsManager {
 	}
 
 	public loadItems(items: ItemMetadata[]) {
-		this.itemsMetadata = items.reduce((acc, item) => {
+		this.state.itemsMetadata = items.reduce((acc, item) => {
 			acc[item.id] = item
 			return acc
 		}, {} as Record<string, ItemMetadata>)
@@ -26,7 +27,7 @@ export class ItemsManager {
 
 	/* EVENT HANDLERS */
 	private readonly handleItemsCSGetType = (data: ItemTypeRequest, client: EventClient): void => {
-		const metadata = this.itemsMetadata[data.itemType] || null
+		const metadata = this.state.itemsMetadata[data.itemType] || null
 
 		const response: ItemTypeResponse = {
 			itemType: data.itemType,
@@ -41,11 +42,11 @@ export class ItemsManager {
 	 */
 	/* METHODS */
 	public getItemMetadata(itemId: string): ItemMetadata | null {
-		return this.itemsMetadata[itemId] || null
+		return this.state.itemsMetadata[itemId] || null
 	}
 
 	public getItems(): ItemMetadata[] {
-		return Object.values(this.itemsMetadata)
+		return Object.values(this.state.itemsMetadata)
 	}
 
 	public getItemsByCategory(category: ItemCategory): ItemMetadata[] {
@@ -56,6 +57,8 @@ export class ItemsManager {
 	 * Check if an item exists
 	 */
 	public itemExists(itemId: string): boolean {
-		return itemId in this.itemsMetadata
+		return itemId in this.state.itemsMetadata
 	}
-} 
+}
+
+export * from './ItemsManagerState'

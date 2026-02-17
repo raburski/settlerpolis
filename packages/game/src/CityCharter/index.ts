@@ -19,23 +19,13 @@ import { ConstructionStage } from '../Buildings/types'
 import type { CityCharterSnapshot } from '../state/types'
 import type { PlayerJoinData, PlayerTransitionData } from '../Players/types'
 import type { MapId, PlayerId } from '../ids'
+import { CityCharterManagerState, type CityCharterState } from './CityCharterManagerState'
 
 export interface CityCharterDeps {
 	event: EventManager
 	population: PopulationManager
 	buildings: BuildingManager
 	storage: StorageManager
-}
-
-type CityCharterState = {
-	playerId: PlayerId
-	mapId: MapId
-	currentTierId: string
-	claimedTierIds: string[]
-	unlockedFlags: string[]
-	currentTierRequirementsMet: boolean
-	buffsActive: boolean
-	isEligibleForNext: boolean
 }
 
 type RequirementsContext = {
@@ -45,12 +35,8 @@ type RequirementsContext = {
 }
 
 export class CityCharterManager extends BaseManager<CityCharterDeps> {
-	private tiers: CityCharterTier[] = []
-	private tiersById = new Map<string, CityCharterTier>()
-	private defaultTierId: string | null = null
-	private states = new Map<string, CityCharterState>()
+	private readonly state = new CityCharterManagerState()
 	private readonly TICK_INTERVAL_MS = 1000
-	private tickAccumulatorMs = 0
 
 	constructor(
 		managers: CityCharterDeps,
@@ -98,24 +84,24 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 
 	/* METHODS */
 	public loadCharters(content: CityCharterContent): void {
-		this.tiers = (content.tiers || []).map((tier, index) => ({
+		this.state.tiers = (content.tiers || []).map((tier, index) => ({
 			...tier,
 			level: typeof tier.level === 'number' ? tier.level : index
 		}))
-		this.tiersById.clear()
-		this.tiers.forEach(tier => this.tiersById.set(tier.id, tier))
-		this.defaultTierId = content.defaultTierId
+		this.state.tiersById.clear()
+		this.state.tiers.forEach(tier => this.state.tiersById.set(tier.id, tier))
+		this.state.defaultTierId = content.defaultTierId
 
-		if (!this.defaultTierId || !this.tiersById.has(this.defaultTierId)) {
-			this.defaultTierId = this.tiers[0]?.id ?? null
-			if (!this.defaultTierId) {
+		if (!this.state.defaultTierId || !this.state.tiersById.has(this.state.defaultTierId)) {
+			this.state.defaultTierId = this.state.tiers[0]?.id ?? null
+			if (!this.state.defaultTierId) {
 				this.logger.warn('[CityCharter] No tiers configured; charter system will be inactive.')
 				return
 			}
-			this.logger.warn(`[CityCharter] Default tier missing; falling back to ${this.defaultTierId}`)
+			this.logger.warn(`[CityCharter] Default tier missing; falling back to ${this.state.defaultTierId}`)
 		}
 
-		for (const state of this.states.values()) {
+		for (const state of this.state.states.values()) {
 			this.rebuildUnlockFlags(state)
 			this.refreshState(state.playerId, state.mapId, true)
 			this.emitUnlockFlagsUpdated(state)
@@ -123,12 +109,12 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {
-		this.tickAccumulatorMs += data.deltaMs
-		if (this.tickAccumulatorMs < this.TICK_INTERVAL_MS) {
+		this.state.tickAccumulatorMs += data.deltaMs
+		if (this.state.tickAccumulatorMs < this.TICK_INTERVAL_MS) {
 			return
 		}
-		this.tickAccumulatorMs -= this.TICK_INTERVAL_MS
-		for (const state of this.states.values()) {
+		this.state.tickAccumulatorMs -= this.TICK_INTERVAL_MS
+		for (const state of this.state.states.values()) {
 			this.refreshState(state.playerId, state.mapId, true)
 		}
 	}
@@ -139,19 +125,19 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 
 	private ensureState(playerId: PlayerId, mapId: MapId): CityCharterState | null {
 		const key = this.getStateKey(playerId, mapId)
-		const existing = this.states.get(key)
+		const existing = this.state.states.get(key)
 		if (existing) {
 			return existing
 		}
 
-		if (!this.defaultTierId) {
+		if (!this.state.defaultTierId) {
 			this.logger.warn('[CityCharter] Cannot create state; no default tier configured.')
 			return null
 		}
 
-		const baseTier = this.tiersById.get(this.defaultTierId)
+		const baseTier = this.state.tiersById.get(this.state.defaultTierId)
 		if (!baseTier) {
-			this.logger.warn(`[CityCharter] Default tier not found: ${this.defaultTierId}`)
+			this.logger.warn(`[CityCharter] Default tier not found: ${this.state.defaultTierId}`)
 			return null
 		}
 
@@ -167,14 +153,14 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 			buffsActive: true,
 			isEligibleForNext: false
 		}
-		this.states.set(key, state)
+		this.state.states.set(key, state)
 		this.refreshState(playerId, mapId, false)
 		this.emitUnlockFlagsUpdated(state)
 		return state
 	}
 
 	private getTierIndex(tierId: string): number {
-		return this.tiers.findIndex(tier => tier.id === tierId)
+		return this.state.tiers.findIndex(tier => tier.id === tierId)
 	}
 
 	private getNextTier(tierId: string): CityCharterTier | undefined {
@@ -182,13 +168,13 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 		if (index < 0) {
 			return undefined
 		}
-		return this.tiers[index + 1]
+		return this.state.tiers[index + 1]
 	}
 
 	private buildUnlockFlags(claimedTierIds: string[]): string[] {
 		const flags = new Set<string>()
 		for (const tierId of claimedTierIds) {
-			const tier = this.tiersById.get(tierId)
+			const tier = this.state.tiersById.get(tierId)
 			if (!tier?.unlockFlags) {
 				continue
 			}
@@ -293,7 +279,7 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 		currentRequirements: CityCharterRequirementStatus,
 		nextRequirements?: CityCharterRequirementStatus
 	): CityCharterStateData {
-		const currentTier = this.tiersById.get(state.currentTierId)
+		const currentTier = this.state.tiersById.get(state.currentTierId)
 		if (!currentTier) {
 			throw new Error(`[CityCharter] Missing tier: ${state.currentTierId}`)
 		}
@@ -320,7 +306,7 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 			return
 		}
 		const context = this.buildRequirementsContext(mapId, playerId)
-		const currentTier = this.tiersById.get(state.currentTierId)
+		const currentTier = this.state.tiersById.get(state.currentTierId)
 		if (!currentTier) {
 			this.logger.warn(`[CityCharter] Missing current tier ${state.currentTierId} for ${playerId}`)
 			return
@@ -354,7 +340,7 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 			return
 		}
 		const context = this.buildRequirementsContext(mapId, client.id)
-		const currentTier = this.tiersById.get(state.currentTierId)
+		const currentTier = this.state.tiersById.get(state.currentTierId)
 		if (!currentTier) {
 			this.logger.warn(`[CityCharter] Missing current tier ${state.currentTierId} for ${client.id}`)
 			return
@@ -401,7 +387,7 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 		this.emitUnlockFlagsUpdated(state)
 
 		this.refreshState(client.id, mapId, false)
-		const currentTier = this.tiersById.get(state.currentTierId)
+		const currentTier = this.state.tiersById.get(state.currentTierId)
 		if (!currentTier) {
 			return
 		}
@@ -416,41 +402,23 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 	}
 
 	public serialize(): CityCharterSnapshot {
-		return {
-			states: Array.from(this.states.values()).map(state => ({
-				playerId: state.playerId,
-				mapId: state.mapId,
-				currentTierId: state.currentTierId,
-				claimedTierIds: [...state.claimedTierIds],
-				unlockedFlags: [...state.unlockedFlags]
-			}))
-		}
+		return this.state.serialize()
 	}
 
 	public deserialize(snapshot: CityCharterSnapshot): void {
-		this.states.clear()
-		for (const entry of snapshot.states) {
-			const state: CityCharterState = {
-				playerId: entry.playerId,
-				mapId: entry.mapId,
-				currentTierId: entry.currentTierId,
-				claimedTierIds: [...entry.claimedTierIds],
-				unlockedFlags: [...entry.unlockedFlags],
-				currentTierRequirementsMet: true,
-				buffsActive: true,
-				isEligibleForNext: false
-			}
-			this.states.set(this.getStateKey(entry.playerId, entry.mapId), state)
+		this.state.deserialize(snapshot)
+		for (const state of this.state.states.values()) {
 			this.rebuildUnlockFlags(state)
 			this.emitUnlockFlagsUpdated(state)
 		}
-		for (const state of this.states.values()) {
+		for (const state of this.state.states.values()) {
 			this.refreshState(state.playerId, state.mapId, false)
 		}
 	}
 
 	public reset(): void {
-		this.states.clear()
-		this.tickAccumulatorMs = 0
+		this.state.reset()
 	}
 }
+
+export * from './CityCharterManagerState'

@@ -8,6 +8,7 @@ import type { MapManager } from '../Map'
 import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
 import type { TriggersSnapshot } from '../state/types'
+import { TriggerManagerState } from './TriggerManagerState'
 
 const PROXIMITY_DEACTIVATION_BUFFER = 50 // pixels
 
@@ -18,12 +19,7 @@ export interface TriggerDeps {
 }
 
 export class TriggerManager extends BaseManager<TriggerDeps> {
-	private triggers: Map<string, Trigger> = new Map()
-	private activeTriggers: Set<string> = new Set()
-	private activeProximityTriggers: Set<string> = new Set()
-	private usedTriggers: Set<string> = new Set()
-	private playerActiveTriggers: Map<string, Set<string>> = new Map() // playerId -> Set<triggerId>
-	private playerConditionTriggers: Map<string, Map<string, boolean>> = new Map() // playerId -> Map<triggerId, wasValid>
+	private readonly state = new TriggerManagerState()
 
 	constructor(
 		managers: TriggerDeps,
@@ -40,7 +36,7 @@ export class TriggerManager extends BaseManager<TriggerDeps> {
 
 	private initializeTriggers(triggersToLoad: Trigger[]) {
 		triggersToLoad.forEach(trigger => {
-			this.triggers.set(trigger.id, trigger)
+			this.state.triggers.set(trigger.id, trigger)
 		})
 	}
 
@@ -55,10 +51,10 @@ export class TriggerManager extends BaseManager<TriggerDeps> {
 
 	/* METHODS */
 	private getPlayerActiveTriggers(playerId: string): Set<string> {
-		let triggers = this.playerActiveTriggers.get(playerId)
+		let triggers = this.state.playerActiveTriggers.get(playerId)
 		if (!triggers) {
 			triggers = new Set()
-			this.playerActiveTriggers.set(playerId, triggers)
+			this.state.playerActiveTriggers.set(playerId, triggers)
 		}
 		return triggers
 	}
@@ -77,10 +73,10 @@ export class TriggerManager extends BaseManager<TriggerDeps> {
 	}
 
 	private getPlayerConditionTriggers(playerId: string): Map<string, boolean> {
-		let triggers = this.playerConditionTriggers.get(playerId)
+		let triggers = this.state.playerConditionTriggers.get(playerId)
 		if (!triggers) {
 			triggers = new Map()
-			this.playerConditionTriggers.set(playerId, triggers)
+			this.state.playerConditionTriggers.set(playerId, triggers)
 		}
 		return triggers
 	}
@@ -95,7 +91,7 @@ export class TriggerManager extends BaseManager<TriggerDeps> {
 
 			// First check for triggers that should be deactivated
 			for (const triggerId of activeTriggers) {
-				const trigger = this.triggers.get(triggerId)
+				const trigger = this.state.triggers.get(triggerId)
 				if (!trigger) continue
 
 				// Check if player is still in the trigger area
@@ -108,21 +104,21 @@ export class TriggerManager extends BaseManager<TriggerDeps> {
 					this.setTriggerActiveForPlayer(triggerId, playerId, false)
 					// For OneTime triggers, mark them as used when player leaves
 					if (trigger.option === TriggerOption.OneTime) {
-						this.usedTriggers.add(triggerId)
+						this.state.usedTriggers.add(triggerId)
 					}
 				}
 			}
 
 			// Then check for new triggers to activate
 			for (const mapTrigger of mapTriggers) {
-				const trigger = this.triggers.get(mapTrigger.id)
+				const trigger = this.state.triggers.get(mapTrigger.id)
 				if (!trigger) continue
 
 				// Skip if trigger is already active for this player
 				if (this.isTriggerActiveForPlayer(trigger.id, playerId)) continue
 
 				// Skip if it's a OneTime trigger that has been used
-				if (trigger.option === TriggerOption.OneTime && this.usedTriggers.has(trigger.id)) continue
+				if (trigger.option === TriggerOption.OneTime && this.state.usedTriggers.has(trigger.id)) continue
 
 				// Skip if it's a Random trigger and the random check fails
 				if (trigger.option === TriggerOption.Random && Math.random() > 0.5) continue
@@ -146,7 +142,7 @@ export class TriggerManager extends BaseManager<TriggerDeps> {
 		// Then check for non-map triggers only - these are triggers without a mapId property
 		let nonMapTriggersCount = 0
 		
-		for (const [triggerId, trigger] of this.triggers) {
+		for (const [triggerId, trigger] of this.state.triggers) {
 			// Skip map-bound triggers
 			if (trigger.mapId) {
 				continue
@@ -155,7 +151,7 @@ export class TriggerManager extends BaseManager<TriggerDeps> {
 			nonMapTriggersCount++
 
 			// Skip if it's a OneTime trigger that has been used
-			if (trigger.option === TriggerOption.OneTime && this.usedTriggers.has(triggerId)) {
+			if (trigger.option === TriggerOption.OneTime && this.state.usedTriggers.has(triggerId)) {
 				continue
 			}
 
@@ -194,18 +190,18 @@ export class TriggerManager extends BaseManager<TriggerDeps> {
 	}
 
 	private clearTrigger(triggerId: string) {
-		this.activeTriggers.delete(triggerId)
-		this.activeProximityTriggers.delete(triggerId)
+		this.state.activeTriggers.delete(triggerId)
+		this.state.activeProximityTriggers.delete(triggerId)
 	}
 
 	private shouldSkipTrigger(trigger: Trigger, triggerId: string): boolean {
 		switch (trigger.option) {
 			case TriggerOption.OneTime:
-				return this.activeTriggers.has(triggerId)
+				return this.state.activeTriggers.has(triggerId)
 			case TriggerOption.Random:
 				return Math.random() > 0.5
 			case TriggerOption.Always:
-				return this.activeTriggers.has(triggerId)
+				return this.state.activeTriggers.has(triggerId)
 			default:
 				return false
 		}
@@ -264,7 +260,7 @@ export class TriggerManager extends BaseManager<TriggerDeps> {
 
 		// Mark trigger as used if it's one-time
 		if (trigger.option === TriggerOption.OneTime) {
-			this.usedTriggers.add(trigger.id)
+			this.state.usedTriggers.add(trigger.id)
 		}
 
 		client.emit(Receiver.Sender, TriggerEvents.SC.Triggered, {
@@ -273,64 +269,24 @@ export class TriggerManager extends BaseManager<TriggerDeps> {
 	}
 
 	public cleanup() {
-		this.activeTriggers.clear()
-		this.activeProximityTriggers.clear()
-		this.usedTriggers.clear()
-		this.playerActiveTriggers.clear()
-		this.playerConditionTriggers.clear()
+		this.state.activeTriggers.clear()
+		this.state.activeProximityTriggers.clear()
+		this.state.usedTriggers.clear()
+		this.state.playerActiveTriggers.clear()
+		this.state.playerConditionTriggers.clear()
 	}
 
 	serialize(): TriggersSnapshot {
-		return {
-			triggers: Array.from(this.triggers.values()).map(trigger => ({ ...trigger })),
-			activeTriggers: Array.from(this.activeTriggers.values()),
-			activeProximityTriggers: Array.from(this.activeProximityTriggers.values()),
-			usedTriggers: Array.from(this.usedTriggers.values()),
-			playerActiveTriggers: Array.from(this.playerActiveTriggers.entries()).map(([playerId, triggers]) => ([
-				playerId,
-				Array.from(triggers.values())
-			])),
-			playerConditionTriggers: Array.from(this.playerConditionTriggers.entries()).map(([playerId, triggers]) => ([
-				playerId,
-				Array.from(triggers.entries())
-			]))
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: TriggersSnapshot): void {
-		this.triggers.clear()
-		this.activeTriggers.clear()
-		this.activeProximityTriggers.clear()
-		this.usedTriggers.clear()
-		this.playerActiveTriggers.clear()
-		this.playerConditionTriggers.clear()
-
-		for (const trigger of state.triggers) {
-			this.triggers.set(trigger.id, { ...trigger })
-		}
-		for (const triggerId of state.activeTriggers) {
-			this.activeTriggers.add(triggerId)
-		}
-		for (const triggerId of state.activeProximityTriggers) {
-			this.activeProximityTriggers.add(triggerId)
-		}
-		for (const triggerId of state.usedTriggers) {
-			this.usedTriggers.add(triggerId)
-		}
-		for (const [playerId, triggers] of state.playerActiveTriggers) {
-			this.playerActiveTriggers.set(playerId, new Set(triggers))
-		}
-		for (const [playerId, triggers] of state.playerConditionTriggers) {
-			this.playerConditionTriggers.set(playerId, new Map(triggers))
-		}
+		this.state.deserialize(state)
 	}
 
 	reset(): void {
-		this.triggers.clear()
-		this.activeTriggers.clear()
-		this.activeProximityTriggers.clear()
-		this.usedTriggers.clear()
-		this.playerActiveTriggers.clear()
-		this.playerConditionTriggers.clear()
+		this.state.reset()
 	}
 }
+
+export * from './TriggerManagerState'

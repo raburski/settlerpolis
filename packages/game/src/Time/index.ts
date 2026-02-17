@@ -1,28 +1,15 @@
 import { EventManager, Event, EventClient } from '../events'
 import { TimeEvents } from './events'
-import { Time, TimeData, TimeUpdateEventData, TimeSpeedUpdateEventData, TimePauseEventData, TimeSyncEventData, MONTHS_IN_YEAR, DAYS_IN_MONTH } from './types'
+import { Time, TimeUpdateEventData, TimeSpeedUpdateEventData, TimePauseEventData, TimeSyncEventData, MONTHS_IN_YEAR, DAYS_IN_MONTH } from './types'
 import { Receiver } from '../Receiver'
 import { SimulationEvents } from '../Simulation/events'
 import { SimulationTickData } from '../Simulation/types'
 import { Logger } from '../Logs'
 import type { TimeSnapshot } from '../state/types'
-
-const DEFAULT_TIME_DATA: TimeData = {
-	time: {
-		hours: 8,
-		minutes: 0,
-		day: 1,
-		month: 1,
-		year: 1
-	},
-	isPaused: false,
-	timeSpeed: 1000 // 1 real second = 1 game minute
-}
+import { TimeState } from './TimeState'
 
 export class TimeManager {
-	private timeData: TimeData = { ...DEFAULT_TIME_DATA, time: { ...DEFAULT_TIME_DATA.time } }
-	private lastBroadcastHour: number = DEFAULT_TIME_DATA.time.hours
-	private tickAccumulatorMs = 0
+	private readonly state = new TimeState()
 
 	constructor(
 		private event: EventManager,
@@ -66,23 +53,23 @@ export class TimeManager {
 	}
 
 	private handleSimulationTick(data: SimulationTickData) {
-		if (this.timeData.isPaused) {
+		if (this.state.timeData.isPaused) {
 			return
 		}
 
-		this.tickAccumulatorMs += data.deltaMs
-		const minutesToAdvance = Math.floor(this.tickAccumulatorMs / this.timeData.timeSpeed)
+		this.state.tickAccumulatorMs += data.deltaMs
+		const minutesToAdvance = Math.floor(this.state.tickAccumulatorMs / this.state.timeData.timeSpeed)
 		if (minutesToAdvance <= 0) {
 			return
 		}
 
-		this.tickAccumulatorMs -= minutesToAdvance * this.timeData.timeSpeed
+		this.state.tickAccumulatorMs -= minutesToAdvance * this.state.timeData.timeSpeed
 		this.incrementTime(minutesToAdvance)
 	}
 
 	/* METHODS */
 	private incrementTime(minutesToAdvance: number = 1) {
-		let { hours, minutes, day, month, year } = this.timeData.time
+		let { hours, minutes, day, month, year } = this.state.timeData.time
 
 		for (let i = 0; i < minutesToAdvance; i++) {
 			minutes += 1
@@ -104,7 +91,7 @@ export class TimeManager {
 			}
 		}
 
-		this.timeData.time = { 
+		this.state.timeData.time = {
 			hours,
 			minutes,
 			day,
@@ -113,50 +100,50 @@ export class TimeManager {
 		}
 
 		// Only broadcast update when hour changes
-		if (hours !== this.lastBroadcastHour) {
-			this.lastBroadcastHour = hours
+		if (hours !== this.state.lastBroadcastHour) {
+			this.state.lastBroadcastHour = hours
 			this.broadcastTimeUpdate()
 		}
 	}
 
 	private broadcastTimeUpdate() {
 		this.event.emit(Receiver.All, TimeEvents.SC.Updated, {
-			time: this.timeData.time
+			time: this.state.timeData.time
 		} as TimeUpdateEventData)
 	}
 
 	public setTime(time: Time, client: EventClient) {
-		this.timeData.time = {
+		this.state.timeData.time = {
 			hours: Math.max(0, Math.min(23, time.hours)),
 			minutes: Math.max(0, Math.min(59, time.minutes)),
 			day: Math.max(1, Math.min(DAYS_IN_MONTH, time.day)),
 			month: Math.max(1, Math.min(MONTHS_IN_YEAR, time.month)),
 			year: Math.max(1, time.year)
 		}
-		this.lastBroadcastHour = this.timeData.time.hours
+		this.state.lastBroadcastHour = this.state.timeData.time.hours
 
 		client.emit(Receiver.All, TimeEvents.SC.TimeSet, {
-			time: this.timeData.time
+			time: this.state.timeData.time
 		} as TimeUpdateEventData)
 	}
 
 	public setTimeSpeed(timeSpeed: number, client: EventClient) {
-		this.timeData.timeSpeed = Math.max(100, timeSpeed) // Minimum 100ms per game minute
+		this.state.timeData.timeSpeed = Math.max(100, timeSpeed) // Minimum 100ms per game minute
 
 		client.emit(Receiver.All, TimeEvents.SC.SpeedSet, {
-			timeSpeed: this.timeData.timeSpeed
+			timeSpeed: this.state.timeData.timeSpeed
 		} as TimeSpeedUpdateEventData)
 	}
 
 	public pause(client: EventClient) {
-		this.timeData.isPaused = true
+		this.state.timeData.isPaused = true
 		client.emit(Receiver.All, TimeEvents.SC.Paused, {
 			isPaused: true
 		} as TimePauseEventData)
 	}
 
 	public resume(client: EventClient) {
-		this.timeData.isPaused = false
+		this.state.timeData.isPaused = false
 		client.emit(Receiver.All, TimeEvents.SC.Resumed, {
 			isPaused: false
 		} as TimePauseEventData)
@@ -164,59 +151,43 @@ export class TimeManager {
 
 	private syncTime(client: EventClient) {
 		client.emit(Receiver.Sender, TimeEvents.SC.Sync, {
-			time: this.timeData.time,
-			isPaused: this.timeData.isPaused,
-			timeSpeed: this.timeData.timeSpeed
+			time: this.state.timeData.time,
+			isPaused: this.state.timeData.isPaused,
+			timeSpeed: this.state.timeData.timeSpeed
 		} as TimeSyncEventData)
 	}
 
 	public getCurrentTime(): Time {
-		return { ...this.timeData.time }
+		return { ...this.state.timeData.time }
 	}
 
 	public isPaused(): boolean {
-		return this.timeData.isPaused
+		return this.state.timeData.isPaused
 	}
 
 	public getTimeSpeed(): number {
-		return this.timeData.timeSpeed
+		return this.state.timeData.timeSpeed
 	}
 
 	public getFormattedDate(): string {
-		const { day, month, year } = this.timeData.time
+		const { day, month, year } = this.state.timeData.time
 		return `${day}/${month}/${year}`
 	}
 
 	public getFormattedTime(): string {
-		const { hours, minutes } = this.timeData.time
+		const { hours, minutes } = this.state.timeData.time
 		return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
 	}
 
 	serialize(): TimeSnapshot {
-		return {
-			timeData: {
-				time: { ...this.timeData.time },
-				isPaused: this.timeData.isPaused,
-				timeSpeed: this.timeData.timeSpeed
-			},
-			lastBroadcastHour: this.lastBroadcastHour,
-			tickAccumulatorMs: this.tickAccumulatorMs
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: TimeSnapshot): void {
-		this.timeData = {
-			time: { ...state.timeData.time },
-			isPaused: state.timeData.isPaused,
-			timeSpeed: state.timeData.timeSpeed
-		}
-		this.lastBroadcastHour = state.lastBroadcastHour
-		this.tickAccumulatorMs = state.tickAccumulatorMs
+		this.state.deserialize(state)
 	}
 
 	reset(): void {
-		this.timeData = { ...DEFAULT_TIME_DATA, time: { ...DEFAULT_TIME_DATA.time } }
-		this.lastBroadcastHour = DEFAULT_TIME_DATA.time.hours
-		this.tickAccumulatorMs = 0
+		this.state.reset()
 	}
 }

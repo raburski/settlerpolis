@@ -4,15 +4,10 @@ import { SimulationEvents } from './events'
 import { SimulationTickData } from './types'
 import { Logger } from '../Logs'
 import type { SimulationSnapshot } from '../state/types'
+import { SimulationState } from './SimulationState'
 
 export class SimulationManager {
-	private tickIntervalMs: number
-	private tickTimer: NodeJS.Timeout | null = null
-	private simulationTimeMs = 0
-	private slowTickAccumulatorMs = 0
-	private verySlowTickAccumulatorMs = 0
-	private readonly slowTickIntervalMs: number
-	private readonly verySlowTickIntervalMs: number
+	private readonly state: SimulationState
 
 	constructor(
 		private event: EventManager,
@@ -21,82 +16,77 @@ export class SimulationManager {
 		slowTickIntervalMs: number = 1000,
 		verySlowTickIntervalMs: number = 5000
 	) {
-		this.tickIntervalMs = Math.max(1, tickIntervalMs)
-		this.slowTickIntervalMs = Math.max(1, slowTickIntervalMs)
-		this.verySlowTickIntervalMs = Math.max(1, verySlowTickIntervalMs)
+		this.state = new SimulationState(tickIntervalMs, slowTickIntervalMs, verySlowTickIntervalMs)
 	}
 
 	start(): void {
-		if (this.tickTimer) return
-		this.tickTimer = setInterval(() => this.tick(), this.tickIntervalMs)
-		this.logger.log(`[SimulationManager] Started tick loop (${this.tickIntervalMs}ms)`)
+		if (this.state.tickTimer) return
+		this.state.tickTimer = setInterval(() => this.tick(), this.state.tickIntervalMs)
+		this.logger.log(`[SimulationManager] Started tick loop (${this.state.tickIntervalMs}ms)`)
 	}
 
 	stop(): void {
-		if (!this.tickTimer) return
-		clearInterval(this.tickTimer)
-		this.tickTimer = null
+		if (!this.state.tickTimer) return
+		clearInterval(this.state.tickTimer)
+		this.state.tickTimer = null
 		this.logger.log('[SimulationManager] Stopped tick loop')
 	}
 
 	setTickInterval(ms: number): void {
-		this.tickIntervalMs = Math.max(1, ms)
-		if (this.tickTimer) {
+		this.state.tickIntervalMs = Math.max(1, ms)
+		if (this.state.tickTimer) {
 			this.stop()
 			this.start()
 		}
 	}
 
 	getTickInterval(): number {
-		return this.tickIntervalMs
+		return this.state.tickIntervalMs
 	}
 
 	getSimulationTimeMs(): number {
-		return this.simulationTimeMs
+		return this.state.simulationTimeMs
 	}
 
 	serialize(): SimulationSnapshot {
-		return {
-			simulationTimeMs: this.simulationTimeMs,
-			tickIntervalMs: this.tickIntervalMs
-		}
+		return this.state.serialize()
 	}
 
 	deserialize(state: SimulationSnapshot): void {
-		this.simulationTimeMs = state.simulationTimeMs
+		this.state.deserialize(state)
 		this.setTickInterval(state.tickIntervalMs)
 	}
 
 	reset(): void {
-		this.simulationTimeMs = 0
+		this.state.reset()
 	}
 
 	private tick(): void {
-		const deltaMs = this.tickIntervalMs
-		this.simulationTimeMs += deltaMs
+		const deltaMs = this.state.tickIntervalMs
+		this.state.simulationTimeMs += deltaMs
 
 		const tickData: SimulationTickData = {
 			deltaMs,
-			nowMs: this.simulationTimeMs
+			nowMs: this.state.simulationTimeMs
 		}
 
 		this.event.emit(Receiver.All, SimulationEvents.SS.Tick, tickData)
 
-		this.slowTickAccumulatorMs += deltaMs
-		while (this.slowTickAccumulatorMs >= this.slowTickIntervalMs) {
-			this.slowTickAccumulatorMs -= this.slowTickIntervalMs
+		this.state.slowTickAccumulatorMs += deltaMs
+		while (this.state.slowTickAccumulatorMs >= this.state.slowTickIntervalMs) {
+			this.state.slowTickAccumulatorMs -= this.state.slowTickIntervalMs
 			this.event.emit(Receiver.All, SimulationEvents.SS.SlowTick, {
-				deltaMs: this.slowTickIntervalMs,
-				nowMs: this.simulationTimeMs
+				deltaMs: this.state.slowTickIntervalMs,
+				nowMs: this.state.simulationTimeMs
 			} as SimulationTickData)
 		}
 
-		this.verySlowTickAccumulatorMs += deltaMs
-		while (this.verySlowTickAccumulatorMs >= this.verySlowTickIntervalMs) {
-			this.verySlowTickAccumulatorMs -= this.verySlowTickIntervalMs
+		this.state.verySlowTickAccumulatorMs += deltaMs
+		while (this.state.verySlowTickAccumulatorMs >= this.state.verySlowTickIntervalMs) {
+			this.state.verySlowTickAccumulatorMs -= this.state.verySlowTickIntervalMs
 			this.event.emit(Receiver.All, SimulationEvents.SS.VerySlowTick, {
-				deltaMs: this.verySlowTickIntervalMs,
-				nowMs: this.simulationTimeMs
+				deltaMs: this.state.verySlowTickIntervalMs,
+				nowMs: this.state.simulationTimeMs
 			} as SimulationTickData)
 		}
 	}

@@ -1,8 +1,11 @@
 import { EventManager, Event, EventClient } from '../events'
 import { Receiver } from '../Receiver'
 import { Logger } from '../Logs'
+import { SystemManagerState } from './SystemManagerState'
 
 export class SystemManager {
+	private readonly state = new SystemManagerState()
+
 	constructor(
 		private event: EventManager,
 		private logger: Logger
@@ -19,3 +22,5 @@ export class SystemManager {
 		client.emit(Receiver.Sender, Event.System.SC.Ping, {})
 	}
 }
+
+export * from './SystemManagerState'
