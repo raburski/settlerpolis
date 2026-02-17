@@ -3,7 +3,6 @@ import { Receiver } from '../../Receiver'
 import type { Logger } from '../../Logs'
 import { SimulationEvents } from '../../Simulation/events'
 import type { SimulationTickData } from '../../Simulation/types'
-import type { SettlerBehaviourCoordinator } from '../Behaviour'
 import { NeedsEvents } from './events'
 import { NeedType, NeedPriority } from './NeedTypes'
 import type { NeedsSystem } from './NeedsSystem'
@@ -11,6 +10,7 @@ import type { NeedPlanner } from './NeedPlanner'
 import type { ContextPausedEventData, NeedPlanFailedEventData, NeedPlanCreatedEventData, NeedInterruptEventData, NeedSatisfiedEventData } from './types'
 import type { NeedInterruptSnapshot } from '../../state/types'
 import { ActionQueueContextKind, type ActionQueueContext } from '../../state/types'
+import type { WorkAction } from '../Work/types'
 
 interface PendingNeed {
 	needType: NeedType
@@ -33,6 +33,22 @@ const createCooldowns = (): Record<NeedType, number> => ({
 	[NeedType.Fatigue]: 0
 })
 
+export interface NeedsBehaviourApi {
+	registerNeedPlanCallbacksResolver(
+		resolver: (settlerId: string, context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>, actions: WorkAction[]) => {
+			onComplete?: () => void
+			onFail?: (reason: string) => void
+		}
+	): void
+	enqueueNeedPlan(
+		settlerId: string,
+		actions: WorkAction[],
+		context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>,
+		onComplete?: () => void,
+		onFail?: (reason: string) => void
+	): void
+}
+
 export class NeedInterruptController {
 	private stateBySettler = new Map<string, NeedInterruptState>()
 
@@ -40,7 +56,7 @@ export class NeedInterruptController {
 		private event: EventManager,
 		private needs: NeedsSystem,
 		private planner: NeedPlanner,
-		private behaviour: SettlerBehaviourCoordinator,
+		private behaviour: NeedsBehaviourApi,
 		private logger: Logger
 	) {
 		this.setupEventHandlers()
