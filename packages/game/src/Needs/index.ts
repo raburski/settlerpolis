@@ -14,6 +14,7 @@ import { NeedInterruptController } from './NeedInterruptController'
 import type { NeedsSnapshot } from '../state/types'
 
 export interface NeedsDeps {
+	event: EventManager
 	buildings: BuildingManager
 	loot: LootManager
 	storage: StorageManager
@@ -30,13 +31,12 @@ export class NeedsManager extends BaseManager<NeedsDeps> {
 
 	constructor(
 		managers: NeedsDeps,
-		event: EventManager,
 		logger: Logger
 	) {
 		super(managers)
-		this.system = new NeedsSystem({ population: managers.population }, event)
+		this.system = new NeedsSystem({ population: managers.population }, managers.event)
 		this.planner = new NeedPlanner(managers, logger)
-		this.interrupts = new NeedInterruptController(event, this.system, this.planner, managers.work, logger)
+		this.interrupts = new NeedInterruptController(managers.event, this.system, this.planner, managers.work, logger)
 	}
 
 	serialize(): NeedsSnapshot {

@@ -58,7 +58,6 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 
 	constructor(
 		managers: WorkProviderDeps,
-		private event: EventManager,
 		private logger: Logger
 	) {
 		super(managers)
@@ -72,7 +71,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 
 		this.actionSystem = new ActionSystem(
 			this.managers,
-			event,
+			this.managers.event,
 			this.logger
 		)
 
@@ -96,14 +95,14 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 
 		this.productionTracker = new ProductionTracker(
 			this.managers,
-			this.event,
+			this.managers.event,
 			this.assignments,
 			dispatchNextStep
 		)
 
 		this.dispatcher = new DispatchCoordinator(
 			this.managers,
-			this.event,
+			this.managers.event,
 			this.assignments,
 			this.registry,
 			this.actionSystem,
@@ -119,7 +118,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 
 		this.logisticsCoordinator = new LogisticsCoordinator(
 			this.managers,
-			this.event,
+			this.managers.event,
 			this.logisticsProvider,
 			this.assignments,
 			() => this.simulationTimeMs,
@@ -162,31 +161,31 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.event.on<RequestWorkerData>(PopulationEvents.CS.RequestWorker, (data, client) => {
+		this.managers.event.on<RequestWorkerData>(PopulationEvents.CS.RequestWorker, (data, client) => {
 			this.requestWorker(data, client)
 		})
 
-		this.event.on<UnassignWorkerData>(PopulationEvents.CS.UnassignWorker, (data) => {
+		this.managers.event.on<UnassignWorkerData>(PopulationEvents.CS.UnassignWorker, (data) => {
 			this.unassignWorker(data)
 		})
 
-		this.event.on(PopulationEvents.SS.SettlerDied, (data: { settlerId: string }) => {
+		this.managers.event.on(PopulationEvents.SS.SettlerDied, (data: { settlerId: string }) => {
 			this.handleSettlerDied(data)
 		})
 
-		this.event.on<SetProductionPausedData>(BuildingsEvents.CS.SetProductionPaused, (data) => {
+		this.managers.event.on<SetProductionPausedData>(BuildingsEvents.CS.SetProductionPaused, (data) => {
 			this.productionTracker.handleProductionPaused(data)
 		})
 
-		this.event.on(BuildingsEvents.CS.Place, (_data, client) => {
+		this.managers.event.on(BuildingsEvents.CS.Place, (_data, client) => {
 			this.logisticsCoordinator.markMapDirty(client.currentGroup)
 		})
 
-		this.event.on(BuildingsEvents.CS.Cancel, (data: { buildingInstanceId: string }) => {
+		this.managers.event.on(BuildingsEvents.CS.Cancel, (data: { buildingInstanceId: string }) => {
 			this.logisticsCoordinator.markBuildingDirty(data.buildingInstanceId)
 		})
 
-		this.event.on(BuildingsEvents.CS.SetStorageRequests, (data: { buildingInstanceId: string }) => {
+		this.managers.event.on(BuildingsEvents.CS.SetStorageRequests, (data: { buildingInstanceId: string }) => {
 			this.logisticsCoordinator.markBuildingDirty(data.buildingInstanceId, {
 				consumption: false,
 				construction: false,
@@ -194,41 +193,41 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			})
 		})
 
-		this.event.on(BuildingsEvents.SS.ConstructionCompleted, (data: { buildingInstanceId: string, mapId?: string }) => {
+		this.managers.event.on(BuildingsEvents.SS.ConstructionCompleted, (data: { buildingInstanceId: string, mapId?: string }) => {
 			this.constructionCoordinator.unassignAllForBuilding(data.buildingInstanceId)
 			this.logisticsCoordinator.markBuildingDirty(data.buildingInstanceId)
 			this.logisticsCoordinator.markMapDirty(data.mapId)
 		})
 
-		this.event.on(BuildingsEvents.SS.Removed, (data: { buildingInstanceId: string, mapId?: string }) => {
+		this.managers.event.on(BuildingsEvents.SS.Removed, (data: { buildingInstanceId: string, mapId?: string }) => {
 			this.constructionCoordinator.unassignAllForBuilding(data.buildingInstanceId)
 			this.logisticsCoordinator.markBuildingDirty(data.buildingInstanceId)
 			this.logisticsCoordinator.markMapDirty(data.mapId)
 		})
 
-		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.handleSimulationTick(data)
 		})
 
-		this.event.on(NeedsEvents.SS.ContextPauseRequested, (data: ContextPauseRequestedEventData) => {
+		this.managers.event.on(NeedsEvents.SS.ContextPauseRequested, (data: ContextPauseRequestedEventData) => {
 			this.handleContextPauseRequested(data)
 		})
 
-		this.event.on(NeedsEvents.SS.ContextResumeRequested, (data: ContextResumeRequestedEventData) => {
+		this.managers.event.on(NeedsEvents.SS.ContextResumeRequested, (data: ContextResumeRequestedEventData) => {
 			this.handleContextResumeRequested(data)
 		})
 
-		this.event.on(WorkProviderEvents.CS.SetLogisticsPriorities, (data: { itemPriorities: string[] }) => {
+		this.managers.event.on(WorkProviderEvents.CS.SetLogisticsPriorities, (data: { itemPriorities: string[] }) => {
 			const priorities = Array.isArray(data?.itemPriorities) ? data.itemPriorities : []
 			this.logisticsProvider.setItemPriorities(priorities)
 			this.logisticsCoordinator.broadcast()
 		})
 
-		this.event.on(WorkProviderEvents.SS.StepCompleted, (data: { step: WorkStep }) => {
+		this.managers.event.on(WorkProviderEvents.SS.StepCompleted, (data: { step: WorkStep }) => {
 			this.logisticsCoordinator.handleStepEvent(data.step)
 		})
 
-		this.event.on(WorkProviderEvents.SS.StepFailed, (data: { step: WorkStep }) => {
+		this.managers.event.on(WorkProviderEvents.SS.StepFailed, (data: { step: WorkStep }) => {
 			this.logisticsCoordinator.handleStepEvent(data.step)
 		})
 
@@ -290,7 +289,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			provider?.resume(data.settlerId)
 		}
 
-		this.event.emit(Receiver.All, NeedsEvents.SS.ContextResumed, { settlerId: data.settlerId })
+		this.managers.event.emit(Receiver.All, NeedsEvents.SS.ContextResumed, { settlerId: data.settlerId })
 
 		if (assignment) {
 			this.dispatcher.dispatchNextStep(data.settlerId)
@@ -321,7 +320,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		}
 
 		this.pausedContexts.set(settlerId, context)
-		this.event.emit(Receiver.All, NeedsEvents.SS.ContextPaused, { settlerId, context })
+		this.managers.event.emit(Receiver.All, NeedsEvents.SS.ContextPaused, { settlerId, context })
 	}
 
 	private requestWorker(data: RequestWorkerData, client: EventClient): void {
@@ -420,8 +419,8 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		this.managers.population.setSettlerAssignment(candidate.id, assignment.assignmentId, assignment.providerId, building.id)
 		this.managers.population.setSettlerState(candidate.id, SettlerState.Assigned)
 
-		this.event.emit(Receiver.All, WorkProviderEvents.SS.AssignmentCreated, { assignment })
-		this.event.emit(Receiver.Group, PopulationEvents.SC.WorkerAssigned, {
+		this.managers.event.emit(Receiver.All, WorkProviderEvents.SS.AssignmentCreated, { assignment })
+		this.managers.event.emit(Receiver.Group, PopulationEvents.SC.WorkerAssigned, {
 			assignment,
 			settlerId: candidate.id,
 			buildingInstanceId: building.id
@@ -518,7 +517,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		if (!building) {
 			return
 		}
-		this.event.emit(Receiver.Group, BuildingsEvents.SC.WorkerQueueUpdated, {
+		this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.WorkerQueueUpdated, {
 			buildingInstanceId,
 			queuedCount: this.getPendingWorkerCount(buildingInstanceId)
 		}, building.mapId)
@@ -557,7 +556,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			this.enqueueExitOrIdle(data.settlerId, exitFallback)
 		}
 
-		this.event.emit(Receiver.All, WorkProviderEvents.SS.AssignmentRemoved, { assignmentId: assignment.assignmentId })
+		this.managers.event.emit(Receiver.All, WorkProviderEvents.SS.AssignmentRemoved, { assignmentId: assignment.assignmentId })
 		this.emitWorkerUnassigned(assignment, data.settlerId)
 	}
 
@@ -626,7 +625,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 		if (!building) {
 			return
 		}
-		this.event.emit(Receiver.Group, PopulationEvents.SC.WorkerUnassigned, {
+		this.managers.event.emit(Receiver.Group, PopulationEvents.SC.WorkerUnassigned, {
 			settlerId,
 			assignmentId: assignment.assignmentId,
 			buildingInstanceId: assignment.buildingInstanceId
@@ -639,7 +638,7 @@ export class WorkProviderManager extends BaseManager<WorkProviderDeps> {
 			currentGroup: mapId || 'GLOBAL',
 			setGroup: () => {},
 			emit: (to, event, data, groupName) => {
-				this.event.emit(to, event, data, groupName)
+				this.managers.event.emit(to, event, data, groupName)
 			}
 		}
 	}

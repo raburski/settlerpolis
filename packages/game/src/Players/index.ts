@@ -35,6 +35,7 @@ const INITIAL_EQUIPMENT: Record<EquipmentSlotType, null> = {
 }
 
 export interface PlayersDeps {
+	event: EventManager
 	inventory: InventoryManager
 	loot: LootManager
 	items: ItemsManager
@@ -49,7 +50,6 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 
 	constructor(
 		managers: PlayersDeps,
-		private event: EventManager,
 		startingItems: StartingItem[],
 		private logger: Logger
 	) {
@@ -118,7 +118,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 
 	private setupEventHandlers() {
 		// Handle initial connection
-		this.event.on(Event.Players.CS.Connect, (_, client) => {
+		this.managers.event.on(Event.Players.CS.Connect, (_, client) => {
 			if (this.connectedClients.has(client.id)) {
 				return
 			}
@@ -136,7 +136,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 		})
 
 		// Handle client lifecycle
-		this.event.onLeft((client) => {
+		this.managers.event.onLeft((client) => {
 			this.logger.debug('[PLAYERS] on LEFT', client.id)
 			this.connectedClients.delete(client.id)
 			const player = this.players.get(client.id)
@@ -146,12 +146,12 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 			}
 		})
 		
-		this.event.onJoined((client) => {
+		this.managers.event.onJoined((client) => {
 			this.logger.debug('[PLAYERS] on JOINED', client.id)
 		})
 
 		// Handle player join
-		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
+		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
 			const playerId = client.id
 			const existingPlayer = this.players.get(playerId)
 			
@@ -184,7 +184,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 		})
 
 		// Handle player movement
-		this.event.on<PlayerMoveData>(Event.Players.CS.Move, (data, client) => {
+		this.managers.event.on<PlayerMoveData>(Event.Players.CS.Move, (data, client) => {
 			const player = this.players.get(client.id)
 			if (player) {
 				player.position = data
@@ -193,7 +193,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 		})
 
 		// Handle scene transition
-		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
+		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
 			const playerId = client.id
 			const player = this.players.get(playerId)
 
@@ -215,7 +215,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 		})
 
 		// Handle item drop request
-		this.event.on<DropItemData>(Event.Players.CS.DropItem, async (data, client) => {
+		this.managers.event.on<DropItemData>(Event.Players.CS.DropItem, async (data, client) => {
 			// Get player's current position
 			const player = this.players.get(client.id)
 			if (!player) return
@@ -229,7 +229,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 		})
 
 		// Handle item pickup request
-		this.event.on<PickupItemData>(Event.Players.CS.PickupItem, (data, client) => {
+		this.managers.event.on<PickupItemData>(Event.Players.CS.PickupItem, (data, client) => {
 			const player = this.players.get(client.id)
 			if (!player) return
 
@@ -269,7 +269,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 		})
 
 		// Handle item equip request
-		this.event.on<EquipItemData>(Event.Players.CS.Equip, (data, client) => {
+		this.managers.event.on<EquipItemData>(Event.Players.CS.Equip, (data, client) => {
 			const player = this.players.get(client.id)
 			if (!player) return
 
@@ -313,7 +313,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 		})
 
 		// Handle item unequip request
-		this.event.on<UnequipItemData>(Event.Players.CS.Unequip, (data, client) => {
+		this.managers.event.on<UnequipItemData>(Event.Players.CS.Unequip, (data, client) => {
 			const player = this.players.get(client.id)
 			if (!player || !player.equipment) return
 
@@ -364,7 +364,7 @@ export class PlayersManager extends BaseManager<PlayersDeps> {
 		})
 
 		// Handle place request
-		this.event.on<PlaceObjectData>(Event.Players.CS.Place, this.handlePlace.bind(this))
+		this.managers.event.on<PlaceObjectData>(Event.Players.CS.Place, this.handlePlace.bind(this))
 	}
 
 	private handlePlace = (data: PlaceObjectData, client: EventClient) => {

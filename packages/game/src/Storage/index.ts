@@ -19,6 +19,7 @@ import type { BuildingDefinition } from '../Buildings/types'
 import type { StorageSnapshot, BuildingStorageSnapshot } from '../state/types'
 
 export interface StorageDeps {
+	event: EventManager
 	buildings: BuildingManager
 	items: ItemsManager
 	mapObjects: MapObjectsManager
@@ -36,7 +37,6 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 	constructor(
 		managers: StorageDeps,
-		private event: EventManager,
 		private logger: Logger
 	) {
 		super(managers)
@@ -45,11 +45,11 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 	private setupEventHandlers() {
 		// Listen for building completion to initialize storage
-		this.event.on(StorageEvents.SS.StorageTick, () => {
+		this.managers.event.on(StorageEvents.SS.StorageTick, () => {
 			this.storageTick()
 		})
 
-		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.handleSimulationTick(data)
 		})
 	}
@@ -61,7 +61,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			return
 		}
 		this.tickAccumulatorMs -= this.STORAGE_TICK_INTERVAL_MS
-		this.event.emit(Receiver.All, StorageEvents.SS.StorageTick, {})
+		this.managers.event.emit(Receiver.All, StorageEvents.SS.StorageTick, {})
 	}
 
 	private getTileSize(mapId: string): number {
@@ -225,7 +225,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 			id: 'world',
 			currentGroup: building.mapId,
 			emit: (receiver: Receiver, event: string, data: any, target?: string) => {
-				this.event.emit(receiver, event, data, target)
+				this.managers.event.emit(receiver, event, data, target)
 			},
 			setGroup: () => {}
 		}
@@ -285,7 +285,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		if (!building) {
 			return
 		}
-		this.event.emit(Receiver.Group, StorageEvents.SC.StorageSlotUpdated, {
+		this.managers.event.emit(Receiver.Group, StorageEvents.SC.StorageSlotUpdated, {
 			slotId: slot.slotId,
 			buildingInstanceId: slot.buildingInstanceId,
 			itemType: slot.itemType,
@@ -473,7 +473,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 		const building = this.managers.buildings.getBuildingInstance(buildingInstanceId)
 		if (building) {
-			this.event.emit(Receiver.Group, StorageEvents.SC.ReservationCreated, {
+			this.managers.event.emit(Receiver.Group, StorageEvents.SC.ReservationCreated, {
 				reservationId,
 				buildingInstanceId,
 				itemType,
@@ -567,7 +567,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		}
 		const current = this.getCurrentQuantity(buildingInstanceId, itemType)
 		const capacity = this.getStorageCapacity(buildingInstanceId, itemType)
-		this.event.emit(Receiver.Group, StorageEvents.SC.StorageUpdated, {
+		this.managers.event.emit(Receiver.Group, StorageEvents.SC.StorageUpdated, {
 			buildingInstanceId,
 			itemType,
 			quantity: current,
@@ -609,7 +609,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 
 		const building = this.managers.buildings.getBuildingInstance(slot.buildingInstanceId)
 		if (building) {
-			this.event.emit(Receiver.Group, StorageEvents.SC.Spoilage, {
+			this.managers.event.emit(Receiver.Group, StorageEvents.SC.Spoilage, {
 				buildingInstanceId: slot.buildingInstanceId,
 				slotId: slot.slotId,
 				itemType: slot.itemType,
@@ -939,7 +939,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		// Emit reservation cancelled event
 		const building = this.managers.buildings.getBuildingInstance(reservation.buildingInstanceId)
 		if (building) {
-			this.event.emit(Receiver.Group, StorageEvents.SC.ReservationCancelled, {
+			this.managers.event.emit(Receiver.Group, StorageEvents.SC.ReservationCancelled, {
 				reservationId,
 				buildingInstanceId: reservation.buildingInstanceId,
 				itemType: reservation.itemType,

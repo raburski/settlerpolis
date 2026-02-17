@@ -82,6 +82,7 @@ export class GameManager {
 	) {
 		// Initialize LogsManager first
 		this.managers = new ManagersHub()
+		this.managers.event = event
 		this.managers.logs = new LogsManager()
 		if (options.logAllowlist && options.logAllowlist.length > 0) {
 			this.managers.logs.setAllowedManagers(options.logAllowlist)
@@ -102,27 +103,23 @@ export class GameManager {
 		this.managers.chat = new ChatManager(event, this.managers.logs.getLogger('ChatManager'))
 		this.managers.system = new SystemManager(event, this.managers.logs.getLogger('SystemManager'))
 		this.managers.map = new MapManager(event, this.mapUrlService, this.managers.logs.getLogger('MapManager'))
-		this.managers.movement = new MovementManager(this.managers, event, this.managers.logs.getLogger('MovementManager'))
+		this.managers.movement = new MovementManager(this.managers, this.managers.logs.getLogger('MovementManager'))
 		this.managers.items = new ItemsManager(event, this.managers.logs.getLogger('ItemsManager'))
-		this.managers.inventory = new InventoryManager(this.managers, event, this.managers.logs.getLogger('InventoryManager'))
+		this.managers.inventory = new InventoryManager(this.managers, this.managers.logs.getLogger('InventoryManager'))
 		this.managers.flags = new FlagsManager(event, this.managers.logs.getLogger('FlagsManager'))
 		this.managers.affinity = new AffinityManager(event, this.managers.logs.getLogger('AffinityManager'))
 		this.managers.reputation = new ReputationManager(event)
-		this.managers.quest = new QuestManager(this.managers, event, this.managers.logs.getLogger('QuestManager'))
-		this.managers.loot = new LootManager(this.managers, event, this.managers.logs.getLogger('LootManager'))
+		this.managers.quest = new QuestManager(this.managers, this.managers.logs.getLogger('QuestManager'))
+		this.managers.loot = new LootManager(this.managers, this.managers.logs.getLogger('LootManager'))
 		this.managers.cutscene = new CutsceneManager(event, this.managers.logs.getLogger('CutsceneManager'))
-		this.managers.dialogue = new DialogueManager(
-			this.managers,
-			event,
-			this.managers.logs.getLogger('DialogueManager')
-		)
+		this.managers.dialogue = new DialogueManager(this.managers, this.managers.logs.getLogger('DialogueManager'))
 		
-		this.managers.npc = new NPCManager(this.managers, event, this.managers.logs.getLogger('NPCManager'))
-		this.managers.scheduler = new Scheduler(this.managers, event, this.managers.logs.getLogger('Scheduler'))
-		this.managers.mapObjects = new MapObjectsManager(this.managers, event, this.managers.logs.getLogger('MapObjectsManager'))
-		this.managers.wildlife = new WildlifeManager(this.managers, event, this.managers.logs.getLogger('WildlifeManager'))
-		this.managers.resourceNodes = new ResourceNodesManager(this.managers, event, this.managers.logs.getLogger('ResourceNodesManager'))
-		this.managers.buildings = new BuildingManager(this.managers, event, this.managers.logs.getLogger('BuildingManager'))
+		this.managers.npc = new NPCManager(this.managers, this.managers.logs.getLogger('NPCManager'))
+		this.managers.scheduler = new Scheduler(this.managers, this.managers.logs.getLogger('Scheduler'))
+		this.managers.mapObjects = new MapObjectsManager(this.managers, this.managers.logs.getLogger('MapObjectsManager'))
+		this.managers.wildlife = new WildlifeManager(this.managers, this.managers.logs.getLogger('WildlifeManager'))
+		this.managers.resourceNodes = new ResourceNodesManager(this.managers, this.managers.logs.getLogger('ResourceNodesManager'))
+		this.managers.buildings = new BuildingManager(this.managers, this.managers.logs.getLogger('BuildingManager'))
 		// Convert startingPopulation from content (string profession) to ProfessionType
 		const startingPopulation = this.content.startingPopulation?.map(entry => ({
 			profession: entry.profession as ProfessionType,
@@ -130,55 +127,43 @@ export class GameManager {
 		})) || []
 		this.managers.population = new PopulationManager(
 			this.managers,
-			event,
 			startingPopulation,
 			this.managers.logs.getLogger('PopulationManager')
 		)
 		
 		// Create StorageManager after BuildingManager (to avoid circular dependency)
-		this.managers.storage = new StorageManager(this.managers, event, this.managers.logs.getLogger('StorageManager'))
+		this.managers.storage = new StorageManager(this.managers, this.managers.logs.getLogger('StorageManager'))
 
 		this.managers.cityCharter = new CityCharterManager(
 			this.managers,
-			event,
 			this.managers.logs.getLogger('CityCharterManager')
 		)
 
-		this.managers.trade = new TradeManager(
-			this.managers,
-			event,
-			this.managers.logs.getLogger('TradeManager')
-		)
+		this.managers.trade = new TradeManager(this.managers, this.managers.logs.getLogger('TradeManager'))
 
 		// Create RoadManager after StorageManager so it can consume road materials
-		this.managers.roads = new RoadManager(this.managers, event, this.managers.logs.getLogger('RoadManager'))
+		this.managers.roads = new RoadManager(this.managers, this.managers.logs.getLogger('RoadManager'))
 		
 		// Create ReservationSystem after Storage/Loot/ResourceNodes/Population
 		this.managers.reservations = new ReservationSystem(this.managers)
 
 		// Create WorkProviderManager after BuildingManager, PopulationManager, StorageManager, and ReservationSystem
-		this.managers.work = new WorkProviderManager(this.managers, event, this.managers.logs.getLogger('WorkProviderManager'))
+		this.managers.work = new WorkProviderManager(this.managers, this.managers.logs.getLogger('WorkProviderManager'))
 
 		// Create NeedsManager after WorkProviderManager so it can preempt action queues
-		this.managers.needs = new NeedsManager(this.managers, event, this.managers.logs.getLogger('NeedsManager'))
+		this.managers.needs = new NeedsManager(this.managers, this.managers.logs.getLogger('NeedsManager'))
 		
-		this.managers.trigger = new TriggerManager(
-			this.managers,
-			event,
-			this.managers.logs.getLogger('TriggerManager')
-		)
+		this.managers.trigger = new TriggerManager(this.managers, this.managers.logs.getLogger('TriggerManager'))
 
 		// Initialize PlayersManager last since it depends on other managers
 		this.managers.players = new PlayersManager(
 			this.managers,
-			event,
 			this.content.startingItems || [], // Pass starting items configuration from content (default to empty array)
 			this.managers.logs.getLogger('PlayersManager')
 		)
 
 		this.managers.conditionEffect = new ConditionEffectManager(
 			this.managers,
-			event,
 			this.managers.logs.getLogger('ConditionEffectManager')
 		)
 

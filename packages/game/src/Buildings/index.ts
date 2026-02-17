@@ -49,6 +49,7 @@ const MINE_BUILDING_IDS = new Set(['coal_mine', 'iron_mine', 'gold_mine', 'stone
 const RESOURCE_NODE_TYPES = new Set(['resource_deposit', 'stone_deposit'])
 
 export interface BuildingDeps {
+	event: EventManager
 	inventory: InventoryManager
 	mapObjects: MapObjectsManager
 	items: ItemsManager
@@ -76,7 +77,6 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	constructor(
 		managers: BuildingDeps,
-		private event: EventManager,
 		private logger: Logger,
 		// managers provides Loot/Storage
 	) {
@@ -85,7 +85,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		
 		// Send building catalog to clients when they connect (in addition to when they join a map)
 		// Note: Buildings might not be loaded yet, so we also send on player join
-		this.event.onJoined((client) => {
+		this.managers.event.onJoined((client) => {
 			// Send catalog if buildings are already loaded
 			// This ensures UI gets buildings even before player joins a map
 			if (this.definitions.size > 0) {
@@ -96,22 +96,22 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	private setupEventHandlers() {
 		// Handle building placement requests
-		this.event.on<PlaceBuildingData>(BuildingsEvents.CS.Place, (data, client) => {
+		this.managers.event.on<PlaceBuildingData>(BuildingsEvents.CS.Place, (data, client) => {
 			this.placeBuilding(data, client)
 		})
 
 		// Handle building cancellation
-		this.event.on<CancelBuildingData>(BuildingsEvents.CS.Cancel, (data, client) => {
+		this.managers.event.on<CancelBuildingData>(BuildingsEvents.CS.Cancel, (data, client) => {
 			this.cancelBuilding(data, client)
 		})
 		
 		// Handle work area updates
-		this.event.on<SetWorkAreaData>(BuildingsEvents.CS.SetWorkArea, (data, client) => {
+		this.managers.event.on<SetWorkAreaData>(BuildingsEvents.CS.SetWorkArea, (data, client) => {
 			this.setWorkArea(data, client)
 		})
 
 		// Handle storage request updates
-		this.event.on<SetStorageRequestsData>(BuildingsEvents.CS.SetStorageRequests, (data, client) => {
+		this.managers.event.on<SetStorageRequestsData>(BuildingsEvents.CS.SetStorageRequests, (data, client) => {
 			const building = this.buildings.get(data.buildingInstanceId)
 			if (!building) {
 				return
@@ -129,37 +129,37 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 				return
 			}
 			building.storageRequests = normalized
-			this.event.emit(Receiver.Group, BuildingsEvents.SC.StorageRequestsUpdated, {
+			this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.StorageRequestsUpdated, {
 				buildingInstanceId: building.id,
 				itemTypes: normalized
 			}, building.mapId)
 		})
 
-		this.event.on<SetProductionPlanData>(BuildingsEvents.CS.SetProductionPlan, (data, client) => {
+		this.managers.event.on<SetProductionPlanData>(BuildingsEvents.CS.SetProductionPlan, (data, client) => {
 			this.setProductionPlan(data, client)
 		})
 
-		this.event.on<SetGlobalProductionPlanData>(BuildingsEvents.CS.SetGlobalProductionPlan, (data, client) => {
+		this.managers.event.on<SetGlobalProductionPlanData>(BuildingsEvents.CS.SetGlobalProductionPlan, (data, client) => {
 			this.setGlobalProductionPlan(data, client)
 		})
 
 		// Handle player join to send existing buildings and building catalog
-		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
+		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
 			this.sendBuildingsToClient(client, data.mapId)
 			this.sendBuildingCatalog(client)
 		})
 
 		// Handle player transition to send buildings for new map
-		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
+		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
 			this.sendBuildingsToClient(client, data.mapId)
 		})
 
 		// Drive construction progress from simulation ticks
-		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.handleSimulationTick(data)
 		})
 
-		this.event.on<CityCharterUnlockFlagsUpdated>(CityCharterEvents.SS.UnlockFlagsUpdated, (data) => {
+		this.managers.event.on<CityCharterUnlockFlagsUpdated>(CityCharterEvents.SS.UnlockFlagsUpdated, (data) => {
 			const key = this.getPlayerMapKey(data.playerId, data.mapId)
 			this.unlockedFlagsByPlayerMap.set(key, new Set(data.unlockedFlags))
 		})
@@ -212,7 +212,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 				progress,
 				stage: building.stage
 			}
-			this.event.emit(Receiver.Group, BuildingsEvents.SC.Progress, progressData, building.mapId)
+			this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.Progress, progressData, building.mapId)
 
 			// Check if construction is complete
 			if (progress >= 100 && building.stage === ConstructionStage.Completed) {
@@ -393,7 +393,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			building: clientBuilding as any
 		}
 		client.emit(Receiver.Group, BuildingsEvents.SC.Placed, placedData, client.currentGroup)
-		this.event.emit(Receiver.All, BuildingsEvents.SS.Placed, { building: buildingInstance })
+		this.managers.event.emit(Receiver.All, BuildingsEvents.SS.Placed, { building: buildingInstance })
 	}
 
 	private cancelBuilding(data: CancelBuildingData, client: EventClient) {
@@ -418,7 +418,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 		this.dropRefundItems(building, refundedItems)
 		this.removeBuildingInstance(building)
-		this.event.emit(Receiver.All, BuildingsEvents.SS.Removed, {
+		this.managers.event.emit(Receiver.All, BuildingsEvents.SS.Removed, {
 			buildingInstanceId: building.id,
 			buildingId: building.buildingId,
 			mapId: building.mapId,
@@ -466,7 +466,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			id: building.playerId,
 			currentGroup: building.mapId,
 			emit: (receiver, event, data, target?) => {
-				this.event.emit(receiver, event, data, target)
+				this.managers.event.emit(receiver, event, data, target)
 			},
 			setGroup: (_group: string) => {
 				// No-op for fake client
@@ -540,7 +540,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			center: building.workAreaCenter
 		}
 
-		this.event.emit(Receiver.Group, BuildingsEvents.SC.WorkAreaUpdated, updatedData, building.mapId)
+		this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.WorkAreaUpdated, updatedData, building.mapId)
 	}
 
 	private setProductionPlan(data: SetProductionPlanData, client: EventClient): void {
@@ -580,7 +580,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			plan: building.productionPlan,
 			useGlobal
 		}
-		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionPlanUpdated, updatedData, building.mapId)
+		this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionPlanUpdated, updatedData, building.mapId)
 	}
 
 	private setGlobalProductionPlan(data: SetGlobalProductionPlanData, client: EventClient): void {
@@ -703,7 +703,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 
 			// Emit resources changed event
-			this.event.emit(Receiver.Group, BuildingsEvents.SC.ResourcesChanged, {
+			this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.ResourcesChanged, {
 				buildingInstanceId: building.id,
 				itemType,
 				quantity: newCollected,
@@ -718,7 +718,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			building.startedAt = this.simulationTimeMs // Start construction timer
 
 			// Emit stage changed event (this signals that all resources are collected)
-			this.event.emit(Receiver.Group, BuildingsEvents.SC.StageChanged, {
+			this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.StageChanged, {
 				buildingInstanceId: building.id,
 				stage: building.stage
 			}, building.mapId)
@@ -801,7 +801,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			
 			// Emit internal server-side event for PopulationManager
 			this.logger.log(`Emitting internal house completed event (ss:)`)
-			this.event.emit(Receiver.All, BuildingsEvents.SS.HouseCompleted, {
+			this.managers.event.emit(Receiver.All, BuildingsEvents.SS.HouseCompleted, {
 				buildingInstanceId: building.id,
 				buildingId: building.buildingId
 			})
@@ -809,7 +809,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 		// Emit internal construction completed event for PopulationManager to handle builder reassignment
 		// This event is emitted for ALL completed buildings (not just houses)
-		this.event.emit(Receiver.All, BuildingsEvents.SS.ConstructionCompleted, {
+		this.managers.event.emit(Receiver.All, BuildingsEvents.SS.ConstructionCompleted, {
 			buildingInstanceId: building.id,
 			buildingId: building.buildingId,
 			mapId: building.mapId,
@@ -827,7 +827,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			building: clientBuilding as any
 		}
 		this.logger.log(`Emitting building completed event to group: ${building.mapId}`)
-		this.event.emit(Receiver.Group, BuildingsEvents.SC.Completed, completedData, building.mapId)
+		this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.Completed, completedData, building.mapId)
 		this.logger.log(`✓ Building completed event emitted`)
 	}
 
@@ -971,11 +971,11 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	private emitAutoProductionStarted(building: BuildingInstance, recipe: ProductionRecipe): void {
 		this.emitAutoProductionStatus(building, ProductionStatus.InProduction, 0, 0)
-		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionStarted, {
+		this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionStarted, {
 			buildingInstanceId: building.id,
 			recipe
 		}, building.mapId)
-		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionProgress, {
+		this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionProgress, {
 			buildingInstanceId: building.id,
 			progress: 0
 		}, building.mapId)
@@ -983,11 +983,11 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	private emitAutoProductionCompleted(building: BuildingInstance, recipe: ProductionRecipe): void {
 		this.emitAutoProductionStatus(building, ProductionStatus.Idle, 100, 0)
-		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionCompleted, {
+		this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionCompleted, {
 			buildingInstanceId: building.id,
 			recipe
 		}, building.mapId)
-		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionProgress, {
+		this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionProgress, {
 			buildingInstanceId: building.id,
 			progress: 100
 		}, building.mapId)
@@ -1006,11 +1006,11 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 
 		this.autoProductionState.set(building.id, { status, progress: nextProgress, progressMs: nextProgressMs })
-		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionStatusChanged, {
+		this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionStatusChanged, {
 			buildingInstanceId: building.id,
 			status
 		}, building.mapId)
-		this.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionProgress, {
+		this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.ProductionProgress, {
 			buildingInstanceId: building.id,
 			progress: nextProgress
 		}, building.mapId)

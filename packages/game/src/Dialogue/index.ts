@@ -14,6 +14,7 @@ import type { DialogueSnapshot } from '../state/types'
 const DEFAULT_START_NODE = 'start'
 
 export interface DialogueDeps {
+	event: EventManager
 	quest: QuestManager
 	conditionEffect: ConditionEffectManager
 }
@@ -25,7 +26,6 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 
 	constructor(
 		managers: DialogueDeps,
-		private event: EventManager, 
 		private logger: Logger
 	) {
 		super(managers)
@@ -110,7 +110,7 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 
 	private setupEventHandlers() {
 		// Handle dialogue continue
-		this.event.on<DialogueContinueData>(DialogueEvents.CS.Continue, (data, client) => {
+		this.managers.event.on<DialogueContinueData>(DialogueEvents.CS.Continue, (data, client) => {
 			const dialogueId = this.activeDialogues.get(client.id)
 			if (!dialogueId || dialogueId !== data.dialogueId) return
 
@@ -147,7 +147,7 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 		})
 
 		// Handle dialogue choice
-		this.event.on<DialogueChoiceData>(DialogueEvents.CS.Choice, (data, client) => {
+		this.managers.event.on<DialogueChoiceData>(DialogueEvents.CS.Choice, (data, client) => {
 			const dialogueId = this.activeDialogues.get(client.id)
 			if (!dialogueId || dialogueId !== data.dialogueId) return
 
@@ -197,7 +197,7 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 		})
 
 		// Handle dialogue end from client
-		this.event.on<DialogueContinueData>(DialogueEvents.CS.End, (data, client) => {
+		this.managers.event.on<DialogueContinueData>(DialogueEvents.CS.End, (data, client) => {
 			const dialogueId = this.activeDialogues.get(client.id)
 			if (!dialogueId || dialogueId !== data.dialogueId) return
 

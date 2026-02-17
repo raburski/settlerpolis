@@ -12,6 +12,7 @@ import type { TriggersSnapshot } from '../state/types'
 const PROXIMITY_DEACTIVATION_BUFFER = 50 // pixels
 
 export interface TriggerDeps {
+	event: EventManager
 	map: MapManager
 	conditionEffect: ConditionEffectManager
 }
@@ -26,7 +27,6 @@ export class TriggerManager extends BaseManager<TriggerDeps> {
 
 	constructor(
 		managers: TriggerDeps,
-		private event: EventManager,
 		private logger: Logger
 	) {
 		super(managers)
@@ -45,7 +45,7 @@ export class TriggerManager extends BaseManager<TriggerDeps> {
 	}
 
 	private setupEventHandlers() {
-		this.event.on<Position>(Event.Players.CS.Move, (position, client) => {
+		this.managers.event.on<Position>(Event.Players.CS.Move, (position, client) => {
 			this.checkTriggers(position, client)
 		})
 	}

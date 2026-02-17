@@ -14,6 +14,7 @@ import type { SimulationTickData } from '../Simulation/types'
 import type { SchedulerSnapshot } from '../state/types'
 
 export interface SchedulerDeps {
+	event: EventManager
 	time: TimeManager
 	conditionEffect: ConditionEffectManager
 }
@@ -24,7 +25,6 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 
 	constructor(
 		managers: SchedulerDeps,
-		private event: EventManager,
 		private logger: Logger
 	) {
 		super(managers)
@@ -33,27 +33,27 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 
 	private setupEventHandlers() {
 		// Handle schedule requests
-		this.event.on(SchedulerEvents.SS.Schedule, (data: ScheduleOptions, client: EventClient) => {
+		this.managers.event.on(SchedulerEvents.SS.Schedule, (data: ScheduleOptions, client: EventClient) => {
 			this.schedule(data, client)
 		})
 
 		// Handle cancel requests
-		this.event.on(SchedulerEvents.SS.Cancel, (data: { id: string }, client: EventClient) => {
+		this.managers.event.on(SchedulerEvents.SS.Cancel, (data: { id: string }, client: EventClient) => {
 			this.cancel(data.id, client)
 		})
 		
 		// Handle enable requests
-		this.event.on(SchedulerEvents.SS.Enable, (data: { id: string }, client: EventClient) => {
+		this.managers.event.on(SchedulerEvents.SS.Enable, (data: { id: string }, client: EventClient) => {
 			this.enableEvent(data.id, client)
 		})
 		
 		// Handle disable requests
-		this.event.on(SchedulerEvents.SS.Disable, (data: { id: string }, client: EventClient) => {
+		this.managers.event.on(SchedulerEvents.SS.Disable, (data: { id: string }, client: EventClient) => {
 			this.disableEvent(data.id, client)
 		})
 
 		// Drive scheduler off simulation ticks
-		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.handleSimulationTick(data)
 		})
 	}
@@ -66,7 +66,7 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 			id: 'system-init',
 			currentGroup: 'GLOBAL',
 			emit: (to: Receiver, event: string, data: any, targetClientId?: string) => {
-				this.event.emit(to, event, data, targetClientId)
+				this.managers.event.emit(to, event, data, targetClientId)
 			},
 			setGroup: (group: string) => {
 				// No-op for system client
@@ -215,7 +215,7 @@ export class Scheduler extends BaseManager<SchedulerDeps> {
 			id: 'system-scheduler',
 			currentGroup: 'GLOBAL',
 			emit: (to: Receiver, event: string, data: any, targetClientId?: string) => {
-				this.event.emit(to, event, data, targetClientId)
+				this.managers.event.emit(to, event, data, targetClientId)
 			},
 			setGroup: (group: string) => {
 				// No-op for mock client

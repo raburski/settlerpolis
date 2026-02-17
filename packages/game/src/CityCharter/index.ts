@@ -21,6 +21,7 @@ import type { PlayerJoinData, PlayerTransitionData } from '../Players/types'
 import type { MapId, PlayerId } from '../ids'
 
 export interface CityCharterDeps {
+	event: EventManager
 	population: PopulationManager
 	buildings: BuildingManager
 	storage: StorageManager
@@ -53,7 +54,6 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 
 	constructor(
 		managers: CityCharterDeps,
-		private event: EventManager,
 		private logger: Logger
 	) {
 		super(managers)
@@ -61,28 +61,28 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.handleSimulationTick(data)
 		})
 
-		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
+		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
 			const mapId = data.mapId || client.currentGroup
 			this.ensureState(client.id, mapId)
 			this.sendStateToClient(client, mapId)
 		})
 
-		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
+		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
 			const mapId = data.mapId || client.currentGroup
 			this.ensureState(client.id, mapId)
 			this.sendStateToClient(client, mapId)
 		})
 
-		this.event.on(CityCharterEvents.CS.Claim, (data, client) => {
+		this.managers.event.on(CityCharterEvents.CS.Claim, (data, client) => {
 			const mapId = data?.mapId || client.currentGroup
 			this.claimNextTier(client, mapId)
 		})
 
-		this.event.on(CityCharterEvents.CS.RequestState, (data, client) => {
+		this.managers.event.on(CityCharterEvents.CS.RequestState, (data, client) => {
 			const mapId = data?.mapId || client.currentGroup
 			this.ensureState(client.id, mapId)
 			this.sendStateToClient(client, mapId)
@@ -336,7 +336,7 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 
 		if (emitIfChanged && stateChanged) {
 			const payload = this.buildStateData(state, currentRequirements, nextRequirements)
-			this.event.emit(Receiver.Client, CityCharterEvents.SC.Updated, payload, state.playerId)
+			this.managers.event.emit(Receiver.Client, CityCharterEvents.SC.Updated, payload, state.playerId)
 		}
 	}
 
@@ -367,7 +367,7 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 			mapId: state.mapId,
 			unlockedFlags: [...state.unlockedFlags]
 		}
-		this.event.emit(Receiver.All, CityCharterEvents.SS.UnlockFlagsUpdated, payload)
+		this.managers.event.emit(Receiver.All, CityCharterEvents.SS.UnlockFlagsUpdated, payload)
 	}
 
 	private claimNextTier(client: EventClient, mapId: MapId): void {
@@ -404,7 +404,7 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 		state.buffsActive = currentRequirements.allMet
 		state.isEligibleForNext = Boolean(updatedNextRequirements?.allMet)
 		const payload = this.buildStateData(state, currentRequirements, updatedNextRequirements)
-		this.event.emit(Receiver.Client, CityCharterEvents.SC.Updated, payload, client.id)
+		this.managers.event.emit(Receiver.Client, CityCharterEvents.SC.Updated, payload, client.id)
 	}
 
 	public serialize(): CityCharterSnapshot {

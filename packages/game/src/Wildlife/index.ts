@@ -64,6 +64,7 @@ export interface ForestSpawnConfig {
 }
 
 export interface WildlifeDeps {
+	event: EventManager
 	map: MapManager
 	mapObjects: MapObjectsManager
 	resourceNodes: ResourceNodesManager
@@ -104,7 +105,6 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 
 	constructor(
 		managers: WildlifeDeps,
-		private event: EventManager,
 		private logger: Logger,
 		config: Partial<ForestSpawnConfig> = {}
 	) {
@@ -114,25 +114,25 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.simulationTimeMs = data.nowMs
 			this.processDeerRespawns()
 		})
-		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			if (this.forestConfig.verifyIntervalMs <= 0) return
 			this.verifyElapsedMs += data.deltaMs
 			if (this.verifyElapsedMs < this.forestConfig.verifyIntervalMs) return
 			this.verifyElapsedMs = 0
 			this.verifyForestSpawnPoints()
 		})
-		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			if (this.forestConfig.roamIntervalMs <= 0) return
 			this.roamElapsedMs += data.deltaMs
 			if (this.roamElapsedMs < this.forestConfig.roamIntervalMs) return
 			this.roamElapsedMs = 0
 			this.roamDeer()
 		})
-		this.event.on(WildlifeEvents.SS.DeerKilled, (data: { npcId: string }) => {
+		this.managers.event.on(WildlifeEvents.SS.DeerKilled, (data: { npcId: string }) => {
 			this.handleDeerKilled(data.npcId)
 		})
 	}
@@ -577,7 +577,7 @@ export class WildlifeManager extends BaseManager<WildlifeDeps> {
 					if (Math.random() > this.forestConfig.roamChance) continue
 					const target = this.findRoamTarget(mapId, mapData, mask, density, home)
 					if (!target) continue
-					this.event.emit(Receiver.All, NPCEvents.SS.Go, { npcId, position: target })
+					this.managers.event.emit(Receiver.All, NPCEvents.SS.Go, { npcId, position: target })
 				}
 			}
 		}

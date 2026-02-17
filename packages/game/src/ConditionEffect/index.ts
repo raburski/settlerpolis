@@ -23,6 +23,7 @@ import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
 
 export interface ConditionEffectDeps {
+	event: EventManager
 	quest: QuestManager
 	flags: FlagsManager
 	affinity: AffinityManager
@@ -36,7 +37,6 @@ export interface ConditionEffectDeps {
 export class ConditionEffectManager extends BaseManager<ConditionEffectDeps> {
 	constructor(
 		managers: ConditionEffectDeps,
-		private event: EventManager,
 		private logger: Logger
 	) {
 		super(managers)

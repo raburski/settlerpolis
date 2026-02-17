@@ -22,6 +22,7 @@ import type { SimulationTickData } from '../Simulation/types'
 import type { NPCSnapshot } from '../state/types'
 
 export interface NPCDeps {
+	event: EventManager
 	dialogue: DialogueManager
 	map: MapManager
 	time: TimeManager
@@ -36,7 +37,6 @@ export class NPCManager extends BaseManager<NPCDeps> {
 
 	constructor(
 		managers: NPCDeps,
-		private event: EventManager,
 		private logger: Logger
 	) {
 		super(managers)
@@ -81,12 +81,12 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	}
 
 	private setupEventHandlers() {
-		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
+		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
 			this.handleSimulationTick(data)
 		})
 
 		// Send NPCs list when player joins or transitions to a map
-		this.event.on<PlayerJoinData>(Event.Players.CS.Join, (data: PlayerJoinData, client: EventClient) => {
+		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, (data: PlayerJoinData, client: EventClient) => {
 			const mapNPCs = this.getMapNPCs(data.mapId)
 			this.logger.debug('ON PLAYER JOIN', this.npcs)
 			if (mapNPCs.length > 0) {
@@ -94,7 +94,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 			}
 		})
 
-		this.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data: PlayerTransitionData, client: EventClient) => {
+		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data: PlayerTransitionData, client: EventClient) => {
 			const mapNPCs = this.getMapNPCs(data.mapId)
 			if (mapNPCs.length > 0) {
 				client.emit(Receiver.Sender, NPCEvents.SC.List, { npcs: mapNPCs })
@@ -102,17 +102,17 @@ export class NPCManager extends BaseManager<NPCDeps> {
 		})
 
 		// Handle NPC interactions
-		this.event.on<NPCInteractData>(NPCEvents.CS.Interact, (data, client) => {
+		this.managers.event.on<NPCInteractData>(NPCEvents.CS.Interact, (data, client) => {
 			this.handleNPCInteraction(data, client)
 		})
 
 		// Handle NPC movement (internal server-side event)
-		this.event.on<NPCGoData>(NPCEvents.SS.Go, (data) => {
+		this.managers.event.on<NPCGoData>(NPCEvents.SS.Go, (data) => {
 			this.handleNPCGo(data)
 		})
 
 		// Listen for movement step completion to sync NPC position
-		this.event.on(MovementEvents.SS.StepComplete, (data: { entityId: string, position: Position }) => {
+		this.managers.event.on(MovementEvents.SS.StepComplete, (data: { entityId: string, position: Position }) => {
 			const npc = this.npcs.get(data.entityId)
 			if (npc) {
 				// Sync NPC position with MovementManager
@@ -121,7 +121,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 		})
 
 		// Listen for movement path completion to update NPC state
-		this.event.on(MovementEvents.SS.PathComplete, (data: { entityId: string, targetType?: MoveTargetType, targetId?: string }) => {
+		this.managers.event.on(MovementEvents.SS.PathComplete, (data: { entityId: string, targetType?: MoveTargetType, targetId?: string }) => {
 			const npc = this.npcs.get(data.entityId)
 			if (npc && npc.state === NPCState.Moving) {
 				npc.state = NPCState.Idle
@@ -135,7 +135,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 		})
 
 		// Handle dialogue end to resume routines
-		this.event.on<DialogueContinueData>(DialogueEvents.SC.End, (data, client) => {
+		this.managers.event.on<DialogueContinueData>(DialogueEvents.SC.End, (data, client) => {
 			const activeDialogues = this.managers.dialogue.getNPCActiveDialogues(data.dialogueId)
 			if (activeDialogues.length === 0) {
 				const pausedStep = this.pausedRoutines.get(data.dialogueId)
@@ -153,7 +153,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 		})
 		
 		// Handle NPC attribute set event
-		this.event.on(NPCEvents.SS.SetAttribute, (data: { npcId: string, name: string, value: any }, client: EventClient) => {
+		this.managers.event.on(NPCEvents.SS.SetAttribute, (data: { npcId: string, name: string, value: any }, client: EventClient) => {
 			this.setNPCAttribute(data.npcId, data.name, data.value)
 			
 			// Note: Instead of sending a specific attribute update event,
@@ -162,7 +162,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 		})
 		
 		// Handle NPC attribute remove event
-		this.event.on(NPCEvents.SS.RemoveAttribute, (data: { npcId: string, name: string }, client: EventClient) => {
+		this.managers.event.on(NPCEvents.SS.RemoveAttribute, (data: { npcId: string, name: string }, client: EventClient) => {
 			this.removeNPCAttribute(data.npcId, data.name)
 			
 			// No specific attribute update event
@@ -241,7 +241,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 		this.managers.movement.registerEntity(movementEntity)
 
 		if (npc.active !== false) {
-			this.event.emit(Receiver.Group, NPCEvents.SC.Spawn, { npc }, npc.mapId)
+			this.managers.event.emit(Receiver.Group, NPCEvents.SC.Spawn, { npc }, npc.mapId)
 		}
 	}
 
@@ -256,7 +256,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 		this.npcs.delete(npcId)
 
 		if (npc.active !== false) {
-			this.event.emit(Receiver.Group, NPCEvents.SC.Despawn, { npc }, npc.mapId)
+			this.managers.event.emit(Receiver.Group, NPCEvents.SC.Despawn, { npc }, npc.mapId)
 		}
 	}
 
@@ -297,7 +297,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 		// Update current action and emit to clients
 		if (step.action) {
 			npc.currentAction = step.action
-			this.event.emit(Receiver.Group, NPCEvents.SC.Action, {
+			this.managers.event.emit(Receiver.Group, NPCEvents.SC.Action, {
 				npcId,
 				action: step.action
 			}, npc.mapId)
@@ -504,7 +504,7 @@ export class NPCManager extends BaseManager<NPCDeps> {
 		}
 
 		// Notify all players in the map about the NPC state change
-		this.event.emit(Receiver.Group, active ? NPCEvents.SC.Spawn : NPCEvents.SC.Despawn, { 
+		this.managers.event.emit(Receiver.Group, active ? NPCEvents.SC.Spawn : NPCEvents.SC.Despawn, { 
 			npc 
 		}, npc.mapId)
 	}
