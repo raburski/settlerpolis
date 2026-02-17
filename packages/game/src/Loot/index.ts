@@ -10,12 +10,14 @@ import { Logger } from '../Logs'
 import { BaseManager } from '../Managers'
 import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
+import type { SimulationManager } from '../Simulation'
 import type { LootSnapshot } from '../state/types'
 import { LootManagerState } from './LootManagerState'
 
 export interface LootDeps {
 	event: EventManager
 	items: ItemsManager
+	simulation: SimulationManager
 }
 
 export class LootManager extends BaseManager<LootDeps> {
@@ -107,8 +109,7 @@ export class LootManager extends BaseManager<LootDeps> {
 		}
 	}
 
-	private handleSimulationTick(data: SimulationTickData): void {
-		this.state.simulationTimeMs = data.nowMs
+	private handleSimulationTick(_data: SimulationTickData): void {
 		this.cleanupExpiredItems()
 	}
 
@@ -238,6 +239,7 @@ export class LootManager extends BaseManager<LootDeps> {
 		const mapDroppedItems = this.state.droppedItems.get(mapId) || []
 		const maxStackSize = this.getMaxStackSize(itemType)
 		const stackable = this.canStack(itemType)
+		const nowMs = this.managers.simulation.getSimulationTimeMs()
 
 		let remaining = quantity
 
@@ -264,7 +266,7 @@ export class LootManager extends BaseManager<LootDeps> {
 					id: preferredItemId || uuidv4(),
 					itemType,
 					position,
-					droppedAt: this.state.simulationTimeMs,
+					droppedAt: nowMs,
 					quantity: 1,
 					metadata: metadata ? { ...metadata } : undefined
 				}
@@ -281,7 +283,7 @@ export class LootManager extends BaseManager<LootDeps> {
 				id: preferredItemId || uuidv4(),
 				itemType,
 				position,
-				droppedAt: this.state.simulationTimeMs,
+				droppedAt: nowMs,
 				quantity: stackQuantity,
 				metadata: metadata ? { ...metadata } : undefined
 			}
@@ -299,7 +301,7 @@ export class LootManager extends BaseManager<LootDeps> {
 		if (!Number.isFinite(this.DROPPED_ITEM_LIFESPAN)) {
 			return
 		}
-		const now = this.state.simulationTimeMs
+		const now = this.managers.simulation.getSimulationTimeMs()
 		this.state.droppedItems.forEach((items, mapId) => {
 			const expiredItemIds = items
 				.filter(item => now - item.droppedAt > this.DROPPED_ITEM_LIFESPAN)

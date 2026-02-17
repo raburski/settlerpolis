@@ -16,7 +16,6 @@ interface RoadJob {
 export class RoadManagerState {
 	public roadsByMap = new Map<string, RoadData>()
 	public jobsByMap = new Map<string, RoadJob[]>()
-	public simulationTimeMs = 0
 
 	public serialize(): RoadsSnapshot {
 		return {
@@ -33,8 +32,7 @@ export class RoadManagerState {
 					createdAt: job.createdAt,
 					assignedSettlerId: job.assignedSettlerId
 				} as RoadJobSnapshot))
-			])),
-			simulationTimeMs: this.simulationTimeMs
+			]))
 		}
 	}
 
@@ -53,12 +51,10 @@ export class RoadManagerState {
 				assignedSettlerId: job.assignedSettlerId
 			})))
 		}
-		this.simulationTimeMs = state.simulationTimeMs
 	}
 
 	public reset(): void {
 		this.roadsByMap.clear()
 		this.jobsByMap.clear()
-		this.simulationTimeMs = 0
 	}
 }

@@ -5,7 +5,6 @@ export class LootManagerState {
 	public droppedItems = new Map<string, DroppedItem[]>()
 	public itemIdToMapId = new Map<string, string>()
 	public itemReservations = new Map<string, string>()
-	public simulationTimeMs = 0
 
 	public serialize(): LootSnapshot {
 		return {
