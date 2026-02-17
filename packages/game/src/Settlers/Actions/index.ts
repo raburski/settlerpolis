@@ -18,23 +18,11 @@ import { WorkProviderEvents } from '../Work/events'
 import { ActionHandlers } from './actionHandlers'
 import type { ActionQueueContext, ActionSystemSnapshot } from '../../state/types'
 import type { MapManager } from '../../Map'
+import { SimulationEvents } from '../../Simulation/events'
+import type { SimulationTickData } from '../../Simulation/types'
+import { SettlerActionsState } from './SettlerActionsState'
 
 export type ActionQueueContextResolver = (settlerId: string, context: ActionQueueContext, actions: WorkAction[]) => {
-	onComplete?: () => void
-	onFail?: (reason: string) => void
-}
-
-interface ActiveQueue {
-	actions: WorkAction[]
-	index: number
-	context?: ActionQueueContext
-	inProgress?: {
-		type: WorkActionType.Wait | WorkActionType.Construct | WorkActionType.BuildRoad | WorkActionType.Consume | WorkActionType.Sleep
-		endAtMs: number
-		buildingInstanceId?: string
-		jobId?: string
-	}
-	carriedItem?: { itemType: string, quantity: number }
 	onComplete?: () => void
 	onFail?: (reason: string) => void
 }
@@ -54,33 +42,34 @@ export interface SettlerActionsDeps {
 }
 
 export class SettlerActionsManager {
-	private queues = new Map<string, ActiveQueue>()
+	private readonly state = new SettlerActionsState()
 	private contextResolvers = new Map<ActionQueueContext['kind'], ActionQueueContextResolver>()
-	private nowMs = 0
 
 	constructor(
 		private managers: SettlerActionsDeps,
 		private event: EventManager,
 		private logger: Logger
-	) {}
+	) {
+		this.event.on<SimulationTickData>(SimulationEvents.SS.Tick, this.handleSimulationTick)
+	}
 
-	public setTime(nowMs: number): void {
-		this.nowMs = nowMs
+	private readonly handleSimulationTick = (data: SimulationTickData): void => {
+		this.state.setNowMs(data.nowMs)
 		this.processTimedActions()
 	}
 
 	public isBusy(settlerId: string): boolean {
-		return this.queues.has(settlerId)
+		return this.state.isBusy(settlerId)
 	}
 
 	public abort(settlerId: string): void {
-		const queue = this.queues.get(settlerId)
+		const queue = this.state.getQueue(settlerId)
 		if (!queue) {
 			return
 		}
 		this.managers.movement.cancelMovement(settlerId)
 		this.releaseReservations(queue.actions, queue.context?.reservationOwnerId, settlerId)
-		this.queues.delete(settlerId)
+		this.state.deleteQueue(settlerId)
 	}
 
 	public replaceQueueAfterCurrent(
@@ -89,12 +78,12 @@ export class SettlerActionsManager {
 		onComplete?: () => void,
 		onFail?: (reason: string) => void
 	): boolean {
-		const queue = this.queues.get(settlerId)
+		const queue = this.state.getQueue(settlerId)
 		if (!queue) {
 			return false
 		}
 		if (queue.index >= queue.actions.length) {
-			this.queues.delete(settlerId)
+			this.state.deleteQueue(settlerId)
 			return false
 		}
 
@@ -123,7 +112,7 @@ export class SettlerActionsManager {
 			return
 		}
 
-		this.queues.set(settlerId, {
+		this.state.setQueue(settlerId, {
 			actions,
 			index: 0,
 			context,
@@ -135,7 +124,7 @@ export class SettlerActionsManager {
 	}
 
 	private startNextAction(settlerId: string): void {
-		const queue = this.queues.get(settlerId)
+		const queue = this.state.getQueue(settlerId)
 		if (!queue) {
 			return
 		}
@@ -160,7 +149,7 @@ export class SettlerActionsManager {
 			settlerId,
 			action,
 			managers: this.managers,
-			nowMs: this.nowMs,
+			nowMs: this.state.getNowMs(),
 			setInProgress: (inProgress) => {
 				queue.inProgress = inProgress
 			},
@@ -170,7 +159,7 @@ export class SettlerActionsManager {
 	}
 
 	private completeAction(settlerId: string): void {
-		const queue = this.queues.get(settlerId)
+		const queue = this.state.getQueue(settlerId)
 		if (!queue) {
 			return
 		}
@@ -182,7 +171,7 @@ export class SettlerActionsManager {
 				settlerId,
 				action,
 				managers: this.managers,
-				nowMs: this.nowMs
+				nowMs: this.state.getNowMs()
 			})
 		}
 		this.event.emit(Receiver.All, WorkProviderEvents.SS.ActionCompleted, { settlerId, action })
@@ -192,7 +181,7 @@ export class SettlerActionsManager {
 	}
 
 	private failAction(settlerId: string, reason: string): void {
-		const queue = this.queues.get(settlerId)
+		const queue = this.state.getQueue(settlerId)
 		if (!queue) {
 			return
 		}
@@ -204,20 +193,20 @@ export class SettlerActionsManager {
 				settlerId,
 				action,
 				managers: this.managers,
-				nowMs: this.nowMs
+				nowMs: this.state.getNowMs()
 			}, reason)
 		}
-			this.logger.warn(`[SettlerActions] Action failed for ${settlerId}: ${action.type} (${reason})`)
+		this.logger.warn(`[SettlerActions] Action failed for ${settlerId}: ${action.type} (${reason})`)
 		this.event.emit(Receiver.All, WorkProviderEvents.SS.ActionFailed, { settlerId, action, reason })
 		this.finishQueue(settlerId, reason)
 	}
 
 	private processTimedActions(): void {
-		for (const [settlerId, queue] of this.queues.entries()) {
+		for (const [settlerId, queue] of this.state.getQueueEntries()) {
 			if (!queue.inProgress) {
 				continue
 			}
-			if (this.nowMs < queue.inProgress.endAtMs) {
+			if (this.state.getNowMs() < queue.inProgress.endAtMs) {
 				continue
 			}
 			queue.inProgress = undefined
@@ -226,32 +215,20 @@ export class SettlerActionsManager {
 	}
 
 	reset(): void {
-		this.queues.clear()
+		this.state.reset()
 	}
 
 	serialize(): ActionSystemSnapshot {
-		return {
-			queues: Array.from(this.queues.entries()).map(([settlerId, queue]) => ({
-				settlerId,
-				actions: queue.actions.map(action => ({ ...action })),
-				index: queue.index,
-				context: queue.context
-			}))
-		}
+		return this.state.serialize()
 	}
 
-	deserialize(state: ActionSystemSnapshot): void {
-		this.queues.clear()
-		for (const queue of state.queues) {
-			const callbacks = this.resolveCallbacks(queue.settlerId, queue.context, queue.actions)
-			this.queues.set(queue.settlerId, {
-				actions: queue.actions.map(action => ({ ...action })),
-				index: queue.index,
-				context: queue.context,
-				onComplete: callbacks.onComplete,
-				onFail: callbacks.onFail
-			})
-			this.startNextAction(queue.settlerId)
+	deserialize(state: ActionSystemSnapshot, nowMs?: number): void {
+		if (typeof nowMs === 'number') {
+			this.state.setNowMs(nowMs)
+		}
+		const restoredSettlers = this.state.deserialize(state, this.resolveCallbacks)
+		for (const settlerId of restoredSettlers) {
+			this.startNextAction(settlerId)
 		}
 	}
 
@@ -267,12 +244,12 @@ export class SettlerActionsManager {
 	}
 
 	private finishQueue(settlerId: string, reason?: string): void {
-		const queue = this.queues.get(settlerId)
+		const queue = this.state.getQueue(settlerId)
 		if (!queue) {
 			return
 		}
 		this.releaseReservations(queue.actions, queue.context?.reservationOwnerId, settlerId)
-		this.queues.delete(settlerId)
+		this.state.deleteQueue(settlerId)
 		if (reason) {
 			queue.onFail?.(reason)
 			return

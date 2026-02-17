@@ -1,10 +1,10 @@
-import type { BuildingManager } from '../../Buildings'
-import type { LootManager } from '../../Loot'
-import type { StorageManager } from '../../Storage'
-import type { PopulationManager } from '../../Population'
-import type { ItemsManager } from '../../Items'
-import { ItemCategory } from '../../Items/types'
-import type { Position } from '../../types'
+import type { BuildingManager } from '../../../Buildings'
+import type { LootManager } from '../../../Loot'
+import type { StorageManager } from '../../../Storage'
+import type { PopulationManager } from '../../../Population'
+import type { ItemsManager } from '../../../Items'
+import { ItemCategory } from '../../../Items/types'
+import type { Position } from '../../../types'
 
 export type FoodSource =
 	| { type: 'carried', itemType: string, quantity: number }

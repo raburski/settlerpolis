@@ -1,16 +1,16 @@
-import type { EventManager } from '../events'
-import { Receiver } from '../Receiver'
-import type { Logger } from '../Logs'
-import { SimulationEvents } from '../Simulation/events'
-import type { SimulationTickData } from '../Simulation/types'
-import type { SettlerActionsManager } from '../Settlers/Actions'
+import type { EventManager } from '../../events'
+import { Receiver } from '../../Receiver'
+import type { Logger } from '../../Logs'
+import { SimulationEvents } from '../../Simulation/events'
+import type { SimulationTickData } from '../../Simulation/types'
+import type { SettlerBehaviourCoordinator } from '../Behaviour'
 import { NeedsEvents } from './events'
 import { NeedType, NeedPriority } from './NeedTypes'
 import type { NeedsSystem } from './NeedsSystem'
 import type { NeedPlanner } from './NeedPlanner'
 import type { ContextPausedEventData, NeedPlanFailedEventData, NeedPlanCreatedEventData, NeedInterruptEventData, NeedSatisfiedEventData } from './types'
-import type { NeedInterruptSnapshot } from '../state/types'
-import { ActionQueueContextKind } from '../state/types'
+import type { NeedInterruptSnapshot } from '../../state/types'
+import { ActionQueueContextKind, type ActionQueueContext } from '../../state/types'
 
 interface PendingNeed {
 	needType: NeedType
@@ -40,14 +40,11 @@ export class NeedInterruptController {
 		private event: EventManager,
 		private needs: NeedsSystem,
 		private planner: NeedPlanner,
-		private actions: SettlerActionsManager,
+		private behaviour: SettlerBehaviourCoordinator,
 		private logger: Logger
 	) {
 		this.setupEventHandlers()
-		this.actions.registerContextResolver(ActionQueueContextKind.Need, (settlerId, context) => {
-			if (context.kind !== ActionQueueContextKind.Need) {
-				return {}
-			}
+		this.behaviour.registerNeedPlanCallbacksResolver((settlerId, context) => {
 			return {
 				onComplete: () => {
 					if (typeof context.satisfyValue === 'number') {
@@ -172,14 +169,14 @@ export class NeedInterruptController {
 			level: priority
 		} as NeedInterruptEventData)
 
-		const context = {
+		const context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }> = {
 			kind: ActionQueueContextKind.Need,
 			needType,
 			satisfyValue: plan.satisfyValue,
 			reservationOwnerId: data.settlerId
 		}
 
-		this.actions.enqueue(data.settlerId, plan.actions, () => {
+		this.behaviour.enqueueNeedPlan(data.settlerId, plan.actions, context, () => {
 			plan.releaseReservations?.()
 			if (typeof plan.satisfyValue === 'number') {
 				this.needs.resolveNeed(data.settlerId, needType, plan.satisfyValue)
@@ -190,7 +187,7 @@ export class NeedInterruptController {
 			plan.releaseReservations?.()
 			this.emitPlanFailed(data.settlerId, needType, reason)
 			this.finishInterrupt(data.settlerId, needType, false)
-		}, context)
+		})
 	}
 
 	private handleNeedSatisfied(data: NeedSatisfiedEventData): void {

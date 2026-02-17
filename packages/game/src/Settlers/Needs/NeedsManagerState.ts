@@ -1,4 +1,4 @@
-import type { NeedInterruptSnapshot, NeedsSnapshot, NeedsSystemSnapshot } from '../state/types'
+import type { NeedInterruptSnapshot, NeedsSnapshot, NeedsSystemSnapshot } from '../../state/types'
 
 export class NeedsManagerState {
 	public needsBySettler: NeedsSnapshot['needsBySettler'] = []

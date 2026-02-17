@@ -1,4 +1,4 @@
-import { NEED_CRITICAL_THRESHOLD } from '../../../Needs/NeedsState'
+import { NEED_CRITICAL_THRESHOLD } from '../../Needs/NeedsState'
 import { WorkWaitReason } from '../types'
 import { WorkPolicyResultType } from './constants'
 import type { WorkPolicy, WorkPolicyContext, WorkPolicyResult } from './types'

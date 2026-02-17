@@ -15,6 +15,9 @@ import { calculateDistance } from '../../utils'
 import type { BuildingDefinition, BuildingInstance } from '../../Buildings/types'
 import type { MapData } from '../../Map/types'
 import type { SettlerWorkRuntimePort } from '../Work/runtime'
+import { SimulationEvents } from '../../Simulation/events'
+import type { SimulationTickData } from '../../Simulation/types'
+import { SettlerBehaviourState, type SettlerBehaviourSnapshot } from './SettlerBehaviourState'
 
 const MOVEMENT_RECOVERY_COOLDOWN_MS = 8000
 const MOVEMENT_FAILURE_MAX_RETRIES = 3
@@ -51,38 +54,78 @@ const isSettlerInConstructionArea = (
 export interface SettlerBehaviourCoordinator {
 	processPendingDispatches(): void
 	dispatchNextStep(settlerId: SettlerId): void
+	registerNeedPlanCallbacksResolver(
+		resolver: (settlerId: SettlerId, context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>, actions: WorkAction[]) => {
+			onComplete?: () => void
+			onFail?: (reason: string) => void
+		}
+	): void
+	enqueueNeedPlan(
+		settlerId: SettlerId,
+		actions: WorkAction[],
+		context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>,
+		onComplete?: () => void,
+		onFail?: (reason: string) => void
+	): void
 	buildWorkQueueCallbacks(settlerId: SettlerId, step?: WorkStep, releaseReservations?: () => void): {
 		onComplete: () => void
 		onFail: (reason: string) => void
 	}
 	clearSettlerState(settlerId: SettlerId): void
-	serialize(): {
-		movementRecoveryUntil: Array<[SettlerId, number]>
-		movementRecoveryReason: Array<[SettlerId, WorkWaitReason]>
-		movementFailureCounts: Array<[SettlerId, number]>
-		pendingDispatchAtMs: Array<[SettlerId, number]>
-	}
-	deserialize(state: {
-		movementRecoveryUntil: Array<[SettlerId, number]>
-		movementRecoveryReason: Array<[SettlerId, WorkWaitReason]>
-		movementFailureCounts: Array<[SettlerId, number]>
-		pendingDispatchAtMs: Array<[SettlerId, number]>
-	}): void
+	serialize(): SettlerBehaviourSnapshot
+	deserialize(state: SettlerBehaviourSnapshot): void
 	reset(): void
 }
 
 export class SettlerBehaviourManager implements SettlerBehaviourCoordinator {
-	private movementRecoveryUntil = new Map<SettlerId, number>()
-	private movementRecoveryReason = new Map<SettlerId, WorkWaitReason>()
-	private movementFailureCounts = new Map<SettlerId, number>()
-	private pendingDispatchAtMs = new Map<SettlerId, number>()
+	private readonly state = new SettlerBehaviourState()
+	private needPlanCallbacksResolver?: (
+		settlerId: SettlerId,
+		context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>,
+		actions: WorkAction[]
+	) => { onComplete?: () => void, onFail?: (reason: string) => void }
 
 	constructor(
 		private managers: WorkProviderDeps,
 		private event: EventManager,
 		private actionsManager: SettlerActionsManager,
 		private runtime: SettlerWorkRuntimePort
-	) {}
+	) {
+		this.event.on<SimulationTickData>(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.actionsManager.registerContextResolver(ActionQueueContextKind.Need, (settlerId, context, actions) => {
+			if (context.kind !== ActionQueueContextKind.Need || !this.needPlanCallbacksResolver) {
+				return {}
+			}
+			return this.needPlanCallbacksResolver(settlerId, context, actions)
+		})
+	}
+
+	private readonly handleSimulationSSTick = (_data: SimulationTickData): void => {
+		this.processPendingDispatches()
+	}
+
+	registerNeedPlanCallbacksResolver(
+		resolver: (settlerId: SettlerId, context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>, actions: WorkAction[]) => {
+			onComplete?: () => void
+			onFail?: (reason: string) => void
+		}
+	): void {
+		this.needPlanCallbacksResolver = resolver
+	}
+
+	enqueueNeedPlan(
+		settlerId: SettlerId,
+		actions: WorkAction[],
+		context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>,
+		onComplete?: () => void,
+		onFail?: (reason: string) => void
+	): void {
+		if (this.actionsManager.isBusy(settlerId)) {
+			onFail?.('action_system_busy')
+			return
+		}
+		this.actionsManager.enqueue(settlerId, actions, onComplete, onFail, context)
+	}
 
 	private isWarehouseLogisticsAssignment(assignment: WorkAssignment): boolean {
 		if (assignment.providerType !== WorkProviderType.Logistics || !assignment.buildingInstanceId) {
@@ -124,19 +167,19 @@ export class SettlerBehaviourManager implements SettlerBehaviourCoordinator {
 	}
 
 	processPendingDispatches(): void {
-		if (this.pendingDispatchAtMs.size === 0) {
+		if (!this.state.hasPendingDispatches()) {
 			return
 		}
 
 		const now = this.runtime.getNowMs()
-		for (const [settlerId, dispatchAt] of this.pendingDispatchAtMs.entries()) {
+		for (const [settlerId, dispatchAt] of this.state.getPendingDispatchEntries()) {
 			if (now < dispatchAt) {
 				continue
 			}
 			if (this.actionsManager.isBusy(settlerId)) {
 				continue
 			}
-			this.pendingDispatchAtMs.delete(settlerId)
+			this.state.clearPendingDispatch(settlerId)
 			this.dispatchNextStep(settlerId)
 		}
 	}
@@ -163,17 +206,16 @@ export class SettlerBehaviourManager implements SettlerBehaviourCoordinator {
 			return
 		}
 
-		const recoveryUntil = this.movementRecoveryUntil.get(settlerId)
+		const recoveryUntil = this.state.getMovementRecoveryUntil(settlerId)
 		if (recoveryUntil) {
 			if (this.runtime.getNowMs() < recoveryUntil) {
-				const reason = this.movementRecoveryReason.get(settlerId) ?? WorkWaitReason.MovementFailed
+				const reason = this.state.getMovementRecoveryReason(settlerId) ?? WorkWaitReason.MovementFailed
 				this.managers.population.setSettlerWaitReason(settlerId, reason)
 				this.managers.population.setSettlerLastStep(settlerId, undefined, reason)
 				this.managers.population.setSettlerState(settlerId, SettlerState.WaitingForWork)
 				return
 			}
-			this.movementRecoveryUntil.delete(settlerId)
-			this.movementRecoveryReason.delete(settlerId)
+			this.state.clearMovementRecovery(settlerId)
 		}
 
 		if (this.runtime.applyPolicy(WorkPolicyPhase.BeforeStep, settlerId, assignment)) {
@@ -293,43 +335,19 @@ export class SettlerBehaviourManager implements SettlerBehaviourCoordinator {
 	}
 
 	clearSettlerState(settlerId: SettlerId): void {
-		this.movementFailureCounts.delete(settlerId)
-		this.movementRecoveryUntil.delete(settlerId)
-		this.movementRecoveryReason.delete(settlerId)
-		this.pendingDispatchAtMs.delete(settlerId)
+		this.state.clearSettlerState(settlerId)
 	}
 
-	serialize(): {
-		movementRecoveryUntil: Array<[SettlerId, number]>
-		movementRecoveryReason: Array<[SettlerId, WorkWaitReason]>
-		movementFailureCounts: Array<[SettlerId, number]>
-		pendingDispatchAtMs: Array<[SettlerId, number]>
-	} {
-		return {
-			movementRecoveryUntil: Array.from(this.movementRecoveryUntil.entries()),
-			movementRecoveryReason: Array.from(this.movementRecoveryReason.entries()),
-			movementFailureCounts: Array.from(this.movementFailureCounts.entries()),
-			pendingDispatchAtMs: Array.from(this.pendingDispatchAtMs.entries())
-		}
+	serialize(): SettlerBehaviourSnapshot {
+		return this.state.serialize()
 	}
 
-	deserialize(state: {
-		movementRecoveryUntil: Array<[SettlerId, number]>
-		movementRecoveryReason: Array<[SettlerId, WorkWaitReason]>
-		movementFailureCounts: Array<[SettlerId, number]>
-		pendingDispatchAtMs: Array<[SettlerId, number]>
-	}): void {
-		this.movementRecoveryUntil = new Map(state.movementRecoveryUntil)
-		this.movementRecoveryReason = new Map(state.movementRecoveryReason)
-		this.movementFailureCounts = new Map(state.movementFailureCounts)
-		this.pendingDispatchAtMs = new Map(state.pendingDispatchAtMs)
+	deserialize(state: SettlerBehaviourSnapshot): void {
+		this.state.deserialize(state)
 	}
 
 	reset(): void {
-		this.movementFailureCounts.clear()
-		this.movementRecoveryUntil.clear()
-		this.movementRecoveryReason.clear()
-		this.pendingDispatchAtMs.clear()
+		this.state.reset()
 	}
 
 	private handleStepCompleted(
@@ -343,7 +361,7 @@ export class SettlerBehaviourManager implements SettlerBehaviourCoordinator {
 		this.managers.population.setSettlerLastStep(settlerId, step.type, undefined)
 		this.managers.population.setSettlerState(settlerId, SettlerState.Idle)
 		this.clearConstructionWorker(settlerId, step)
-		this.movementFailureCounts.delete(settlerId)
+		this.state.clearMovementFailureCount(settlerId)
 		if (step.type === WorkStepType.Transport && step.target.type === TransportTargetType.Construction) {
 			this.runtime.releaseConstructionInFlight(step.target.buildingInstanceId, step.itemType, step.quantity)
 		}
@@ -374,22 +392,19 @@ export class SettlerBehaviourManager implements SettlerBehaviourCoordinator {
 		let waitReason: WorkWaitReason = isWaitReason ? (reason as WorkWaitReason) : WorkWaitReason.NoWork
 		let shouldDispatch = true
 		if (reason === 'movement_failed' || reason === 'movement_cancelled') {
-			const currentFailures = (this.movementFailureCounts.get(settlerId) || 0) + 1
-			this.movementFailureCounts.set(settlerId, currentFailures)
+			const currentFailures = this.state.incrementMovementFailureCount(settlerId)
 			retryDelayMs = MOVEMENT_RECOVERY_COOLDOWN_MS
 			waitReason = reason === 'movement_failed'
 				? WorkWaitReason.MovementFailed
 				: WorkWaitReason.MovementCancelled
-			this.movementRecoveryUntil.set(settlerId, this.runtime.getNowMs() + retryDelayMs)
-			this.movementRecoveryReason.set(settlerId, waitReason)
+			this.state.setMovementRecovery(settlerId, this.runtime.getNowMs() + retryDelayMs, waitReason)
 			if (currentFailures >= MOVEMENT_FAILURE_MAX_RETRIES) {
 				if (step.type === WorkStepType.BuildRoad) {
 					this.managers.roads.releaseJob(step.jobId)
 				}
 				this.runtime.unassignSettler(settlerId)
-				this.movementFailureCounts.delete(settlerId)
-				this.movementRecoveryUntil.delete(settlerId)
-				this.movementRecoveryReason.delete(settlerId)
+				this.state.clearMovementFailureCount(settlerId)
+				this.state.clearMovementRecovery(settlerId)
 				shouldDispatch = false
 			}
 		}
@@ -402,7 +417,7 @@ export class SettlerBehaviourManager implements SettlerBehaviourCoordinator {
 			this.runtime.releaseConstructionInFlight(step.target.buildingInstanceId, step.itemType, step.quantity)
 		}
 		if (shouldDispatch) {
-			this.pendingDispatchAtMs.set(settlerId, this.runtime.getNowMs() + retryDelayMs)
+			this.state.schedulePendingDispatch(settlerId, this.runtime.getNowMs() + retryDelayMs)
 		}
 	}
 

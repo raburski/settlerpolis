@@ -1,5 +1,5 @@
 import type { ItemType } from '../../Items/types'
-import type { PausedContext } from '../../Needs/types'
+import type { PausedContext } from '../Needs/types'
 import type { ProductionRecipe } from '../../Buildings/types'
 import type { SettlerId } from '../../ids'
 import type { WorkPolicyPhase } from './policies/constants'

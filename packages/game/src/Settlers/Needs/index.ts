@@ -1,17 +1,17 @@
-import type { EventManager } from '../events'
-import type { Logger } from '../Logs'
-import { BaseManager } from '../Managers'
-import type { BuildingManager } from '../Buildings'
-import type { LootManager } from '../Loot'
-import type { StorageManager } from '../Storage'
-import type { PopulationManager } from '../Population'
-import type { ItemsManager } from '../Items'
-import type { ReservationSystem } from '../Reservation'
-import type { SettlerActionsManager } from '../Settlers/Actions'
+import type { EventManager } from '../../events'
+import type { Logger } from '../../Logs'
+import { BaseManager } from '../../Managers'
+import type { BuildingManager } from '../../Buildings'
+import type { LootManager } from '../../Loot'
+import type { StorageManager } from '../../Storage'
+import type { PopulationManager } from '../../Population'
+import type { ItemsManager } from '../../Items'
+import type { ReservationSystem } from '../../Reservation'
+import type { SettlerBehaviourCoordinator } from '../Behaviour'
 import { NeedsSystem } from './NeedsSystem'
 import { NeedPlanner } from './NeedPlanner'
 import { NeedInterruptController } from './NeedInterruptController'
-import type { NeedsSnapshot } from '../state/types'
+import type { NeedsSnapshot } from '../../state/types'
 import { NeedsManagerState } from './NeedsManagerState'
 
 export interface NeedsDeps {
@@ -22,10 +22,10 @@ export interface NeedsDeps {
 	population: PopulationManager
 	items: ItemsManager
 	reservations: ReservationSystem
-	actions: SettlerActionsManager
+	behaviour: SettlerBehaviourCoordinator
 }
 
-export class NeedsManager extends BaseManager<NeedsDeps> {
+export class SettlerNeedsManager extends BaseManager<NeedsDeps> {
 	public system: NeedsSystem
 	public planner: NeedPlanner
 	public interrupts: NeedInterruptController
@@ -38,7 +38,7 @@ export class NeedsManager extends BaseManager<NeedsDeps> {
 		super(managers)
 		this.system = new NeedsSystem({ population: managers.population }, managers.event)
 		this.planner = new NeedPlanner(managers, logger)
-		this.interrupts = new NeedInterruptController(managers.event, this.system, this.planner, managers.actions, logger)
+		this.interrupts = new NeedInterruptController(managers.event, this.system, this.planner, managers.behaviour, logger)
 	}
 
 	serialize(): NeedsSnapshot {

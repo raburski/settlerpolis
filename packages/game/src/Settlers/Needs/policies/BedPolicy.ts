@@ -1,8 +1,8 @@
-import type { BuildingManager } from '../../Buildings'
-import { ConstructionStage } from '../../Buildings/types'
-import type { PopulationManager } from '../../Population'
-import type { Position } from '../../types'
-import { calculateDistance } from '../../utils'
+import type { BuildingManager } from '../../../Buildings'
+import { ConstructionStage } from '../../../Buildings/types'
+import type { PopulationManager } from '../../../Population'
+import type { Position } from '../../../types'
+import { calculateDistance } from '../../../utils'
 
 export interface BedLocation {
 	buildingInstanceId: string

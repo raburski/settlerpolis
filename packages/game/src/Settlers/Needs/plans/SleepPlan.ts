@@ -1,13 +1,13 @@
 import { v4 as uuidv4 } from 'uuid'
-import { SettlerState } from '../../Population/types'
-import type { WorkAction } from '../../Settlers/Work/types'
-import { WorkActionType } from '../../Settlers/Work/types'
-import { MoveTargetType } from '../../Movement/types'
+import { SettlerState } from '../../../Population/types'
+import type { WorkAction } from '../../Work/types'
+import { WorkActionType } from '../../Work/types'
+import { MoveTargetType } from '../../../Movement/types'
 import type { BedLocation } from '../policies/BedPolicy'
 import { NeedType } from '../NeedTypes'
 import type { NeedPlanResult } from '../types'
-import type { BuildingManager } from '../../Buildings'
-import type { ReservationSystem, AmenitySlotReservationResult } from '../../Reservation'
+import type { BuildingManager } from '../../../Buildings'
+import type { ReservationSystem, AmenitySlotReservationResult } from '../../../Reservation'
 
 const SLEEP_DURATION_MS = 8000
 

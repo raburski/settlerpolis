@@ -10,8 +10,8 @@ import { Receiver } from '../../Receiver'
 import { v4 as uuidv4 } from 'uuid'
 import { calculateDistance } from '../../utils'
 import { SettlerState, ProfessionType } from '../../Population/types'
-import { NeedsEvents } from '../../Needs/events'
-import type { ContextPauseRequestedEventData, ContextResumeRequestedEventData, PausedContext } from '../../Needs/types'
+import { NeedsEvents } from '../Needs/events'
+import type { ContextPauseRequestedEventData, ContextResumeRequestedEventData, PausedContext } from '../Needs/types'
 import type { RequestWorkerData, UnassignWorkerData } from '../../Population/types'
 import { WorkerRequestFailureReason } from '../../Population/types'
 import type { ItemType } from '../../Items/types'
@@ -235,14 +235,12 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 	private handleSimulationTick(data: SimulationTickData): void {
 		this.simulationTimeMs = data.nowMs
-		this.actionsManager.setTime(this.simulationTimeMs)
 
 		this.migrateWarehouseAssignments()
 		this.processPendingWorkerRequests()
 		this.logisticsCoordinator.tick()
 		this.constructionCoordinator.assignConstructionWorkers()
 		this.roadCoordinator.assignRoadWorkers()
-		this.dispatcher?.processPendingDispatches()
 	}
 
 	/* METHODS */

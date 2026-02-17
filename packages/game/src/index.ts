@@ -33,7 +33,7 @@ import { ResourceNodesManager } from './ResourceNodes'
 import { SettlerWorkManager } from './Settlers/Work'
 import { SettlerActionsManager } from './Settlers/Actions'
 import { SettlerBehaviourManager } from './Settlers/Behaviour'
-import { NeedsManager } from './Needs'
+import { SettlerNeedsManager } from './Settlers/Needs'
 import { ManagersHub } from './Managers'
 import { WildlifeManager } from './Wildlife'
 import { SnapshotService } from './state/SnapshotService'
@@ -50,7 +50,7 @@ export * from './utils'
 export * from './Settlers/Work'
 export * from './Settlers/Behaviour'
 export * from './Settlers/Actions'
-export * from './Needs'
+export * from './Settlers/Needs'
 export * from './Roads'
 export * from './Wildlife'
 export * from './CityCharter'
@@ -157,8 +157,8 @@ export class GameManager {
 		this.managers.behaviour = new SettlerBehaviourManager(this.managers, this.managers.event, this.managers.actions, this.managers.work)
 		this.managers.work.bindBehaviourManager(this.managers.behaviour)
 
-		// Create NeedsManager after Actions/Work so it can preempt action queues without going through Work.
-		this.managers.needs = new NeedsManager(this.managers, this.managers.logs.getLogger('NeedsManager'))
+		// Create SettlerNeedsManager after Behaviour so behaviour executes need plans.
+		this.managers.needs = new SettlerNeedsManager(this.managers, this.managers.logs.getLogger('SettlerNeedsManager'))
 		
 		this.managers.trigger = new TriggerManager(this.managers, this.managers.logs.getLogger('TriggerManager'))
 
@@ -233,7 +233,7 @@ export class GameManager {
 			'SettlerActionsManager',
 			'SettlerBehaviourManager',
 			'SettlerWorkManager',
-			'NeedsManager',
+			'SettlerNeedsManager',
 			'CityCharterManager',
 			'TradeManager',
 			'WildlifeManager'

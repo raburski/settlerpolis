@@ -1,4 +1,4 @@
-import type { WorkAction } from '../Settlers/Work/types'
+import type { WorkAction } from '../Work/types'
 import type { NeedLevel, NeedPriority, NeedType } from './NeedTypes'
 
 export interface NeedThresholdEventData {
