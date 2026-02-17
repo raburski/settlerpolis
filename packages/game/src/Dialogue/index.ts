@@ -109,102 +109,95 @@ export class DialogueManager extends BaseManager<DialogueDeps> {
 	}
 
 	private setupEventHandlers() {
-		// Handle dialogue continue
-		this.managers.event.on<DialogueContinueData>(DialogueEvents.CS.Continue, (data, client) => {
-			const dialogueId = this.activeDialogues.get(client.id)
-			if (!dialogueId || dialogueId !== data.dialogueId) return
+		this.managers.event.on<DialogueContinueData>(DialogueEvents.CS.Continue, this.handleDialogueCSContinue)
+		this.managers.event.on<DialogueChoiceData>(DialogueEvents.CS.Choice, this.handleDialogueCSChoice)
+		this.managers.event.on<DialogueContinueData>(DialogueEvents.CS.End, this.handleDialogueCSEnd)
+	}
 
-			const dialogue = this.dialogues.get(dialogueId)
-			if (!dialogue) return 
+	/* EVENT HANDLERS */
+	private readonly handleDialogueCSContinue = (data: DialogueContinueData, client: EventClient): void => {
+		const dialogueId = this.activeDialogues.get(client.id)
+		if (!dialogueId || dialogueId !== data.dialogueId) return
 
-			const currentNode = this.getCurrentNode(client.id)
-			if (!currentNode?.next) {
-				this.endDialogue(client)
-				return
-			}
+		const dialogue = this.dialogues.get(dialogueId)
+		if (!dialogue) return
 
-			const nextNode = dialogue.nodes[currentNode.next]
-			if (!nextNode) {
-				this.endDialogue(client)
-				return
-			}
-
-			// Handle node item if present
-			if (currentNode.item) {
-				this.handleDialogueItem(currentNode.item, client)
-			}
-
-			this.currentNodes.set(client.id, currentNode.next)
-			
-			// Filter options based on conditions
-			const filteredNode = this.filterOptionsByConditions(nextNode, client, dialogue.npcId)
-			
-			client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
-				dialogueId,
-				node: filteredNode,
-				npcId: dialogue.npcId
-			})
-		})
-
-		// Handle dialogue choice
-		this.managers.event.on<DialogueChoiceData>(DialogueEvents.CS.Choice, (data, client) => {
-			const dialogueId = this.activeDialogues.get(client.id)
-			if (!dialogueId || dialogueId !== data.dialogueId) return
-
-			const dialogue = this.dialogues.get(dialogueId)
-			if (!dialogue) return
-
-			const currentNode = this.getCurrentNode(client.id)
-			if (!currentNode?.options) return
-
-			const selectedOption = currentNode.options.find(opt => opt.id === data.choiceId)
-			if (!selectedOption?.next) {
-				// Handle option item if present before ending dialogue
-				if (selectedOption?.item) {
-					this.handleDialogueItem(selectedOption.item, client)
-				}
-				// Apply effects if present
-				if (selectedOption) {
-					this.applyDialogueEffects(selectedOption, client, dialogue.npcId)
-				}
-				this.endDialogue(client)
-				return
-			}
-
-			const nextNode = dialogue.nodes[selectedOption.next]
-			if (!nextNode) {
-				this.endDialogue(client)
-				return
-			}
-
-			// Handle option item if present
-			if (selectedOption.item) {
-				this.handleDialogueItem(selectedOption.item, client)
-			}
-			// Apply effects if present
-			this.applyDialogueEffects(selectedOption, client, dialogue.npcId)
-
-			this.currentNodes.set(client.id, selectedOption.next)
-			
-			// Filter options based on conditions
-			const filteredNode = this.filterOptionsByConditions(nextNode, client, dialogue.npcId)
-			
-			client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
-				dialogueId,
-				node: filteredNode,
-				npcId: dialogue.npcId
-			})
-		})
-
-		// Handle dialogue end from client
-		this.managers.event.on<DialogueContinueData>(DialogueEvents.CS.End, (data, client) => {
-			const dialogueId = this.activeDialogues.get(client.id)
-			if (!dialogueId || dialogueId !== data.dialogueId) return
-
+		const currentNode = this.getCurrentNode(client.id)
+		if (!currentNode?.next) {
 			this.endDialogue(client)
+			return
+		}
+
+		const nextNode = dialogue.nodes[currentNode.next]
+		if (!nextNode) {
+			this.endDialogue(client)
+			return
+		}
+
+		if (currentNode.item) {
+			this.handleDialogueItem(currentNode.item, client)
+		}
+
+		this.currentNodes.set(client.id, currentNode.next)
+		const filteredNode = this.filterOptionsByConditions(nextNode, client, dialogue.npcId)
+
+		client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
+			dialogueId,
+			node: filteredNode,
+			npcId: dialogue.npcId
 		})
 	}
 
+	private readonly handleDialogueCSChoice = (data: DialogueChoiceData, client: EventClient): void => {
+		const dialogueId = this.activeDialogues.get(client.id)
+		if (!dialogueId || dialogueId !== data.dialogueId) return
+
+		const dialogue = this.dialogues.get(dialogueId)
+		if (!dialogue) return
+
+		const currentNode = this.getCurrentNode(client.id)
+		if (!currentNode?.options) return
+
+		const selectedOption = currentNode.options.find(opt => opt.id === data.choiceId)
+		if (!selectedOption?.next) {
+			if (selectedOption?.item) {
+				this.handleDialogueItem(selectedOption.item, client)
+			}
+			if (selectedOption) {
+				this.applyDialogueEffects(selectedOption, client, dialogue.npcId)
+			}
+			this.endDialogue(client)
+			return
+		}
+
+		const nextNode = dialogue.nodes[selectedOption.next]
+		if (!nextNode) {
+			this.endDialogue(client)
+			return
+		}
+
+		if (selectedOption.item) {
+			this.handleDialogueItem(selectedOption.item, client)
+		}
+		this.applyDialogueEffects(selectedOption, client, dialogue.npcId)
+		this.currentNodes.set(client.id, selectedOption.next)
+
+		const filteredNode = this.filterOptionsByConditions(nextNode, client, dialogue.npcId)
+		client.emit(Receiver.Sender, DialogueEvents.SC.Trigger, {
+			dialogueId,
+			node: filteredNode,
+			npcId: dialogue.npcId
+		})
+	}
+
+	private readonly handleDialogueCSEnd = (data: DialogueContinueData, client: EventClient): void => {
+		const dialogueId = this.activeDialogues.get(client.id)
+		if (!dialogueId || dialogueId !== data.dialogueId) return
+
+		this.endDialogue(client)
+	}
+
+	/* METHODS */
 	public registerDialogue(dialogue: DialogueTree) {
 		this.dialogues.set(dialogue.id, dialogue)
 		this.logger.debug(`Registered dialogue: ${dialogue.id}`)

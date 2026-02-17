@@ -193,102 +193,99 @@ export class InventoryManager extends BaseManager<InventoryDeps> {
 	}
 
 	private setupEventHandlers() {
-		// Handle client lifecycle
-		this.managers.event.onJoined((client) => {
-			// Create initial inventory
-			const initialInventory = createEmptyInventory()
-			
-			// Add a default item to the first slot
-			const defaultItem = createItemWithRandomId(DEFAULT_INVENTORY_ITEM_NAME)
-			const firstSlot = getSlotAtPosition(initialInventory, { row: 0, column: 0 })
-			firstSlot.item = defaultItem
-			
-			// Add starting resources for building construction (Phase A)
-			// Add logs (wood) - 40 logs for testing
-			let slotIndex = 1
-			for (let i = 0; i < 40; i++) {
-				const logItem = createItemWithRandomId('logs')
-				const slot = getSlotAtPosition(initialInventory, { 
-					row: Math.floor(slotIndex / INVENTORY_GRID_COLUMNS), 
-					column: slotIndex % INVENTORY_GRID_COLUMNS 
-				})
-				if (slot && !slot.item) {
-					slot.item = logItem
-					slotIndex++
-				}
+		this.managers.event.onJoined(this.handleLifecycleJoined)
+		this.managers.event.onLeft(this.handleLifecycleLeft)
+		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, this.handlePlayersCSJoin)
+		this.managers.event.on<ConsumeItemData>(Event.Inventory.CS.Consume, this.handleInventoryCSConsume)
+		this.managers.event.on(Event.Inventory.SS.Add, this.handleInventorySSAdd)
+		this.managers.event.on<MoveItemData>(Event.Inventory.CS.MoveItem, this.handleInventoryCSMoveItem)
+		this.managers.event.on<RemoveByTypePayload>(Event.Inventory.SS.RemoveByType, this.handleInventorySSRemoveByType)
+	}
+
+	/* EVENT HANDLERS */
+	private readonly handleLifecycleJoined = (client: EventClient): void => {
+		const initialInventory = this.createInitialInventory()
+		this.inventories.set(client.id, initialInventory)
+	}
+
+	private readonly handleLifecycleLeft = (client: EventClient): void => {
+		this.inventories.delete(client.id)
+	}
+
+	private readonly handlePlayersCSJoin = (_data: PlayerJoinData, client: EventClient): void => {
+		const inventory = this.inventories.get(client.id)
+		if (inventory) {
+			client.emit(Receiver.Sender, Event.Inventory.SC.Update, { inventory })
+		}
+	}
+
+	private readonly handleInventoryCSConsume = (data: ConsumeItemData, client: EventClient): void => {
+		const inventory = this.inventories.get(client.id)
+		if (!inventory) return
+
+		const slot = inventory.slots.find(candidate => candidate.item?.id === data.itemId)
+		if (!slot || !slot.item) return
+
+		const itemType = this.managers.items.getItemMetadata(slot.item.itemType)
+		if (itemType?.category !== ItemCategory.Consumable) return
+
+		slot.item = null
+		client.emit(Receiver.Sender, Event.Inventory.SC.Remove, { itemId: data.itemId })
+	}
+
+	private readonly handleInventorySSAdd = (item: Item, client: EventClient): void => {
+		const inventory = this.inventories.get(client.id)
+		if (!inventory) return
+
+		const emptySlot = this.findFirstEmptySlot(client.id)
+		if (emptySlot) {
+			this.addItemToPosition(client, item, emptySlot)
+		}
+	}
+
+	private readonly handleInventoryCSMoveItem = (data: MoveItemData, client: EventClient): void => {
+		this.logger.debug('Received MoveItem event:', data)
+		this.moveItem(data, client)
+	}
+
+	private readonly handleInventorySSRemoveByType = (data: RemoveByTypePayload, client: EventClient): void => {
+		this.removeItemByType(client, data.itemType, data.quantity)
+	}
+
+	/* METHODS */
+	private createInitialInventory(): Inventory {
+		const initialInventory = createEmptyInventory()
+
+		const defaultItem = createItemWithRandomId(DEFAULT_INVENTORY_ITEM_NAME)
+		const firstSlot = getSlotAtPosition(initialInventory, { row: 0, column: 0 })
+		firstSlot.item = defaultItem
+
+		let slotIndex = 1
+		for (let i = 0; i < 40; i += 1) {
+			const logItem = createItemWithRandomId('logs')
+			const slot = getSlotAtPosition(initialInventory, {
+				row: Math.floor(slotIndex / INVENTORY_GRID_COLUMNS),
+				column: slotIndex % INVENTORY_GRID_COLUMNS
+			})
+			if (slot && !slot.item) {
+				slot.item = logItem
+				slotIndex += 1
 			}
-			
-			// Add stone - 30 stone for testing
-			for (let i = 0; i < 30; i++) {
-				const stoneItem = createItemWithRandomId('stone')
-				const slot = getSlotAtPosition(initialInventory, { 
-					row: Math.floor(slotIndex / INVENTORY_GRID_COLUMNS), 
-					column: slotIndex % INVENTORY_GRID_COLUMNS 
-				})
-				if (slot && !slot.item) {
-					slot.item = stoneItem
-					slotIndex++
-				}
+		}
+
+		for (let i = 0; i < 30; i += 1) {
+			const stoneItem = createItemWithRandomId('stone')
+			const slot = getSlotAtPosition(initialInventory, {
+				row: Math.floor(slotIndex / INVENTORY_GRID_COLUMNS),
+				column: slotIndex % INVENTORY_GRID_COLUMNS
+			})
+			if (slot && !slot.item) {
+				slot.item = stoneItem
+				slotIndex += 1
 			}
-			
-			this.inventories.set(client.id, initialInventory)
-			
-			// Send complete inventory update to client
-			// This will be sent when player joins a map, but we can also send it here
-			// to ensure the client has the inventory immediately
-		})
+		}
 
-		this.managers.event.onLeft((client) => {
-			this.inventories.delete(client.id)
-		})
-
-		// Handle player join to send initial inventory
-		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, (_, client) => {
-			const inventory = this.inventories.get(client.id)
-			if (inventory) {
-				client.emit(Receiver.Sender, Event.Inventory.SC.Update, { inventory })
-			}
-		})
-
-		// Handle item consume
-		this.managers.event.on<ConsumeItemData>(Event.Inventory.CS.Consume, (data, client) => {
-			const inventory = this.inventories.get(client.id)
-			if (!inventory) return
-
-			const slot = inventory.slots.find(slot => slot.item?.id === data.itemId)
-			if (!slot || !slot.item) return
-
-			// Check if item is consumable
-			const itemType = this.managers.items.getItemMetadata(slot.item.itemType)
-			if (itemType?.category !== ItemCategory.Consumable) return
-
-			// Remove item from slot
-			slot.item = null
-			
-			client.emit(Receiver.Sender, Event.Inventory.SC.Remove, { itemId: data.itemId })
-		})
-
-		// Handle item add from dialogue or other server events
-		this.managers.event.on(Event.Inventory.SS.Add, (item: Item, client) => {
-			const inventory = this.inventories.get(client.id)
-			if (!inventory) return
-
-			const emptySlot = this.findFirstEmptySlot(client.id)
-			if (emptySlot) {
-				this.addItemToPosition(client, item, emptySlot)
-			}
-		})
-		
-		// Handle moving items between slots
-		this.managers.event.on<MoveItemData>(Event.Inventory.CS.MoveItem, (data, client) => {
-			this.logger.debug('Received MoveItem event:', data)
-			this.moveItem(data, client)
-		})
-
-		// Handle remove item by type
-		this.managers.event.on<RemoveByTypePayload>(Event.Inventory.SS.RemoveByType, (data, client) => {
-			this.removeItemByType(client, data.itemType, data.quantity)
-		})
+		return initialInventory
 	}
 
 	public getSlotAtPosition(playerId: string, position: Position): InventorySlot | undefined {

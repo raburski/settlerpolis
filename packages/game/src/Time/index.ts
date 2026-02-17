@@ -32,34 +32,37 @@ export class TimeManager {
 	}
 
 	private setupEventHandlers() {
-		// Handle time updates
-		this.event.on(TimeEvents.SS.Update, (data: TimeUpdateEventData, client: EventClient) => {
-			this.setTime(data.time, client)
-		})
+		this.event.on(TimeEvents.SS.Update, this.handleTimeSSUpdate)
+		this.event.on(TimeEvents.SS.SetSpeed, this.handleTimeSSSetSpeed)
+		this.event.on(TimeEvents.SS.Pause, this.handleTimeSSPause)
+		this.event.on(TimeEvents.SS.Resume, this.handleTimeSSResume)
+		this.event.on(Event.Players.CS.Connect, this.handlePlayersCSConnect)
+		this.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+	}
 
-		// Handle time speed updates
-		this.event.on(TimeEvents.SS.SetSpeed, (data: TimeSpeedUpdateEventData, client: EventClient) => {
-			this.setTimeSpeed(data.timeSpeed, client)
-		})
+	/* EVENT HANDLERS */
+	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
+		this.handleSimulationTick(data)
+	}
 
-		// Handle pause/resume
-		this.event.on(TimeEvents.SS.Pause, (_, client: EventClient) => {
-			this.pause(client)
-		})
+	private readonly handleTimeSSUpdate = (data: TimeUpdateEventData, client: EventClient): void => {
+		this.setTime(data.time, client)
+	}
 
-		this.event.on(TimeEvents.SS.Resume, (_, client: EventClient) => {
-			this.resume(client)
-		})
+	private readonly handleTimeSSSetSpeed = (data: TimeSpeedUpdateEventData, client: EventClient): void => {
+		this.setTimeSpeed(data.timeSpeed, client)
+	}
 
-		// Handle player connection to send initial time data
-		this.event.on(Event.Players.CS.Connect, (_, client: EventClient) => {
-			this.syncTime(client)
-		})
+	private readonly handleTimeSSPause = (_data: unknown, client: EventClient): void => {
+		this.pause(client)
+	}
 
-		// Advance time based on simulation ticks
-		this.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			this.handleSimulationTick(data)
-		})
+	private readonly handleTimeSSResume = (_data: unknown, client: EventClient): void => {
+		this.resume(client)
+	}
+
+	private readonly handlePlayersCSConnect = (_data: unknown, client: EventClient): void => {
+		this.syncTime(client)
 	}
 
 	private handleSimulationTick(data: SimulationTickData) {
@@ -77,6 +80,7 @@ export class TimeManager {
 		this.incrementTime(minutesToAdvance)
 	}
 
+	/* METHODS */
 	private incrementTime(minutesToAdvance: number = 1) {
 		let { hours, minutes, day, month, year } = this.timeData.time
 

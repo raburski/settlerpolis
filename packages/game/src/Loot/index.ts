@@ -62,58 +62,53 @@ export class LootManager extends BaseManager<LootDeps> {
 	}
 
 	private setupEventHandlers() {
-		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			this.handleSimulationTick(data)
+		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, this.handlePlayersCSJoin)
+		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, this.handlePlayersCSTransitionTo)
+		this.managers.event.on(LootEvents.SS.Spawn, this.handleLootSSSpawn)
+	}
+
+	/* EVENT HANDLERS */
+	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
+		this.handleSimulationTick(data)
+	}
+
+	private readonly handlePlayersCSJoin = (data: PlayerJoinData, client: EventClient): void => {
+		this.sendMapDroppedItemsToClient(data.mapId, client, 'Join')
+	}
+
+	private readonly handlePlayersCSTransitionTo = (data: PlayerTransitionData, client: EventClient): void => {
+		this.sendMapDroppedItemsToClient(data.mapId, client, 'TransitionTo')
+	}
+
+	private readonly handleLootSSSpawn = (data: LootSpawnPayload): void => {
+		if (!data.mapId) {
+			this.logger.warn('Received SS.Spawn event with undefined mapId. Ignoring event.')
+			return
+		}
+
+		const quantity = data.quantity ?? 1
+		const position = this.resolvePosition(data.position)
+		this.addOrMergeDroppedItem(data.mapId, data.itemType, position, quantity, (payload) => {
+			this.managers.event.emit(Receiver.Group, Event.Loot.SC.Spawn, payload, data.mapId)
+		}, (payload) => {
+			this.managers.event.emit(Receiver.Group, Event.Loot.SC.Update, payload, data.mapId)
 		})
+	}
 
-		// Handle player join and map transition to send items
-		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
-			const mapId = data.mapId
-			if (!mapId) {
-				this.logger.warn('Received Join event with undefined mapId. Ignoring event.')
-				return
-			}
-			
-			const mapDroppedItems = this.droppedItems.get(mapId) || []
-			if (mapDroppedItems.length > 0) {
-				// Send each item individually
-				mapDroppedItems.forEach(item => {
-					client.emit(Receiver.Sender, Event.Loot.SC.Spawn, { item } as LootSpawnEventPayload)
-				})
-			}
-		})
+	/* METHODS */
+	private sendMapDroppedItemsToClient(mapId: string | undefined, client: EventClient, sourceEvent: 'Join' | 'TransitionTo'): void {
+		if (!mapId) {
+			this.logger.warn(`Received ${sourceEvent} event with undefined mapId. Ignoring event.`)
+			return
+		}
 
-		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
-			const mapId = data.mapId
-			if (!mapId) {
-				this.logger.warn('Received TransitionTo event with undefined mapId. Ignoring event.')
-				return
-			}
-			
-			const mapDroppedItems = this.droppedItems.get(mapId) || []
-			if (mapDroppedItems.length > 0) {
-				// Send each item individually
-				mapDroppedItems.forEach(item => {
-					client.emit(Receiver.Sender, Event.Loot.SC.Spawn, { item } as LootSpawnEventPayload)
-				})
-			}
-		})
-
-		// Handle scheduled item spawns
-		this.managers.event.on(LootEvents.SS.Spawn, (data: LootSpawnPayload) => {
-			if (!data.mapId) {
-				this.logger.warn('Received SS.Spawn event with undefined mapId. Ignoring event.')
-				return
-			}
-
-			const quantity = data.quantity ?? 1
-			const position = this.resolvePosition(data.position)
-			this.addOrMergeDroppedItem(data.mapId, data.itemType, position, quantity, (payload) => {
-				this.managers.event.emit(Receiver.Group, Event.Loot.SC.Spawn, payload, data.mapId)
-			}, (payload) => {
-				this.managers.event.emit(Receiver.Group, Event.Loot.SC.Update, payload, data.mapId)
+		const mapDroppedItems = this.droppedItems.get(mapId) || []
+		if (mapDroppedItems.length > 0) {
+			mapDroppedItems.forEach(item => {
+				client.emit(Receiver.Sender, Event.Loot.SC.Spawn, { item } as LootSpawnEventPayload)
 			})
-		})
+		}
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {

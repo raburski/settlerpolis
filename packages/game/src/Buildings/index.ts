@@ -85,88 +85,89 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		
 		// Send building catalog to clients when they connect (in addition to when they join a map)
 		// Note: Buildings might not be loaded yet, so we also send on player join
-		this.managers.event.onJoined((client) => {
-			// Send catalog if buildings are already loaded
-			// This ensures UI gets buildings even before player joins a map
-			if (this.definitions.size > 0) {
-				this.sendBuildingCatalog(client)
-			}
-		})
+		this.managers.event.onJoined(this.handleLifecycleJoined)
 	}
 
 	private setupEventHandlers() {
-		// Handle building placement requests
-		this.managers.event.on<PlaceBuildingData>(BuildingsEvents.CS.Place, (data, client) => {
-			this.placeBuilding(data, client)
-		})
-
-		// Handle building cancellation
-		this.managers.event.on<CancelBuildingData>(BuildingsEvents.CS.Cancel, (data, client) => {
-			this.cancelBuilding(data, client)
-		})
-		
-		// Handle work area updates
-		this.managers.event.on<SetWorkAreaData>(BuildingsEvents.CS.SetWorkArea, (data, client) => {
-			this.setWorkArea(data, client)
-		})
-
-		// Handle storage request updates
-		this.managers.event.on<SetStorageRequestsData>(BuildingsEvents.CS.SetStorageRequests, (data, client) => {
-			const building = this.buildings.get(data.buildingInstanceId)
-			if (!building) {
-				return
-			}
-			if (building.playerId !== client.id) {
-				this.logger.error(`Player ${client.id} does not own building ${data.buildingInstanceId}`)
-				return
-			}
-			const definition = this.definitions.get(building.buildingId)
-			if (!definition) {
-				return
-			}
-			const normalized = this.normalizeStorageRequests(definition, data.itemTypes)
-			if (!normalized) {
-				return
-			}
-			building.storageRequests = normalized
-			this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.StorageRequestsUpdated, {
-				buildingInstanceId: building.id,
-				itemTypes: normalized
-			}, building.mapId)
-		})
-
-		this.managers.event.on<SetProductionPlanData>(BuildingsEvents.CS.SetProductionPlan, (data, client) => {
-			this.setProductionPlan(data, client)
-		})
-
-		this.managers.event.on<SetGlobalProductionPlanData>(BuildingsEvents.CS.SetGlobalProductionPlan, (data, client) => {
-			this.setGlobalProductionPlan(data, client)
-		})
-
-		// Handle player join to send existing buildings and building catalog
-		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
-			this.sendBuildingsToClient(client, data.mapId)
-			this.sendBuildingCatalog(client)
-		})
-
-		// Handle player transition to send buildings for new map
-		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
-			this.sendBuildingsToClient(client, data.mapId)
-		})
-
-		// Drive construction progress from simulation ticks
-		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			this.handleSimulationTick(data)
-		})
-
-		this.managers.event.on<CityCharterUnlockFlagsUpdated>(CityCharterEvents.SS.UnlockFlagsUpdated, (data) => {
-			const key = this.getPlayerMapKey(data.playerId, data.mapId)
-			this.unlockedFlagsByPlayerMap.set(key, new Set(data.unlockedFlags))
-		})
+		this.managers.event.on<PlaceBuildingData>(BuildingsEvents.CS.Place, this.handleBuildingsCSPlace)
+		this.managers.event.on<CancelBuildingData>(BuildingsEvents.CS.Cancel, this.handleBuildingsCSCancel)
+		this.managers.event.on<SetWorkAreaData>(BuildingsEvents.CS.SetWorkArea, this.handleBuildingsCSSetWorkArea)
+		this.managers.event.on<SetStorageRequestsData>(BuildingsEvents.CS.SetStorageRequests, this.handleBuildingsCSSetStorageRequests)
+		this.managers.event.on<SetProductionPlanData>(BuildingsEvents.CS.SetProductionPlan, this.handleBuildingsCSSetProductionPlan)
+		this.managers.event.on<SetGlobalProductionPlanData>(BuildingsEvents.CS.SetGlobalProductionPlan, this.handleBuildingsCSSetGlobalProductionPlan)
+		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, this.handlePlayersCSJoin)
+		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, this.handlePlayersCSTransitionTo)
+		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.managers.event.on<CityCharterUnlockFlagsUpdated>(CityCharterEvents.SS.UnlockFlagsUpdated, this.handleCityCharterSSUnlockFlagsUpdated)
 	}
 
-	private getPlayerMapKey(playerId: string, mapId: string): string {
-		return `${playerId}:${mapId}`
+	/* EVENT HANDLERS */
+	private readonly handleLifecycleJoined = (client: EventClient): void => {
+		if (this.definitions.size > 0) {
+			this.sendBuildingCatalog(client)
+		}
+	}
+
+	private readonly handleBuildingsCSPlace = (data: PlaceBuildingData, client: EventClient): void => {
+		this.placeBuilding(data, client)
+	}
+
+	private readonly handleBuildingsCSCancel = (data: CancelBuildingData, client: EventClient): void => {
+		this.cancelBuilding(data, client)
+	}
+
+	private readonly handleBuildingsCSSetWorkArea = (data: SetWorkAreaData, client: EventClient): void => {
+		this.setWorkArea(data, client)
+	}
+
+	private readonly handleBuildingsCSSetStorageRequests = (data: SetStorageRequestsData, client: EventClient): void => {
+		const building = this.buildings.get(data.buildingInstanceId)
+		if (!building) {
+			return
+		}
+		if (building.playerId !== client.id) {
+			this.logger.error(`Player ${client.id} does not own building ${data.buildingInstanceId}`)
+			return
+		}
+		const definition = this.definitions.get(building.buildingId)
+		if (!definition) {
+			return
+		}
+		const normalized = this.normalizeStorageRequests(definition, data.itemTypes)
+		if (!normalized) {
+			return
+		}
+		building.storageRequests = normalized
+		this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.StorageRequestsUpdated, {
+			buildingInstanceId: building.id,
+			itemTypes: normalized
+		}, building.mapId)
+	}
+
+	private readonly handleBuildingsCSSetProductionPlan = (data: SetProductionPlanData, client: EventClient): void => {
+		this.setProductionPlan(data, client)
+	}
+
+	private readonly handleBuildingsCSSetGlobalProductionPlan = (data: SetGlobalProductionPlanData, client: EventClient): void => {
+		this.setGlobalProductionPlan(data, client)
+	}
+
+	private readonly handlePlayersCSJoin = (data: PlayerJoinData, client: EventClient): void => {
+		this.sendBuildingsToClient(client, data.mapId)
+		this.sendBuildingCatalog(client)
+	}
+
+	private readonly handlePlayersCSTransitionTo = (data: PlayerTransitionData, client: EventClient): void => {
+		this.sendBuildingsToClient(client, data.mapId)
+	}
+
+	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
+		this.handleSimulationTick(data)
+	}
+
+	private readonly handleCityCharterSSUnlockFlagsUpdated = (data: CityCharterUnlockFlagsUpdated): void => {
+		const key = this.getPlayerMapKey(data.playerId, data.mapId)
+		this.unlockedFlagsByPlayerMap.set(key, new Set(data.unlockedFlags))
 	}
 
 	private handleSimulationTick(data: SimulationTickData) {
@@ -179,6 +180,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		this.tick()
 	}
 
+	/* METHODS */
 	private tick() {
 		const now = this.simulationTimeMs
 		const buildingsToUpdate: BuildingInstance[] = []
@@ -231,6 +233,10 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			}
 			this.processAutoProduction(building, definition.autoProduction, this.TICK_INTERVAL_MS)
 		}
+	}
+
+	private getPlayerMapKey(playerId: string, mapId: string): string {
+		return `${playerId}:${mapId}`
 	}
 
 	private placeBuilding(data: PlaceBuildingData, client: EventClient) {

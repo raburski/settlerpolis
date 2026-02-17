@@ -18,15 +18,20 @@ export class ReputationManager {
 	}
 
 	private setupEventHandlers(): void {
-		this.event.on(Event.Players.CS.Join, (_data, client) => {
-			this.sendReputation(client)
-		})
-
-		this.event.on(ReputationEvents.CS.RequestState, (_data, client) => {
-			this.sendReputation(client)
-		})
+		this.event.on(Event.Players.CS.Join, this.handlePlayersCSJoin)
+		this.event.on(ReputationEvents.CS.RequestState, this.handleReputationCSRequestState)
 	}
 
+	/* EVENT HANDLERS */
+	private readonly handlePlayersCSJoin = (_data: unknown, client: EventClient): void => {
+		this.sendReputation(client)
+	}
+
+	private readonly handleReputationCSRequestState = (_data: unknown, client: EventClient): void => {
+		this.sendReputation(client)
+	}
+
+	/* METHODS */
 	private sendReputation(client: EventClient): void {
 		const reputation = this.getReputation(client.id)
 		client.emit(Receiver.Sender, ReputationEvents.SC.Updated, {

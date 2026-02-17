@@ -47,27 +47,34 @@ export class RoadManager extends BaseManager<RoadManagerDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			this.simulationTimeMs = data.nowMs
-		})
+		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.managers.event.on<RoadBuildRequestData>(RoadEvents.CS.Place, this.handleRoadCSPlace)
+		this.managers.event.on(Event.Players.CS.Join, this.handlePlayersCSJoin)
+		this.managers.event.on(Event.Players.CS.TransitionTo, this.handlePlayersCSTransitionTo)
+	}
 
-		this.managers.event.on<RoadBuildRequestData>(RoadEvents.CS.Place, (data, client) => {
-			this.handleRoadRequest(data, client)
-		})
+	/* EVENT HANDLERS */
+	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
+		this.simulationTimeMs = data.nowMs
+	}
 
-	this.managers.event.on(Event.Players.CS.Join, (data: { mapId?: string }, client: EventClient) => {
+	private readonly handleRoadCSPlace = (data: RoadBuildRequestData, client: EventClient): void => {
+		this.handleRoadRequest(data, client)
+	}
+
+	private readonly handlePlayersCSJoin = (data: { mapId?: string }, client: EventClient): void => {
 		const mapId = data.mapId || client.currentGroup
 		this.sendRoadSync(mapId, client)
 		this.sendPendingRoadSync(mapId, client)
-	})
+	}
 
-	this.managers.event.on(Event.Players.CS.TransitionTo, (data: { mapId?: string }, client: EventClient) => {
+	private readonly handlePlayersCSTransitionTo = (data: { mapId?: string }, client: EventClient): void => {
 		const mapId = data.mapId || client.currentGroup
 		this.sendRoadSync(mapId, client)
 		this.sendPendingRoadSync(mapId, client)
-	})
-}
+	}
 
+	/* METHODS */
 	public getRoadData(mapId: string): RoadData | null {
 		return this.ensureRoadData(mapId)
 	}

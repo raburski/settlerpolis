@@ -27,13 +27,17 @@ export class CutsceneManager {
 	}
 
 	private setupEventListeners() {
-		this.eventManager.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			this.handleSimulationTick(data)
-		})
+		this.eventManager.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.eventManager.on<CutsceneTriggerEventData>(CutsceneEvents.SS.Trigger, this.handleCutsceneSSTrigger)
+	}
 
-		this.eventManager.on<CutsceneTriggerEventData>(CutsceneEvents.SS.Trigger, (data, client) => {
-			this.startCutscene(client, data.cutsceneId)
-		})
+	/* EVENT HANDLERS */
+	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
+		this.handleSimulationTick(data)
+	}
+
+	private readonly handleCutsceneSSTrigger = (data: CutsceneTriggerEventData, client: EventClient): void => {
+		this.startCutscene(client, data.cutsceneId)
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {
@@ -41,6 +45,7 @@ export class CutsceneManager {
 		this.processActiveCutscenes()
 	}
 
+	/* METHODS */
 	private processActiveCutscenes(): void {
 		for (const [clientId, active] of this.activeCutscenes.entries()) {
 			if (active.currentStep >= active.cutscene.steps.length) {

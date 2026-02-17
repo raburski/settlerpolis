@@ -44,14 +44,17 @@ export class StorageManager extends BaseManager<StorageDeps> {
 	}
 
 	private setupEventHandlers() {
-		// Listen for building completion to initialize storage
-		this.managers.event.on(StorageEvents.SS.StorageTick, () => {
-			this.storageTick()
-		})
+		this.managers.event.on(StorageEvents.SS.StorageTick, this.handleStorageSSStorageTick)
+		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+	}
 
-		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			this.handleSimulationTick(data)
-		})
+	/* EVENT HANDLERS */
+	private readonly handleStorageSSStorageTick = (): void => {
+		this.storageTick()
+	}
+
+	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
+		this.handleSimulationTick(data)
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {
@@ -64,6 +67,7 @@ export class StorageManager extends BaseManager<StorageDeps> {
 		this.managers.event.emit(Receiver.All, StorageEvents.SS.StorageTick, {})
 	}
 
+	/* METHODS */
 	private getTileSize(mapId: string): number {
 		const map = this.managers.map.getMap(mapId)
 		return map?.tiledMap.tilewidth || 32

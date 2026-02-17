@@ -81,92 +81,88 @@ export class NPCManager extends BaseManager<NPCDeps> {
 	}
 
 	private setupEventHandlers() {
-		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			this.handleSimulationTick(data)
-		})
+		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, this.handlePlayersCSJoin)
+		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, this.handlePlayersCSTransitionTo)
+		this.managers.event.on<NPCInteractData>(NPCEvents.CS.Interact, this.handleNPCCSInteract)
+		this.managers.event.on<NPCGoData>(NPCEvents.SS.Go, this.handleNPCSSGo)
+		this.managers.event.on(MovementEvents.SS.StepComplete, this.handleMovementSSStepComplete)
+		this.managers.event.on(MovementEvents.SS.PathComplete, this.handleMovementSSPathComplete)
+		this.managers.event.on<DialogueContinueData>(DialogueEvents.SC.End, this.handleDialogueSCEnd)
+		this.managers.event.on(NPCEvents.SS.SetAttribute, this.handleNPCSSSetAttribute)
+		this.managers.event.on(NPCEvents.SS.RemoveAttribute, this.handleNPCSSRemoveAttribute)
+	}
 
-		// Send NPCs list when player joins or transitions to a map
-		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, (data: PlayerJoinData, client: EventClient) => {
-			const mapNPCs = this.getMapNPCs(data.mapId)
+	/* EVENT HANDLERS */
+	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
+		this.handleSimulationTick(data)
+	}
+
+	private readonly handlePlayersCSJoin = (data: PlayerJoinData, client: EventClient): void => {
+		this.sendMapNPCsToClient(data.mapId, client, true)
+	}
+
+	private readonly handlePlayersCSTransitionTo = (data: PlayerTransitionData, client: EventClient): void => {
+		this.sendMapNPCsToClient(data.mapId, client, false)
+	}
+
+	private readonly handleNPCCSInteract = (data: NPCInteractData, client: EventClient): void => {
+		this.handleNPCInteraction(data, client)
+	}
+
+	private readonly handleNPCSSGo = (data: NPCGoData): void => {
+		this.handleNPCGo(data)
+	}
+
+	private readonly handleMovementSSStepComplete = (data: { entityId: string, position: Position }): void => {
+		const npc = this.npcs.get(data.entityId)
+		if (npc) {
+			npc.position = data.position
+		}
+	}
+
+	private readonly handleMovementSSPathComplete = (data: { entityId: string, targetType?: MoveTargetType, targetId?: string }): void => {
+		const npc = this.npcs.get(data.entityId)
+		if (npc && npc.state === NPCState.Moving) {
+			npc.state = NPCState.Idle
+			const finalPosition = this.managers.movement.getEntityPosition(data.entityId)
+			if (finalPosition) {
+				npc.position = finalPosition
+			}
+		}
+	}
+
+	private readonly handleDialogueSCEnd = (data: DialogueContinueData): void => {
+		const activeDialogues = this.managers.dialogue.getNPCActiveDialogues(data.dialogueId)
+		if (activeDialogues.length === 0) {
+			const pausedStep = this.pausedRoutines.get(data.dialogueId)
+			if (pausedStep) {
+				const currentTime = this.managers.time.getFormattedTime()
+				if (currentTime === pausedStep.time) {
+					this.executeRoutineStep(data.dialogueId, pausedStep)
+				}
+				this.pausedRoutines.delete(data.dialogueId)
+			}
+		}
+	}
+
+	private readonly handleNPCSSSetAttribute = (data: { npcId: string, name: string, value: any }, _client: EventClient): void => {
+		this.setNPCAttribute(data.npcId, data.name, data.value)
+	}
+
+	private readonly handleNPCSSRemoveAttribute = (data: { npcId: string, name: string }, _client: EventClient): void => {
+		this.removeNPCAttribute(data.npcId, data.name)
+	}
+
+	/* METHODS */
+	private sendMapNPCsToClient(mapId: string, client: EventClient, logJoin: boolean): void {
+		const mapNPCs = this.getMapNPCs(mapId)
+		if (logJoin) {
 			this.logger.debug('ON PLAYER JOIN', this.npcs)
-			if (mapNPCs.length > 0) {
-				client.emit(Receiver.Sender, NPCEvents.SC.List, { npcs: mapNPCs })
-			}
-		})
-
-		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data: PlayerTransitionData, client: EventClient) => {
-			const mapNPCs = this.getMapNPCs(data.mapId)
-			if (mapNPCs.length > 0) {
-				client.emit(Receiver.Sender, NPCEvents.SC.List, { npcs: mapNPCs })
-			}
-		})
-
-		// Handle NPC interactions
-		this.managers.event.on<NPCInteractData>(NPCEvents.CS.Interact, (data, client) => {
-			this.handleNPCInteraction(data, client)
-		})
-
-		// Handle NPC movement (internal server-side event)
-		this.managers.event.on<NPCGoData>(NPCEvents.SS.Go, (data) => {
-			this.handleNPCGo(data)
-		})
-
-		// Listen for movement step completion to sync NPC position
-		this.managers.event.on(MovementEvents.SS.StepComplete, (data: { entityId: string, position: Position }) => {
-			const npc = this.npcs.get(data.entityId)
-			if (npc) {
-				// Sync NPC position with MovementManager
-				npc.position = data.position
-			}
-		})
-
-		// Listen for movement path completion to update NPC state
-		this.managers.event.on(MovementEvents.SS.PathComplete, (data: { entityId: string, targetType?: MoveTargetType, targetId?: string }) => {
-			const npc = this.npcs.get(data.entityId)
-			if (npc && npc.state === NPCState.Moving) {
-				npc.state = NPCState.Idle
-				// Get final position from MovementManager
-				const finalPosition = this.managers.movement.getEntityPosition(data.entityId)
-				if (finalPosition) {
-					npc.position = finalPosition
-				}
-			}
-			// NPCs don't use target info (they just move to positions)
-		})
-
-		// Handle dialogue end to resume routines
-		this.managers.event.on<DialogueContinueData>(DialogueEvents.SC.End, (data, client) => {
-			const activeDialogues = this.managers.dialogue.getNPCActiveDialogues(data.dialogueId)
-			if (activeDialogues.length === 0) {
-				const pausedStep = this.pausedRoutines.get(data.dialogueId)
-				if (pausedStep) {
-					// Check if we should execute the paused step now
-					const currentTime = this.managers.time.getFormattedTime()
-					if (currentTime === pausedStep.time) {
-						this.executeRoutineStep(data.dialogueId, pausedStep)
-					}
-					this.pausedRoutines.delete(data.dialogueId)
-				}
-				
-				// No longer setting NPC state after dialogue ends
-			}
-		})
-		
-		// Handle NPC attribute set event
-		this.managers.event.on(NPCEvents.SS.SetAttribute, (data: { npcId: string, name: string, value: any }, client: EventClient) => {
-			this.setNPCAttribute(data.npcId, data.name, data.value)
-			
-			// Note: Instead of sending a specific attribute update event,
-			// clients will get updated attributes when they refresh NPCs
-			// or through other existing events
-		})
-		
-		// Handle NPC attribute remove event
-		this.managers.event.on(NPCEvents.SS.RemoveAttribute, (data: { npcId: string, name: string }, client: EventClient) => {
-			this.removeNPCAttribute(data.npcId, data.name)
-			
-			// No specific attribute update event
-		})
+		}
+		if (mapNPCs.length > 0) {
+			client.emit(Receiver.Sender, NPCEvents.SC.List, { npcs: mapNPCs })
+		}
 	}
 
 	private handleSimulationTick(_data: SimulationTickData): void {

@@ -85,40 +85,53 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			this.handleSimulationTick(data)
-		})
+		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, this.handlePlayersCSJoin)
+		this.managers.event.on(Event.Buildings.SS.HouseCompleted, this.handleBuildingsSSHouseCompleted)
+		this.managers.event.on<RequestListData>(PopulationEvents.CS.RequestList, this.handlePopulationCSRequestList)
+		this.managers.event.on(MovementEvents.SS.SegmentComplete, this.handleMovementSSSegmentComplete)
+		this.managers.event.on(MovementEvents.SS.StepComplete, this.handleMovementSSStepComplete)
+	}
 
-		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
-			if (this.hasAnySettlersForPlayer(client.id)) {
-				return
-			}
-			const mapId = data.mapId || this.managers.map.getDefaultMapId()
-			this.spawnInitialPopulation(mapId, client.id, data.position)
-		})
+	/* EVENT HANDLERS */
+	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
+		this.handleSimulationTick(data)
+	}
 
-		this.managers.event.on(Event.Buildings.SS.HouseCompleted, (data: { buildingInstanceId: string, buildingId: string }) => {
-			const buildingDef = this.managers.buildings.getBuildingDefinition(data.buildingId)
-			if (buildingDef && buildingDef.spawnsSettlers) {
-				this.onHouseCompleted(data.buildingInstanceId, data.buildingId)
-			}
-		})
-
-		this.managers.event.on<RequestListData>(PopulationEvents.CS.RequestList, (data, client) => {
-			this.sendPopulationList(client)
-		})
-
-		const syncSettlerPosition = (data: { entityId: string, position: Position }) => {
-			const settler = this.settlers.get(data.entityId)
-			if (!settler) {
-				return
-			}
-			settler.position = { ...data.position }
+	private readonly handlePlayersCSJoin = (data: PlayerJoinData, client: EventClient): void => {
+		if (this.hasAnySettlersForPlayer(client.id)) {
+			return
 		}
+		const mapId = data.mapId || this.managers.map.getDefaultMapId()
+		this.spawnInitialPopulation(mapId, client.id, data.position)
+	}
 
-		// Keep population positions synced during movement to avoid stale starts when paths are recalculated.
-		this.managers.event.on(MovementEvents.SS.SegmentComplete, syncSettlerPosition)
-		this.managers.event.on(MovementEvents.SS.StepComplete, syncSettlerPosition)
+	private readonly handleBuildingsSSHouseCompleted = (data: { buildingInstanceId: string, buildingId: string }): void => {
+		const buildingDef = this.managers.buildings.getBuildingDefinition(data.buildingId)
+		if (buildingDef && buildingDef.spawnsSettlers) {
+			this.onHouseCompleted(data.buildingInstanceId, data.buildingId)
+		}
+	}
+
+	private readonly handlePopulationCSRequestList = (_data: RequestListData, client: EventClient): void => {
+		this.sendPopulationList(client)
+	}
+
+	private readonly handleMovementSSSegmentComplete = (data: { entityId: string, position: Position }): void => {
+		this.syncSettlerPosition(data)
+	}
+
+	private readonly handleMovementSSStepComplete = (data: { entityId: string, position: Position }): void => {
+		this.syncSettlerPosition(data)
+	}
+
+	/* METHODS */
+	private syncSettlerPosition(data: { entityId: string, position: Position }): void {
+		const settler = this.settlers.get(data.entityId)
+		if (!settler) {
+			return
+		}
+		settler.position = { ...data.position }
 	}
 
 	private handleSimulationTick(data: SimulationTickData): void {

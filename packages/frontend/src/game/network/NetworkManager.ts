@@ -30,6 +30,7 @@ export class NetworkClient implements EventClient {
 export class NetworkManager implements EventManager {
 	private client: NetworkClient | null = null
 	private socket: Socket | null = null
+	private onConnectCallback: (() => {}) | null = null
 	private lastMessageTime: number = 0
 	private pingInterval: number | null = null
 	private readonly PING_INTERVAL = 25000 // 5 seconds
@@ -42,59 +43,21 @@ export class NetworkManager implements EventManager {
 
 	connect(onConnect: () => {}) {
 		if (this.socket) return 
+		this.onConnectCallback = onConnect
 
 		this.socket = io(this.serverUrl, {
 			path: '/api/socket.io'
 		})
 
-		this.socket.on('connect', () => {
-			console.log('Connected to multiplayer server')
-			this.client = new NetworkClient(this.socket.id, this.socket)
-			this.lastMessageTime = Date.now()
-			this.startPingInterval()
-			this.setupSocketHandlers()
-			// Trigger joined callbacks when connected
-			this.joinedCallbacks.forEach(callback => callback(this.client))
-			onConnect()
-		})
-
-		this.socket.on('disconnect', () => {
-			console.log('Disconnected from multiplayer server')
-			// Trigger left callbacks before clearing client
-			if (this.client) {
-				this.leftCallbacks.forEach(callback => callback(this.client))
-			}
-			this.client = null
-			this.stopPingInterval()
-		})
-
-		this.socket.on('connect', () => {
-			console.log('[Socket] Connected ✅', this.socket.id)
-		})
-		
-		this.socket.on('disconnect', (reason) => {
-			console.warn('[Socket] Disconnected ❌', reason)
-		})
-		
-		this.socket.on('connect_error', (err) => {
-			console.error('[Socket] Connection Error 🚫', err)
-		})
-		
-		this.socket.on('reconnect', (attempt) => {
-			console.log('[Socket] Reconnected 🔁 on attempt', attempt)
-		})
-		
-		this.socket.on('reconnect_attempt', (attempt) => {
-			console.log('[Socket] Trying to reconnect... attempt', attempt)
-		})
-		
-		this.socket.on('reconnect_error', (err) => {
-			console.error('[Socket] Reconnect failed ❌', err)
-		})
-		
-		this.socket.on('reconnect_failed', () => {
-			console.error('[Socket] Gave up reconnecting 💀')
-		})
+		this.socket.on('connect', this.handleSocketConnect)
+		this.socket.on('disconnect', this.handleSocketDisconnect)
+		this.socket.on('connect', this.handleSocketConnectLog)
+		this.socket.on('disconnect', this.handleSocketDisconnectLog)
+		this.socket.on('connect_error', this.handleSocketConnectError)
+		this.socket.on('reconnect', this.handleSocketReconnect)
+		this.socket.on('reconnect_attempt', this.handleSocketReconnectAttempt)
+		this.socket.on('reconnect_error', this.handleSocketReconnectError)
+		this.socket.on('reconnect_failed', this.handleSocketReconnectFailed)
 	}
 
 	disconnect() {
@@ -163,6 +126,54 @@ export class NetworkManager implements EventManager {
 		for (const event of this.handlers.keys()) {
 			this.setupHandlerForEvent(event)
 		}
+	}
+
+	private readonly handleSocketConnect = (): void => {
+		if (!this.socket) return
+		console.log('Connected to multiplayer server')
+		this.client = new NetworkClient(this.socket.id, this.socket)
+		this.lastMessageTime = Date.now()
+		this.startPingInterval()
+		this.setupSocketHandlers()
+		this.joinedCallbacks.forEach(callback => callback(this.client as NetworkClient))
+		this.onConnectCallback?.()
+	}
+
+	private readonly handleSocketDisconnect = (): void => {
+		console.log('Disconnected from multiplayer server')
+		if (this.client) {
+			this.leftCallbacks.forEach(callback => callback(this.client as NetworkClient))
+		}
+		this.client = null
+		this.stopPingInterval()
+	}
+
+	private readonly handleSocketConnectLog = (): void => {
+		console.log('[Socket] Connected ✅', this.socket?.id)
+	}
+
+	private readonly handleSocketDisconnectLog = (reason: unknown): void => {
+		console.warn('[Socket] Disconnected ❌', reason)
+	}
+
+	private readonly handleSocketConnectError = (err: unknown): void => {
+		console.error('[Socket] Connection Error 🚫', err)
+	}
+
+	private readonly handleSocketReconnect = (attempt: number): void => {
+		console.log('[Socket] Reconnected 🔁 on attempt', attempt)
+	}
+
+	private readonly handleSocketReconnectAttempt = (attempt: number): void => {
+		console.log('[Socket] Trying to reconnect... attempt', attempt)
+	}
+
+	private readonly handleSocketReconnectError = (err: unknown): void => {
+		console.error('[Socket] Reconnect failed ❌', err)
+	}
+
+	private readonly handleSocketReconnectFailed = (): void => {
+		console.error('[Socket] Gave up reconnecting 💀')
 	}
 
 	private setupHandlerForEvent(event: string) {

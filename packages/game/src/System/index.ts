@@ -1,4 +1,4 @@
-import { EventManager, Event } from '../events'
+import { EventManager, Event, EventClient } from '../events'
 import { Receiver } from '../Receiver'
 import { Logger } from '../Logs'
 
@@ -11,9 +11,11 @@ export class SystemManager {
 	}
 
 	private setupEventHandlers() {
-		// Handle system ping
-		this.event.on(Event.System.CS.Ping, (_, client) => {
-			client.emit(Receiver.Sender, Event.System.SC.Ping, {})
-		})
+		this.event.on(Event.System.CS.Ping, this.handleSystemCSPing)
 	}
-} 
+
+	/* EVENT HANDLERS */
+	private readonly handleSystemCSPing = (_data: unknown, client: EventClient): void => {
+		client.emit(Receiver.Sender, Event.System.SC.Ping, {})
+	}
+}

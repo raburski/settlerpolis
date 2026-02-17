@@ -29,10 +29,18 @@ export class NetworkManager implements EventManager {
 		if (this.debug) console.log('[NetworkManager] Initialized')
 
 		// Set up connection handler
-		this.io.on('connection', this.handleConnection.bind(this))
+		this.io.on('connection', this.handleSocketConnection)
 
 		// Start timeout checker
-		setInterval(this.checkInactiveClients.bind(this), this.TIMEOUT_CHECK_INTERVAL)
+		setInterval(this.handleTimeoutCheck, this.TIMEOUT_CHECK_INTERVAL)
+	}
+
+	private readonly handleSocketConnection = (socket: Socket): void => {
+		this.handleConnection(socket)
+	}
+
+	private readonly handleTimeoutCheck = (): void => {
+		this.checkInactiveClients()
 	}
 
 	private checkInactiveClients() {
@@ -170,27 +178,26 @@ export class NetworkManager implements EventManager {
 		})
 
 		// Set up disconnect handler
-		socket.on('disconnect', () => {
-			if (this.debug) console.log(`[NetworkManager] Client disconnected: ${socket.id}`)
-			
-			// Notify left callbacks
-			if (this.debug) console.log(`[NetworkManager] Notifying ${this.leftCallbacks.size} left callbacks`)
-			this.leftCallbacks.forEach(callback => callback(client))
-			
-			const handlers = this.eventHandlers.get('disconnect')
-			if (handlers) {
-				handlers.forEach(callback => callback(undefined, client))
-			}
+		socket.on('disconnect', this.handleSocketDisconnect.bind(this, socket, client))
+	}
 
-			// Clean up timestamp
-			this.lastMessageTimestamps.delete(socket.id)
-			this.socketHandlers.delete(socket.id)
-			// Clean up group membership on disconnect
-			const group = this.clientGroups.get(socket.id)
-			if (group) {
-				this.removeClientFromGroup(socket.id, group)
-			}
-		})
+	private handleSocketDisconnect(socket: Socket, client: EventClient): void {
+		if (this.debug) console.log(`[NetworkManager] Client disconnected: ${socket.id}`)
+
+		if (this.debug) console.log(`[NetworkManager] Notifying ${this.leftCallbacks.size} left callbacks`)
+		this.leftCallbacks.forEach(callback => callback(client))
+
+		const handlers = this.eventHandlers.get('disconnect')
+		if (handlers) {
+			handlers.forEach(callback => callback(undefined, client))
+		}
+
+		this.lastMessageTimestamps.delete(socket.id)
+		this.socketHandlers.delete(socket.id)
+		const group = this.clientGroups.get(socket.id)
+		if (group) {
+			this.removeClientFromGroup(socket.id, group)
+		}
 	}
 
 	onJoined(callback: LifecycleCallback): void {

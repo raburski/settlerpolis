@@ -61,34 +61,42 @@ export class CityCharterManager extends BaseManager<CityCharterDeps> {
 	}
 
 	private setupEventHandlers(): void {
-		this.managers.event.on(SimulationEvents.SS.Tick, (data: SimulationTickData) => {
-			this.handleSimulationTick(data)
-		})
-
-		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, (data, client) => {
-			const mapId = data.mapId || client.currentGroup
-			this.ensureState(client.id, mapId)
-			this.sendStateToClient(client, mapId)
-		})
-
-		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, (data, client) => {
-			const mapId = data.mapId || client.currentGroup
-			this.ensureState(client.id, mapId)
-			this.sendStateToClient(client, mapId)
-		})
-
-		this.managers.event.on(CityCharterEvents.CS.Claim, (data, client) => {
-			const mapId = data?.mapId || client.currentGroup
-			this.claimNextTier(client, mapId)
-		})
-
-		this.managers.event.on(CityCharterEvents.CS.RequestState, (data, client) => {
-			const mapId = data?.mapId || client.currentGroup
-			this.ensureState(client.id, mapId)
-			this.sendStateToClient(client, mapId)
-		})
+		this.managers.event.on(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
+		this.managers.event.on<PlayerJoinData>(Event.Players.CS.Join, this.handlePlayersCSJoin)
+		this.managers.event.on<PlayerTransitionData>(Event.Players.CS.TransitionTo, this.handlePlayersCSTransitionTo)
+		this.managers.event.on(CityCharterEvents.CS.Claim, this.handleCityCharterCSClaim)
+		this.managers.event.on(CityCharterEvents.CS.RequestState, this.handleCityCharterCSRequestState)
 	}
 
+	/* EVENT HANDLERS */
+	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
+		this.handleSimulationTick(data)
+	}
+
+	private readonly handlePlayersCSJoin = (data: PlayerJoinData, client: EventClient): void => {
+		const mapId = data.mapId || client.currentGroup
+		this.ensureState(client.id, mapId)
+		this.sendStateToClient(client, mapId)
+	}
+
+	private readonly handlePlayersCSTransitionTo = (data: PlayerTransitionData, client: EventClient): void => {
+		const mapId = data.mapId || client.currentGroup
+		this.ensureState(client.id, mapId)
+		this.sendStateToClient(client, mapId)
+	}
+
+	private readonly handleCityCharterCSClaim = (data: { mapId?: string }, client: EventClient): void => {
+		const mapId = data?.mapId || client.currentGroup
+		this.claimNextTier(client, mapId)
+	}
+
+	private readonly handleCityCharterCSRequestState = (data: { mapId?: string }, client: EventClient): void => {
+		const mapId = data?.mapId || client.currentGroup
+		this.ensureState(client.id, mapId)
+		this.sendStateToClient(client, mapId)
+	}
+
+	/* METHODS */
 	public loadCharters(content: CityCharterContent): void {
 		this.tiers = (content.tiers || []).map((tier, index) => ({
 			...tier,
