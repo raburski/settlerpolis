@@ -13,6 +13,7 @@ import type { SimulationManager } from '../../Simulation'
 import type { NPCManager } from '../../NPC'
 import type { WildlifeManager } from '../../Wildlife'
 import type { EventManager } from '../../events'
+import type { SettlerActionsManager } from '../Actions'
 
 export interface WorkProviderDeps {
 	event: EventManager
@@ -30,4 +31,5 @@ export interface WorkProviderDeps {
 	simulation: SimulationManager
 	npc: NPCManager
 	wildlife: WildlifeManager
+	actions: SettlerActionsManager
 }

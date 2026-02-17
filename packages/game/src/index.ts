@@ -153,7 +153,7 @@ export class GameManager {
 
 		// Create Settler actions/behaviour/work managers as peer managers.
 		this.managers.actions = new SettlerActionsManager(this.managers, this.managers.event, this.managers.logs.getLogger('SettlerActionsManager'))
-		this.managers.work = new SettlerWorkManager(this.managers, this.managers.logs.getLogger('SettlerWorkManager'), this.managers.actions)
+		this.managers.work = new SettlerWorkManager(this.managers, this.managers.logs.getLogger('SettlerWorkManager'))
 		this.managers.behaviour = new SettlerBehaviourManager(this.managers, this.managers.event, this.managers.actions, this.managers.work)
 		this.managers.work.bindBehaviourManager(this.managers.behaviour)
 

@@ -80,7 +80,7 @@ export class SettlerBehaviourManager implements SettlerBehaviourCoordinator {
 	constructor(
 		private managers: WorkProviderDeps,
 		private event: EventManager,
-		private actionSystem: SettlerActionsManager,
+		private actionsManager: SettlerActionsManager,
 		private runtime: SettlerWorkRuntimePort
 	) {}
 
@@ -133,7 +133,7 @@ export class SettlerBehaviourManager implements SettlerBehaviourCoordinator {
 			if (now < dispatchAt) {
 				continue
 			}
-			if (this.actionSystem.isBusy(settlerId)) {
+			if (this.actionsManager.isBusy(settlerId)) {
 				continue
 			}
 			this.pendingDispatchAtMs.delete(settlerId)
@@ -142,7 +142,7 @@ export class SettlerBehaviourManager implements SettlerBehaviourCoordinator {
 	}
 
 	dispatchNextStep(settlerId: SettlerId): void {
-		if (this.actionSystem.isBusy(settlerId)) {
+		if (this.actionsManager.isBusy(settlerId)) {
 			return
 		}
 
@@ -254,7 +254,7 @@ export class SettlerBehaviourManager implements SettlerBehaviourCoordinator {
 			step,
 			reservationOwnerId: assignment.assignmentId
 		}
-		this.actionSystem.enqueue(settlerId, actions, callbacks.onComplete, callbacks.onFail, context)
+		this.actionsManager.enqueue(settlerId, actions, callbacks.onComplete, callbacks.onFail, context)
 	}
 
 	buildWorkQueueCallbacks(

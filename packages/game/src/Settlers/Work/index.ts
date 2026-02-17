@@ -18,7 +18,6 @@ import type { ItemType } from '../../Items/types'
 import type { BuildingDefinition, BuildingInstance, ProductionRecipe, SetProductionPausedData } from '../../Buildings/types'
 import { ConstructionStage } from '../../Buildings/types'
 import { ProviderRegistry } from './ProviderRegistry'
-import { SettlerActionsManager } from '../Actions'
 import { WorkProviderEvents } from './events'
 import type { WorkAssignment, WorkAction, LogisticsRequest, WorkStep, WorkProvider } from './types'
 import { WorkProviderType, WorkAssignmentStatus } from './types'
@@ -46,7 +45,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 	private assignments = new AssignmentStore()
 	private providers: ProviderFactory
 	private logisticsProvider: LogisticsProvider
-	private actionSystem: SettlerActionsManager
+	private actionsManager: WorkProviderDeps['actions']
 	private policyEngine: PolicyEngine
 	private productionTracker: ProductionTracker
 	private dispatcher: SettlerBehaviourCoordinator | null = null
@@ -62,11 +61,10 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 	constructor(
 		managers: WorkProviderDeps,
-		private logger: Logger,
-		actionSystem: SettlerActionsManager
+		private logger: Logger
 	) {
 		super(managers)
-		this.actionSystem = actionSystem
+		this.actionsManager = this.managers.actions
 
 		this.logisticsProvider = new LogisticsProvider(
 			this.managers,
@@ -87,7 +85,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		this.policyEngine = new PolicyEngine(
 			policies,
 			this.managers,
-			this.actionSystem,
+			this.actionsManager,
 			this.assignments,
 			dispatchNextStep
 		)
@@ -138,7 +136,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 	public bindBehaviourManager(dispatcher: SettlerBehaviourCoordinator): void {
 		this.dispatcher = dispatcher
-		this.actionSystem.registerContextResolver(ActionQueueContextKind.Work, (settlerId, context) => {
+		this.actionsManager.registerContextResolver(ActionQueueContextKind.Work, (settlerId, context) => {
 			if (context.kind !== ActionQueueContextKind.Work) {
 				return {}
 			}
@@ -237,7 +235,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 	private handleSimulationTick(data: SimulationTickData): void {
 		this.simulationTimeMs = data.nowMs
-		this.actionSystem.setTime(this.simulationTimeMs)
+		this.actionsManager.setTime(this.simulationTimeMs)
 
 		this.migrateWarehouseAssignments()
 		this.processPendingWorkerRequests()
@@ -276,7 +274,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 		this.pauseRequests.set(data.settlerId, { reason: data.reason })
 
-		if (!this.actionSystem.isBusy(data.settlerId)) {
+		if (!this.actionsManager.isBusy(data.settlerId)) {
 			this.applyPause(data.settlerId)
 		}
 	}
@@ -537,7 +535,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		const finalizeExit = () => {
 			this.managers.population.setSettlerState(data.settlerId, SettlerState.Idle)
 		}
-		const replaced = this.actionSystem.replaceQueueAfterCurrent(
+		const replaced = this.actionsManager.replaceQueueAfterCurrent(
 			data.settlerId,
 			exitActions,
 			finalizeExit,
@@ -545,7 +543,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		)
 
 		if (!replaced) {
-			this.actionSystem.abort(data.settlerId)
+			this.actionsManager.abort(data.settlerId)
 		}
 		this.dispatcher?.clearSettlerState(data.settlerId)
 
@@ -596,7 +594,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		const finalizeExit = () => {
 			this.managers.population.setSettlerState(settlerId, SettlerState.Idle)
 		}
-		this.actionSystem.enqueue(settlerId, exitActions, finalizeExit, () => finalizeExit())
+		this.actionsManager.enqueue(settlerId, exitActions, finalizeExit, () => finalizeExit())
 	}
 
 	private buildExitActions(assignment: WorkAssignment, settlerId: string): WorkAction[] | null {
@@ -748,12 +746,6 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 	}
 
 	serialize(): WorkProviderSnapshot {
-		const dispatchSnapshot = this.dispatcher?.serialize() ?? {
-			movementRecoveryUntil: [],
-			movementRecoveryReason: [],
-			movementFailureCounts: [],
-			pendingDispatchAtMs: []
-		}
 		return {
 			assignments: this.assignments.serializeAssignments(),
 			assignmentsByBuilding: this.assignments.serializeAssignmentsByBuilding(),
@@ -764,11 +756,6 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 				{ ...payload }
 			])),
 			pausedContexts: Array.from(this.pausedContexts.entries()),
-			movementRecoveryUntil: dispatchSnapshot.movementRecoveryUntil,
-			movementRecoveryReason: dispatchSnapshot.movementRecoveryReason,
-			movementFailureCounts: dispatchSnapshot.movementFailureCounts,
-			pendingDispatchAtMs: dispatchSnapshot.pendingDispatchAtMs,
-			actionSystem: this.actionSystem.serialize(),
 			logistics: this.logisticsProvider.serialize(),
 			pendingWorkerRequests: this.pendingWorkerRequests.map(request => ({ ...request }))
 		}
@@ -784,15 +771,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		this.constructionCoordinator.deserializeLastAssignAt(state.lastConstructionAssignAt)
 		this.pauseRequests = new Map(state.pauseRequests)
 		this.pausedContexts = new Map(state.pausedContexts)
-		this.dispatcher?.deserialize({
-			movementRecoveryUntil: state.movementRecoveryUntil,
-			movementRecoveryReason: state.movementRecoveryReason,
-			movementFailureCounts: state.movementFailureCounts,
-			pendingDispatchAtMs: state.pendingDispatchAtMs
-		})
 		this.simulationTimeMs = this.managers.simulation.getSimulationTimeMs()
-		this.actionSystem.setTime(this.simulationTimeMs)
-		this.actionSystem.deserialize(state.actionSystem)
 
 		this.assignments.deserialize(state.assignments, state.assignmentsByBuilding)
 		this.pendingWorkerRequests = (state.pendingWorkerRequests || []).map(request => ({ ...request }))
@@ -830,9 +809,11 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		}
 
 		this.logisticsProvider.deserialize(state.logistics)
+	}
 
+	public resumeAfterDeserialize(): void {
 		for (const assignment of this.assignments.getAll()) {
-			if (this.actionSystem.isBusy(assignment.settlerId)) {
+			if (this.actionsManager.isBusy(assignment.settlerId)) {
 				continue
 			}
 			if (this.pauseRequests.has(assignment.settlerId) || this.pausedContexts.has(assignment.settlerId)) {
@@ -850,10 +831,8 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		this.pauseRequests.clear()
 		this.pausedContexts.clear()
 		this.pendingWorkerRequests = []
-		this.dispatcher?.reset()
 		this.simulationTimeMs = 0
 		this.logisticsProvider.reset()
-		this.actionSystem.reset()
 	}
 }
 

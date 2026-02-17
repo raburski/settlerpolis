@@ -54,6 +54,8 @@ export interface GameSnapshotV1 {
 		population: PopulationSnapshot
 		movement: MovementSnapshot
 		needs: NeedsSnapshot
+		actions: ActionSystemSnapshot
+		behaviour: SettlerBehaviourSnapshot
 		work: WorkProviderSnapshot
 		npc: NPCSnapshot
 		quests: QuestSnapshot
@@ -175,13 +177,15 @@ export interface WorkProviderSnapshot {
 	lastConstructionAssignAt: MapEntries<number>
 	pauseRequests: MapEntries<{ reason: string }>
 	pausedContexts: MapEntries<PausedContext | null>
+	logistics: LogisticsSnapshot
+	pendingWorkerRequests?: Array<{ buildingInstanceId: BuildingInstanceId, requestedAtMs: number }>
+}
+
+export interface SettlerBehaviourSnapshot {
 	movementRecoveryUntil: MapEntries<number>
 	movementRecoveryReason: MapEntries<WorkWaitReason>
 	movementFailureCounts: MapEntries<number>
 	pendingDispatchAtMs: MapEntries<number>
-	actionSystem: ActionSystemSnapshot
-	logistics: LogisticsSnapshot
-	pendingWorkerRequests?: Array<{ buildingInstanceId: BuildingInstanceId, requestedAtMs: number }>
 }
 
 export interface LogisticsSnapshot {
