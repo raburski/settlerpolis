@@ -30,8 +30,10 @@ import { ReservationSystem } from './Reservation'
 import { RoadManager } from './Roads'
 import { SimulationManager } from './Simulation'
 import { ResourceNodesManager } from './ResourceNodes'
-import { WorkProviderManager } from './Settlers/WorkProvider'
-import { NeedsManager } from './Needs'
+import { SettlerWorkManager } from './Settlers/Work'
+import { SettlerActionsManager } from './Settlers/Actions'
+import { SettlerBehaviourManager } from './Settlers/Behaviour'
+import { SettlerNeedsManager } from './Settlers/Needs'
 import { ManagersHub } from './Managers'
 import { WildlifeManager } from './Wildlife'
 import { SnapshotService } from './state/SnapshotService'
@@ -45,8 +47,10 @@ export * from './types'
 export * from './events'
 export * from './consts'
 export * from './utils'
-export * from './Settlers/WorkProvider'
-export * from './Needs'
+export * from './Settlers/Work'
+export * from './Settlers/Behaviour'
+export * from './Settlers/Actions'
+export * from './Settlers/Needs'
 export * from './Roads'
 export * from './Wildlife'
 export * from './CityCharter'
@@ -147,11 +151,14 @@ export class GameManager {
 		// Create ReservationSystem after Storage/Loot/ResourceNodes/Population
 		this.managers.reservations = new ReservationSystem(this.managers)
 
-		// Create WorkProviderManager after BuildingManager, PopulationManager, StorageManager, and ReservationSystem
-		this.managers.work = new WorkProviderManager(this.managers, this.managers.logs.getLogger('WorkProviderManager'))
+		// Create Settler actions/behaviour/work managers as peer managers.
+		this.managers.actions = new SettlerActionsManager(this.managers, this.managers.event, this.managers.logs.getLogger('SettlerActionsManager'))
+		this.managers.work = new SettlerWorkManager(this.managers, this.managers.logs.getLogger('SettlerWorkManager'))
+		this.managers.behaviour = new SettlerBehaviourManager(this.managers, this.managers.event, this.managers.actions, this.managers.work)
+		this.managers.work.bindBehaviourManager(this.managers.behaviour)
 
-		// Create NeedsManager after WorkProviderManager so it can preempt action queues
-		this.managers.needs = new NeedsManager(this.managers, this.managers.logs.getLogger('NeedsManager'))
+		// Create SettlerNeedsManager after Behaviour so behaviour executes need plans.
+		this.managers.needs = new SettlerNeedsManager(this.managers, this.managers.logs.getLogger('SettlerNeedsManager'))
 		
 		this.managers.trigger = new TriggerManager(this.managers, this.managers.logs.getLogger('TriggerManager'))
 
@@ -194,9 +201,9 @@ export class GameManager {
 		this.managers.logs.setManagerLevel('MovementManager', LogLevel.Info)
 		this.managers.logs.setManagerLevel('PopulationManager', LogLevel.Info)
 		
-		// Resource collection debugging - enable BuildingManager and WorkProviderManager at Info level
+		// Resource collection debugging - enable BuildingManager and SettlerWorkManager at Info level
 		this.managers.logs.setManagerLevel('BuildingManager', LogLevel.Info)
-		this.managers.logs.setManagerLevel('WorkProviderManager', LogLevel.Info)
+		this.managers.logs.setManagerLevel('SettlerWorkManager', LogLevel.Info)
 		
 		// Set most other managers to Warn level (only show warnings and errors)
 		const quietManagers = [
@@ -223,8 +230,10 @@ export class GameManager {
 			'StorageManager',
 			'SimulationManager',
 			'ResourceNodesManager',
-			'WorkProviderManager',
-			'NeedsManager',
+			'SettlerActionsManager',
+			'SettlerBehaviourManager',
+			'SettlerWorkManager',
+			'SettlerNeedsManager',
 			'CityCharterManager',
 			'TradeManager',
 			'WildlifeManager'

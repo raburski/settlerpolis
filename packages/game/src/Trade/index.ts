@@ -9,7 +9,7 @@ import type { BuildingManager } from '../Buildings'
 import { BuildingsEvents } from '../Buildings/events'
 import { ConstructionStage, type BuildingDefinition } from '../Buildings/types'
 import type { StorageManager } from '../Storage'
-import type { WorkProviderManager } from '../Settlers/WorkProvider'
+import type { SettlerWorkManager } from '../Settlers/Work'
 import { TradeEvents } from './events'
 import {
 	TradeRouteStatus,
@@ -25,8 +25,8 @@ import {
 import { v4 as uuidv4 } from 'uuid'
 import type { Logger } from '../Logs'
 import type { ItemType } from '../Items/types'
-import { LogisticsRequestType } from '../Settlers/WorkProvider/types'
-import type { LogisticsRequest } from '../Settlers/WorkProvider/types'
+import { LogisticsRequestType } from '../Settlers/Work/types'
+import type { LogisticsRequest } from '../Settlers/Work/types'
 import type { ReputationManager } from '../Reputation'
 import { TradeManagerState } from './TradeManagerState'
 
@@ -34,7 +34,7 @@ export interface TradeDeps {
 	event: EventManager
 	buildings: BuildingManager
 	storage: StorageManager
-	work: WorkProviderManager
+	work: SettlerWorkManager
 	reputation: ReputationManager
 }
 

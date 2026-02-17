@@ -7,10 +7,10 @@ import type { BuildingInstance } from '../Buildings/types'
 import type { StorageReservation, StorageSlot } from '../Storage/types'
 import type { Settler } from '../Population/types'
 import type { MovementEntity } from '../Movement/types'
-import type { NeedsState } from '../Needs/NeedsState'
-import type { NeedType, NeedPriority } from '../Needs/NeedTypes'
-import type { NeedLevel } from '../Needs/NeedTypes'
-import type { WorkAssignment, LogisticsRequest, WorkWaitReason, WorkAction, WorkStep } from '../Settlers/WorkProvider/types'
+import type { NeedsState } from '../Settlers/Needs/NeedsState'
+import type { NeedType, NeedPriority } from '../Settlers/Needs/NeedTypes'
+import type { NeedLevel } from '../Settlers/Needs/NeedTypes'
+import type { WorkAssignment, LogisticsRequest, WorkWaitReason, WorkAction, WorkStep } from '../Settlers/Work/types'
 import type { ProductionStatus, ProductionPlan } from '../Buildings/types'
 import type { NPC, NPCRoutineStep } from '../NPC/types'
 import type { PlayerQuestState, QuestProgress } from '../Quest/types'
@@ -18,7 +18,7 @@ import type { Flag } from '../Flags/types'
 import type { AffinityData } from '../Affinity/types'
 import type { ResourceNodeInstance } from '../ResourceNodes/types'
 import type { RoadData, RoadType } from '../Roads/types'
-import type { PausedContext } from '../Needs/types'
+import type { PausedContext } from '../Settlers/Needs/types'
 import type { Trigger } from '../Triggers/types'
 import type { ScheduledEvent } from '../Scheduler/types'
 import type { Position } from '../types'
@@ -54,6 +54,8 @@ export interface GameSnapshotV1 {
 		population: PopulationSnapshot
 		movement: MovementSnapshot
 		needs: NeedsSnapshot
+		actions: ActionSystemSnapshot
+		behaviour: SettlerBehaviourSnapshot
 		work: WorkProviderSnapshot
 		npc: NPCSnapshot
 		quests: QuestSnapshot
@@ -175,13 +177,15 @@ export interface WorkProviderSnapshot {
 	lastConstructionAssignAt: MapEntries<number>
 	pauseRequests: MapEntries<{ reason: string }>
 	pausedContexts: MapEntries<PausedContext | null>
+	logistics: LogisticsSnapshot
+	pendingWorkerRequests?: Array<{ buildingInstanceId: BuildingInstanceId, requestedAtMs: number }>
+}
+
+export interface SettlerBehaviourSnapshot {
 	movementRecoveryUntil: MapEntries<number>
 	movementRecoveryReason: MapEntries<WorkWaitReason>
 	movementFailureCounts: MapEntries<number>
 	pendingDispatchAtMs: MapEntries<number>
-	actionSystem: ActionSystemSnapshot
-	logistics: LogisticsSnapshot
-	pendingWorkerRequests?: Array<{ buildingInstanceId: BuildingInstanceId, requestedAtMs: number }>
 }
 
 export interface LogisticsSnapshot {

@@ -64,7 +64,7 @@ console.log('[Backend] Content loaded:', {
 // Create game manager instance with event bus, content, and map URL service
 const HOST_URL = process.env.PUBLIC_URL || process.env.RAILWAY_PUBLIC_URL || 'http://localhost:3000'
 const mapUrlService = new BackendMapUrlService('/api/maps/', HOST_URL)
-const logAllowlist = (process.env.GAME_LOG_ALLOWLIST || 'WorkProviderManager')
+const logAllowlist = (process.env.GAME_LOG_ALLOWLIST || 'SettlerWorkManager')
 	.split(',')
 	.map(entry => entry.trim())
 	.filter(Boolean)

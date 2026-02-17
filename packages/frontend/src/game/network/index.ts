@@ -67,7 +67,7 @@ function getNetworkManager(): NetworkEventManager {
 		const logToEventBus = String(import.meta.env.VITE_GAME_LOG_EVENTBUS || '').toLowerCase() === 'true'
 		const mapBaseUrl = '/assets/maps/'
 		const mapUrlService = new FrontendMapUrlService(mapBaseUrl)
-		const logAllowlist = (import.meta.env.VITE_GAME_LOG_ALLOWLIST || 'WorkProviderManager')
+		const logAllowlist = (import.meta.env.VITE_GAME_LOG_ALLOWLIST || 'SettlerWorkManager')
 			.split(',')
 			.map((entry: string) => entry.trim())
 			.filter(Boolean)

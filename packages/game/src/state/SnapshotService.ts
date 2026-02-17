@@ -25,6 +25,8 @@ export class SnapshotService {
 				population: this.managers.population.serialize(),
 				movement: this.managers.movement.serialize(),
 				needs: this.managers.needs.serialize(),
+				actions: this.managers.actions.serialize(),
+				behaviour: this.managers.behaviour.serialize(),
 				work: this.managers.work.serialize(),
 				npc: this.managers.npc.serialize(),
 				quests: this.managers.quest.serialize(),
@@ -60,10 +62,13 @@ export class SnapshotService {
 		} else {
 			this.managers.trade.reset?.()
 		}
-		this.managers.population.deserialize(snapshot.state.population)
-		this.managers.movement.deserialize(snapshot.state.movement)
-		this.managers.needs.deserialize(snapshot.state.needs)
-		this.managers.work.deserialize(snapshot.state.work)
+			this.managers.population.deserialize(snapshot.state.population)
+			this.managers.movement.deserialize(snapshot.state.movement)
+			this.managers.needs.deserialize(snapshot.state.needs)
+			this.managers.work.deserialize(snapshot.state.work)
+			this.managers.behaviour.deserialize(snapshot.state.behaviour)
+			this.managers.actions.deserialize(snapshot.state.actions, this.managers.simulation.getSimulationTimeMs())
+			this.managers.work.resumeAfterDeserialize()
 		this.managers.players.deserialize(snapshot.state.players)
 		this.managers.inventory.deserialize(snapshot.state.inventory)
 		this.managers.npc.deserialize(snapshot.state.npc)
@@ -100,6 +105,8 @@ export class SnapshotService {
 		this.managers.population.reset?.()
 		this.managers.movement.reset?.()
 		this.managers.needs.reset?.()
+		this.managers.actions.reset?.()
+		this.managers.behaviour.reset?.()
 		this.managers.work.reset?.()
 		this.managers.npc.reset?.()
 		this.managers.quest.reset?.()

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { RoadType } from '../../src/Roads/types'
-import { buildRoadNetworkWalk } from '../../src/Settlers/WorkProvider/stepHandlers/marketRun'
+import { buildRoadNetworkWalk } from '../../src/Settlers/Work/stepHandlers/marketRun'
 
 type TilePosition = { x: number, y: number }
 

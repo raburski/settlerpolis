@@ -3,7 +3,7 @@ import {
 	assignRecipientsToRouteSegments,
 	buildRouteSegments,
 	type DeliveryRecipient
-} from '../../src/Settlers/WorkProvider/stepHandlers/routeDeliveryPlanner'
+} from '../../src/Settlers/Work/stepHandlers/routeDeliveryPlanner'
 
 describe('routeDeliveryPlanner', () => {
 	it('builds overlapping patrol segments from a route and stride', () => {

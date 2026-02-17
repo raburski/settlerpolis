@@ -19,7 +19,7 @@ This document targets simulation modules currently driven by periodic `Simulatio
 ## 1) WorkProvider + LogisticsCoordinator (highest priority)
 
 ### Current pattern
-- `WorkProviderManager.handleSimulationTick` runs a chain of global operations every tick.
+- `SettlerWorkManager.handleSimulationTick` runs a chain of global operations every tick.
 - `LogisticsCoordinator.tick()` refreshes construction/consumption/warehouse requests and emits updates each run.
 - Construction and road assignment scans are called from the same tick path.
 
@@ -223,4 +223,3 @@ Replace broad per-tick recomputation with dirty-event driven recomputation.
 	- trade route cycle correctness
 	- spawn/respawn timing bounds
 	- UI consistency for charter/logistics/needs
-

@@ -11,7 +11,7 @@ import {
 	RequestListData,
 	SettlerPatch
 } from './types'
-import { NEED_CRITICAL_THRESHOLD } from '../Needs/NeedsState'
+import { NEED_CRITICAL_THRESHOLD } from '../Settlers/Needs/NeedsState'
 import { Receiver } from '../Receiver'
 import { v4 as uuidv4 } from 'uuid'
 import type { BuildingManager } from '../Buildings'
