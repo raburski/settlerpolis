@@ -1,26 +1,20 @@
 import { Receiver } from '../../Receiver'
 import type { EventManager } from '../../events'
 import type { WorkProviderDeps } from '../Work/deps'
-import type { AssignmentStore } from '../Work/AssignmentStore'
-import type { ProviderRegistry } from '../Work/ProviderRegistry'
 import { WorkProviderEvents } from '../Work/events'
 import type { WorkAssignment, WorkStep, WorkAction } from '../Work/types'
 import { TransportTargetType, WorkProviderType, WorkStepType, WorkWaitReason } from '../Work/types'
 import { SettlerState } from '../../Population/types'
 import { StepHandlers } from '../Work/stepHandlers'
 import type { SettlerActionsManager } from '../Actions'
-import type { LogisticsProvider } from '../Work/providers/LogisticsProvider'
-import type { PolicyEngine } from '../Work/PolicyEngine'
-import type { ProductionTracker } from '../Work/ProductionTracker'
 import type { ActionQueueContext } from '../../state/types'
 import { ActionQueueContextKind } from '../../state/types'
-import type { WorkPolicyContext } from '../Work/policies/types'
 import { WorkPolicyPhase } from '../Work/policies/constants'
-import type { PausedContext } from '../../Needs/types'
 import type { SettlerId } from '../../ids'
 import { calculateDistance } from '../../utils'
 import type { BuildingDefinition, BuildingInstance } from '../../Buildings/types'
 import type { MapData } from '../../Map/types'
+import type { SettlerWorkRuntimePort } from '../Work/runtime'
 
 const MOVEMENT_RECOVERY_COOLDOWN_MS = 8000
 const MOVEMENT_FAILURE_MAX_RETRIES = 3
@@ -54,7 +48,30 @@ const isSettlerInConstructionArea = (
 	return calculateDistance(settlerPosition, center) <= radius
 }
 
-export class SettlerBehaviourManager {
+export interface SettlerBehaviourCoordinator {
+	processPendingDispatches(): void
+	dispatchNextStep(settlerId: SettlerId): void
+	buildWorkQueueCallbacks(settlerId: SettlerId, step?: WorkStep, releaseReservations?: () => void): {
+		onComplete: () => void
+		onFail: (reason: string) => void
+	}
+	clearSettlerState(settlerId: SettlerId): void
+	serialize(): {
+		movementRecoveryUntil: Array<[SettlerId, number]>
+		movementRecoveryReason: Array<[SettlerId, WorkWaitReason]>
+		movementFailureCounts: Array<[SettlerId, number]>
+		pendingDispatchAtMs: Array<[SettlerId, number]>
+	}
+	deserialize(state: {
+		movementRecoveryUntil: Array<[SettlerId, number]>
+		movementRecoveryReason: Array<[SettlerId, WorkWaitReason]>
+		movementFailureCounts: Array<[SettlerId, number]>
+		pendingDispatchAtMs: Array<[SettlerId, number]>
+	}): void
+	reset(): void
+}
+
+export class SettlerBehaviourManager implements SettlerBehaviourCoordinator {
 	private movementRecoveryUntil = new Map<SettlerId, number>()
 	private movementRecoveryReason = new Map<SettlerId, WorkWaitReason>()
 	private movementFailureCounts = new Map<SettlerId, number>()
@@ -63,16 +80,8 @@ export class SettlerBehaviourManager {
 	constructor(
 		private managers: WorkProviderDeps,
 		private event: EventManager,
-		private assignments: AssignmentStore,
-		private registry: ProviderRegistry,
 		private actionSystem: SettlerActionsManager,
-		private logisticsProvider: LogisticsProvider,
-		private policyEngine: PolicyEngine,
-		private productionTracker: ProductionTracker,
-		private getNowMs: () => number,
-		private getPauseState: () => { pauseRequests: Map<SettlerId, { reason: string }>, pausedContexts: Map<SettlerId, PausedContext | null> },
-		private applyPause: (settlerId: SettlerId) => void,
-		private unassignWorker: (settlerId: SettlerId) => void
+		private runtime: SettlerWorkRuntimePort
 	) {}
 
 	private isWarehouseLogisticsAssignment(assignment: WorkAssignment): boolean {
@@ -119,7 +128,7 @@ export class SettlerBehaviourManager {
 			return
 		}
 
-		const now = this.getNowMs()
+		const now = this.runtime.getNowMs()
 		for (const [settlerId, dispatchAt] of this.pendingDispatchAtMs.entries()) {
 			if (now < dispatchAt) {
 				continue
@@ -137,15 +146,15 @@ export class SettlerBehaviourManager {
 			return
 		}
 
-		const { pauseRequests, pausedContexts } = this.getPauseState()
+		const { pauseRequests, pausedContexts } = this.runtime.getPauseState()
 		if (pauseRequests.has(settlerId) || pausedContexts.has(settlerId)) {
 			if (!pausedContexts.has(settlerId)) {
-				this.applyPause(settlerId)
+				this.runtime.requestPause(settlerId)
 			}
 			return
 		}
 
-		const assignment = this.assignments.get(settlerId)
+		const assignment = this.runtime.getAssignment(settlerId)
 		if (!assignment) {
 			this.managers.population.setSettlerAssignment(settlerId, undefined, undefined, undefined)
 			this.managers.population.setSettlerWaitReason(settlerId, WorkWaitReason.NoWork)
@@ -156,7 +165,7 @@ export class SettlerBehaviourManager {
 
 		const recoveryUntil = this.movementRecoveryUntil.get(settlerId)
 		if (recoveryUntil) {
-			if (this.getNowMs() < recoveryUntil) {
+			if (this.runtime.getNowMs() < recoveryUntil) {
 				const reason = this.movementRecoveryReason.get(settlerId) ?? WorkWaitReason.MovementFailed
 				this.managers.population.setSettlerWaitReason(settlerId, reason)
 				this.managers.population.setSettlerLastStep(settlerId, undefined, reason)
@@ -167,30 +176,21 @@ export class SettlerBehaviourManager {
 			this.movementRecoveryReason.delete(settlerId)
 		}
 
-		const policyContext: WorkPolicyContext = {
-			settlerId,
-			assignment,
-			managers: this.managers,
-			simulationTimeMs: this.getNowMs()
-		}
-
-		const prePolicyResult = this.policyEngine.evaluate(WorkPolicyPhase.BeforeStep, policyContext)
-		if (this.policyEngine.apply(settlerId, prePolicyResult)) {
+		if (this.runtime.applyPolicy(WorkPolicyPhase.BeforeStep, settlerId, assignment)) {
 			return
 		}
 
-		const provider = this.registry.get(assignment.providerId)
+		const provider = this.runtime.getProvider(assignment.providerId)
 		if (!provider) {
 			this.managers.population.setSettlerWaitReason(settlerId, WorkWaitReason.ProviderMissing)
 			this.managers.population.setSettlerLastStep(settlerId, undefined, WorkWaitReason.ProviderMissing)
-			this.unassignWorker(settlerId)
+			this.runtime.unassignSettler(settlerId)
 			return
 		}
 
 		const step = provider.requestNextStep(settlerId)
 		if (!step) {
-			const noStepPolicyResult = this.policyEngine.evaluate(WorkPolicyPhase.NoStep, policyContext)
-			if (this.policyEngine.apply(settlerId, noStepPolicyResult)) {
+			if (this.runtime.applyPolicy(WorkPolicyPhase.NoStep, settlerId, assignment)) {
 				return
 			}
 			this.managers.population.setSettlerWaitReason(settlerId, WorkWaitReason.NoWork)
@@ -200,8 +200,7 @@ export class SettlerBehaviourManager {
 		}
 
 		if (step.type === WorkStepType.Wait) {
-			const waitPolicyResult = this.policyEngine.evaluate(WorkPolicyPhase.WaitStep, policyContext, step)
-			if (this.policyEngine.apply(settlerId, waitPolicyResult)) {
+			if (this.runtime.applyPolicy(WorkPolicyPhase.WaitStep, settlerId, assignment, step)) {
 				return
 			}
 			this.managers.population.setSettlerWaitReason(settlerId, step.reason)
@@ -209,22 +208,22 @@ export class SettlerBehaviourManager {
 			if (assignment.providerType === WorkProviderType.Logistics &&
 				(step.reason === WorkWaitReason.NoRequests || step.reason === WorkWaitReason.NoViableRequest)) {
 				if (!this.isWarehouseLogisticsAssignment(assignment)) {
-					this.unassignWorker(settlerId)
+					this.runtime.unassignSettler(settlerId)
 					return
 				}
 			}
 			if (assignment.providerType === WorkProviderType.Road &&
 				(step.reason === WorkWaitReason.NoWork || step.reason === WorkWaitReason.WrongProfession)) {
-				this.unassignWorker(settlerId)
+				this.runtime.unassignSettler(settlerId)
 				return
 			}
 			if (assignment.providerType === WorkProviderType.Prospecting &&
 				(step.reason === WorkWaitReason.NoWork || step.reason === WorkWaitReason.WrongProfession)) {
-				this.unassignWorker(settlerId)
+				this.runtime.unassignSettler(settlerId)
 				return
 			}
 			if (assignment.providerType === WorkProviderType.Construction && step.reason === WorkWaitReason.WrongProfession) {
-				this.unassignWorker(settlerId)
+				this.runtime.unassignSettler(settlerId)
 				return
 			}
 		} else {
@@ -232,7 +231,7 @@ export class SettlerBehaviourManager {
 			this.managers.population.setSettlerLastStep(settlerId, step.type, undefined)
 		}
 
-		this.productionTracker.updateForStep(assignment, step)
+		this.runtime.updateProductionForStep(assignment, step)
 		this.maybeActivateConstructionWorker(settlerId, step)
 
 		this.event.emit(Receiver.All, WorkProviderEvents.SS.StepIssued, { settlerId, step })
@@ -270,7 +269,7 @@ export class SettlerBehaviourManager {
 					this.dispatchNextStep(settlerId)
 					return
 				}
-				const assignment = this.assignments.get(settlerId)
+				const assignment = this.runtime.getAssignment(settlerId)
 				if (!assignment) {
 					releaseReservations?.()
 					return
@@ -283,7 +282,7 @@ export class SettlerBehaviourManager {
 					this.dispatchNextStep(settlerId)
 					return
 				}
-				const assignment = this.assignments.get(settlerId)
+				const assignment = this.runtime.getAssignment(settlerId)
 				if (!assignment) {
 					releaseReservations?.()
 					return
@@ -346,14 +345,14 @@ export class SettlerBehaviourManager {
 		this.clearConstructionWorker(settlerId, step)
 		this.movementFailureCounts.delete(settlerId)
 		if (step.type === WorkStepType.Transport && step.target.type === TransportTargetType.Construction) {
-			this.logisticsProvider.releaseConstructionInFlight(step.target.buildingInstanceId, step.itemType, step.quantity)
+			this.runtime.releaseConstructionInFlight(step.target.buildingInstanceId, step.itemType, step.quantity)
 		}
 		if (step.type === WorkStepType.Produce && assignment.buildingInstanceId) {
-			this.productionTracker.handleProductionCompleted(assignment.buildingInstanceId, step.recipe)
+			this.runtime.handleProductionCompleted(assignment.buildingInstanceId, step.recipe)
 		}
-		if (assignment.providerType === WorkProviderType.Logistics && !this.logisticsProvider.hasPendingRequests()) {
+		if (assignment.providerType === WorkProviderType.Logistics && !this.runtime.hasPendingLogisticsRequests()) {
 			if (!this.isWarehouseLogisticsAssignment(assignment)) {
-				this.unassignWorker(settlerId)
+				this.runtime.unassignSettler(settlerId)
 				return
 			}
 		}
@@ -381,13 +380,13 @@ export class SettlerBehaviourManager {
 			waitReason = reason === 'movement_failed'
 				? WorkWaitReason.MovementFailed
 				: WorkWaitReason.MovementCancelled
-			this.movementRecoveryUntil.set(settlerId, this.getNowMs() + retryDelayMs)
+			this.movementRecoveryUntil.set(settlerId, this.runtime.getNowMs() + retryDelayMs)
 			this.movementRecoveryReason.set(settlerId, waitReason)
 			if (currentFailures >= MOVEMENT_FAILURE_MAX_RETRIES) {
 				if (step.type === WorkStepType.BuildRoad) {
 					this.managers.roads.releaseJob(step.jobId)
 				}
-				this.unassignWorker(settlerId)
+				this.runtime.unassignSettler(settlerId)
 				this.movementFailureCounts.delete(settlerId)
 				this.movementRecoveryUntil.delete(settlerId)
 				this.movementRecoveryReason.delete(settlerId)
@@ -400,10 +399,10 @@ export class SettlerBehaviourManager {
 			this.managers.population.setSettlerState(settlerId, SettlerState.WaitingForWork)
 		}
 		if (step.type === WorkStepType.Transport && step.target.type === TransportTargetType.Construction) {
-			this.logisticsProvider.releaseConstructionInFlight(step.target.buildingInstanceId, step.itemType, step.quantity)
+			this.runtime.releaseConstructionInFlight(step.target.buildingInstanceId, step.itemType, step.quantity)
 		}
 		if (shouldDispatch) {
-			this.pendingDispatchAtMs.set(settlerId, this.getNowMs() + retryDelayMs)
+			this.pendingDispatchAtMs.set(settlerId, this.runtime.getNowMs() + retryDelayMs)
 		}
 	}
 
@@ -422,7 +421,7 @@ export class SettlerBehaviourManager {
 			step,
 			managers: this.managers,
 			reservationSystem: this.managers.reservations,
-			simulationTimeMs: this.getNowMs()
+			simulationTimeMs: this.runtime.getNowMs()
 		})
 	}
 }

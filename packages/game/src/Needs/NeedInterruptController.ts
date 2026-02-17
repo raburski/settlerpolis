@@ -3,7 +3,7 @@ import { Receiver } from '../Receiver'
 import type { Logger } from '../Logs'
 import { SimulationEvents } from '../Simulation/events'
 import type { SimulationTickData } from '../Simulation/types'
-import type { SettlerWorkManager } from '../Settlers/Work'
+import type { SettlerActionsManager } from '../Settlers/Actions'
 import { NeedsEvents } from './events'
 import { NeedType, NeedPriority } from './NeedTypes'
 import type { NeedsSystem } from './NeedsSystem'
@@ -40,11 +40,11 @@ export class NeedInterruptController {
 		private event: EventManager,
 		private needs: NeedsSystem,
 		private planner: NeedPlanner,
-		private work: SettlerWorkManager,
+		private actions: SettlerActionsManager,
 		private logger: Logger
 	) {
 		this.setupEventHandlers()
-		this.work.registerActionContextResolver(ActionQueueContextKind.Need, (settlerId, context) => {
+		this.actions.registerContextResolver(ActionQueueContextKind.Need, (settlerId, context) => {
 			if (context.kind !== ActionQueueContextKind.Need) {
 				return {}
 			}
@@ -179,7 +179,7 @@ export class NeedInterruptController {
 			reservationOwnerId: data.settlerId
 		}
 
-		this.work.enqueueActions(data.settlerId, plan.actions, () => {
+		this.actions.enqueue(data.settlerId, plan.actions, () => {
 			plan.releaseReservations?.()
 			if (typeof plan.satisfyValue === 'number') {
 				this.needs.resolveNeed(data.settlerId, needType, plan.satisfyValue)

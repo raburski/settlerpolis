@@ -31,6 +31,8 @@ import { RoadManager } from './Roads'
 import { SimulationManager } from './Simulation'
 import { ResourceNodesManager } from './ResourceNodes'
 import { SettlerWorkManager } from './Settlers/Work'
+import { SettlerActionsManager } from './Settlers/Actions'
+import { SettlerBehaviourManager } from './Settlers/Behaviour'
 import { NeedsManager } from './Needs'
 import { ManagersHub } from './Managers'
 import { WildlifeManager } from './Wildlife'
@@ -149,10 +151,13 @@ export class GameManager {
 		// Create ReservationSystem after Storage/Loot/ResourceNodes/Population
 		this.managers.reservations = new ReservationSystem(this.managers)
 
-		// Create SettlerWorkManager after BuildingManager, PopulationManager, StorageManager, and ReservationSystem
-		this.managers.work = new SettlerWorkManager(this.managers, this.managers.logs.getLogger('SettlerWorkManager'))
+		// Create Settler actions/behaviour/work managers as peer managers.
+		this.managers.actions = new SettlerActionsManager(this.managers, this.managers.event, this.managers.logs.getLogger('SettlerActionsManager'))
+		this.managers.work = new SettlerWorkManager(this.managers, this.managers.logs.getLogger('SettlerWorkManager'), this.managers.actions)
+		this.managers.behaviour = new SettlerBehaviourManager(this.managers, this.managers.event, this.managers.actions, this.managers.work)
+		this.managers.work.bindBehaviourManager(this.managers.behaviour)
 
-		// Create NeedsManager after SettlerWorkManager so it can preempt action queues
+		// Create NeedsManager after Actions/Work so it can preempt action queues without going through Work.
 		this.managers.needs = new NeedsManager(this.managers, this.managers.logs.getLogger('NeedsManager'))
 		
 		this.managers.trigger = new TriggerManager(this.managers, this.managers.logs.getLogger('TriggerManager'))
@@ -225,6 +230,8 @@ export class GameManager {
 			'StorageManager',
 			'SimulationManager',
 			'ResourceNodesManager',
+			'SettlerActionsManager',
+			'SettlerBehaviourManager',
 			'SettlerWorkManager',
 			'NeedsManager',
 			'CityCharterManager',

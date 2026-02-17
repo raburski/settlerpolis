@@ -7,7 +7,7 @@ import type { StorageManager } from '../Storage'
 import type { PopulationManager } from '../Population'
 import type { ItemsManager } from '../Items'
 import type { ReservationSystem } from '../Reservation'
-import type { SettlerWorkManager } from '../Settlers/Work'
+import type { SettlerActionsManager } from '../Settlers/Actions'
 import { NeedsSystem } from './NeedsSystem'
 import { NeedPlanner } from './NeedPlanner'
 import { NeedInterruptController } from './NeedInterruptController'
@@ -22,7 +22,7 @@ export interface NeedsDeps {
 	population: PopulationManager
 	items: ItemsManager
 	reservations: ReservationSystem
-	work: SettlerWorkManager
+	actions: SettlerActionsManager
 }
 
 export class NeedsManager extends BaseManager<NeedsDeps> {
@@ -38,7 +38,7 @@ export class NeedsManager extends BaseManager<NeedsDeps> {
 		super(managers)
 		this.system = new NeedsSystem({ population: managers.population }, managers.event)
 		this.planner = new NeedPlanner(managers, logger)
-		this.interrupts = new NeedInterruptController(managers.event, this.system, this.planner, managers.work, logger)
+		this.interrupts = new NeedInterruptController(managers.event, this.system, this.planner, managers.actions, logger)
 	}
 
 	serialize(): NeedsSnapshot {
