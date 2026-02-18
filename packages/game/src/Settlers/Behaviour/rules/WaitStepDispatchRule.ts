@@ -9,9 +9,6 @@ export class WaitStepDispatchRule implements BehaviourDispatchRule {
 		if (!context.step || context.step.type !== WorkStepType.Wait || !context.assignment) {
 			return BehaviourRuleResult.Continue
 		}
-		if (context.homeRelocation.tryEnqueue(context, context.assignment)) {
-			return BehaviourRuleResult.Stop
-		}
 
 		context.managers.population.setSettlerWaitReason(context.settlerId, context.step.reason)
 		context.managers.population.setSettlerLastStep(context.settlerId, context.step.type, context.step.reason)

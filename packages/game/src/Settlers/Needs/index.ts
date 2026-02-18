@@ -13,6 +13,7 @@ import { NeedInterruptController } from './NeedInterruptController'
 import type { NeedsBehaviourApi } from './NeedInterruptController'
 import type { NeedsSnapshot } from '../../state/types'
 import { NeedsManagerState } from './NeedsManagerState'
+import type { SimulationTickData } from '../../Simulation/types'
 
 export interface NeedsDeps {
 	event: EventManager
@@ -26,9 +27,9 @@ export interface NeedsDeps {
 }
 
 export class SettlerNeedsManager extends BaseManager<NeedsDeps> {
-	public system: NeedsSystem
-	public planner: NeedPlanner
-	public interrupts: NeedInterruptController
+	private readonly system: NeedsSystem
+	private readonly planner: NeedPlanner
+	private readonly interrupts: NeedInterruptController
 	private readonly state = new NeedsManagerState()
 
 	constructor(
@@ -39,6 +40,11 @@ export class SettlerNeedsManager extends BaseManager<NeedsDeps> {
 		this.system = new NeedsSystem({ population: managers.population }, managers.event)
 		this.planner = new NeedPlanner(managers, logger)
 		this.interrupts = new NeedInterruptController(managers.event, this.system, this.planner, managers.behaviour, logger)
+	}
+
+	public update(data: SimulationTickData): void {
+		this.system.update(data)
+		this.interrupts.update(data)
 	}
 
 	serialize(): NeedsSnapshot {

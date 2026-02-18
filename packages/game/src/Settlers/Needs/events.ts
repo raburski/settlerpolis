@@ -6,10 +6,6 @@ export const NeedsEvents = {
 		NeedInterruptRequested: 'ss:needs:interrupt-requested',
 		NeedInterruptStarted: 'ss:needs:interrupt-started',
 		NeedInterruptEnded: 'ss:needs:interrupt-ended',
-		ContextPauseRequested: 'ss:needs:context-pause-requested',
-		ContextPaused: 'ss:needs:context-paused',
-		ContextResumeRequested: 'ss:needs:context-resume-requested',
-		ContextResumed: 'ss:needs:context-resumed',
 		NeedPlanCreated: 'ss:needs:plan-created',
 		NeedPlanFailed: 'ss:needs:plan-failed'
 	}

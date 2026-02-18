@@ -1,9 +1,52 @@
+import type { SettlerId, WorkAssignmentId } from '../../ids'
+import type { WorkAction, WorkAssignment, WorkStep } from './types'
+
 export enum WorkDispatchReason {
 	WorkFlow = 'work_flow',
-	ContextResumed = 'context_resumed',
 	WorkerAssigned = 'worker_assigned',
 	ImmediateRequest = 'immediate_request',
 	ResumeAfterDeserialize = 'resume_after_deserialize'
+}
+
+export interface WorkActionCompletedEventData {
+	settlerId: SettlerId
+	action: WorkAction
+}
+
+export interface WorkActionFailedEventData {
+	settlerId: SettlerId
+	action: WorkAction
+	reason: string
+}
+
+export interface WorkStepIssuedEventData {
+	settlerId: SettlerId
+	step: WorkStep
+}
+
+export interface WorkStepCompletedEventData {
+	settlerId: SettlerId
+	step: WorkStep
+}
+
+export interface WorkStepFailedEventData {
+	settlerId: SettlerId
+	step: WorkStep
+	reason: string
+}
+
+export interface WorkAssignmentCreatedEventData {
+	assignment: WorkAssignment
+}
+
+export interface WorkAssignmentRemovedEventData {
+	assignmentId: WorkAssignmentId
+	settlerId: SettlerId
+}
+
+export interface WorkDispatchRequestedEventData {
+	settlerId: SettlerId
+	reason: WorkDispatchReason
 }
 
 export const WorkProviderEvents = {

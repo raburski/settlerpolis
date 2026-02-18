@@ -27,7 +27,6 @@ export interface HomeRelocationPlannerDeps {
 
 export interface HomeRelocationPlan {
 	actions: WorkAction[]
-	releaseReservation: () => void
 }
 
 export class HomeRelocationPlanner {
@@ -158,7 +157,6 @@ export class HomeRelocationPlanner {
 			return null
 		}
 
-		const releaseReservation = () => deps.reservations.releaseHouseReservation(reservationId)
 		const actions: WorkAction[] = [
 			{ type: WorkActionType.Move, position: currentHouse.position, targetType: MoveTargetType.House, targetId: currentHouse.id, setState: SettlerState.MovingHome },
 			{ type: WorkActionType.Wait, durationMs: HOME_MOVE_PACK_MS, setState: SettlerState.Packing },
@@ -168,7 +166,7 @@ export class HomeRelocationPlanner {
 			{ type: WorkActionType.Move, position: workplace.position, targetType: MoveTargetType.Building, targetId: workplace.id, setState: SettlerState.MovingToBuilding }
 		]
 
-		return { actions, releaseReservation }
+		return { actions }
 	}
 
 	private estimateCommuteDistance(

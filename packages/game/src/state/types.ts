@@ -165,8 +165,6 @@ export interface NeedInterruptSnapshot {
 	settlerId: string
 	activeNeed: NeedType | null
 	priority: NeedPriority | null
-	pendingNeed?: { needType: NeedType, priority: NeedPriority } | null
-	pausedContext: PausedContext | null
 	cooldowns: Record<NeedType, number>
 }
 
@@ -175,7 +173,6 @@ export interface WorkProviderSnapshot {
 	assignmentsByBuilding: MapEntries<string[]>
 	productionStateByBuilding: MapEntries<{ status: ProductionStatus, progress: number }>
 	lastConstructionAssignAt: MapEntries<number>
-	pauseRequests: MapEntries<{ reason: string }>
 	pausedContexts: MapEntries<PausedContext | null>
 	logistics: LogisticsSnapshot
 	pendingWorkerRequests?: Array<{ buildingInstanceId: BuildingInstanceId, requestedAtMs: number }>
