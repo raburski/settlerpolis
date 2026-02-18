@@ -4,7 +4,7 @@ import { SettlerView } from './View'
 import { SettlerController } from './Controller'
 
 export const createSettler = (scene: GameScene, settler: Settler): SettlerController => {
-	const view = new SettlerView(scene, settler.position.x, settler.position.y, settler.id, settler.profession)
+	const view = new SettlerView(scene, settler.position.x, settler.position.y, settler.id, settler.profession, settler.speed)
 	return new SettlerController(view, scene, settler)
 }
 
