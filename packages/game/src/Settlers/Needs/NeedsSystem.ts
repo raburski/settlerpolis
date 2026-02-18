@@ -1,6 +1,5 @@
 import type { EventManager } from '../../events'
 import { Receiver } from '../../Receiver'
-import { SimulationEvents } from '../../Simulation/events'
 import type { SimulationTickData } from '../../Simulation/types'
 import type { PopulationManager } from '../../Population'
 import { SettlerState } from '../../Population/types'
@@ -46,9 +45,6 @@ export class NeedsSystem {
 	}
 
 	private setupEventHandlers(): void {
-		this.event.on(SimulationEvents.SS.SlowTick, (data: SimulationTickData) => {
-			this.handleSimulationTick(data)
-		})
 		this.event.on(MovementEvents.SS.SegmentComplete, (data: { entityId: string, segmentDistance: number, totalDistance: number }) => {
 			this.handleMovementSegment(data)
 		})
@@ -57,7 +53,7 @@ export class NeedsSystem {
 		})
 	}
 
-	private handleSimulationTick(data: SimulationTickData): void {
+	public update(data: SimulationTickData): void {
 		const settlers = this.managers.population.getSettlers()
 		for (const settler of settlers) {
 			const state = this.ensureNeedsState(settler.id)

@@ -22,7 +22,19 @@ import { BuildingsEvents } from './Buildings/events'
 import { PopulationEvents } from './Population/events'
 import { MovementEvents } from './Movement/events'
 import { StorageEvents } from './Storage/events'
-import { WorkProviderEvents, WorkDispatchReason } from './Settlers/Work/events'
+import { WorkProviderEvents } from './Settlers/Work/events'
+import type {
+	WorkActionCompletedEventData,
+	WorkActionFailedEventData,
+	WorkStepIssuedEventData,
+	WorkStepCompletedEventData,
+	WorkStepFailedEventData,
+	WorkAssignmentCreatedEventData,
+	WorkAssignmentRemovedEventData,
+	WorkDispatchRequestedEventData
+} from './Settlers/Work/events'
+import { SettlerActionsEvents } from './Settlers/Actions/events'
+import type { ActionQueueCompletedEventData, ActionQueueFailedEventData } from './Settlers/Actions/events'
 import { NeedsEvents } from './Settlers/Needs/events'
 import { RoadEvents } from './Roads/events'
 import { WildlifeEvents } from './Wildlife/events'
@@ -48,12 +60,12 @@ import type { MapLoadData, MapLoadResponseData, MapTransitionData, MapTransition
 import type { TimeUpdateEventData, TimeSpeedUpdateEventData, TimePauseEventData, TimeSyncEventData } from './Time/types'
 import type { PlaceBuildingData, CancelBuildingData, SetProductionPausedData, SetProductionPlanData, SetGlobalProductionPlanData, SetWorkAreaData, SetStorageRequestsData, BuildingPlacedData, BuildingProgressData, BuildingCompletedData, BuildingCancelledData, BuildingCatalogData, BuildingWorkAreaUpdatedData, BuildingStorageRequestsUpdatedData, BuildingWorkerQueueUpdatedData, ProductionPlanUpdatedData, GlobalProductionPlanUpdatedData, ConstructionStage } from './Buildings/types'
 import type { RequestWorkerData, UnassignWorkerData, RequestListData, PopulationListData, PopulationStatsData, Settler, ProfessionType, SettlerPatchedData, WorkerRequestFailureReason } from './Population/types'
-import type { WorkAssignment, WorkStep, WorkAction, LogisticsRequest } from './Settlers/Work/types'
+import type { WorkAssignment, LogisticsRequest } from './Settlers/Work/types'
 import type { ProductionRecipe, ProductionStatus } from './Buildings/types'
 import type { ScheduleOptions } from './Scheduler/types'
 import type { SimulationTickData } from './Simulation/types'
 import type { Position } from './types'
-import type { ContextPauseRequestedEventData, ContextPausedEventData, ContextResumeRequestedEventData, ContextResumedEventData, NeedInterruptEventData, NeedPlanCreatedEventData, NeedPlanFailedEventData, NeedSatisfiedEventData, NeedThresholdEventData } from './Settlers/Needs/types'
+import type { NeedInterruptEventData, NeedPlanCreatedEventData, NeedPlanFailedEventData, NeedSatisfiedEventData, NeedThresholdEventData } from './Settlers/Needs/types'
 import type { NeedType } from './Settlers/Needs/NeedTypes'
 import type { RoadBuildRequestData, RoadTilesSyncData, RoadTilesUpdatedData, RoadPendingSyncData, RoadPendingUpdatedData } from './Roads/types'
 import type { ItemType } from './Items/types'
@@ -280,14 +292,16 @@ export type EventPayloads = Record<string, unknown> & {
 	[SimulationEvents.SS.SlowTick]: SimulationTickData
 	[SimulationEvents.SS.VerySlowTick]: SimulationTickData
 
-	[WorkProviderEvents.SS.ActionCompleted]: { settlerId: SettlerId, action: WorkAction }
-	[WorkProviderEvents.SS.ActionFailed]: { settlerId: SettlerId, action: WorkAction, reason: string }
-	[WorkProviderEvents.SS.StepIssued]: { settlerId: SettlerId, step: WorkStep }
-	[WorkProviderEvents.SS.StepCompleted]: { settlerId: SettlerId, step: WorkStep }
-	[WorkProviderEvents.SS.StepFailed]: { settlerId: SettlerId, step: WorkStep, reason: string }
-	[WorkProviderEvents.SS.AssignmentCreated]: { assignment: WorkAssignment }
-	[WorkProviderEvents.SS.AssignmentRemoved]: { assignmentId: WorkAssignmentId, settlerId: SettlerId }
-	[WorkProviderEvents.SS.DispatchRequested]: { settlerId: SettlerId, reason: WorkDispatchReason }
+	[WorkProviderEvents.SS.ActionCompleted]: WorkActionCompletedEventData
+	[WorkProviderEvents.SS.ActionFailed]: WorkActionFailedEventData
+	[WorkProviderEvents.SS.StepIssued]: WorkStepIssuedEventData
+	[WorkProviderEvents.SS.StepCompleted]: WorkStepCompletedEventData
+	[WorkProviderEvents.SS.StepFailed]: WorkStepFailedEventData
+	[WorkProviderEvents.SS.AssignmentCreated]: WorkAssignmentCreatedEventData
+	[WorkProviderEvents.SS.AssignmentRemoved]: WorkAssignmentRemovedEventData
+	[WorkProviderEvents.SS.DispatchRequested]: WorkDispatchRequestedEventData
+	[SettlerActionsEvents.SS.QueueCompleted]: ActionQueueCompletedEventData
+	[SettlerActionsEvents.SS.QueueFailed]: ActionQueueFailedEventData
 
 	[NeedsEvents.SS.NeedBecameUrgent]: NeedThresholdEventData
 	[NeedsEvents.SS.NeedBecameCritical]: NeedThresholdEventData
@@ -295,10 +309,6 @@ export type EventPayloads = Record<string, unknown> & {
 	[NeedsEvents.SS.NeedInterruptRequested]: NeedInterruptEventData
 	[NeedsEvents.SS.NeedInterruptStarted]: NeedInterruptEventData
 	[NeedsEvents.SS.NeedInterruptEnded]: { settlerId: SettlerId, needType: NeedType }
-	[NeedsEvents.SS.ContextPauseRequested]: ContextPauseRequestedEventData
-	[NeedsEvents.SS.ContextPaused]: ContextPausedEventData
-	[NeedsEvents.SS.ContextResumeRequested]: ContextResumeRequestedEventData
-	[NeedsEvents.SS.ContextResumed]: ContextResumedEventData
 	[NeedsEvents.SS.NeedPlanCreated]: NeedPlanCreatedEventData
 	[NeedsEvents.SS.NeedPlanFailed]: NeedPlanFailedEventData
 
@@ -357,6 +367,7 @@ export const Event = {
 	Storage: StorageEvents,
 	Roads: RoadEvents,
 	Work: WorkProviderEvents,
+	Actions: SettlerActionsEvents,
 	Needs: NeedsEvents,
 	Wildlife: WildlifeEvents,
 	CityCharter: CityCharterEvents,

@@ -21,11 +21,7 @@ import type { MapManager } from '../../Map'
 import { SimulationEvents } from '../../Simulation/events'
 import type { SimulationTickData } from '../../Simulation/types'
 import { SettlerActionsState } from './SettlerActionsState'
-
-export type ActionQueueContextResolver = (settlerId: string, context: ActionQueueContext, actions: WorkAction[]) => {
-	onComplete?: () => void
-	onFail?: (reason: string) => void
-}
+import { SettlerActionsEvents } from './events'
 
 export interface SettlerActionsDeps {
 	movement: MovementManager
@@ -43,7 +39,6 @@ export interface SettlerActionsDeps {
 
 export class SettlerActionsManager {
 	private readonly state = new SettlerActionsState()
-	private contextResolvers = new Map<ActionQueueContext['kind'], ActionQueueContextResolver>()
 
 	constructor(
 		private managers: SettlerActionsDeps,
@@ -98,10 +93,6 @@ export class SettlerActionsManager {
 		queue.onComplete = onComplete
 		queue.onFail = onFail
 		return true
-	}
-
-	public registerContextResolver(kind: ActionQueueContext['kind'], resolver: ActionQueueContextResolver): void {
-		this.contextResolvers.set(kind, resolver)
 	}
 
 	public enqueue(settlerId: string, actions: WorkAction[], onComplete?: () => void, onFail?: (reason: string) => void, context?: ActionQueueContext): void {
@@ -226,21 +217,10 @@ export class SettlerActionsManager {
 		if (typeof nowMs === 'number') {
 			this.state.setNowMs(nowMs)
 		}
-		const restoredSettlers = this.state.deserialize(state, this.resolveCallbacks)
+		const restoredSettlers = this.state.deserialize(state)
 		for (const settlerId of restoredSettlers) {
 			this.startNextAction(settlerId)
 		}
-	}
-
-	private resolveCallbacks(settlerId: string, context: ActionQueueContext | undefined, actions: WorkAction[]): { onComplete?: () => void, onFail?: (reason: string) => void } {
-		if (!context) {
-			return {}
-		}
-		const resolver = this.contextResolvers.get(context.kind)
-		if (!resolver) {
-			return {}
-		}
-		return resolver(settlerId, context, actions)
 	}
 
 	private finishQueue(settlerId: string, reason?: string): void {
@@ -251,9 +231,18 @@ export class SettlerActionsManager {
 		this.releaseReservations(queue.actions, queue.context?.reservationOwnerId, settlerId)
 		this.state.deleteQueue(settlerId)
 		if (reason) {
+			this.event.emit(Receiver.All, SettlerActionsEvents.SS.QueueFailed, {
+				settlerId,
+				context: queue.context,
+				reason
+			})
 			queue.onFail?.(reason)
 			return
 		}
+		this.event.emit(Receiver.All, SettlerActionsEvents.SS.QueueCompleted, {
+			settlerId,
+			context: queue.context
+		})
 		queue.onComplete?.()
 	}
 

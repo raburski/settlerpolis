@@ -12,9 +12,6 @@ export class NoStepDispatchRule implements BehaviourDispatchRule {
 		if (!context.assignment) {
 			return BehaviourRuleResult.Stop
 		}
-		if (context.homeRelocation.tryEnqueue(context, context.assignment)) {
-			return BehaviourRuleResult.Stop
-		}
 		context.managers.population.setSettlerWaitReason(context.settlerId, WorkWaitReason.NoWork)
 		context.managers.population.setSettlerLastStep(context.settlerId, undefined, WorkWaitReason.NoWork)
 		context.managers.population.setSettlerState(context.settlerId, SettlerState.WaitingForWork)

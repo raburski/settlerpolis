@@ -4,7 +4,6 @@ import type { SettlerBehaviourDeps } from '../deps'
 import type { SettlerWorkManager } from '../../Work'
 import type { WorkAssignment, WorkProvider, WorkStep } from '../../Work/types'
 import type { SettlerBehaviourState } from '../SettlerBehaviourState'
-import type { HomeRelocationDispatchHelper } from './HomeRelocationDispatchHelper'
 
 export enum BehaviourRuleResult {
 	Continue = 'continue',
@@ -19,7 +18,6 @@ export interface BehaviourDispatchRuleContext {
 	actionsManager: SettlerActionsManager
 	state: SettlerBehaviourState
 	dispatchNextStep: (settlerId: SettlerId) => void
-	homeRelocation: HomeRelocationDispatchHelper
 	assignment?: WorkAssignment
 	provider?: WorkProvider
 	step?: WorkStep | null
@@ -28,4 +26,5 @@ export interface BehaviourDispatchRuleContext {
 export interface BehaviourDispatchRule {
 	id: string
 	apply(context: BehaviourDispatchRuleContext): BehaviourRuleResult
+	reset?(): void
 }

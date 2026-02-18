@@ -33,6 +33,7 @@ export class WorkStepLifecycleHandler {
 			onComplete: () => {
 				if (!step) {
 					releaseReservations?.()
+					this.deps.managers.population.setSettlerState(settlerId, SettlerState.Idle)
 					this.deps.dispatchNextStep(settlerId)
 					return
 				}
@@ -46,6 +47,7 @@ export class WorkStepLifecycleHandler {
 			onFail: (reason: string) => {
 				if (!step) {
 					releaseReservations?.()
+					this.deps.managers.population.setSettlerState(settlerId, SettlerState.Idle)
 					this.deps.dispatchNextStep(settlerId)
 					return
 				}

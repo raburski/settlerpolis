@@ -15,6 +15,7 @@ import type { NPCManager } from '../../NPC'
 import type { WildlifeManager } from '../../Wildlife'
 import type { SettlerActionsManager } from '../Actions'
 import type { SettlerWorkManager } from '../Work'
+import type { SettlerNeedsManager } from '../Needs'
 
 export interface SettlerBehaviourDeps {
 	event: EventManager
@@ -34,4 +35,5 @@ export interface SettlerBehaviourDeps {
 	wildlife: WildlifeManager
 	actions: SettlerActionsManager
 	work: SettlerWorkManager
+	needs: SettlerNeedsManager
 }

@@ -19,8 +19,6 @@ export class NeedsManagerState {
 		]))
 		this.interrupts = interrupts.map(interrupt => ({
 			...interrupt,
-			pendingNeed: interrupt.pendingNeed ? { ...interrupt.pendingNeed } : interrupt.pendingNeed,
-			pausedContext: interrupt.pausedContext ? { ...interrupt.pausedContext } : interrupt.pausedContext,
 			cooldowns: { ...interrupt.cooldowns }
 		}))
 	}
@@ -40,8 +38,6 @@ export class NeedsManagerState {
 			])),
 			interrupts: this.interrupts.map(interrupt => ({
 				...interrupt,
-				pendingNeed: interrupt.pendingNeed ? { ...interrupt.pendingNeed } : interrupt.pendingNeed,
-				pausedContext: interrupt.pausedContext ? { ...interrupt.pausedContext } : interrupt.pausedContext,
 				cooldowns: { ...interrupt.cooldowns }
 			}))
 		}
@@ -61,8 +57,6 @@ export class NeedsManagerState {
 		]))
 		this.interrupts = state.interrupts.map(interrupt => ({
 			...interrupt,
-			pendingNeed: interrupt.pendingNeed ? { ...interrupt.pendingNeed } : interrupt.pendingNeed,
-			pausedContext: interrupt.pausedContext ? { ...interrupt.pausedContext } : interrupt.pausedContext,
 			cooldowns: { ...interrupt.cooldowns }
 		}))
 	}

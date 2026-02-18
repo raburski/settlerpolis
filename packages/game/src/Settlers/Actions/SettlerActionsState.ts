@@ -20,12 +20,6 @@ export interface ActionQueueRuntimeState extends ActionQueueCallbacks {
 	carriedItem?: { itemType: string, quantity: number }
 }
 
-export type ActionQueueCallbacksResolver = (
-	settlerId: string,
-	context: ActionQueueContext | undefined,
-	actions: WorkAction[]
-) => ActionQueueCallbacks
-
 export class SettlerActionsState {
 	private readonly queues = new Map<string, ActionQueueRuntimeState>()
 	private nowMs = 0
@@ -69,17 +63,14 @@ export class SettlerActionsState {
 		}
 	}
 
-	public deserialize(snapshot: ActionSystemSnapshot, resolveCallbacks: ActionQueueCallbacksResolver): string[] {
+	public deserialize(snapshot: ActionSystemSnapshot): string[] {
 		this.queues.clear()
 		const restoredSettlers: string[] = []
 		for (const queue of snapshot.queues) {
-			const callbacks = resolveCallbacks(queue.settlerId, queue.context, queue.actions)
 			this.queues.set(queue.settlerId, {
 				actions: queue.actions.map(action => ({ ...action })),
 				index: queue.index,
-				context: queue.context,
-				onComplete: callbacks.onComplete,
-				onFail: callbacks.onFail
+				context: queue.context
 			})
 			restoredSettlers.push(queue.settlerId)
 		}
