@@ -3,13 +3,16 @@ import {
 	ArcRotateCamera,
 	Color3,
 	Color4,
+	DirectionalLight,
 	DynamicTexture,
 	Engine,
 	Effect,
 	HemisphericLight,
 	Matrix,
+	Observer,
 	Plane,
 	ShaderMaterial,
+	ShadowGenerator,
 	StandardMaterial,
 	Mesh,
 	MeshBuilder,
@@ -21,6 +24,8 @@ import {
 import { PlaceholderFactory } from './PlaceholderFactory'
 import type { MapLayer, MapTileset } from '../world/MapLoader'
 import earcut from 'earcut'
+import { DEFAULT_DAY_MOMENT, type DayMoment } from '../dayMoment'
+import { ShadowOnlyMaterial } from '@babylonjs/materials/shadowOnly/shadowOnlyMaterial'
 
 interface GroundTilesConfig {
 	mapUrl: string
@@ -86,7 +91,7 @@ const GROUND_TYPE_COLORS: Record<GroundType, string> = {
 	mud: '#6f5a3c'
 }
 
-const MAP_SHADER_VERSION = 3
+const MAP_SHADER_VERSION = 4
 
 const GROUND_SMOOTHING_ITERATIONS = 2
 const GROUND_SMOOTHING_PULL = 0.6
@@ -113,11 +118,112 @@ const WATER_FOAM_STRENGTH = 0.3
 const WATER_ALPHA_MIN = 0.35
 const WATER_ALPHA_MAX = 0.92
 
+interface DayMomentLightingProfile {
+	clearColor: [number, number, number]
+	lightDirection: [number, number, number]
+	lightIntensity: number
+	lightDiffuse: [number, number, number]
+	lightGroundColor: [number, number, number]
+	sunDirection: [number, number, number]
+	sunIntensity: number
+	sunDiffuse: [number, number, number]
+	sunSpecular: [number, number, number]
+	shadowDarkness: number
+	ambientColor: [number, number, number]
+	tint: [number, number, number]
+	exposure: number
+}
+
+const DAY_MOMENT_LIGHTING: Record<DayMoment, DayMomentLightingProfile> = {
+	dawn: {
+		clearColor: [0.55, 0.46, 0.39],
+		lightDirection: [0.35, 1, 0.1],
+		lightIntensity: 0.76,
+		lightDiffuse: [1, 0.86, 0.7],
+		lightGroundColor: [0.34, 0.25, 0.2],
+		sunDirection: [-0.7, -0.38, -0.15],
+		sunIntensity: 0.95,
+		sunDiffuse: [1, 0.79, 0.58],
+		sunSpecular: [1, 0.72, 0.52],
+		shadowDarkness: 0.46,
+		ambientColor: [0.24, 0.19, 0.18],
+		tint: [1.06, 0.92, 0.83],
+		exposure: 0.95
+	},
+	midday: {
+		clearColor: [0.55, 0.72, 0.92],
+		lightDirection: [0.2, 1, 0.3],
+		lightIntensity: 1,
+		lightDiffuse: [0.96, 0.98, 1],
+		lightGroundColor: [0.38, 0.4, 0.42],
+		sunDirection: [-0.18, -1, -0.24],
+		sunIntensity: 1.22,
+		sunDiffuse: [1, 0.98, 0.92],
+		sunSpecular: [1, 1, 0.96],
+		shadowDarkness: 0.54,
+		ambientColor: [0.34, 0.35, 0.36],
+		tint: [1, 1, 1],
+		exposure: 1
+	},
+	dusk: {
+		clearColor: [0.37, 0.27, 0.32],
+		lightDirection: [-0.24, 1, -0.18],
+		lightIntensity: 0.68,
+		lightDiffuse: [1, 0.72, 0.55],
+		lightGroundColor: [0.22, 0.16, 0.19],
+		sunDirection: [0.72, -0.34, 0.21],
+		sunIntensity: 0.86,
+		sunDiffuse: [1, 0.62, 0.46],
+		sunSpecular: [1, 0.54, 0.44],
+		shadowDarkness: 0.5,
+		ambientColor: [0.18, 0.14, 0.18],
+		tint: [0.95, 0.79, 0.76],
+		exposure: 0.84
+	},
+	night: {
+		clearColor: [0.05, 0.08, 0.16],
+		lightDirection: [0.1, 1, 0.4],
+		lightIntensity: 0.34,
+		lightDiffuse: [0.45, 0.56, 0.8],
+		lightGroundColor: [0.08, 0.1, 0.16],
+		sunDirection: [0.2, -0.28, 0.56],
+		sunIntensity: 0.18,
+		sunDiffuse: [0.42, 0.54, 0.78],
+		sunSpecular: [0.35, 0.44, 0.7],
+		shadowDarkness: 0.3,
+		ambientColor: [0.08, 0.1, 0.18],
+		tint: [0.56, 0.65, 0.88],
+		exposure: 0.58
+	}
+}
+
+const SHADOW_MAP_SIZE = 4096
+const SUN_DISTANCE = 3200
+const SHADOW_FRUSTUM_PADDING = 1.25
+const SHADOW_USE_PCF = true
+const SHADOW_FILTERING_QUALITY = ShadowGenerator.QUALITY_HIGH
+const SHADOW_BIAS = 0.00015
+const SHADOW_NORMAL_BIAS = 0.02
+const SHADOW_FRUSTUM_EDGE_FALLOFF = 0.12
+const ENVIRONMENT_SHADOW_BAKE_DEBOUNCE_MS = 80
+const ENVIRONMENT_SHADOW_BAKE_SETTLE_MS = 120
+
 export class BabylonRenderer {
 	public readonly engine: Engine
 	public readonly scene: Scene
 	public readonly camera: ArcRotateCamera
 	public readonly placeholderFactory: PlaceholderFactory
+	private readonly mainLight: HemisphericLight
+	private readonly sunLight: DirectionalLight
+	private shadowGenerator: ShadowGenerator | null = null
+	private shadowMeshObserver: Observer<AbstractMesh> | null = null
+	private shadowCasterIds: Set<number> = new Set()
+	private shadowReceiverGround: Mesh | null = null
+	private shadowReceiverMaterial: ShadowOnlyMaterial | null = null
+	private readonly environmentShadowsBaked = true
+	private shadowBakeDebounceTimer: number | null = null
+	private shadowBakeFreezeTimer: number | null = null
+	private sunTarget: Vector3 = new Vector3(0, 0, 0)
 	private readonly worldGroundPlane = Plane.FromPositionAndNormal(Vector3.Zero(), Vector3.Up())
 	private ground: Mesh | null = null
 	private cameraTarget: Vector3 = new Vector3(0, 0, 0)
@@ -153,6 +259,7 @@ export class BabylonRenderer {
 	private baseOrthoScale = 1
 	private fidelityScale = 1
 	private highFidelityEnabled = true
+	private dayMoment: DayMoment = DEFAULT_DAY_MOMENT
 
 	constructor(canvas: HTMLCanvasElement) {
 		this.engine = new Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true })
@@ -182,10 +289,15 @@ export class BabylonRenderer {
 		this.camera.maxZ = 10000
 		this.updateCameraOrtho()
 
-		const light = new HemisphericLight('light', new Vector3(0.2, 1, 0.3), this.scene)
-		light.intensity = 0.9
+		this.mainLight = new HemisphericLight('light', new Vector3(0.2, 1, 0.3), this.scene)
+		this.mainLight.intensity = 0.9
+		this.sunLight = new DirectionalLight('sun-light', new Vector3(-0.2, -1, -0.25), this.scene)
+		this.sunLight.intensity = 1
+		this.sunLight.position = new Vector3(0, SUN_DISTANCE, 0)
 
 		this.placeholderFactory = new PlaceholderFactory(this.scene)
+		this.initializeShadows()
+		this.applyDayMomentLighting()
 	}
 
 	start(renderStep: (deltaMs: number) => void): void {
@@ -205,6 +317,7 @@ export class BabylonRenderer {
 
 	dispose(): void {
 		this.stop()
+		this.disposeShadows()
 		this.resetWaterSurface()
 		this.scene.dispose()
 		this.engine.dispose()
@@ -232,6 +345,9 @@ export class BabylonRenderer {
 
 	setCameraBounds(minX: number, minZ: number, maxX: number, maxZ: number): void {
 		this.bounds = { minX, minZ, maxX, maxZ }
+		this.sunTarget = new Vector3((minX + maxX) * 0.5, 0, (minZ + maxZ) * 0.5)
+		this.updateSunShadowFrustum()
+		this.updateSunLightPosition()
 	}
 
 	setCameraTarget(x: number, z: number): void {
@@ -269,6 +385,16 @@ export class BabylonRenderer {
 		if (Number.isFinite(value) && value > 0) {
 			this.camera.wheelDeltaPercentage = value
 		}
+	}
+
+	setDayMoment(moment: DayMoment): void {
+		if (this.dayMoment === moment) return
+		this.dayMoment = moment
+		this.applyDayMomentLighting()
+	}
+
+	rebakeEnvironmentShadowsSoon(): void {
+		this.requestEnvironmentShadowBake()
 	}
 
 	fitCameraToMap(mapWidth: number, mapHeight: number): void {
@@ -317,6 +443,275 @@ export class BabylonRenderer {
 		this.camera.orthoRight = halfWidth
 		this.camera.orthoTop = halfHeight
 		this.camera.orthoBottom = -halfHeight
+	}
+
+	private applyDayMomentLighting(): void {
+		const profile = DAY_MOMENT_LIGHTING[this.dayMoment]
+		this.scene.clearColor = new Color4(profile.clearColor[0], profile.clearColor[1], profile.clearColor[2], 1)
+		this.scene.ambientColor = new Color3(
+			profile.ambientColor[0],
+			profile.ambientColor[1],
+			profile.ambientColor[2]
+		)
+		this.mainLight.direction = new Vector3(
+			profile.lightDirection[0],
+			profile.lightDirection[1],
+			profile.lightDirection[2]
+		)
+		this.mainLight.intensity = profile.lightIntensity
+		this.mainLight.diffuse = new Color3(
+			profile.lightDiffuse[0],
+			profile.lightDiffuse[1],
+			profile.lightDiffuse[2]
+		)
+		this.mainLight.groundColor = new Color3(
+			profile.lightGroundColor[0],
+			profile.lightGroundColor[1],
+			profile.lightGroundColor[2]
+		)
+		this.sunLight.direction = new Vector3(
+			profile.sunDirection[0],
+			profile.sunDirection[1],
+			profile.sunDirection[2]
+		)
+		this.sunLight.intensity = profile.sunIntensity
+		this.sunLight.diffuse = new Color3(
+			profile.sunDiffuse[0],
+			profile.sunDiffuse[1],
+			profile.sunDiffuse[2]
+		)
+		this.sunLight.specular = new Color3(
+			profile.sunSpecular[0],
+			profile.sunSpecular[1],
+			profile.sunSpecular[2]
+		)
+		this.shadowGenerator?.setDarkness(profile.shadowDarkness)
+		this.updateSunLightPosition()
+		this.requestEnvironmentShadowBake()
+		this.applyDayMomentShaderUniforms()
+	}
+
+	private initializeShadows(): void {
+		this.scene.shadowsEnabled = true
+		const generator = new ShadowGenerator(SHADOW_MAP_SIZE, this.sunLight)
+		if (SHADOW_USE_PCF) {
+			generator.usePercentageCloserFiltering = true
+			generator.filteringQuality = SHADOW_FILTERING_QUALITY
+		} else {
+			generator.usePoissonSampling = true
+		}
+		generator.bias = SHADOW_BIAS
+		generator.normalBias = SHADOW_NORMAL_BIAS
+		generator.frustumEdgeFalloff = SHADOW_FRUSTUM_EDGE_FALLOFF
+		generator.setDarkness(DAY_MOMENT_LIGHTING[this.dayMoment].shadowDarkness)
+		this.shadowGenerator = generator
+
+		this.shadowMeshObserver = this.scene.onNewMeshAddedObservable.add((mesh) => {
+			this.configureMeshShadows(mesh)
+		})
+		this.scene.meshes.forEach((mesh) => this.configureMeshShadows(mesh))
+		this.updateSunShadowFrustum()
+		this.updateSunLightPosition()
+		this.requestEnvironmentShadowBake()
+	}
+
+	private disposeShadows(): void {
+		if (this.shadowMeshObserver) {
+			this.scene.onNewMeshAddedObservable.remove(this.shadowMeshObserver)
+			this.shadowMeshObserver = null
+		}
+		if (this.shadowBakeDebounceTimer !== null) {
+			window.clearTimeout(this.shadowBakeDebounceTimer)
+			this.shadowBakeDebounceTimer = null
+		}
+		if (this.shadowBakeFreezeTimer !== null) {
+			window.clearTimeout(this.shadowBakeFreezeTimer)
+			this.shadowBakeFreezeTimer = null
+		}
+		this.resetShadowReceiverGround(false)
+		if (this.shadowReceiverMaterial) {
+			this.shadowReceiverMaterial.dispose()
+			this.shadowReceiverMaterial = null
+		}
+		this.shadowGenerator?.dispose()
+		this.shadowGenerator = null
+		this.shadowCasterIds.clear()
+	}
+
+	private updateSunLightPosition(): void {
+		const direction = this.sunLight.direction.lengthSquared() > 0
+			? this.sunLight.direction.normalize()
+			: new Vector3(-0.2, -1, -0.25).normalize()
+		const target = this.bounds ? this.sunTarget : this.cameraTarget
+		this.sunLight.position = target.subtract(direction.scale(SUN_DISTANCE))
+	}
+
+	private updateSunShadowFrustum(): void {
+		if (this.sunLight.shadowFrustumSize === undefined) return
+		if (!this.bounds) {
+			this.sunLight.shadowFrustumSize = SUN_DISTANCE * 0.9
+			return
+		}
+		const width = Math.max(1, this.bounds.maxX - this.bounds.minX)
+		const depth = Math.max(1, this.bounds.maxZ - this.bounds.minZ)
+		this.sunLight.shadowFrustumSize = Math.max(width, depth) * SHADOW_FRUSTUM_PADDING
+	}
+
+	private ensureShadowReceiverMaterial(): ShadowOnlyMaterial {
+		if (!this.shadowReceiverMaterial) {
+			this.shadowReceiverMaterial = new ShadowOnlyMaterial('ground-shadow-receiver-mat', this.scene)
+			this.shadowReceiverMaterial.activeLight = this.sunLight
+			this.shadowReceiverMaterial.alpha = 0.85
+			this.shadowReceiverMaterial.shadowColor = Color3.Black()
+		}
+		return this.shadowReceiverMaterial
+	}
+
+	private resetShadowReceiverGround(disposeMaterial: boolean): void {
+		if (this.shadowReceiverGround) {
+			this.shadowReceiverGround.dispose()
+			this.shadowReceiverGround = null
+		}
+		if (disposeMaterial && this.shadowReceiverMaterial) {
+			this.shadowReceiverMaterial.dispose()
+			this.shadowReceiverMaterial = null
+		}
+	}
+
+	private createShadowReceiverGround(id: string): void {
+		if (!this.ground) return
+		this.resetShadowReceiverGround(false)
+		const receiver = this.ground.clone(`${id}-shadow-receiver`) as Mesh | null
+		if (!receiver) return
+		receiver.isPickable = false
+		receiver.position.copyFrom(this.ground.position)
+		receiver.position.y += 0.08
+		receiver.receiveShadows = true
+		receiver.material = this.ensureShadowReceiverMaterial()
+		receiver.renderingGroupId = this.ground.renderingGroupId
+		receiver.alphaIndex = this.ground.alphaIndex + 1
+		this.shadowReceiverGround = receiver
+		this.configureMeshShadows(receiver)
+	}
+
+	private requestEnvironmentShadowBake(): void {
+		if (!this.shadowGenerator || !this.environmentShadowsBaked) return
+		if (this.shadowBakeDebounceTimer !== null) {
+			window.clearTimeout(this.shadowBakeDebounceTimer)
+		}
+		this.shadowBakeDebounceTimer = window.setTimeout(() => {
+			this.shadowBakeDebounceTimer = null
+			this.rebakeEnvironmentShadows()
+		}, ENVIRONMENT_SHADOW_BAKE_DEBOUNCE_MS)
+	}
+
+	private rebakeEnvironmentShadows(): void {
+		if (!this.shadowGenerator || !this.environmentShadowsBaked) return
+		const shadowMap = this.shadowGenerator.getShadowMap()
+		if (!shadowMap) return
+		shadowMap.refreshRate = 1
+		if (this.shadowBakeFreezeTimer !== null) {
+			window.clearTimeout(this.shadowBakeFreezeTimer)
+		}
+		this.shadowBakeFreezeTimer = window.setTimeout(() => {
+			const activeShadowMap = this.shadowGenerator?.getShadowMap()
+			if (activeShadowMap) {
+				activeShadowMap.refreshRate = 0
+			}
+			this.shadowBakeFreezeTimer = null
+		}, ENVIRONMENT_SHADOW_BAKE_SETTLE_MS)
+	}
+
+	private isDynamicShadowActorName(name: string): boolean {
+		return (
+			name.startsWith('settler-') ||
+			name.startsWith('npc-') ||
+			name.startsWith('player-') ||
+			name.startsWith('loot-') ||
+			name.startsWith('equip-')
+		)
+	}
+
+	private shouldCastShadow(mesh: AbstractMesh): boolean {
+		if (mesh === this.ground || mesh === this.waterMesh) return false
+		if (mesh.getTotalVertices() <= 0) return false
+		const name = (mesh.name || '').toLowerCase()
+		if (
+			name.includes('shadow-receiver') ||
+			name.startsWith('box-base-') ||
+			name.includes('ground') ||
+			name.includes('water') ||
+			name.includes('collision') ||
+			name.includes('debug') ||
+			name.includes('highlight') ||
+			name.includes('bounds') ||
+			name.includes('selection') ||
+			name.includes('popover') ||
+			name.includes('road-overlay')
+		) {
+			return false
+		}
+		if (this.environmentShadowsBaked && this.isDynamicShadowActorName(name)) {
+			return false
+		}
+		return true
+	}
+
+	private shouldReceiveShadow(mesh: AbstractMesh): boolean {
+		const name = (mesh.name || '').toLowerCase()
+		if (name.includes('shadow-receiver')) {
+			return true
+		}
+		if (
+			name.includes('debug') ||
+			name.includes('collision') ||
+			name.includes('highlight') ||
+			name.includes('ground') ||
+			name.includes('water')
+		) {
+			return false
+		}
+		return true
+	}
+
+	private configureMeshShadows(mesh: AbstractMesh): void {
+		if (!this.shadowGenerator) return
+		mesh.receiveShadows = this.shouldReceiveShadow(mesh)
+		if (!this.shouldCastShadow(mesh)) {
+			return
+		}
+		if (this.shadowCasterIds.has(mesh.uniqueId)) {
+			return
+		}
+		this.shadowGenerator.addShadowCaster(mesh, true)
+		this.shadowCasterIds.add(mesh.uniqueId)
+		if (this.environmentShadowsBaked) {
+			this.requestEnvironmentShadowBake()
+		}
+		mesh.onDisposeObservable.addOnce(() => {
+			this.shadowCasterIds.delete(mesh.uniqueId)
+			if (this.environmentShadowsBaked) {
+				this.requestEnvironmentShadowBake()
+			}
+		})
+	}
+
+	private applyDayMomentShaderUniforms(): void {
+		const profile = DAY_MOMENT_LIGHTING[this.dayMoment]
+		const tint = new Color3(profile.tint[0], profile.tint[1], profile.tint[2])
+		const exposure = profile.exposure
+		if (this.groundShaderMaterial) {
+			this.groundShaderMaterial.setColor3('dayTint', tint)
+			this.groundShaderMaterial.setFloat('dayExposure', exposure)
+		}
+		if (this.groundPaletteMaterial) {
+			this.groundPaletteMaterial.setColor3('dayTint', tint)
+			this.groundPaletteMaterial.setFloat('dayExposure', exposure)
+		}
+		if (this.waterMaterial) {
+			this.waterMaterial.setColor3('dayTint', tint)
+			this.waterMaterial.setFloat('dayExposure', exposure)
+		}
 	}
 
 	private ensureGroundMaterial(): StandardMaterial {
@@ -400,6 +795,7 @@ export class BabylonRenderer {
 		height: number,
 		options?: { subdivisionsX?: number; subdivisionsY?: number; updatable?: boolean }
 	): Mesh {
+		this.resetShadowReceiverGround(false)
 		if (this.ground) {
 			this.ground.dispose()
 		}
@@ -426,6 +822,7 @@ export class BabylonRenderer {
 		this.ground.position.z = height / 2
 		this.ground.isPickable = true
 		this.resetGroundMaterial()
+		this.createShadowReceiverGround(id)
 		return this.ground
 	}
 
@@ -539,6 +936,9 @@ export class BabylonRenderer {
 		}
 
 		ground.refreshBoundingInfo()
+		if (this.shadowReceiverGround) {
+			this.shadowReceiverGround.refreshBoundingInfo()
+		}
 	}
 
 	applyWaterSurface(config: WaterSurfaceConfig): void {
@@ -1232,6 +1632,8 @@ export class BabylonRenderer {
 				uniform vec2 atlasSize;
 				uniform vec2 atlasTexelSize;
 				uniform float variationStrength;
+				uniform vec3 dayTint;
+				uniform float dayExposure;
 
 				float decodeIndex(vec4 enc) {
 					return enc.r * 255.0 + enc.g * 65280.0 + enc.b * 16711680.0;
@@ -1264,6 +1666,7 @@ export class BabylonRenderer {
 					float n = hash(tilePos);
 					float v = mix(1.0 - variationStrength, 1.0 + variationStrength, n);
 					color.rgb *= v;
+					color.rgb *= dayTint * dayExposure;
 
 					gl_FragColor = color;
 				}
@@ -1277,13 +1680,22 @@ export class BabylonRenderer {
 				{ vertex: 'groundTile', fragment: 'groundTile' },
 				{
 					attributes: ['position', 'uv'],
-					uniforms: ['worldViewProjection', 'mapSize', 'atlasSize', 'atlasTexelSize', 'variationStrength'],
+					uniforms: [
+						'worldViewProjection',
+						'mapSize',
+						'atlasSize',
+						'atlasTexelSize',
+						'variationStrength',
+						'dayTint',
+						'dayExposure'
+					],
 					samplers: ['atlasSampler', 'indexSampler']
 				}
 			)
 			this.groundShaderMaterial.backFaceCulling = true
 		}
 
+		this.applyDayMomentShaderUniforms()
 		return this.groundShaderMaterial
 	}
 
@@ -1312,6 +1724,8 @@ export class BabylonRenderer {
 				uniform float heightStrength;
 				uniform float mountainIndex;
 				uniform float mountainMinHeight;
+				uniform vec3 dayTint;
+				uniform float dayExposure;
 
 				float decodeIndex(vec4 enc) {
 					return enc.r * 255.0 + enc.g * 65280.0 + enc.b * 16711680.0;
@@ -1347,6 +1761,7 @@ export class BabylonRenderer {
 						float shade = mix(1.0 - heightStrength, 1.0 + heightStrength, heightValue);
 						color.rgb *= shade;
 					}
+					color.rgb *= dayTint * dayExposure;
 					gl_FragColor = color;
 				}
 			`
@@ -1368,7 +1783,9 @@ export class BabylonRenderer {
 						'macroStrength',
 						'heightStrength',
 						'mountainIndex',
-						'mountainMinHeight'
+						'mountainMinHeight',
+						'dayTint',
+						'dayExposure'
 					],
 					samplers: ['indexSampler', 'paletteSampler', 'heightSampler']
 				}
@@ -1377,6 +1794,7 @@ export class BabylonRenderer {
 			this.groundPaletteMaterial.metadata = { shaderVersion }
 		}
 
+		this.applyDayMomentShaderUniforms()
 		return this.groundPaletteMaterial
 	}
 
@@ -1438,6 +1856,8 @@ export class BabylonRenderer {
 				uniform float alphaMin;
 				uniform float alphaMax;
 				uniform vec3 cameraPosition;
+				uniform vec3 dayTint;
+				uniform float dayExposure;
 
 				float wavePattern(vec2 uv, float t) {
 					float waveA = sin(uv.x * waveScale + t * waveSpeed);
@@ -1490,6 +1910,7 @@ export class BabylonRenderer {
 					base += diff * 0.05;
 					base += spec * 0.35;
 					base = mix(base, vec3(0.9, 0.95, 1.0), fresnel * 0.25);
+					base *= dayTint * dayExposure;
 
 					float alpha = mix(alphaMin, alphaMax, shoreBlend);
 					alpha = clamp(alpha, 0.0, 1.0);
@@ -1521,7 +1942,9 @@ export class BabylonRenderer {
 						'alphaMax',
 						'cameraPosition',
 						'shallowColor',
-						'deepColor'
+						'deepColor',
+						'dayTint',
+						'dayExposure'
 					],
 					samplers: ['maskSampler']
 				}
@@ -1533,6 +1956,7 @@ export class BabylonRenderer {
 			this.waterMaterial.metadata = { shaderVersion }
 		}
 
+		this.applyDayMomentShaderUniforms()
 		return this.waterMaterial
 	}
 
@@ -2642,6 +3066,11 @@ export class BabylonRenderer {
 
 	setMeshPosition(mesh: AbstractMesh, x: number, y: number, z: number): void {
 		mesh.position.set(x, y, z)
+		if (!this.environmentShadowsBaked) return
+		if (!this.shadowCasterIds.has(mesh.uniqueId)) return
+		const name = (mesh.name || '').toLowerCase()
+		if (this.isDynamicShadowActorName(name)) return
+		this.requestEnvironmentShadowBake()
 	}
 
 	setMeshRotation(mesh: AbstractMesh, x: number, y: number, z: number): void {

@@ -11,6 +11,7 @@ import { UiEvents } from '../uiEvents'
 import { cityCharterService } from '../services/CityCharterService'
 import { reputationService } from '../services/ReputationService'
 import { playerService } from '../services/PlayerService'
+import type { DayMoment } from '../dayMoment'
 
 type TopBarProps = {
 	isStockOpen: boolean
@@ -21,6 +22,8 @@ type TopBarProps = {
 	onToggleLogistics: () => void
 	isWorldMapOpen: boolean
 	onToggleWorldMap: () => void
+	dayMoment: DayMoment
+	onSelectDayMoment: (moment: DayMoment) => void
 	isPrioritiesOpen: boolean
 	onTogglePriorities: () => void
 	isCharterOpen: boolean
@@ -60,6 +63,13 @@ const ResourceEmoji: React.FC<{ itemType: string }> = ({ itemType }) => {
 	return <>{emoji}</>
 }
 
+const dayMomentOptions: Array<{ moment: DayMoment; icon: string; label: string }> = [
+	{ moment: 'dawn', icon: '🌅', label: 'Dawn' },
+	{ moment: 'midday', icon: '☀️', label: 'Midday' },
+	{ moment: 'dusk', icon: '🌇', label: 'Dusk' },
+	{ moment: 'night', icon: '🌙', label: 'Night' }
+]
+
 export const TopBar: React.FC<TopBarProps> = ({
 	isStockOpen,
 	onToggleStock,
@@ -69,6 +79,8 @@ export const TopBar: React.FC<TopBarProps> = ({
 	onToggleLogistics,
 	isWorldMapOpen,
 	onToggleWorldMap,
+	dayMoment,
+	onSelectDayMoment,
 	isPrioritiesOpen,
 	onTogglePriorities,
 	isCharterOpen,
@@ -154,6 +166,25 @@ export const TopBar: React.FC<TopBarProps> = ({
 			<div className={styles.left}>
 				<div className={styles.leftGroup}>
 					<World />
+					<div className={styles.dayMomentToggle} role="group" aria-label="Map lighting">
+						{dayMomentOptions.map((option) => {
+							const selected = dayMoment === option.moment
+							return (
+								<button
+									key={option.moment}
+									type="button"
+									className={styles.dayMomentButton}
+									data-active={selected}
+									onClick={() => onSelectDayMoment(option.moment)}
+									aria-pressed={selected}
+									aria-label={`Set map to ${option.label}`}
+									title={option.label}
+								>
+									<span className={styles.dayMomentIcon}>{option.icon}</span>
+								</button>
+							)
+						})}
+					</div>
 					<button
 						type="button"
 						className={styles.worldMapButton}

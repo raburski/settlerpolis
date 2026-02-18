@@ -2,6 +2,9 @@ export const UiEvents = {
 	Scene: {
 		Ready: 'ui:scene:ready'
 	},
+	World: {
+		DayMomentChanged: 'ui:world:day-moment-changed'
+	},
 	Settings: {
 		Toggle: 'ui:settings:toggle',
 		HighFidelity: 'ui:settings:high-fidelity',
