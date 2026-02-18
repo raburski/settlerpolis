@@ -75,6 +75,7 @@ export class ResourceNodeBatcher {
 	private workerInitAt = 0
 	private tileHalf: number
 	private renderUnsubscribe: (() => void) | null = null
+	private shadowRebakePending = false
 
 	private static modelContainerCache = new Map<string, Promise<AssetContainer>>()
 	private static failedModelSrcs = new Set<string>()
@@ -243,6 +244,10 @@ export class ResourceNodeBatcher {
 		return this.objectsById.get(objectId) ?? null
 	}
 
+	public requestShadowRebake(): void {
+		this.shadowRebakePending = true
+	}
+
 	dispose(): void {
 		if (this.renderUnsubscribe) {
 			this.renderUnsubscribe()
@@ -335,6 +340,7 @@ export class ResourceNodeBatcher {
 		}
 
 		const nextVisibleKeys = new Set<string>()
+		let appliedVisibleChange = false
 		for (const [key, result] of Object.entries(data.batches)) {
 			if (!result || result.count <= 0) continue
 			const batch = this.batches.get(key)
@@ -349,6 +355,7 @@ export class ResourceNodeBatcher {
 				mesh.thinInstanceCount = result.count
 			})
 			batch.hasBuffer = true
+			appliedVisibleChange = true
 			if (this.pickableBatchKeys.has(key)) {
 				const visibleIds = this.buildVisibleIdOrder(key, this.lastUpdateBounds)
 				this.visibleIdOrder.set(
@@ -368,9 +375,15 @@ export class ResourceNodeBatcher {
 				mesh.thinInstanceCount = 0
 			})
 			batch.hasBuffer = false
+			appliedVisibleChange = true
 			this.visibleIdOrder.set(key, [])
 		}
 		this.visibleBatchKeys = nextVisibleKeys
+
+		if (appliedVisibleChange && this.shadowRebakePending) {
+			this.shadowRebakePending = false
+			this.renderer.rebakeEnvironmentShadowsSoon()
+		}
 
 		this.awaitingResult = false
 		if (this.queuedBounds) {
@@ -541,6 +554,10 @@ export class ResourceNodeBatcher {
 				})
 				batch.hasBuffer = pending.count > 0
 				this.pendingResults.delete(batchKey)
+				if (batch.hasBuffer && this.shadowRebakePending) {
+					this.shadowRebakePending = false
+					this.renderer.rebakeEnvironmentShadowsSoon()
+				}
 			}
 		})
 	}

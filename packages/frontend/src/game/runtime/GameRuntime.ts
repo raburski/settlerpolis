@@ -3,6 +3,7 @@ import { InputManager } from '../input/InputManager'
 import { EventBus } from '../EventBus'
 import { UiEvents } from '../uiEvents'
 import { getHighFidelity, getScrollSensitivityWheelDelta } from '../services/DisplaySettings'
+import { DEFAULT_DAY_MOMENT, isDayMoment } from '../dayMoment'
 
 export interface RuntimeScene {
 	start(data?: any): void
@@ -29,16 +30,22 @@ export class GameRuntime {
 			this.renderStatsTimer = 0
 		}
 	}
+	private readonly handleWorldDayMomentChanged = (data: { moment?: unknown }) => {
+		const moment = isDayMoment(data?.moment) ? data.moment : DEFAULT_DAY_MOMENT
+		this.renderer.setDayMoment(moment)
+	}
 
 	constructor(canvas: HTMLCanvasElement) {
 		this.renderer = new BabylonRenderer(canvas)
 		this.renderer.setHighFidelity(getHighFidelity())
 		this.renderer.setScrollWheelDeltaPercentage(getScrollSensitivityWheelDelta())
+		this.renderer.setDayMoment(DEFAULT_DAY_MOMENT)
 		this.input = new InputManager(canvas, this.renderer)
 		this.overlayRoot = this.createOverlay(canvas)
 		EventBus.on(UiEvents.Settings.HighFidelity, this.handleHighFidelity)
 		EventBus.on(UiEvents.Settings.ScrollSensitivity, this.handleScrollSensitivity)
 		EventBus.on(UiEvents.Debug.RenderStatsToggle, this.handleRenderStatsToggle)
+		EventBus.on(UiEvents.World.DayMomentChanged, this.handleWorldDayMomentChanged)
 	}
 
 	start(): void {
@@ -64,6 +71,7 @@ export class GameRuntime {
 		EventBus.off(UiEvents.Settings.HighFidelity, this.handleHighFidelity)
 		EventBus.off(UiEvents.Settings.ScrollSensitivity, this.handleScrollSensitivity)
 		EventBus.off(UiEvents.Debug.RenderStatsToggle, this.handleRenderStatsToggle)
+		EventBus.off(UiEvents.World.DayMomentChanged, this.handleWorldDayMomentChanged)
 		this.input.dispose()
 		this.renderer.dispose()
 		this.overlayRoot.remove()

@@ -490,6 +490,8 @@ export abstract class GameScene extends MapScene {
 	}
 
 	private handleMapObjectDespawn = (data: { objectId: string }) => {
+		let shouldRebakeShadowsNow = false
+		let shouldRebakeShadowsAfterBatch = false
 		if (this.pendingMapObjects.has(data.objectId)) {
 			this.pendingMapObjects.delete(data.objectId)
 		}
@@ -499,11 +501,19 @@ export abstract class GameScene extends MapScene {
 		}
 		if (this.resourceNodeBatcher?.remove(data.objectId)) {
 			this.resourceNodesDirty = true
+			shouldRebakeShadowsAfterBatch = true
 		}
 		const mapObject = this.mapObjects.get(data.objectId)
 		if (mapObject) {
 			mapObject.controller.destroy()
 			this.mapObjects.delete(data.objectId)
+			shouldRebakeShadowsNow = true
+		}
+		if (shouldRebakeShadowsAfterBatch) {
+			this.resourceNodeBatcher?.requestShadowRebake()
+		}
+		if (shouldRebakeShadowsNow) {
+			this.runtime.renderer.rebakeEnvironmentShadowsSoon()
 		}
 	}
 
@@ -675,6 +685,8 @@ export abstract class GameScene extends MapScene {
 		const maxDurationMs = 6
 		const maxPerFrame = 200
 		let processed = 0
+		let shouldRebakeShadowsNow = false
+		let shouldRebakeShadowsAfterBatch = false
 
 		while (this.pendingMapObjectIds.length > 0) {
 			if (processed >= maxPerFrame) break
@@ -689,6 +701,7 @@ export abstract class GameScene extends MapScene {
 			if (obj.mapId === this.mapKey) {
 				if (this.resourceNodeBatcher?.add(obj)) {
 					this.resourceNodesDirty = true
+					shouldRebakeShadowsAfterBatch = true
 					if (DEBUG_LOAD_TIMING) {
 						this.mapObjectSpawnBatched += 1
 					}
@@ -703,6 +716,7 @@ export abstract class GameScene extends MapScene {
 					}
 					const mapObject = createMapObject(this, obj)
 					this.mapObjects.set(obj.id, mapObject)
+					shouldRebakeShadowsNow = true
 				}
 			}
 			if (DEBUG_LOAD_TIMING) {
@@ -715,6 +729,12 @@ export abstract class GameScene extends MapScene {
 
 		if (DEBUG_LOAD_TIMING && processed > 0 && this.pendingMapObjectIds.length > 0) {
 			console.info(`[Perf] map-objects pending=${this.pendingMapObjectIds.length}`)
+		}
+		if (shouldRebakeShadowsAfterBatch) {
+			this.resourceNodeBatcher?.requestShadowRebake()
+		}
+		if (shouldRebakeShadowsNow) {
+			this.runtime.renderer.rebakeEnvironmentShadowsSoon()
 		}
 	}
 
@@ -820,15 +840,20 @@ export abstract class GameScene extends MapScene {
 
 	private unloadResourceNodeChunk(chunkKey: string): void {
 		const ids = this.resourceNodeChunkNodes.get(chunkKey)
+		let shouldRebakeShadowsNow = false
+		let shouldRebakeShadowsAfterBatch = false
 		if (ids) {
 			ids.forEach((id) => {
 				this.resourceNodeIdToChunk.delete(id)
 				this.pendingMapObjects.delete(id)
-				this.resourceNodeBatcher?.remove(id)
+				if (this.resourceNodeBatcher?.remove(id)) {
+					shouldRebakeShadowsAfterBatch = true
+				}
 				const mapObject = this.mapObjects.get(id)
 				if (mapObject) {
 					mapObject.controller.destroy()
 					this.mapObjects.delete(id)
+					shouldRebakeShadowsNow = true
 				}
 			})
 		}
@@ -836,6 +861,12 @@ export abstract class GameScene extends MapScene {
 		this.resourceNodeLoadedChunks.delete(chunkKey)
 		this.resourceNodeChunkRequests.delete(chunkKey)
 		this.resourceNodesDirty = true
+		if (shouldRebakeShadowsAfterBatch) {
+			this.resourceNodeBatcher?.requestShadowRebake()
+		}
+		if (shouldRebakeShadowsNow) {
+			this.runtime.renderer.rebakeEnvironmentShadowsSoon()
+		}
 	}
 
 	private getVisibleWorldBounds(padding: number): { minX: number; minY: number; maxX: number; maxY: number } | null {
