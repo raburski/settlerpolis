@@ -207,6 +207,12 @@ const SHADOW_NORMAL_BIAS = 0.02
 const SHADOW_FRUSTUM_EDGE_FALLOFF = 0.12
 const ENVIRONMENT_SHADOW_BAKE_DEBOUNCE_MS = 80
 const ENVIRONMENT_SHADOW_BAKE_SETTLE_MS = 120
+const SUN_LIGHT_INTENSITY_MULTIPLIER = 1.45
+const FILL_LIGHT_INTENSITY_MULTIPLIER = 0.36
+const FILL_LIGHT_DIFFUSE_MULTIPLIER = 0.5
+const FILL_LIGHT_GROUND_MULTIPLIER = 0.42
+const FILL_LIGHT_SPECULAR_MULTIPLIER = 0.2
+const AMBIENT_COLOR_MULTIPLIER = 0.28
 
 export class BabylonRenderer {
 	public readonly engine: Engine
@@ -448,33 +454,36 @@ export class BabylonRenderer {
 	private applyDayMomentLighting(): void {
 		const profile = DAY_MOMENT_LIGHTING[this.dayMoment]
 		this.scene.clearColor = new Color4(profile.clearColor[0], profile.clearColor[1], profile.clearColor[2], 1)
-		this.scene.ambientColor = new Color3(
-			profile.ambientColor[0],
-			profile.ambientColor[1],
-			profile.ambientColor[2]
+		this.scene.ambientColor = new Color3(profile.ambientColor[0], profile.ambientColor[1], profile.ambientColor[2]).scale(
+			AMBIENT_COLOR_MULTIPLIER
 		)
 		this.mainLight.direction = new Vector3(
 			profile.lightDirection[0],
 			profile.lightDirection[1],
 			profile.lightDirection[2]
 		)
-		this.mainLight.intensity = profile.lightIntensity
+		this.mainLight.intensity = profile.lightIntensity * FILL_LIGHT_INTENSITY_MULTIPLIER
 		this.mainLight.diffuse = new Color3(
 			profile.lightDiffuse[0],
 			profile.lightDiffuse[1],
 			profile.lightDiffuse[2]
-		)
+		).scale(FILL_LIGHT_DIFFUSE_MULTIPLIER)
 		this.mainLight.groundColor = new Color3(
 			profile.lightGroundColor[0],
 			profile.lightGroundColor[1],
 			profile.lightGroundColor[2]
-		)
+		).scale(FILL_LIGHT_GROUND_MULTIPLIER)
+		this.mainLight.specular = new Color3(
+			profile.lightDiffuse[0],
+			profile.lightDiffuse[1],
+			profile.lightDiffuse[2]
+		).scale(FILL_LIGHT_SPECULAR_MULTIPLIER)
 		this.sunLight.direction = new Vector3(
 			profile.sunDirection[0],
 			profile.sunDirection[1],
 			profile.sunDirection[2]
 		)
-		this.sunLight.intensity = profile.sunIntensity
+		this.sunLight.intensity = profile.sunIntensity * SUN_LIGHT_INTENSITY_MULTIPLIER
 		this.sunLight.diffuse = new Color3(
 			profile.sunDiffuse[0],
 			profile.sunDiffuse[1],
