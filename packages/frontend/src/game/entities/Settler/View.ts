@@ -24,6 +24,10 @@ import { rotateVec3 } from '../../../shared/transform'
 const SETTLER_HEIGHT = 40
 const SETTLER_WIDTH = 20
 const SETTLER_LENGTH = 20
+const WALK_ANIMATION_REFERENCE_SPEED = 80
+const WALK_ANIMATION_SPEED_BOOST = 1.15
+const MIN_WALK_ANIMATION_SPEED_RATIO = 0.35
+const MAX_WALK_ANIMATION_SPEED_RATIO = 2.5
 
 export class SettlerView extends BaseMovementView {
 	protected profession: ProfessionType
@@ -61,6 +65,8 @@ export class SettlerView extends BaseMovementView {
 	private toolSocketName: string | null = null
 	private carrySocketNode: TransformNode | AbstractMesh | null = null
 	private toolSocketNode: TransformNode | AbstractMesh | null = null
+	private currentMoveSpeed: number
+	private readonly walkAnimationReferenceSpeed: number
 
 	private professionEmojis: Record<ProfessionType, string> = {
 		[ProfessionType.Carrier]: '👤',
@@ -89,6 +95,8 @@ export class SettlerView extends BaseMovementView {
 		this.settlerId = settlerId
 		this.profession = profession
 		this.state = SettlerState.Idle
+		this.currentMoveSpeed = speed
+		this.walkAnimationReferenceSpeed = speed > 0 ? speed : WALK_ANIMATION_REFERENCE_SPEED
 		this.applyProfessionEmoji()
 		void settlerRenderService.load()
 		this.createHighlightMesh()
@@ -99,6 +107,13 @@ export class SettlerView extends BaseMovementView {
 			this.applyRender()
 		})
 		this.applyRender()
+	}
+
+	public override setSpeed(speed: number): void {
+		if (!(speed > 0)) return
+		this.currentMoveSpeed = speed
+		super.setSpeed(speed)
+		this.syncAnimation()
 	}
 
 	protected updateVisuals(direction: Direction, state: 'idle' | 'moving'): void {
@@ -632,8 +647,8 @@ export class SettlerView extends BaseMovementView {
 	private syncAnimation(): void {
 		if (!this.modelRoot || this.modelInstanceAnimationGroups.length === 0) return
 		const key = this.resolveAnimationKey()
-		const name = this.resolveAnimationName(key)
-		this.playAnimationByName(name)
+		const { name, sourceKey } = this.resolveAnimationName(key)
+		this.playAnimationByName(name, this.resolveAnimationSpeedRatio(sourceKey))
 	}
 
 	private resolveAnimationKey(): SettlerAnimationKey {
@@ -661,36 +676,52 @@ export class SettlerView extends BaseMovementView {
 		}
 	}
 
-	private resolveAnimationName(key: SettlerAnimationKey): string | null {
+	private resolveAnimationName(key: SettlerAnimationKey): { name: string | null; sourceKey: SettlerAnimationKey | null } {
 		const animations = this.activeRender?.animations
 		if (animations && animations[key]) {
-			return animations[key] || null
+			return { name: animations[key] || null, sourceKey: key }
 		}
 		const fallbackKeys = getAnimationFallbacks(key)
 		if (animations && fallbackKeys.length) {
 			for (const fallback of fallbackKeys) {
 				if (animations[fallback]) {
-					return animations[fallback] || null
+					return { name: animations[fallback] || null, sourceKey: fallback }
 				}
 			}
 		}
 		const firstGroup = this.modelInstanceAnimationGroups[0]
-		return firstGroup ? firstGroup.name : null
+		return { name: firstGroup ? firstGroup.name : null, sourceKey: null }
 	}
 
-	private playAnimationByName(name: string | null): void {
+	private resolveAnimationSpeedRatio(key: SettlerAnimationKey | null): number {
+		if (key !== 'walk' && key !== 'run' && key !== 'carry') {
+			return 1
+		}
+		const referenceSpeed = this.walkAnimationReferenceSpeed > 0
+			? this.walkAnimationReferenceSpeed
+			: WALK_ANIMATION_REFERENCE_SPEED
+		const rawRatio = (this.currentMoveSpeed / referenceSpeed) * WALK_ANIMATION_SPEED_BOOST
+		return clamp(rawRatio, MIN_WALK_ANIMATION_SPEED_RATIO, MAX_WALK_ANIMATION_SPEED_RATIO)
+	}
+
+	private playAnimationByName(name: string | null, speedRatio: number = 1): void {
 		if (!name) {
 			this.stopAnimations()
 			return
 		}
-		if (this.currentAnimationName === name) return
+		const appliedSpeedRatio = Number.isFinite(speedRatio) && speedRatio > 0 ? speedRatio : 1
 		let group = this.modelInstanceAnimationGroups.find((entry) => entry.name === name)
 		if (!group && this.modelInstanceAnimationGroups.length > 0) {
 			group = this.modelInstanceAnimationGroups[0]
 		}
 		if (!group) return
+		if (this.currentAnimationName === name) {
+			group.speedRatio = appliedSpeedRatio
+			return
+		}
 		this.stopAnimations()
 		group.reset()
+		group.speedRatio = appliedSpeedRatio
 		group.start(true)
 		this.currentAnimationName = name
 	}
@@ -903,4 +934,8 @@ function getBounds(meshes: AbstractMesh[]): { min: Vector3; max: Vector3 } | nul
 		found = true
 	})
 	return found ? { min, max } : null
+}
+
+function clamp(value: number, min: number, max: number): number {
+	return Math.max(min, Math.min(max, value))
 }
