@@ -58,6 +58,27 @@ export class MovementController {
 		this.setState('moving')
 		this.options.onMovementStart?.()
 	}
+
+	nudgeToPosition(x: number, y: number, currentX: number, currentY: number, durationMs: number = 120): void {
+		const dx = x - currentX
+		const dy = y - currentY
+		const distance = Math.sqrt(dx * dx + dy * dy)
+		if (distance < 0.5) {
+			this.targetPosition = null
+			this.startPosition = null
+			this.movementVector = null
+			this.setState('idle')
+			return
+		}
+
+		this.startPosition = { x: currentX, y: currentY }
+		this.targetPosition = { x, y }
+		this.movementVector = { x: dx, y: dy }
+		this.movementStartTime = Date.now()
+		this.movementDuration = Math.max(1, durationMs)
+		this.setState('moving')
+		this.options.onMovementStart?.()
+	}
 	
 	/**
 	 * Update movement interpolation (call in preUpdate/update loop)

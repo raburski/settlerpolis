@@ -3,17 +3,19 @@ import { Event, Settler, SettlerPatch, ProfessionType, SettlerState, NeedType } 
 import { EventBus } from '../../EventBus'
 import { UiEvents } from '../../uiEvents'
 import type { GameScene } from '../../scenes/base/GameScene'
+import { syncMovementPaused, syncPositionUpdated } from '../Movement/positionSync'
 
 export class SettlerController {
 	constructor(public view: SettlerView, private scene: GameScene, public settler: Settler) {
 		EventBus.on(Event.Movement.SC.MoveToPosition, this.handleMoveToPosition, this)
 		EventBus.on(Event.Movement.SC.PositionUpdated, this.handlePositionUpdated, this)
+		EventBus.on(Event.Movement.SC.Paused, this.handleMovementPaused, this)
 
-			EventBus.on(Event.Population.SC.ProfessionChanged, this.handleProfessionChanged, this)
-			EventBus.on(Event.Population.SC.SettlerUpdated, this.handleSettlerUpdated, this)
-			EventBus.on(Event.Population.SC.SettlerPatched, this.handleSettlerPatched, this)
-			EventBus.on(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
-			EventBus.on(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
+		EventBus.on(Event.Population.SC.ProfessionChanged, this.handleProfessionChanged, this)
+		EventBus.on(Event.Population.SC.SettlerUpdated, this.handleSettlerUpdated, this)
+		EventBus.on(Event.Population.SC.SettlerPatched, this.handleSettlerPatched, this)
+		EventBus.on(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
+		EventBus.on(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
 		EventBus.on(UiEvents.Settler.Highlight, this.handleHighlight, this)
 		EventBus.on(Event.Needs.SS.NeedInterruptStarted, this.handleNeedInterruptStarted, this)
 		EventBus.on(Event.Needs.SS.NeedInterruptEnded, this.handleNeedInterruptEnded, this)
@@ -45,13 +47,17 @@ export class SettlerController {
 
 	private handlePositionUpdated = (data: { entityId: string; position: { x: number; y: number }; mapId: string }) => {
 		if (data.entityId === this.settler.id && data.mapId === this.settler.mapId) {
-			const positionDiff = Math.abs(this.view.x - data.position.x) + Math.abs(this.view.y - data.position.y)
-			const POSITION_THRESHOLD = 2
-			if (!this.view.isInterpolating() || positionDiff > POSITION_THRESHOLD) {
-				this.view.updatePosition(data.position.x, data.position.y)
-			}
+			syncPositionUpdated(this.view, data.position)
 			this.settler.position = data.position
 		}
+	}
+
+	private handleMovementPaused = (data: { entityId: string; position: { x: number; y: number }; mapId: string }) => {
+		if (data.entityId !== this.settler.id || data.mapId !== this.settler.mapId) {
+			return
+		}
+		syncMovementPaused(this.view, data.position)
+		this.settler.position = data.position
 	}
 
 	private handleProfessionChanged = (data: { settlerId: string; oldProfession: ProfessionType; newProfession: ProfessionType }) => {
@@ -61,7 +67,7 @@ export class SettlerController {
 		}
 	}
 
-	private handleWorkerAssigned = (data: { assignment: any; settlerId: string; buildingInstanceId: string }) => {
+	private handleWorkerAssigned = (data: { assignment: { assignmentId: string }; settlerId: string; buildingInstanceId: string }) => {
 		if (data.settlerId === this.settler.id) {
 			this.settler.stateContext = { ...this.settler.stateContext, assignmentId: data.assignment.assignmentId }
 			this.settler.buildingId = data.buildingInstanceId
@@ -159,7 +165,7 @@ export class SettlerController {
 			settlerData.state === SettlerState.MovingToTool ||
 			settlerData.state === SettlerState.MovingToResource
 
-		if (!isMoving) {
+		if (!isMoving && !this.view.isInterpolating()) {
 			const positionDiff = Math.abs(this.view.x - settlerData.position.x) + Math.abs(this.view.y - settlerData.position.y)
 			const POSITION_THRESHOLD = 2
 			if (positionDiff > POSITION_THRESHOLD) {
@@ -182,11 +188,12 @@ export class SettlerController {
 	public destroy(): void {
 		EventBus.off(Event.Movement.SC.MoveToPosition, this.handleMoveToPosition, this)
 		EventBus.off(Event.Movement.SC.PositionUpdated, this.handlePositionUpdated, this)
-			EventBus.off(Event.Population.SC.ProfessionChanged, this.handleProfessionChanged, this)
-			EventBus.off(Event.Population.SC.SettlerUpdated, this.handleSettlerUpdated, this)
-			EventBus.off(Event.Population.SC.SettlerPatched, this.handleSettlerPatched, this)
-			EventBus.off(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
-			EventBus.off(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
+		EventBus.off(Event.Movement.SC.Paused, this.handleMovementPaused, this)
+		EventBus.off(Event.Population.SC.ProfessionChanged, this.handleProfessionChanged, this)
+		EventBus.off(Event.Population.SC.SettlerUpdated, this.handleSettlerUpdated, this)
+		EventBus.off(Event.Population.SC.SettlerPatched, this.handleSettlerPatched, this)
+		EventBus.off(Event.Population.SC.WorkerAssigned, this.handleWorkerAssigned, this)
+		EventBus.off(Event.Population.SC.WorkerUnassigned, this.handleWorkerUnassigned, this)
 		EventBus.off(UiEvents.Settler.Highlight, this.handleHighlight, this)
 		EventBus.off(Event.Needs.SS.NeedInterruptStarted, this.handleNeedInterruptStarted, this)
 		EventBus.off(Event.Needs.SS.NeedInterruptEnded, this.handleNeedInterruptEnded, this)

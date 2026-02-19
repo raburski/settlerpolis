@@ -2,7 +2,7 @@ import { BaseManager } from '../../Managers'
 import { WorkProviderEvents } from '../Work/events'
 import type { WorkAssignmentRemovedEventData, WorkDispatchRequestedEventData } from '../Work/events'
 import type { WorkAssignment, WorkStep, WorkAction } from '../Work/types'
-import { WorkStepType, WorkWaitReason } from '../Work/types'
+import { WorkActionType, WorkStepType, WorkWaitReason } from '../Work/types'
 import { SettlerState } from '../../Population/types'
 import { StepHandlers } from '../Work/stepHandlers'
 import type { ActionQueueContext } from '../../state/types'
@@ -15,6 +15,8 @@ import { SettlerActionsEvents } from '../Actions/events'
 import type { ActionQueueCompletedEventData, ActionQueueFailedEventData } from '../Actions/events'
 import { SettlerBehaviourState, type SettlerBehaviourSnapshot } from './SettlerBehaviourState'
 import type { SettlerBehaviourDeps } from './deps'
+import { MovementEvents } from '../../Movement/events'
+import { MoveTargetType } from '../../Movement/types'
 import {
 	ActiveStepDispatchRule,
 	BehaviourRuleResult,
@@ -61,6 +63,7 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 		this.managers.event.on<WorkAssignmentRemovedEventData>(WorkProviderEvents.SS.AssignmentRemoved, this.handleAssignmentRemoved)
 		this.managers.event.on<ActionQueueCompletedEventData>(SettlerActionsEvents.SS.QueueCompleted, this.handleActionQueueCompleted)
 		this.managers.event.on<ActionQueueFailedEventData>(SettlerActionsEvents.SS.QueueFailed, this.handleActionQueueFailed)
+		this.managers.event.on<{ requesterEntityId: string, blockerEntityId: string, mapId: string, tile: { x: number, y: number } }>(MovementEvents.SS.YieldRequested, this.handleMovementSSYieldRequested)
 	}
 
 	private readonly handleSimulationSSTick = (_data: SimulationTickData): void => {
@@ -68,6 +71,7 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 		this.managers.needs.update(_data)
 
 		this.processPendingDispatches()
+		this.recoverOrphanedMovingSettlers()
 	}
 
 	private readonly handleDispatchRequested = (data: WorkDispatchRequestedEventData): void => {
@@ -92,6 +96,103 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 			return
 		}
 		this.buildWorkQueueCallbacks(data.settlerId, context.step).onFail(data.reason)
+	}
+
+	private readonly handleMovementSSYieldRequested = (
+		data: { requesterEntityId: string, blockerEntityId: string, mapId: string, tile: { x: number, y: number } }
+	): void => {
+		const blocker = this.managers.population.getSettler(data.blockerEntityId)
+		if (!blocker) {
+			return
+		}
+		if (blocker.mapId !== data.mapId) {
+			return
+		}
+		if (this.managers.movement.hasActiveMovement(blocker.id)) {
+			return
+		}
+		if (
+			blocker.state !== SettlerState.Idle &&
+			blocker.state !== SettlerState.WaitingForWork &&
+			blocker.state !== SettlerState.Assigned &&
+			blocker.state !== SettlerState.Working
+		) {
+			return
+		}
+
+		const requesterPosition = this.managers.movement.getEntityPosition(data.requesterEntityId)
+		const stepAsideTarget = requesterPosition
+			? this.findYieldSidePosition(blocker.mapId, blocker.id, blocker.position, requesterPosition)
+			: null
+		const swapTarget = stepAsideTarget || !requesterPosition
+			? null
+			: this.findYieldSwapPosition(blocker.mapId, data.requesterEntityId, blocker.position, requesterPosition)
+		const yieldTarget = stepAsideTarget ?? swapTarget
+		if (!yieldTarget) {
+			return
+		}
+		const yieldMode = stepAsideTarget ? 'side' : 'swap'
+
+		const stepAsideTargetId = `yield:${yieldMode}:${data.requesterEntityId}:${Math.round(yieldTarget.x)},${Math.round(yieldTarget.y)}`
+		const stepAsideAction: WorkAction = {
+			type: WorkActionType.Move,
+			position: yieldTarget,
+			targetType: MoveTargetType.Spot,
+			targetId: stepAsideTargetId,
+			setState: SettlerState.Moving
+		}
+
+		if (this.managers.actions.isBusy(blocker.id)) {
+			if (!this.managers.actions.isCurrentActionYieldInterruptible(blocker.id)) {
+				return
+			}
+			this.managers.actions.expediteCurrentWaitAction(blocker.id)
+			this.managers.actions.insertActionsAfterCurrent(blocker.id, [stepAsideAction])
+			return
+		}
+
+		this.managers.actions.enqueue(blocker.id, [stepAsideAction], () => {
+			if (this.managers.actions.isBusy(blocker.id)) {
+				return
+			}
+			const assignment = this.managers.work.getAssignment(blocker.id)
+			if (!assignment) {
+				this.managers.population.setSettlerWaitReason(blocker.id, undefined)
+				this.managers.population.setSettlerState(blocker.id, SettlerState.Idle)
+				return
+			}
+			this.dispatchNextStep(blocker.id)
+		})
+	}
+
+	private recoverOrphanedMovingSettlers(): void {
+		for (const settler of this.managers.population.getSettlers()) {
+			if (!this.isTransitState(settler.state)) {
+				continue
+			}
+			if (this.managers.actions.isBusy(settler.id)) {
+				continue
+			}
+			if (this.managers.movement.hasActiveMovement(settler.id)) {
+				continue
+			}
+			const assignment = this.managers.work.getAssignment(settler.id)
+			if (!assignment) {
+				this.managers.population.setSettlerWaitReason(settler.id, undefined)
+				this.managers.population.setSettlerState(settler.id, SettlerState.Idle)
+				continue
+			}
+			this.dispatchNextStep(settler.id)
+		}
+	}
+
+	private isTransitState(state: SettlerState): boolean {
+		return state === SettlerState.Moving
+			|| state === SettlerState.MovingToItem
+			|| state === SettlerState.CarryingItem
+			|| state === SettlerState.MovingToBuilding
+			|| state === SettlerState.MovingToTool
+			|| state === SettlerState.MovingToResource
 	}
 
 	enqueueNeedPlan(
@@ -254,6 +355,95 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 			reservationSystem: this.managers.reservations,
 			simulationTimeMs: this.managers.work.getNowMs()
 		})
+	}
+
+	private findYieldSidePosition(
+		mapId: string,
+		blockerEntityId: string,
+		currentPosition: { x: number, y: number },
+		requesterPosition: { x: number, y: number }
+	): { x: number, y: number } | null {
+		const map = this.managers.map.getMap(mapId)
+		if (!map) {
+			return null
+		}
+		const tileWidth = map.tiledMap.tilewidth || 32
+		const tileHeight = map.tiledMap.tileheight || 32
+		const baseTileX = Math.floor(currentPosition.x / tileWidth)
+		const baseTileY = Math.floor(currentPosition.y / tileHeight)
+		const requesterTileX = Math.floor(requesterPosition.x / tileWidth)
+		const requesterTileY = Math.floor(requesterPosition.y / tileHeight)
+		const incoming = {
+			x: Math.sign(baseTileX - requesterTileX),
+			y: Math.sign(baseTileY - requesterTileY)
+		}
+
+		if (incoming.x === 0 && incoming.y === 0) {
+			return null
+		}
+
+		const sideDirections = [
+			{ x: -incoming.y, y: incoming.x },
+			{ x: incoming.y, y: -incoming.x }
+		]
+
+		for (const direction of sideDirections) {
+			const tileX = baseTileX + direction.x
+			const tileY = baseTileY + direction.y
+			if (tileX < 0 || tileY < 0 || tileX >= map.collision.width || tileY >= map.collision.height) {
+				continue
+			}
+			const tileIndex = tileY * map.collision.width + tileX
+			if (map.collision.data[tileIndex] !== 0) {
+				continue
+			}
+			if (!this.managers.movement.isTileFreeForYield(mapId, tileX, tileY, blockerEntityId)) {
+				continue
+			}
+			return {
+				x: tileX * tileWidth + tileWidth / 2,
+				y: tileY * tileHeight + tileHeight / 2
+			}
+		}
+
+		return null
+	}
+
+	private findYieldSwapPosition(
+		mapId: string,
+		requesterEntityId: string,
+		blockerPosition: { x: number, y: number },
+		requesterPosition: { x: number, y: number }
+	): { x: number, y: number } | null {
+		const map = this.managers.map.getMap(mapId)
+		if (!map) {
+			return null
+		}
+		if (!this.managers.movement.hasActiveMovement(requesterEntityId)) {
+			return null
+		}
+
+		const tileWidth = map.tiledMap.tilewidth || 32
+		const tileHeight = map.tiledMap.tileheight || 32
+		const blockerTileX = Math.floor(blockerPosition.x / tileWidth)
+		const blockerTileY = Math.floor(blockerPosition.y / tileHeight)
+		const requesterTileX = Math.floor(requesterPosition.x / tileWidth)
+		const requesterTileY = Math.floor(requesterPosition.y / tileHeight)
+
+		const dx = Math.abs(blockerTileX - requesterTileX)
+		const dy = Math.abs(blockerTileY - requesterTileY)
+		if (Math.max(dx, dy) !== 1) {
+			return null
+		}
+
+		if (!this.managers.movement.isTileFreeForYield(mapId, requesterTileX, requesterTileY, requesterEntityId)) {
+			return null
+		}
+
+		return {
+			x: requesterTileX * tileWidth + tileWidth / 2,
+			y: requesterTileY * tileHeight + tileHeight / 2
+		}
 	}
 }
 

@@ -57,6 +57,57 @@ export class SettlerActionsManager {
 		return this.state.isBusy(settlerId)
 	}
 
+	public getCurrentAction(settlerId: string): WorkAction | null {
+		const queue = this.state.getQueue(settlerId)
+		if (!queue) {
+			return null
+		}
+		if (queue.index < 0 || queue.index >= queue.actions.length) {
+			return null
+		}
+		return queue.actions[queue.index]
+	}
+
+	public isCurrentActionYieldInterruptible(settlerId: string): boolean {
+		const action = this.getCurrentAction(settlerId)
+		if (!action) {
+			return false
+		}
+		return action.type === WorkActionType.Wait || action.type === WorkActionType.Move || action.type === WorkActionType.FollowPath
+	}
+
+	public expediteCurrentWaitAction(settlerId: string): boolean {
+		const queue = this.state.getQueue(settlerId)
+		if (!queue) {
+			return false
+		}
+		const current = this.getCurrentAction(settlerId)
+		if (!current || current.type !== WorkActionType.Wait) {
+			return false
+		}
+		if (!queue.inProgress || queue.inProgress.type !== WorkActionType.Wait) {
+			return false
+		}
+		queue.inProgress.endAtMs = this.state.getNowMs()
+		return true
+	}
+
+	public insertActionsAfterCurrent(settlerId: string, actions: WorkAction[]): boolean {
+		if (actions.length === 0) {
+			return false
+		}
+		const queue = this.state.getQueue(settlerId)
+		if (!queue) {
+			return false
+		}
+		if (queue.index < 0 || queue.index >= queue.actions.length) {
+			return false
+		}
+		const insertAt = queue.index + 1
+		queue.actions.splice(insertAt, 0, ...actions)
+		return true
+	}
+
 	public abort(settlerId: string): void {
 		const queue = this.state.getQueue(settlerId)
 		if (!queue) {

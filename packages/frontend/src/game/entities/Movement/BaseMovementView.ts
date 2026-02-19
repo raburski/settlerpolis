@@ -34,6 +34,15 @@ export abstract class BaseMovementView extends BaseEntityView {
 		this.movementController.cancelMovement()
 	}
 
+	public stopMovementInterpolation(): void {
+		this.movementController.cancelMovement()
+		this.updateVisuals(this.movementController.getDirection(), 'idle')
+	}
+
+	public smoothSyncPosition(x: number, y: number, durationMs: number = 120): void {
+		this.movementController.nudgeToPosition(x, y, this.x, this.y, durationMs)
+	}
+
 	public preUpdate(): void {
 		if (this.movementController.isMoving()) {
 			const result = this.movementController.update(this.x, this.y)
