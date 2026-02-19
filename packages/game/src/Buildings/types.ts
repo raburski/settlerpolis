@@ -125,6 +125,8 @@ export interface BuildingDefinition {
 	isTradingPost?: boolean // Marks building as a trading post
 	tradeRouteType?: WorldMapLinkType // Marks building as a trade route hub (land or sea)
 	blocksOutgoing?: boolean // If true, items cannot be transported out by logistics
+	marketRoadBlockade?: boolean // If true, market vendor patrol routes stop expanding past this building tile
+	requiresConstructedRoad?: boolean // If true, placement is only valid on already-built road tiles
 	harvest?: {
 		nodeType: ResourceNodeType
 		radiusTiles?: number

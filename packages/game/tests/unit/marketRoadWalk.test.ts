@@ -67,4 +67,22 @@ describe('buildRoadNetworkWalk', () => {
 			expect(manhattan).toBe(1)
 		}
 	})
+
+	it('treats blocked road tiles as non-traversable for vendor patrol expansion', () => {
+		const roadData = buildRoadData(7, 3, [
+			{ x: 1, y: 1 },
+			{ x: 2, y: 1 },
+			{ x: 3, y: 1 },
+			{ x: 4, y: 1 },
+			{ x: 5, y: 1 }
+		])
+		const blockedRoadTiles = new Set<string>(['3,1'])
+		const route = buildRoadNetworkWalk(roadData, { x: 1, y: 1 }, 5, blockedRoadTiles)
+
+		expect(route).toContainEqual({ x: 1, y: 1 })
+		expect(route).toContainEqual({ x: 2, y: 1 })
+		expect(route).not.toContainEqual({ x: 3, y: 1 })
+		expect(route).not.toContainEqual({ x: 4, y: 1 })
+		expect(route).not.toContainEqual({ x: 5, y: 1 })
+	})
 })
