@@ -32,6 +32,13 @@ const toWorld = (tile: TilePosition, tileSize: number): Position => ({
 	y: tile.y * tileSize + tileSize / 2
 })
 
+const tileKey = (tile: TilePosition): string => `${tile.x},${tile.y}`
+
+const isBlockedRoadTile = (
+	blockedRoadTiles: ReadonlySet<string> | undefined,
+	tile: TilePosition
+): boolean => blockedRoadTiles?.has(tileKey(tile)) ?? false
+
 const findNearestWalkableTile = (
 	collision: { width: number, height: number, data: number[] } | undefined,
 	origin: TilePosition,
@@ -92,11 +99,16 @@ const isRoadTile = (roadData: { width: number, height: number, data: Array<RoadT
 	return roadType !== RoadType.None
 }
 
-const findClosestRoadTile = (roadData: { width: number, height: number, data: Array<RoadType | null> } | null, origin: TilePosition, maxRadius: number): TilePosition | null => {
+const findClosestRoadTile = (
+	roadData: { width: number, height: number, data: Array<RoadType | null> } | null,
+	origin: TilePosition,
+	maxRadius: number,
+	blockedRoadTiles?: ReadonlySet<string>
+): TilePosition | null => {
 	if (!roadData) {
 		return null
 	}
-	if (isRoadTile(roadData, origin)) {
+	if (isRoadTile(roadData, origin) && !isBlockedRoadTile(blockedRoadTiles, origin)) {
 		return origin
 	}
 	for (let radius = 1; radius <= maxRadius; radius++) {
@@ -107,7 +119,7 @@ const findClosestRoadTile = (roadData: { width: number, height: number, data: Ar
 				{ x: origin.x + dx, y: origin.y - dy }
 			]
 			for (const candidate of candidates) {
-				if (isRoadTile(roadData, candidate)) {
+				if (isRoadTile(roadData, candidate) && !isBlockedRoadTile(blockedRoadTiles, candidate)) {
 					return candidate
 				}
 			}
@@ -116,17 +128,24 @@ const findClosestRoadTile = (roadData: { width: number, height: number, data: Ar
 	return null
 }
 
-const getRoadNeighbors = (roadData: { width: number, height: number, data: Array<RoadType | null> }, tile: TilePosition): TilePosition[] => {
+const getRoadNeighbors = (
+	roadData: { width: number, height: number, data: Array<RoadType | null> },
+	tile: TilePosition,
+	blockedRoadTiles?: ReadonlySet<string>
+): TilePosition[] => {
+	if (blockedRoadTiles?.has(tileKey(tile))) {
+		return []
+	}
 	const neighbors = [
 		{ x: tile.x, y: tile.y - 1 },
 		{ x: tile.x + 1, y: tile.y },
 		{ x: tile.x, y: tile.y + 1 },
 		{ x: tile.x - 1, y: tile.y }
 	]
-	return neighbors.filter(neighbor => isRoadTile(roadData, neighbor))
+	return neighbors.filter(neighbor =>
+		isRoadTile(roadData, neighbor) && !isBlockedRoadTile(blockedRoadTiles, neighbor)
+	)
 }
-
-const tileKey = (tile: TilePosition): string => `${tile.x},${tile.y}`
 
 const sameTile = (a: TilePosition, b: TilePosition): boolean => a.x === b.x && a.y === b.y
 
@@ -182,7 +201,8 @@ interface RoadNetworkSegment {
 const discoverRoadNetwork = (
 	roadData: { width: number, height: number, data: Array<RoadType | null> },
 	start: TilePosition,
-	maxSteps: number
+	maxSteps: number,
+	blockedRoadTiles?: ReadonlySet<string>
 ): RoadNetwork => {
 	const startKey = tileKey(start)
 	const queue: TilePosition[] = [start]
@@ -198,7 +218,7 @@ const discoverRoadNetwork = (
 		if (currentDistance >= maxSteps) {
 			continue
 		}
-		const neighbors = getRoadNeighbors(roadData, current).sort((a, b) => {
+		const neighbors = getRoadNeighbors(roadData, current, blockedRoadTiles).sort((a, b) => {
 			const rankDelta = directionRank(current, a) - directionRank(current, b)
 			if (rankDelta !== 0) {
 				return rankDelta
@@ -221,7 +241,7 @@ const discoverRoadNetwork = (
 
 	const adjacencyByKey = new Map<string, TilePosition[]>()
 	for (const [key, tile] of tileByKey.entries()) {
-		const neighbors = getRoadNeighbors(roadData, tile)
+		const neighbors = getRoadNeighbors(roadData, tile, blockedRoadTiles)
 			.filter(neighbor => tileByKey.has(tileKey(neighbor)))
 			.sort((a, b) => {
 				const rankDelta = directionRank(tile, a) - directionRank(tile, b)
@@ -358,12 +378,20 @@ const buildRoadSegments = (network: RoadNetwork, start: TilePosition): Map<strin
 	return segmentsByNode
 }
 
-export const buildRoadNetworkWalk = (roadData: { width: number, height: number, data: Array<RoadType | null> } | null, start: TilePosition | null, maxSteps: number): TilePosition[] => {
+export const buildRoadNetworkWalk = (
+	roadData: { width: number, height: number, data: Array<RoadType | null> } | null,
+	start: TilePosition | null,
+	maxSteps: number,
+	blockedRoadTiles?: ReadonlySet<string>
+): TilePosition[] => {
 	if (!roadData || !start || maxSteps <= 0) {
 		return []
 	}
+	if (isBlockedRoadTile(blockedRoadTiles, start)) {
+		return []
+	}
 
-	const network = discoverRoadNetwork(roadData, start, maxSteps)
+	const network = discoverRoadNetwork(roadData, start, maxSteps, blockedRoadTiles)
 	const startKey = tileKey(start)
 	const segmentsByNode = buildRoadSegments(network, start)
 	const route: TilePosition[] = [start]
@@ -417,6 +445,63 @@ const getAllowedMarketItemTypes = (definition: { storageSlots?: Array<{ itemType
 	}
 	const fromSlots = (definition.storageSlots || []).map(slot => slot.itemType)
 	return Array.from(new Set(fromSlots))
+}
+
+const getRotationStep = (rotation: number | undefined): number => {
+	if (typeof rotation !== 'number' || !Number.isFinite(rotation)) {
+		return 0
+	}
+	const halfPi = Math.PI / 2
+	const normalized = Math.round(rotation / halfPi)
+	return ((normalized % 4) + 4) % 4
+}
+
+const getRotatedFootprint = (
+	footprint: { width: number, height: number },
+	rotation: number | undefined
+): { width: number, height: number } => {
+	const step = getRotationStep(rotation)
+	if (step % 2 === 0) {
+		return footprint
+	}
+	return { width: footprint.height, height: footprint.width }
+}
+
+const buildMarketRoadBlockadeTiles = (
+	buildings: Array<{
+		mapId: string
+		playerId: string
+		position: Position
+		rotation?: number
+		stage: ConstructionStage
+		buildingId: string
+	}>,
+	getDefinition: (buildingId: string) => { footprint: { width: number, height: number }, marketRoadBlockade?: boolean } | undefined,
+	mapId: string,
+	playerId: string,
+	tileSize: number
+): Set<string> => {
+	const blockedRoadTiles = new Set<string>()
+	for (const building of buildings) {
+		if (building.mapId !== mapId || building.playerId !== playerId) {
+			continue
+		}
+		if (building.stage !== ConstructionStage.Completed) {
+			continue
+		}
+		const buildingDefinition = getDefinition(building.buildingId)
+		if (!buildingDefinition?.marketRoadBlockade) {
+			continue
+		}
+		const footprint = getRotatedFootprint(buildingDefinition.footprint, building.rotation)
+		const origin = toTile(building.position, tileSize)
+		for (let tileY = 0; tileY < footprint.height; tileY += 1) {
+			for (let tileX = 0; tileX < footprint.width; tileX += 1) {
+				blockedRoadTiles.add(`${origin.x + tileX},${origin.y + tileY}`)
+			}
+		}
+	}
+	return blockedRoadTiles
 }
 
 export const MarketRunHandler: StepHandler = {
@@ -514,8 +599,20 @@ export const MarketRunHandler: StepHandler = {
 
 		const roadData = managers.roads.getRoadData(market.mapId)
 		const marketTile = toTile(market.position, tileSize)
-		const startRoad = findClosestRoadTile(roadData, marketTile, roadSearchRadius)
-		const roadRoute = buildRoadNetworkWalk(roadData, startRoad, Math.max(1, maxDistanceTiles))
+		const blockedRoadTiles = buildMarketRoadBlockadeTiles(
+			managers.buildings.getAllBuildings(),
+			(buildingId) => managers.buildings.getBuildingDefinition(buildingId),
+			market.mapId,
+			market.playerId,
+			tileSize
+		)
+		const startRoad = findClosestRoadTile(roadData, marketTile, roadSearchRadius, blockedRoadTiles)
+		const roadRoute = buildRoadNetworkWalk(
+			roadData,
+			startRoad,
+			Math.max(1, maxDistanceTiles),
+			blockedRoadTiles
+		)
 
 		if (!startRoad && !isCarrying) {
 			return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }

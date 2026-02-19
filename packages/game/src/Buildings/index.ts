@@ -46,6 +46,8 @@ import type { CityCharterUnlockFlagsUpdated } from '../CityCharter/types'
 import { getProductionRecipes } from './work'
 import type { ResourceNodesManager } from '../ResourceNodes'
 import { BuildingManagerState } from './BuildingManagerState'
+import type { RoadManager } from '../Roads'
+import { RoadType } from '../Roads/types'
 
 const MINE_BUILDING_IDS = new Set(['coal_mine', 'iron_mine', 'gold_mine', 'stone_mine', 'quarry'])
 const RESOURCE_NODE_TYPES = new Set(['resource_deposit', 'stone_deposit'])
@@ -60,6 +62,7 @@ export interface BuildingDeps {
 	storage: StorageManager
 	resourceNodes: ResourceNodesManager
 	simulation: SimulationManager
+	roads?: RoadManager
 }
 
 export class BuildingManager extends BaseManager<BuildingDeps> {
@@ -283,6 +286,12 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		// Note: Resource validation removed - resources are collected from the ground by carriers
 		// Building costs are just a blueprint of what's needed
 		// Resources don't need to be in inventory to place a building
+
+		// Check for collisions using building footprint
+		if (!this.hasRequiredRoadCoverage(client.currentGroup, position, definition, rotation)) {
+			this.logger.warn(`Cannot place building ${buildingId}: requires constructed road coverage`)
+			return
+		}
 
 		// Check for collisions using building footprint
 		if (this.checkBuildingCollision(client.currentGroup, position, definition, rotation)) {
@@ -895,6 +904,43 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 				)
 			}
 		}
+	}
+
+	private hasRequiredRoadCoverage(
+		mapId: string,
+		position: Position,
+		definition: BuildingDefinition,
+		rotation: number
+	): boolean {
+		if (!definition.requiresConstructedRoad) {
+			return true
+		}
+
+		const roads = this.managers.roads
+		if (!roads) {
+			return false
+		}
+
+		const map = this.managers.map.getMap(mapId)
+		if (!map) {
+			return false
+		}
+
+		const tileSize = map.tiledMap?.tilewidth || 32
+		const originTileX = Math.floor(position.x / tileSize)
+		const originTileY = Math.floor(position.y / tileSize)
+		const footprint = this.getRotatedFootprint(definition, rotation)
+
+		for (let tileY = 0; tileY < footprint.height; tileY += 1) {
+			for (let tileX = 0; tileX < footprint.width; tileX += 1) {
+				const roadType = roads.getRoadTypeAtTile(mapId, originTileX + tileX, originTileY + tileY)
+				if (roadType === RoadType.None) {
+					return false
+				}
+			}
+		}
+
+		return true
 	}
 
 	private processAutoProduction(building: BuildingInstance, recipe: ProductionRecipe, deltaMs: number): void {

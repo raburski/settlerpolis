@@ -796,6 +796,7 @@ export class BuildingPlacementManager {
 		const collisionGrid = this.scene.getCollisionGrid()
 		const allowedGroundTypes = building.allowedGroundTypes || []
 		const enforceGroundTypes = allowedGroundTypes.length > 0
+		const requiresConstructedRoad = Boolean(building.requiresConstructedRoad)
 
 		for (let tileY = 0; tileY < footprint.height; tileY += 1) {
 			for (let tileX = 0; tileX < footprint.width; tileX += 1) {
@@ -811,7 +812,13 @@ export class BuildingPlacementManager {
 					return false
 				}
 
-				if (this.scene.hasRoadAt(checkTileX, checkTileY) || this.scene.hasPendingRoadAt(checkTileX, checkTileY)) {
+				const hasRoad = this.scene.hasRoadAt(checkTileX, checkTileY)
+				const hasPendingRoad = this.scene.hasPendingRoadAt(checkTileX, checkTileY)
+				if (requiresConstructedRoad) {
+					if (!hasRoad || hasPendingRoad) {
+						return false
+					}
+				} else if (hasRoad || hasPendingRoad) {
 					return false
 				}
 

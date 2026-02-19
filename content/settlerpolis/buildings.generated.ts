@@ -2028,5 +2028,29 @@ export const buildings: BuildingDefinition[] = [
         }
       }
     ]
+  },
+  {
+    "id": "road_bollard",
+    "name": "Road Bollard",
+    "description": "Stops vendor patrol expansion past this road tile",
+    "category": "infrastructure",
+    "icon": "\ud83d\udea7",
+    "sprite": {
+      "foundation": "building_foundation",
+      "completed": "storehouse"
+    },
+    "footprint": {
+      "width": 1,
+      "height": 1
+    },
+    "constructionTime": 6,
+    "costs": [
+      {
+        "itemType": "stone",
+        "quantity": 1
+      }
+    ],
+    "marketRoadBlockade": true,
+    "requiresConstructedRoad": true
   }
 ];
