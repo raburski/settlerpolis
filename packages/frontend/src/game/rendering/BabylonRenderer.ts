@@ -171,7 +171,7 @@ const DAY_MOMENT_LIGHTING: Record<DayMoment, DayMomentLightingProfile> = {
 		lightIntensity: 0.68,
 		lightDiffuse: [1, 0.72, 0.55],
 		lightGroundColor: [0.22, 0.16, 0.19],
-		sunDirection: [0.72, -0.34, 0.21],
+		sunDirection: [0.46, -0.72, 0.14],
 		sunIntensity: 0.86,
 		sunDiffuse: [1, 0.62, 0.46],
 		sunSpecular: [1, 0.54, 0.44],
@@ -213,6 +213,45 @@ const FILL_LIGHT_DIFFUSE_MULTIPLIER = 0.5
 const FILL_LIGHT_GROUND_MULTIPLIER = 0.42
 const FILL_LIGHT_SPECULAR_MULTIPLIER = 0.2
 const AMBIENT_COLOR_MULTIPLIER = 0.28
+const DAY_MOMENT_TRANSITION_MS = 900
+
+interface DayMomentTransitionState {
+	from: DayMomentLightingProfile
+	to: DayMomentLightingProfile
+	elapsedMs: number
+}
+
+const clamp01 = (value: number): number => Math.min(1, Math.max(0, value))
+
+const lerp = (from: number, to: number, t: number): number => from + (to - from) * t
+
+const lerpTriplet = (
+	from: [number, number, number],
+	to: [number, number, number],
+	t: number
+): [number, number, number] => [lerp(from[0], to[0], t), lerp(from[1], to[1], t), lerp(from[2], to[2], t)]
+
+const easeInOutSine = (t: number): number => 0.5 - 0.5 * Math.cos(Math.PI * clamp01(t))
+
+const lerpLightingProfile = (
+	from: DayMomentLightingProfile,
+	to: DayMomentLightingProfile,
+	t: number
+): DayMomentLightingProfile => ({
+	clearColor: lerpTriplet(from.clearColor, to.clearColor, t),
+	lightDirection: lerpTriplet(from.lightDirection, to.lightDirection, t),
+	lightIntensity: lerp(from.lightIntensity, to.lightIntensity, t),
+	lightDiffuse: lerpTriplet(from.lightDiffuse, to.lightDiffuse, t),
+	lightGroundColor: lerpTriplet(from.lightGroundColor, to.lightGroundColor, t),
+	sunDirection: lerpTriplet(from.sunDirection, to.sunDirection, t),
+	sunIntensity: lerp(from.sunIntensity, to.sunIntensity, t),
+	sunDiffuse: lerpTriplet(from.sunDiffuse, to.sunDiffuse, t),
+	sunSpecular: lerpTriplet(from.sunSpecular, to.sunSpecular, t),
+	shadowDarkness: lerp(from.shadowDarkness, to.shadowDarkness, t),
+	ambientColor: lerpTriplet(from.ambientColor, to.ambientColor, t),
+	tint: lerpTriplet(from.tint, to.tint, t),
+	exposure: lerp(from.exposure, to.exposure, t)
+})
 
 export class BabylonRenderer {
 	public readonly engine: Engine
@@ -266,6 +305,8 @@ export class BabylonRenderer {
 	private fidelityScale = 1
 	private highFidelityEnabled = true
 	private dayMoment: DayMoment = DEFAULT_DAY_MOMENT
+	private dayMomentLighting: DayMomentLightingProfile = DAY_MOMENT_LIGHTING[DEFAULT_DAY_MOMENT]
+	private dayMomentTransition: DayMomentTransitionState | null = null
 
 	constructor(canvas: HTMLCanvasElement) {
 		this.engine = new Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true })
@@ -310,6 +351,7 @@ export class BabylonRenderer {
 		this.engine.runRenderLoop(() => {
 			const delta = this.engine.getDeltaTime()
 			this.updateWaterAnimation(delta)
+			this.updateDayMomentTransition(delta)
 			renderStep(delta)
 			this.scene.render()
 		})
@@ -394,9 +436,14 @@ export class BabylonRenderer {
 	}
 
 	setDayMoment(moment: DayMoment): void {
-		if (this.dayMoment === moment) return
+		if (this.dayMoment === moment && !this.dayMomentTransition) return
 		this.dayMoment = moment
-		this.applyDayMomentLighting()
+		this.dayMomentTransition = {
+			from: this.dayMomentLighting,
+			to: DAY_MOMENT_LIGHTING[moment],
+			elapsedMs: 0
+		}
+		this.unfreezeShadowMap()
 	}
 
 	rebakeEnvironmentShadowsSoon(): void {
@@ -451,8 +498,50 @@ export class BabylonRenderer {
 		this.camera.orthoBottom = -halfHeight
 	}
 
+	private updateDayMomentTransition(deltaMs: number): void {
+		if (!this.dayMomentTransition) {
+			return
+		}
+		const transition = this.dayMomentTransition
+		transition.elapsedMs += Math.max(0, deltaMs)
+		const progress = DAY_MOMENT_TRANSITION_MS > 0 ? clamp01(transition.elapsedMs / DAY_MOMENT_TRANSITION_MS) : 1
+		const easedProgress = easeInOutSine(progress)
+		const profile = lerpLightingProfile(transition.from, transition.to, easedProgress)
+		const finished = progress >= 1
+		this.applyLightingProfile(finished ? transition.to : profile, {
+			requestEnvironmentShadows: finished
+		})
+		if (finished) {
+			this.dayMomentTransition = null
+		}
+	}
+
+	private unfreezeShadowMap(): void {
+		const shadowMap = this.shadowGenerator?.getShadowMap()
+		if (!shadowMap) {
+			return
+		}
+		if (this.shadowBakeDebounceTimer !== null) {
+			window.clearTimeout(this.shadowBakeDebounceTimer)
+			this.shadowBakeDebounceTimer = null
+		}
+		if (this.shadowBakeFreezeTimer !== null) {
+			window.clearTimeout(this.shadowBakeFreezeTimer)
+			this.shadowBakeFreezeTimer = null
+		}
+		shadowMap.refreshRate = 1
+	}
+
 	private applyDayMomentLighting(): void {
 		const profile = DAY_MOMENT_LIGHTING[this.dayMoment]
+		this.applyLightingProfile(profile)
+	}
+
+	private applyLightingProfile(
+		profile: DayMomentLightingProfile,
+		options?: { requestEnvironmentShadows?: boolean }
+	): void {
+		this.dayMomentLighting = profile
 		this.scene.clearColor = new Color4(profile.clearColor[0], profile.clearColor[1], profile.clearColor[2], 1)
 		this.scene.ambientColor = new Color3(profile.ambientColor[0], profile.ambientColor[1], profile.ambientColor[2]).scale(
 			AMBIENT_COLOR_MULTIPLIER
@@ -496,8 +585,10 @@ export class BabylonRenderer {
 		)
 		this.shadowGenerator?.setDarkness(profile.shadowDarkness)
 		this.updateSunLightPosition()
-		this.requestEnvironmentShadowBake()
-		this.applyDayMomentShaderUniforms()
+		if (options?.requestEnvironmentShadows ?? true) {
+			this.requestEnvironmentShadowBake()
+		}
+		this.applyDayMomentShaderUniforms(profile)
 	}
 
 	private initializeShadows(): void {
@@ -705,8 +796,7 @@ export class BabylonRenderer {
 		})
 	}
 
-	private applyDayMomentShaderUniforms(): void {
-		const profile = DAY_MOMENT_LIGHTING[this.dayMoment]
+	private applyDayMomentShaderUniforms(profile = this.dayMomentLighting): void {
 		const tint = new Color3(profile.tint[0], profile.tint[1], profile.tint[2])
 		const exposure = profile.exposure
 		if (this.groundShaderMaterial) {
