@@ -353,6 +353,7 @@ export class ResourceNodeBatcher {
 			batch.baseMeshes.forEach((mesh) => {
 				mesh.thinInstanceSetBuffer('matrix', result.matrices, 16, true)
 				mesh.thinInstanceCount = result.count
+				mesh.thinInstanceRefreshBoundingInfo(true)
 			})
 			batch.hasBuffer = true
 			appliedVisibleChange = true
@@ -373,6 +374,7 @@ export class ResourceNodeBatcher {
 			if (!batch || !batch.hasBuffer) continue
 			batch.baseMeshes.forEach((mesh) => {
 				mesh.thinInstanceCount = 0
+				mesh.thinInstanceRefreshBoundingInfo(true)
 			})
 			batch.hasBuffer = false
 			appliedVisibleChange = true
@@ -551,6 +553,7 @@ export class ResourceNodeBatcher {
 				batch.baseMeshes.forEach((mesh) => {
 					mesh.thinInstanceSetBuffer('matrix', pending.matrices, 16, true)
 					mesh.thinInstanceCount = pending.count
+					mesh.thinInstanceRefreshBoundingInfo(true)
 				})
 				batch.hasBuffer = pending.count > 0
 				this.pendingResults.delete(batchKey)
