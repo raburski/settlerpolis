@@ -39,6 +39,7 @@ const TOMBSTONE_ITEM_TYPE = 'tombstone'
 const CART_ITEM_TYPE = 'cart'
 const BASE_CARRY_CAPACITY = 1
 const CART_CARRY_CAPACITY = 8
+const SPAWN_SEARCH_RADIUS_TILES = 6
 
 export interface PopulationDeps {
 	event: EventManager
@@ -624,11 +625,12 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		}
 
 		const id = uuidv4()
+		const spawnPosition = this.resolveSpawnPosition(house.mapId, house.position, SPAWN_SEARCH_RADIUS_TILES)
 		const settler: Settler = {
 			id,
 			playerId: house.playerId,
 			mapId: house.mapId,
-			position: { ...house.position },
+			position: spawnPosition,
 			profession: ProfessionType.Carrier,
 			state: SettlerState.Idle,
 			stateContext: {},
@@ -647,9 +649,9 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			speed: settler.speed
 		})
 
-			this.managers.event.emit(Receiver.Group, PopulationEvents.SC.SettlerSpawned, { settler }, settler.mapId)
-			return settler
-		}
+		this.managers.event.emit(Receiver.Group, PopulationEvents.SC.SettlerSpawned, { settler }, settler.mapId)
+		return settler
+	}
 
 	public spawnInitialPopulation(mapId: string, playerId: string, spawnPosition: Position): void {
 		const now = this.state.simulationTimeMs
@@ -660,11 +662,12 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 			}
 
 			for (let i = 0; i < popEntry.count; i++) {
-				const offset = 16
-				const position = {
+				const offset = 32
+				const preferredPosition = {
 					x: spawnPosition.x + (i % 3) * offset,
 					y: spawnPosition.y + Math.floor(i / 3) * offset
 				}
+				const position = this.resolveSpawnPosition(mapId, preferredPosition, SPAWN_SEARCH_RADIUS_TILES)
 				const settlerId = uuidv4()
 				const settler: Settler = {
 					id: settlerId,
@@ -687,10 +690,81 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 					speed: settler.speed
 				})
 
-					this.managers.event.emit(Receiver.Group, PopulationEvents.SC.SettlerSpawned, { settler }, mapId)
+				this.managers.event.emit(Receiver.Group, PopulationEvents.SC.SettlerSpawned, { settler }, mapId)
+			}
+		}
+	}
+
+	private resolveSpawnPosition(mapId: string, preferred: Position, maxRadiusTiles: number): Position {
+		const map = this.managers.map.getMap(mapId)
+		if (!map) {
+			return { ...preferred }
+		}
+
+		const tileWidth = map.tiledMap?.tilewidth || 32
+		const tileHeight = map.tiledMap?.tileheight || 32
+		const baseTileX = Math.floor(preferred.x / tileWidth)
+		const baseTileY = Math.floor(preferred.y / tileHeight)
+
+		for (let radius = 0; radius <= maxRadiusTiles; radius += 1) {
+			for (let dy = -radius; dy <= radius; dy += 1) {
+				for (let dx = -radius; dx <= radius; dx += 1) {
+					if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) {
+						continue
+					}
+					const tileX = baseTileX + dx
+					const tileY = baseTileY + dy
+					if (!this.isWalkableSpawnTile(map, tileX, tileY)) {
+						continue
+					}
+					if (this.hasSettlerOnTile(mapId, tileX, tileY, tileWidth, tileHeight)) {
+						continue
+					}
+					return {
+						x: tileX * tileWidth + tileWidth / 2,
+						y: tileY * tileHeight + tileHeight / 2
+					}
 				}
 			}
 		}
+
+		const fallback = this.managers.map.findNearestWalkablePosition(mapId, preferred, maxRadiusTiles)
+		if (fallback) {
+			const fallbackTileX = Math.floor(fallback.x / tileWidth)
+			const fallbackTileY = Math.floor(fallback.y / tileHeight)
+			if (!this.hasSettlerOnTile(mapId, fallbackTileX, fallbackTileY, tileWidth, tileHeight)) {
+				return fallback
+			}
+		}
+
+		return { ...preferred }
+	}
+
+	private isWalkableSpawnTile(
+		map: { collision: { width: number, height: number, data: number[] } },
+		tileX: number,
+		tileY: number
+	): boolean {
+		if (tileX < 0 || tileY < 0 || tileX >= map.collision.width || tileY >= map.collision.height) {
+			return false
+		}
+		const tileIndex = tileY * map.collision.width + tileX
+		return map.collision.data[tileIndex] === 0
+	}
+
+	private hasSettlerOnTile(mapId: string, tileX: number, tileY: number, tileWidth: number, tileHeight: number): boolean {
+		for (const settler of this.state.settlers.values()) {
+			if (settler.mapId !== mapId) {
+				continue
+			}
+			const settlerTileX = Math.floor(settler.position.x / tileWidth)
+			const settlerTileY = Math.floor(settler.position.y / tileHeight)
+			if (settlerTileX === tileX && settlerTileY === tileY) {
+				return true
+			}
+		}
+		return false
+	}
 
 	private sendPopulationList(client: EventClient): void {
 		const settlers = Array.from(this.state.settlers.values())

@@ -3,11 +3,13 @@ import { Event, NPC } from '@rugged/game'
 import { EventBus } from '../../EventBus'
 import type { GameScene } from '../../scenes/base/GameScene'
 import { tutorialService, TutorialFlag } from '../../services/TutorialService'
+import { syncMovementPaused, syncPositionUpdated } from '../Movement/positionSync'
 
 export class NPCController {
 	constructor(public view: NPCView, private scene: GameScene, public npc: NPC) {
 		EventBus.on(Event.Movement.SC.MoveToPosition, this.handleMoveToPosition, this)
 		EventBus.on(Event.Movement.SC.PositionUpdated, this.handlePositionUpdated, this)
+		EventBus.on(Event.Movement.SC.Paused, this.handleMovementPaused, this)
 		EventBus.on(Event.NPC.SC.Message, this.handleNPCMessage, this)
 	}
 
@@ -47,7 +49,16 @@ export class NPCController {
 
 	private handlePositionUpdated = (data: { entityId: string; position: { x: number; y: number }; mapId: string }) => {
 		if (data.entityId === this.npc.id && data.mapId === this.npc.mapId) {
-			this.view.updatePosition(data.position.x, data.position.y)
+			syncPositionUpdated(this.view, data.position)
+			this.npc.position = data.position
+			this.scene.textDisplayService?.updateEntityPosition(this.npc.id, data.position)
+		}
+	}
+
+	private handleMovementPaused = (data: { entityId: string; position: { x: number; y: number }; mapId: string }) => {
+		if (data.entityId === this.npc.id && data.mapId === this.npc.mapId) {
+			syncMovementPaused(this.view, data.position)
+			this.npc.position = data.position
 			this.scene.textDisplayService?.updateEntityPosition(this.npc.id, data.position)
 		}
 	}
@@ -65,6 +76,7 @@ export class NPCController {
 	public destroy(): void {
 		EventBus.off(Event.Movement.SC.MoveToPosition, this.handleMoveToPosition, this)
 		EventBus.off(Event.Movement.SC.PositionUpdated, this.handlePositionUpdated, this)
+		EventBus.off(Event.Movement.SC.Paused, this.handleMovementPaused, this)
 		EventBus.off(Event.NPC.SC.Message, this.handleNPCMessage, this)
 		this.scene.textDisplayService?.cleanupEntityTexts(this.npc.id)
 		this.view.destroy()

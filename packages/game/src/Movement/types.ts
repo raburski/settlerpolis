@@ -22,17 +22,42 @@ export interface MovementEntity {
 	speed: number // pixels per second
 }
 
+export enum MovementTaskPhase {
+	Ready = 'ready',
+	MovingSegment = 'moving_segment',
+	Blocked = 'blocked',
+	PendingCompletion = 'pending_completion'
+}
+
+export interface MovementTaskBlockedState {
+	tileIndex: number
+	startedAtMs: number
+	blockedByEntityId?: string
+	yieldGraceUntilMs?: number
+}
+
 export interface MovementTask {
 	entityId: string
 	path: Position[]
 	currentStep: number
+	phase: MovementTaskPhase
 	targetType?: MoveTargetType
 	targetId?: string
 	speedMultiplier?: number
 	totalDistance?: number
 	traveledDistance?: number
 	segmentRemainingMs?: number
-	pendingCompletion?: boolean
+	blockedState?: MovementTaskBlockedState
+	segmentHeading?: number
+	segmentReservedTileIndex?: number
+	rerouteAttempts?: number
+	lastRerouteAtMs?: number
+	forceRerouteUntilMs?: number
+	renderTargetStepIndices?: number[]
+	currentRenderTargetPointer?: number
+	activeRenderTargetStep?: number
+	frontendMoving?: boolean
+	pausedForCongestion?: boolean
 	onStepComplete?: (task: MovementTask, position: Position) => void
 	onPathComplete?: (task: MovementTask) => void
 	onCancelled?: (task: MovementTask) => void

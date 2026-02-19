@@ -251,8 +251,10 @@ export type EventPayloads = Record<string, unknown> & {
 	[MovementEvents.SS.StepComplete]: { entityId: string, position: Position }
 	[MovementEvents.SS.SegmentComplete]: { entityId: string, position: Position, segmentDistance: number, totalDistance: number }
 	[MovementEvents.SS.PathComplete]: { entityId: string, targetType?: MoveTargetType, targetId?: string }
+	[MovementEvents.SS.YieldRequested]: { requesterEntityId: string, blockerEntityId: string, mapId: MapId, tile: { x: number, y: number } }
 	[MovementEvents.SC.MoveToPosition]: { entityId: string, targetPosition: Position, mapId: MapId, speed?: number }
 	[MovementEvents.SC.PositionUpdated]: { entityId: string, position: Position, mapId: MapId }
+	[MovementEvents.SC.Paused]: { entityId: string, position: Position, mapId: MapId }
 
 	[StorageEvents.SC.StorageUpdated]: { buildingInstanceId: BuildingInstanceId, itemType: string, quantity: number, capacity: number }
 	[StorageEvents.SC.StorageSlotUpdated]: { slotId: StorageSlotId, buildingInstanceId: BuildingInstanceId, itemType: string, quantity: number, position: Position }
