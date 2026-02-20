@@ -1,5 +1,6 @@
 import { SettlerState } from '../../../Population/types'
-import { WorkActionType, WorkStepType } from '../types'
+import { WorkStepType } from '../types'
+import { SettlerActionType } from '../../Actions/types'
 import type { StepHandler, StepHandlerResult } from './types'
 import { MoveTargetType } from '../../../Movement/types'
 import { ReservationKind, type ReservationRef } from '../../../Reservation'
@@ -19,7 +20,7 @@ export const FishHandler: StepHandler = {
 			ownerId: settlerId
 		})
 		if (!nodeReservation || nodeReservation.kind !== ReservationKind.Node) {
-			return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
+			return { actions: [{ type: SettlerActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
 		}
 		reservationRefs.push(nodeReservation.ref)
 
@@ -45,30 +46,30 @@ export const FishHandler: StepHandler = {
 		})
 		if (!storageReservation || storageReservation.kind !== ReservationKind.Storage) {
 			releaseReservations()
-			return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
+			return { actions: [{ type: SettlerActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
 		}
 		reservationRefs.push(storageReservation.ref)
 
 		return {
 			actions: [
-				{ type: WorkActionType.Move, position: step.targetPosition, targetType: MoveTargetType.Spot, targetId: node.id, setState: SettlerState.MovingToResource },
-				{ type: WorkActionType.Wait, durationMs: step.durationMs, setState: SettlerState.Harvesting },
+				{ type: SettlerActionType.Move, position: step.targetPosition, targetType: MoveTargetType.Spot, targetId: node.id, setState: SettlerState.MovingToResource },
+				{ type: SettlerActionType.Wait, durationMs: step.durationMs, setState: SettlerState.Harvesting },
 				{
-					type: WorkActionType.HarvestNode,
+					type: SettlerActionType.HarvestNode,
 					nodeId: node.id,
 					quantity: step.quantity,
 					reservationRefs: [nodeReservation.ref],
 					setState: SettlerState.CarryingItem
 				},
 				{
-					type: WorkActionType.Move,
+					type: SettlerActionType.Move,
 					position: storageReservation.position,
 					targetType: MoveTargetType.StorageSlot,
 					targetId: storageReservation.reservationId,
 					setState: SettlerState.CarryingItem
 				},
 				{
-					type: WorkActionType.DeliverStorage,
+					type: SettlerActionType.DeliverStorage,
 					buildingInstanceId: building.id,
 					itemType: step.outputItemType,
 					quantity: step.quantity,
@@ -76,7 +77,7 @@ export const FishHandler: StepHandler = {
 					reservationRefs: [storageReservation.ref],
 					setState: SettlerState.Working
 				},
-				{ type: WorkActionType.Move, position: building.position, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding }
+				{ type: SettlerActionType.Move, position: building.position, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding }
 			]
 		}
 	}

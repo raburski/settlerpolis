@@ -1,10 +1,10 @@
-import { WorkActionType } from '../../Work/types'
+import { SettlerActionType } from '../types'
 import type { ActionHandler } from './types'
 
 export const ProspectNodeActionHandler: ActionHandler = {
-	type: WorkActionType.ProspectNode,
+	type: SettlerActionType.ProspectNode,
 	start: ({ action, managers, complete }) => {
-		if (action.type !== WorkActionType.ProspectNode) {
+		if (action.type !== SettlerActionType.ProspectNode) {
 			complete()
 			return
 		}

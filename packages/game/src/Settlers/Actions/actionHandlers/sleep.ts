@@ -1,14 +1,14 @@
-import { WorkActionType } from '../../Work/types'
+import { SettlerActionType } from '../types'
 import type { ActionHandler } from './types'
 
 export const SleepActionHandler: ActionHandler = {
-	type: WorkActionType.Sleep,
+	type: SettlerActionType.Sleep,
 	start: ({ action, nowMs, setInProgress }) => {
-		if (action.type !== WorkActionType.Sleep) {
+		if (action.type !== SettlerActionType.Sleep) {
 			return
 		}
 		setInProgress({
-			type: WorkActionType.Sleep,
+			type: SettlerActionType.Sleep,
 			endAtMs: nowMs + action.durationMs
 		})
 	}

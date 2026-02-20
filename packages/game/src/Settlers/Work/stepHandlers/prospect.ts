@@ -1,5 +1,6 @@
 import { SettlerState } from '../../../Population/types'
-import { WorkActionType, WorkStepType } from '../types'
+import { WorkStepType } from '../types'
+import { SettlerActionType } from '../../Actions/types'
 import type { StepHandler, StepHandlerResult } from './types'
 import { MoveTargetType } from '../../../Movement/types'
 
@@ -17,9 +18,9 @@ export const ProspectHandler: StepHandler = {
 
 		return {
 			actions: [
-				{ type: WorkActionType.Move, position: node.position, targetType: MoveTargetType.Resource, targetId: node.id, setState: SettlerState.MovingToResource },
-				{ type: WorkActionType.Wait, durationMs: step.durationMs, setState: SettlerState.Prospecting },
-				{ type: WorkActionType.ProspectNode, nodeId: node.id, setState: SettlerState.Working }
+				{ type: SettlerActionType.Move, position: node.position, targetType: MoveTargetType.Resource, targetId: node.id, setState: SettlerState.MovingToResource },
+				{ type: SettlerActionType.Wait, durationMs: step.durationMs, setState: SettlerState.Prospecting },
+				{ type: SettlerActionType.ProspectNode, nodeId: node.id, setState: SettlerState.Working }
 			]
 		}
 	}

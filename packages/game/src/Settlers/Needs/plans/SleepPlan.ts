@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { SettlerState } from '../../../Population/types'
-import type { WorkAction } from '../../Work/types'
-import { WorkActionType } from '../../Work/types'
+import type { SettlerAction } from '../../Actions/types'
+import { SettlerActionType } from '../../Actions/types'
 import { MoveTargetType } from '../../../Movement/types'
 import type { BedLocation } from '../policies/BedPolicy'
 import { NeedType } from '../NeedTypes'
@@ -19,7 +19,7 @@ export interface SleepPlanDeps {
 }
 
 export const buildSleepPlan = (settlerId: string, bed: BedLocation, deps: SleepPlanDeps): NeedPlanResult => {
-	const actions: WorkAction[] = []
+	const actions: SettlerAction[] = []
 	let satisfyValue: number | undefined
 	let amenityReservation: AmenitySlotReservationResult | null = null
 
@@ -50,7 +50,7 @@ export const buildSleepPlan = (settlerId: string, bed: BedLocation, deps: SleepP
 	const moveTargetType = amenityReservation ? MoveTargetType.AmenitySlot : MoveTargetType.Building
 
 	actions.push({
-		type: WorkActionType.Move,
+		type: SettlerActionType.Move,
 		position: moveTargetPosition,
 		targetType: moveTargetType,
 		targetId: moveTargetId,
@@ -61,7 +61,7 @@ export const buildSleepPlan = (settlerId: string, bed: BedLocation, deps: SleepP
 	})
 
 	actions.push({
-		type: WorkActionType.Sleep,
+		type: SettlerActionType.Sleep,
 		durationMs: SLEEP_DURATION_MS,
 		setState: SettlerState.Working
 	})

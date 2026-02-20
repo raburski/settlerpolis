@@ -1,11 +1,11 @@
-import { WorkActionType } from '../../Work/types'
+import { SettlerActionType } from '../types'
 import { SettlerActionFailureReason } from '../../failureReasons'
 import type { ActionHandler } from './types'
 
 export const WithdrawStorageActionHandler: ActionHandler = {
-	type: WorkActionType.WithdrawStorage,
+	type: SettlerActionType.WithdrawStorage,
 	start: ({ settlerId, action, managers, complete, fail }) => {
-		if (action.type !== WorkActionType.WithdrawStorage) {
+		if (action.type !== SettlerActionType.WithdrawStorage) {
 			return
 		}
 		const ok = managers.storage.removeFromStorage(action.buildingInstanceId, action.itemType, action.quantity, action.reservationId)

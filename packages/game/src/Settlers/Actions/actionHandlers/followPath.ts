@@ -1,11 +1,11 @@
-import { WorkActionType } from '../../Work/types'
+import { SettlerActionType } from '../types'
 import { SettlerActionFailureReason } from '../../failureReasons'
 import type { ActionHandler } from './types'
 
 export const FollowPathActionHandler: ActionHandler = {
-	type: WorkActionType.FollowPath,
+	type: SettlerActionType.FollowPath,
 	start: ({ settlerId, action, managers, complete, fail }) => {
-		if (action.type !== WorkActionType.FollowPath) {
+		if (action.type !== SettlerActionType.FollowPath) {
 			return
 		}
 		if (!action.path || action.path.length === 0) {

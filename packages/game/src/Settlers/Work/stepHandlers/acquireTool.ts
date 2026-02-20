@@ -1,6 +1,7 @@
 import { SettlerState } from '../../../Population/types'
-import { WorkActionType, WorkStepType } from '../types'
-import type { WorkAction } from '../types'
+import { WorkStepType } from '../types'
+import { SettlerActionType } from '../../Actions/types'
+import type { SettlerAction } from '../../Actions/types'
 import type { StepHandler, StepHandlerResult } from './types'
 import { MoveTargetType } from '../../../Movement/types'
 import { ReservationKind, type ReservationRef } from '../../../Reservation'
@@ -26,14 +27,14 @@ export const AcquireToolHandler: StepHandler = {
 			}
 		}
 		if (!toolItemType) {
-			const actions: WorkAction[] = [
-				{ type: WorkActionType.ChangeProfession, profession: step.profession, setState: SettlerState.Idle }
+			const actions: SettlerAction[] = [
+				{ type: SettlerActionType.ChangeProfession, profession: step.profession, setState: SettlerState.Idle }
 			]
 			if (assignment.buildingInstanceId) {
 				const building = managers.buildings.getBuildingInstance(assignment.buildingInstanceId)
 				if (building) {
 					actions.push({
-						type: WorkActionType.Move,
+						type: SettlerActionType.Move,
 						position: building.position,
 						targetType: MoveTargetType.Building,
 						targetId: building.id,
@@ -55,7 +56,7 @@ export const AcquireToolHandler: StepHandler = {
 			})
 			if (!reservedTool || reservedTool.kind !== ReservationKind.Tool) {
 				return {
-					actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }]
+					actions: [{ type: SettlerActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }]
 				}
 			}
 			toolItemId = reservedTool.itemId
@@ -71,26 +72,26 @@ export const AcquireToolHandler: StepHandler = {
 		if (!path || path.length === 0) {
 			releaseReservations()
 			return {
-				actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }]
+				actions: [{ type: SettlerActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }]
 			}
 		}
 
-		const actions: WorkAction[] = [
-			{ type: WorkActionType.Move, position: toolPosition!, targetType: MoveTargetType.Tool, targetId: toolItemId, setState: SettlerState.MovingToTool },
+		const actions: SettlerAction[] = [
+			{ type: SettlerActionType.Move, position: toolPosition!, targetType: MoveTargetType.Tool, targetId: toolItemId, setState: SettlerState.MovingToTool },
 			{
-				type: WorkActionType.PickupTool,
+				type: SettlerActionType.PickupTool,
 				itemId: toolItemId!,
 				reservationRefs: [{ kind: ReservationKind.Tool, itemId: toolItemId! }],
 				setState: SettlerState.MovingToTool
 			},
-			{ type: WorkActionType.ChangeProfession, profession: step.profession, setState: SettlerState.Idle }
+			{ type: SettlerActionType.ChangeProfession, profession: step.profession, setState: SettlerState.Idle }
 		]
 
 		if (assignment.buildingInstanceId) {
 			const building = managers.buildings.getBuildingInstance(assignment.buildingInstanceId)
 			if (building) {
 				actions.push({
-					type: WorkActionType.Move,
+					type: SettlerActionType.Move,
 					position: building.position,
 					targetType: MoveTargetType.Building,
 					targetId: building.id,

@@ -1,6 +1,7 @@
 import { SettlerState } from '../../../Population/types'
-import { WorkActionType, WorkStepType } from '../types'
-import type { WorkAction } from '../types'
+import { WorkStepType } from '../types'
+import { SettlerActionType } from '../../Actions/types'
+import type { SettlerAction } from '../../Actions/types'
 import type { StepHandler, StepHandlerResult } from './types'
 import { MoveTargetType } from '../../../Movement/types'
 import { ReservationKind, type ReservationRef } from '../../../Reservation'
@@ -45,7 +46,7 @@ export const ProduceHandler: StepHandler = {
 
 		if (inputReservations.some(res => !res)) {
 			releaseReservations()
-			return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
+			return { actions: [{ type: SettlerActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
 		}
 
 		const outputReservations = step.recipe.outputs.map(output => {
@@ -72,16 +73,16 @@ export const ProduceHandler: StepHandler = {
 
 		if (outputReservations.some(res => !res)) {
 			releaseReservations()
-			return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
+			return { actions: [{ type: SettlerActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
 		}
 
-		const actions: WorkAction[] = []
+		const actions: SettlerAction[] = []
 
 		for (const input of inputReservations) {
 			actions.push(
-				{ type: WorkActionType.Move, position: input!.position, targetType: MoveTargetType.StorageSlot, targetId: input!.reservationId, setState: SettlerState.MovingToBuilding },
+				{ type: SettlerActionType.Move, position: input!.position, targetType: MoveTargetType.StorageSlot, targetId: input!.reservationId, setState: SettlerState.MovingToBuilding },
 				{
-					type: WorkActionType.WithdrawStorage,
+					type: SettlerActionType.WithdrawStorage,
 					buildingInstanceId: building.id,
 					itemType: input!.itemType,
 					quantity: input!.quantity,
@@ -92,15 +93,15 @@ export const ProduceHandler: StepHandler = {
 			)
 		}
 
-		actions.push({ type: WorkActionType.Move, position: building.position, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding })
-		actions.push({ type: WorkActionType.Wait, durationMs: step.durationMs, setState: SettlerState.Working })
-		actions.push({ type: WorkActionType.Produce, buildingInstanceId: building.id, recipe: step.recipe, setState: SettlerState.Working })
+		actions.push({ type: SettlerActionType.Move, position: building.position, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding })
+		actions.push({ type: SettlerActionType.Wait, durationMs: step.durationMs, setState: SettlerState.Working })
+		actions.push({ type: SettlerActionType.Produce, buildingInstanceId: building.id, recipe: step.recipe, setState: SettlerState.Working })
 
 		for (const output of outputReservations) {
 			actions.push(
-				{ type: WorkActionType.Move, position: output!.position, targetType: MoveTargetType.StorageSlot, targetId: output!.reservationId, setState: SettlerState.CarryingItem },
+				{ type: SettlerActionType.Move, position: output!.position, targetType: MoveTargetType.StorageSlot, targetId: output!.reservationId, setState: SettlerState.CarryingItem },
 				{
-					type: WorkActionType.DeliverStorage,
+					type: SettlerActionType.DeliverStorage,
 					buildingInstanceId: building.id,
 					itemType: output!.itemType,
 					quantity: output!.quantity,

@@ -1,5 +1,6 @@
 import type { SettlerId, WorkAssignmentId } from '../../ids'
-import type { WorkAction, WorkAssignment, WorkStep } from './types'
+import type { WorkAssignment, WorkStep } from './types'
+import type { SettlerAction } from '../Actions/types'
 import type { SettlerActionFailureReason } from '../failureReasons'
 
 export enum WorkDispatchReason {
@@ -11,12 +12,12 @@ export enum WorkDispatchReason {
 
 export interface WorkActionCompletedEventData {
 	settlerId: SettlerId
-	action: WorkAction
+	action: SettlerAction
 }
 
 export interface WorkActionFailedEventData {
 	settlerId: SettlerId
-	action: WorkAction
+	action: SettlerAction
 	reason: SettlerActionFailureReason
 }
 

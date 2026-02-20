@@ -1,14 +1,14 @@
-import { WorkActionType } from '../../Work/types'
+import { SettlerActionType } from '../types'
 import type { ActionHandler } from './types'
 
 export const WaitActionHandler: ActionHandler = {
-	type: WorkActionType.Wait,
+	type: SettlerActionType.Wait,
 	start: ({ action, nowMs, setInProgress }) => {
-		if (action.type !== WorkActionType.Wait) {
+		if (action.type !== SettlerActionType.Wait) {
 			return
 		}
 		setInProgress({
-			type: WorkActionType.Wait,
+			type: SettlerActionType.Wait,
 			endAtMs: nowMs + action.durationMs
 		})
 	}

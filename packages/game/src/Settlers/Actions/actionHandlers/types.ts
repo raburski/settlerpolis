@@ -1,9 +1,9 @@
-import type { WorkAction, WorkActionType } from '../../Work/types'
+import type { SettlerAction, SettlerActionType } from '../types'
 import type { ActionSystemDeps } from '..'
 import type { SettlerActionFailureReason } from '../../failureReasons'
 
 export interface InProgressAction {
-	type: WorkActionType.Wait | WorkActionType.Construct | WorkActionType.BuildRoad | WorkActionType.Consume | WorkActionType.Sleep
+	type: SettlerActionType.Wait | SettlerActionType.Construct | SettlerActionType.BuildRoad | SettlerActionType.Consume | SettlerActionType.Sleep
 	endAtMs: number
 	buildingInstanceId?: string
 	jobId?: string
@@ -11,7 +11,7 @@ export interface InProgressAction {
 
 export interface ActionHandlerBaseContext {
 	settlerId: string
-	action: WorkAction
+	action: SettlerAction
 	managers: ActionSystemDeps
 	nowMs: number
 }
@@ -23,7 +23,7 @@ export interface ActionHandlerStartContext extends ActionHandlerBaseContext {
 }
 
 export interface ActionHandler {
-	type: WorkActionType
+	type: SettlerActionType
 	start(context: ActionHandlerStartContext): void
 	onComplete?: (context: ActionHandlerBaseContext) => void
 	onFail?: (context: ActionHandlerBaseContext, reason: SettlerActionFailureReason) => void

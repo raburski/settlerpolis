@@ -1,4 +1,4 @@
-import type { WorkAction } from '../Work/types'
+import type { SettlerAction } from '../Actions/types'
 import type { NeedLevel, NeedPriority, NeedType } from './NeedTypes'
 import type { NeedPlanFailureReason } from '../failureReasons'
 
@@ -42,7 +42,7 @@ export interface PausedContext {
 export interface NeedPlan {
 	id: string
 	needType: NeedType
-	actions: WorkAction[]
+	actions: SettlerAction[]
 	satisfyValue?: number
 }
 

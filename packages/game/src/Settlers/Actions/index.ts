@@ -9,8 +9,8 @@ import type { RoadManager } from '../../Roads'
 import type { ReservationSystem } from '../../Reservation'
 import type { NPCManager } from '../../NPC'
 import type { WildlifeManager } from '../../Wildlife'
-import type { WorkAction } from '../Work/types'
-import { WorkActionType } from '../Work/types'
+import type { SettlerAction } from './types'
+import { SettlerActionType } from './types'
 import type { Logger } from '../../Logs'
 import { Receiver } from '../../Receiver'
 import { WorkProviderEvents } from '../Work/events'
@@ -58,7 +58,7 @@ export class SettlerActionsManager {
 		return this.state.isBusy(settlerId)
 	}
 
-	public getCurrentAction(settlerId: string): WorkAction | null {
+	public getCurrentAction(settlerId: string): SettlerAction | null {
 		const queue = this.state.getQueue(settlerId)
 		if (!queue) {
 			return null
@@ -74,7 +74,7 @@ export class SettlerActionsManager {
 		if (!action) {
 			return false
 		}
-		return action.type === WorkActionType.Wait || action.type === WorkActionType.Move || action.type === WorkActionType.FollowPath
+		return action.type === SettlerActionType.Wait || action.type === SettlerActionType.Move || action.type === SettlerActionType.FollowPath
 	}
 
 	public expediteCurrentWaitAction(settlerId: string): boolean {
@@ -83,17 +83,17 @@ export class SettlerActionsManager {
 			return false
 		}
 		const current = this.getCurrentAction(settlerId)
-		if (!current || current.type !== WorkActionType.Wait) {
+		if (!current || current.type !== SettlerActionType.Wait) {
 			return false
 		}
-		if (!queue.inProgress || queue.inProgress.type !== WorkActionType.Wait) {
+		if (!queue.inProgress || queue.inProgress.type !== SettlerActionType.Wait) {
 			return false
 		}
 		queue.inProgress.endAtMs = this.state.getNowMs()
 		return true
 	}
 
-	public insertActionsAfterCurrent(settlerId: string, actions: WorkAction[]): boolean {
+	public insertActionsAfterCurrent(settlerId: string, actions: SettlerAction[]): boolean {
 		if (actions.length === 0) {
 			return false
 		}
@@ -124,7 +124,7 @@ export class SettlerActionsManager {
 
 	public replaceQueueAfterCurrent(
 		settlerId: string,
-		actions: WorkAction[],
+		actions: SettlerAction[],
 		onComplete?: () => void,
 		onFail?: (reason: SettlerActionFailureReason) => void
 	): boolean {
@@ -153,7 +153,7 @@ export class SettlerActionsManager {
 		return true
 	}
 
-	public enqueue(settlerId: string, actions: WorkAction[], onComplete?: () => void, onFail?: (reason: SettlerActionFailureReason) => void, context?: ActionQueueContext): void {
+	public enqueue(settlerId: string, actions: SettlerAction[], onComplete?: () => void, onFail?: (reason: SettlerActionFailureReason) => void, context?: ActionQueueContext): void {
 		if (actions.length === 0) {
 			if (onComplete) {
 				onComplete()
@@ -311,3 +311,4 @@ export class SettlerActionsManager {
 
 export type ActionSystemDeps = SettlerActionsDeps
 export { SettlerActionsManager as ActionSystem }
+export * from './types'

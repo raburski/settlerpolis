@@ -1,10 +1,11 @@
 import { SettlerState } from '../../../Population/types'
-import { TransportSourceType, TransportTargetType, WorkActionType, WorkStepType } from '../types'
+import { TransportSourceType, TransportTargetType, WorkStepType } from '../types'
 import type { TransportSource } from '../types'
 import type { StepHandler, StepHandlerResult } from './types'
 import { MoveTargetType } from '../../../Movement/types'
 import { calculateDistance } from '../../../utils'
-import type { WorkAction } from '../types'
+import { SettlerActionType } from '../../Actions/types'
+import type { SettlerAction } from '../../Actions/types'
 import { ReservationKind, type ReservationRef } from '../../../Reservation'
 
 export const TransportHandler: StepHandler = {
@@ -148,13 +149,13 @@ export const TransportHandler: StepHandler = {
 				ownerId: assignment.assignmentId
 			})
 			if (!sourceReservation || sourceReservation.kind !== ReservationKind.Loot) {
-				return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
+				return { actions: [{ type: SettlerActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
 			}
 			reservationRefs.push(sourceReservation.ref)
 
 			if (!canReach(settler.position, source.position)) {
 				releaseReservations()
-				return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+				return { actions: [{ type: SettlerActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
 			}
 
 			let targetReservationId: string | null = null
@@ -163,7 +164,7 @@ export const TransportHandler: StepHandler = {
 			const precheckTarget = resolveReachableTarget(source.position, targetPosition)
 			if (!precheckTarget) {
 				releaseReservations()
-				return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+				return { actions: [{ type: SettlerActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
 			}
 			targetPosition = precheckTarget
 			if (step.target.type === TransportTargetType.Storage) {
@@ -177,7 +178,7 @@ export const TransportHandler: StepHandler = {
 				})
 				if (!reservation || reservation.kind !== ReservationKind.Storage) {
 					releaseReservations()
-					return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
+					return { actions: [{ type: SettlerActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
 				}
 				targetReservationId = reservation.reservationId
 				targetReservationRef = reservation.ref
@@ -187,7 +188,7 @@ export const TransportHandler: StepHandler = {
 				const reachableTarget = resolveReachableTarget(source.position, targetPosition)
 				if (!reachableTarget) {
 					releaseReservations()
-					return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+					return { actions: [{ type: SettlerActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
 				}
 				targetPosition = reachableTarget
 			}
@@ -195,20 +196,20 @@ export const TransportHandler: StepHandler = {
 				targetBuilding.position,
 				targetPosition
 			])
-			const actions: WorkAction[] = [
-				{ type: WorkActionType.Move, position: source.position, targetType: MoveTargetType.Item, targetId: source.itemId, setState: SettlerState.MovingToItem },
+			const actions: SettlerAction[] = [
+				{ type: SettlerActionType.Move, position: source.position, targetType: MoveTargetType.Item, targetId: source.itemId, setState: SettlerState.MovingToItem },
 				{
-					type: WorkActionType.PickupLoot,
+					type: SettlerActionType.PickupLoot,
 					itemId: source.itemId,
 					reservationRefs: [sourceReservation.ref],
 					setState: SettlerState.CarryingItem
 				},
-				{ type: WorkActionType.Move, position: targetPosition, targetType: step.target.type === TransportTargetType.Storage ? MoveTargetType.StorageSlot : MoveTargetType.Building, targetId: targetReservationId || targetBuilding.id, setState: SettlerState.CarryingItem },
+				{ type: SettlerActionType.Move, position: targetPosition, targetType: step.target.type === TransportTargetType.Storage ? MoveTargetType.StorageSlot : MoveTargetType.Building, targetId: targetReservationId || targetBuilding.id, setState: SettlerState.CarryingItem },
 				// Construction consumes collectedResources (pre-storage), so it uses a dedicated action.
 				step.target.type === TransportTargetType.Construction
-					? { type: WorkActionType.DeliverConstruction, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, setState: SettlerState.Working }
+					? { type: SettlerActionType.DeliverConstruction, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, setState: SettlerState.Working }
 					: {
-						type: WorkActionType.DeliverStorage,
+						type: SettlerActionType.DeliverStorage,
 						buildingInstanceId: targetBuilding.id,
 						itemType: step.itemType,
 						quantity: step.quantity,
@@ -219,7 +220,7 @@ export const TransportHandler: StepHandler = {
 			]
 			if (egressPosition) {
 				actions.push({
-					type: WorkActionType.Move,
+					type: SettlerActionType.Move,
 					position: egressPosition,
 					targetType: MoveTargetType.Spot,
 					targetId: `delivery-egress:${assignment.assignmentId}:${targetBuilding.id}`,
@@ -241,12 +242,12 @@ export const TransportHandler: StepHandler = {
 
 			const reachableSource = resolveReachableTarget(settler.position, sourceBuilding.position)
 			if (!reachableSource) {
-				return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+				return { actions: [{ type: SettlerActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
 			}
 
 			const precheckTarget = resolveReachableTarget(sourceBuilding.position, targetBuilding.position)
 			if (!precheckTarget) {
-				return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+				return { actions: [{ type: SettlerActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
 			}
 
 			const reservation = reservationSystem.reserve({
@@ -258,7 +259,7 @@ export const TransportHandler: StepHandler = {
 				ownerId: assignment.assignmentId
 			})
 			if (!reservation || reservation.kind !== ReservationKind.Storage) {
-				return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
+				return { actions: [{ type: SettlerActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
 			}
 			reservationRefs.push(reservation.ref)
 
@@ -266,7 +267,7 @@ export const TransportHandler: StepHandler = {
 			const reachableSourceSlot = resolveReachableTarget(settler.position, sourcePosition)
 			if (!reachableSourceSlot) {
 				releaseReservations()
-				return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+				return { actions: [{ type: SettlerActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
 			}
 			sourcePosition = reachableSourceSlot
 
@@ -276,7 +277,7 @@ export const TransportHandler: StepHandler = {
 			const precheckSlotTarget = resolveReachableTarget(reservation.position, targetPosition)
 			if (!precheckSlotTarget) {
 				releaseReservations()
-				return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+				return { actions: [{ type: SettlerActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
 			}
 			targetPosition = precheckSlotTarget
 			if (step.target.type === TransportTargetType.Storage) {
@@ -290,7 +291,7 @@ export const TransportHandler: StepHandler = {
 				})
 				if (!targetReservation || targetReservation.kind !== ReservationKind.Storage) {
 					releaseReservations()
-					return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
+					return { actions: [{ type: SettlerActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
 				}
 				targetReservationId = targetReservation.reservationId
 				targetReservationRef = targetReservation.ref
@@ -300,7 +301,7 @@ export const TransportHandler: StepHandler = {
 				const reachableTarget = resolveReachableTarget(reservation.position, targetPosition)
 				if (!reachableTarget) {
 					releaseReservations()
-					return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
+					return { actions: [{ type: SettlerActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
 				}
 				targetPosition = reachableTarget
 			}
@@ -308,10 +309,10 @@ export const TransportHandler: StepHandler = {
 				targetBuilding.position,
 				targetPosition
 			])
-			const actions: WorkAction[] = [
-				{ type: WorkActionType.Move, position: sourcePosition, targetType: MoveTargetType.StorageSlot, targetId: reservation.reservationId, setState: SettlerState.MovingToBuilding },
+			const actions: SettlerAction[] = [
+				{ type: SettlerActionType.Move, position: sourcePosition, targetType: MoveTargetType.StorageSlot, targetId: reservation.reservationId, setState: SettlerState.MovingToBuilding },
 				{
-					type: WorkActionType.WithdrawStorage,
+					type: SettlerActionType.WithdrawStorage,
 					buildingInstanceId: sourceBuilding.id,
 					itemType: step.itemType,
 					quantity: step.quantity,
@@ -319,12 +320,12 @@ export const TransportHandler: StepHandler = {
 					reservationRefs: [reservation.ref],
 					setState: SettlerState.CarryingItem
 				},
-				{ type: WorkActionType.Move, position: targetPosition, targetType: step.target.type === TransportTargetType.Storage ? MoveTargetType.StorageSlot : MoveTargetType.Building, targetId: targetReservationId || targetBuilding.id, setState: SettlerState.CarryingItem },
+				{ type: SettlerActionType.Move, position: targetPosition, targetType: step.target.type === TransportTargetType.Storage ? MoveTargetType.StorageSlot : MoveTargetType.Building, targetId: targetReservationId || targetBuilding.id, setState: SettlerState.CarryingItem },
 				// Construction consumes collectedResources (pre-storage), so it uses a dedicated action.
 				step.target.type === TransportTargetType.Construction
-					? { type: WorkActionType.DeliverConstruction, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, setState: SettlerState.Working }
+					? { type: SettlerActionType.DeliverConstruction, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, setState: SettlerState.Working }
 					: {
-						type: WorkActionType.DeliverStorage,
+						type: SettlerActionType.DeliverStorage,
 						buildingInstanceId: targetBuilding.id,
 						itemType: step.itemType,
 						quantity: step.quantity,
@@ -335,7 +336,7 @@ export const TransportHandler: StepHandler = {
 			]
 			if (egressPosition) {
 				actions.push({
-					type: WorkActionType.Move,
+					type: SettlerActionType.Move,
 					position: egressPosition,
 					targetType: MoveTargetType.Spot,
 					targetId: `delivery-egress:${assignment.assignmentId}:${targetBuilding.id}`,

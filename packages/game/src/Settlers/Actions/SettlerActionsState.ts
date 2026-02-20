@@ -1,5 +1,5 @@
-import type { WorkAction } from '../Work/types'
-import { WorkActionType } from '../Work/types'
+import type { SettlerAction } from './types'
+import { SettlerActionType } from './types'
 import type { ActionQueueContext, ActionSystemSnapshot } from '../../state/types'
 import type { SettlerActionFailureReason } from '../failureReasons'
 
@@ -9,11 +9,11 @@ export interface ActionQueueCallbacks {
 }
 
 export interface ActionQueueRuntimeState extends ActionQueueCallbacks {
-	actions: WorkAction[]
+	actions: SettlerAction[]
 	index: number
 	context?: ActionQueueContext
 	inProgress?: {
-		type: WorkActionType.Wait | WorkActionType.Construct | WorkActionType.BuildRoad | WorkActionType.Consume | WorkActionType.Sleep
+		type: SettlerActionType.Wait | SettlerActionType.Construct | SettlerActionType.BuildRoad | SettlerActionType.Consume | SettlerActionType.Sleep
 		endAtMs: number
 		buildingInstanceId?: string
 		jobId?: string

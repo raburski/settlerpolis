@@ -3,7 +3,9 @@ import { SettlerState } from '../../../Population/types'
 import { RoadType } from '../../../Roads/types'
 import type { Position } from '../../../types'
 import { calculateDistance } from '../../../utils'
-import { WorkAction, WorkActionType, WorkStepType } from '../types'
+import { WorkStepType } from '../types'
+import { SettlerActionType } from '../../Actions/types'
+import type { SettlerAction } from '../../Actions/types'
 import type { StepHandler } from './types'
 import { MoveTargetType } from '../../../Movement/types'
 import { assignRecipientsToRouteSegments, buildRouteSegments } from './routeDeliveryPlanner'
@@ -567,7 +569,7 @@ export const MarketRunHandler: StepHandler = {
 
 		if (!itemType) {
 			if (allowedTypes.length === 0) {
-				return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
+				return { actions: [{ type: SettlerActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
 			}
 			itemType = allowedTypes[0]
 		}
@@ -615,10 +617,10 @@ export const MarketRunHandler: StepHandler = {
 		)
 
 		if (!startRoad && !isCarrying) {
-			return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
+			return { actions: [{ type: SettlerActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
 		}
 
-		const actions: WorkAction[] = []
+		const actions: SettlerAction[] = []
 		const reservationRefs: ReservationRef[] = []
 		const releaseReservations = () => reservationSystem.releaseMany(reservationRefs)
 
@@ -658,9 +660,9 @@ export const MarketRunHandler: StepHandler = {
 					remaining = reservedQuantity
 					const withdrawPosition = resolveWalkablePosition(collision, market.position, tileSize) ?? market.position
 					actions.push(
-						{ type: WorkActionType.Move, position: withdrawPosition, targetType: MoveTargetType.Building, targetId: market.id, setState: SettlerState.MovingToBuilding },
+						{ type: SettlerActionType.Move, position: withdrawPosition, targetType: MoveTargetType.Building, targetId: market.id, setState: SettlerState.MovingToBuilding },
 						{
-							type: WorkActionType.WithdrawStorage,
+							type: SettlerActionType.WithdrawStorage,
 							buildingInstanceId: market.id,
 							itemType: resolvedItemType,
 							quantity: reservedQuantity,
@@ -677,12 +679,12 @@ export const MarketRunHandler: StepHandler = {
 
 		if (remaining <= 0) {
 			releaseReservations()
-			return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
+			return { actions: [{ type: SettlerActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
 		}
 
 		if (startRoad) {
 			actions.push({
-				type: WorkActionType.Move,
+				type: SettlerActionType.Move,
 				position: toWorld(startRoad, tileSize),
 				targetType: MoveTargetType.Road,
 				targetId: `${startRoad.x},${startRoad.y}`,
@@ -724,7 +726,7 @@ export const MarketRunHandler: StepHandler = {
 			}
 			const endTile = bufferedPatrolTiles[bufferedPatrolTiles.length - 1]
 			actions.push({
-				type: WorkActionType.FollowPath,
+				type: SettlerActionType.FollowPath,
 				path: bufferedPatrolTiles.map(tile => toWorld(tile, tileSize)),
 				targetType: MoveTargetType.Road,
 				targetId: `${endTile.x},${endTile.y}`,
@@ -768,7 +770,7 @@ export const MarketRunHandler: StepHandler = {
 
 				reservationRefs.push(reservation.ref)
 				actions.push({
-					type: WorkActionType.DeliverStorage,
+					type: SettlerActionType.DeliverStorage,
 					buildingInstanceId: candidate.payload.building.id,
 					itemType: resolvedItemType,
 					quantity: reservation.quantity,
@@ -785,7 +787,7 @@ export const MarketRunHandler: StepHandler = {
 
 			if (deliveredOnSegment && patrolPauseMs > 0) {
 				actions.push({
-					type: WorkActionType.Wait,
+					type: SettlerActionType.Wait,
 					durationMs: patrolPauseMs,
 					setState: SettlerState.Moving
 				})
@@ -797,7 +799,7 @@ export const MarketRunHandler: StepHandler = {
 		if (calculateDistance(returnPosition, market.position) > tileSize) {
 			const approachPosition = resolveWalkablePosition(collision, market.position, tileSize) ?? market.position
 			actions.push({
-				type: WorkActionType.Move,
+				type: SettlerActionType.Move,
 				position: approachPosition,
 				targetType: MoveTargetType.Building,
 				targetId: market.id,
@@ -818,9 +820,9 @@ export const MarketRunHandler: StepHandler = {
 				reservationRefs.push(returnReservation.ref)
 				const deliverPosition = resolveWalkablePosition(collision, market.position, tileSize) ?? market.position
 				actions.push(
-					{ type: WorkActionType.Move, position: deliverPosition, targetType: MoveTargetType.Building, targetId: market.id, setState: SettlerState.CarryingItem },
+					{ type: SettlerActionType.Move, position: deliverPosition, targetType: MoveTargetType.Building, targetId: market.id, setState: SettlerState.CarryingItem },
 					{
-						type: WorkActionType.DeliverStorage,
+						type: SettlerActionType.DeliverStorage,
 						buildingInstanceId: market.id,
 						itemType: resolvedItemType,
 						quantity: remaining,
@@ -831,7 +833,7 @@ export const MarketRunHandler: StepHandler = {
 				)
 			} else {
 				actions.push({
-					type: WorkActionType.Move,
+					type: SettlerActionType.Move,
 					position: market.position,
 					targetType: MoveTargetType.Building,
 					targetId: market.id,
@@ -842,7 +844,7 @@ export const MarketRunHandler: StepHandler = {
 
 		if (actions.length === 0) {
 			releaseReservations()
-			return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
+			return { actions: [{ type: SettlerActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
 		}
 
 		return {

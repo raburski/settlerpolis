@@ -9,10 +9,9 @@ import type { NeedPlanner } from './NeedPlanner'
 import type { NeedPlanFailedEventData, NeedPlanCreatedEventData, NeedInterruptEventData, NeedSatisfiedEventData } from './types'
 import type { NeedInterruptSnapshot } from '../../state/types'
 import { ActionQueueContextKind, type ActionQueueContext } from '../../state/types'
-import { SettlerActionsEvents } from '../Actions/events'
-import type { ActionQueueCompletedEventData, ActionQueueFailedEventData } from '../Actions/events'
-import type { WorkAction } from '../Work/types'
+import type { SettlerAction } from '../Actions/types'
 import {
+	type SettlerActionFailureReason,
 	type NeedPlanFailureReason,
 	NeedPlanningFailureReason
 } from '../failureReasons'
@@ -34,7 +33,7 @@ const createCooldowns = (): Record<NeedType, number> => ({
 export interface NeedsBehaviourApi {
 	enqueueNeedPlan(
 		settlerId: string,
-		actions: WorkAction[],
+		actions: SettlerAction[],
 		context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>
 	): boolean
 	beginNeedInterrupt(settlerId: string, needType: NeedType): void
@@ -64,29 +63,26 @@ export class NeedInterruptController {
 		this.event.on(NeedsEvents.SS.NeedSatisfied, (data: NeedSatisfiedEventData) => {
 			this.handleNeedSatisfied(data)
 		})
-		this.event.on<ActionQueueCompletedEventData>(SettlerActionsEvents.SS.QueueCompleted, this.handleActionQueueCompleted)
-		this.event.on<ActionQueueFailedEventData>(SettlerActionsEvents.SS.QueueFailed, this.handleActionQueueFailed)
 	}
 
-	private readonly handleActionQueueCompleted = (data: ActionQueueCompletedEventData): void => {
-		const context = data.context
-		if (!context || context.kind !== ActionQueueContextKind.Need) {
-			return
-		}
+	public handleNeedQueueCompleted(
+		settlerId: string,
+		context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>
+	): void {
 		if (typeof context.satisfyValue === 'number') {
-			this.needs.resolveNeed(data.settlerId, context.needType, context.satisfyValue)
+			this.needs.resolveNeed(settlerId, context.needType, context.satisfyValue)
 		} else {
-			this.needs.satisfyNeed(data.settlerId, context.needType)
+			this.needs.satisfyNeed(settlerId, context.needType)
 		}
 	}
 
-	private readonly handleActionQueueFailed = (data: ActionQueueFailedEventData): void => {
-		const context = data.context
-		if (!context || context.kind !== ActionQueueContextKind.Need) {
-			return
-		}
-		this.emitPlanFailed(data.settlerId, context.needType, data.reason)
-		this.finishInterrupt(data.settlerId, context.needType, false)
+	public handleNeedQueueFailed(
+		settlerId: string,
+		context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>,
+		reason: SettlerActionFailureReason
+	): void {
+		this.emitPlanFailed(settlerId, context.needType, reason)
+		this.finishInterrupt(settlerId, context.needType, false)
 	}
 
 	public update(data: SimulationTickData): void {

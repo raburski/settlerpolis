@@ -10,7 +10,8 @@ import type { MovementEntity } from '../Movement/types'
 import type { NeedsState } from '../Settlers/Needs/NeedsState'
 import type { NeedType, NeedPriority } from '../Settlers/Needs/NeedTypes'
 import type { NeedLevel } from '../Settlers/Needs/NeedTypes'
-import type { WorkAssignment, LogisticsRequest, WorkWaitReason, WorkAction, WorkStep } from '../Settlers/Work/types'
+import type { WorkAssignment, LogisticsRequest, WorkWaitReason, WorkStep } from '../Settlers/Work/types'
+import type { SettlerAction } from '../Settlers/Actions/types'
 import type { ProductionStatus, ProductionPlan } from '../Buildings/types'
 import type { NPC, NPCRoutineStep } from '../NPC/types'
 import type { PlayerQuestState, QuestProgress } from '../Quest/types'
@@ -198,7 +199,7 @@ export interface ActionSystemSnapshot {
 
 export interface ActionSystemQueueSnapshot {
 	settlerId: string
-	actions: WorkAction[]
+	actions: SettlerAction[]
 	index: number
 	context?: ActionQueueContext
 }

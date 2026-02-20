@@ -2,8 +2,8 @@ import { v4 as uuidv4 } from 'uuid'
 import type { BuildingManager } from '../../../Buildings'
 import type { ReservationSystem, AmenitySlotReservationResult } from '../../../Reservation'
 import { SettlerState } from '../../../Population/types'
-import type { WorkAction } from '../../Work/types'
-import { WorkActionType } from '../../Work/types'
+import type { SettlerAction } from '../../Actions/types'
+import { SettlerActionType } from '../../Actions/types'
 import { MoveTargetType } from '../../../Movement/types'
 import type { FoodSource } from '../policies/FoodSourcePolicy'
 import { NeedType } from '../NeedTypes'
@@ -19,7 +19,7 @@ export interface EatPlanDeps {
 }
 
 export const buildEatPlan = (settlerId: string, source: FoodSource, deps: EatPlanDeps): NeedPlanResult => {
-	const actions: WorkAction[] = []
+	const actions: SettlerAction[] = []
 	let satisfyValue: number | undefined
 
 	if (source.type === 'storage') {
@@ -64,14 +64,14 @@ export const buildEatPlan = (settlerId: string, source: FoodSource, deps: EatPla
 
 		actions.push(
 			{
-				type: WorkActionType.Move,
+				type: SettlerActionType.Move,
 				position: reservation.position,
 				targetType: MoveTargetType.StorageSlot,
 				targetId: reservation.reservationId,
 				setState: SettlerState.MovingToBuilding
 			},
 			{
-				type: WorkActionType.WithdrawStorage,
+				type: SettlerActionType.WithdrawStorage,
 				buildingInstanceId: building.id,
 				itemType: source.itemType,
 				quantity: 1,
@@ -83,7 +83,7 @@ export const buildEatPlan = (settlerId: string, source: FoodSource, deps: EatPla
 
 		if (amenityReservation) {
 			actions.push({
-				type: WorkActionType.Move,
+				type: SettlerActionType.Move,
 				position: amenityReservation.position,
 				targetType: MoveTargetType.AmenitySlot,
 				targetId: amenityReservation.reservationId,
@@ -103,9 +103,9 @@ export const buildEatPlan = (settlerId: string, source: FoodSource, deps: EatPla
 			return { reason: NeedPlanningFailureReason.FoodReserved }
 		}
 		actions.push(
-			{ type: WorkActionType.Move, position: source.position, targetType: MoveTargetType.Item, targetId: source.itemId, setState: SettlerState.MovingToItem },
+			{ type: SettlerActionType.Move, position: source.position, targetType: MoveTargetType.Item, targetId: source.itemId, setState: SettlerState.MovingToItem },
 			{
-				type: WorkActionType.PickupLoot,
+				type: SettlerActionType.PickupLoot,
 				itemId: source.itemId,
 				reservationRefs: [lootReservation.ref],
 				setState: SettlerState.CarryingItem
@@ -114,7 +114,7 @@ export const buildEatPlan = (settlerId: string, source: FoodSource, deps: EatPla
 	}
 
 	actions.push({
-		type: WorkActionType.Consume,
+		type: SettlerActionType.Consume,
 		itemType: source.itemType,
 		quantity: source.type === 'carried' ? source.quantity : 1,
 		durationMs: EAT_DURATION_MS,

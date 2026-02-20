@@ -12,8 +12,10 @@ import { NeedPlanner } from './NeedPlanner'
 import { NeedInterruptController } from './NeedInterruptController'
 import type { NeedsBehaviourApi } from './NeedInterruptController'
 import type { NeedsSnapshot } from '../../state/types'
+import { ActionQueueContextKind, type ActionQueueContext } from '../../state/types'
 import { NeedsManagerState } from './NeedsManagerState'
 import type { SimulationTickData } from '../../Simulation/types'
+import type { SettlerActionFailureReason } from '../failureReasons'
 
 export interface NeedsDeps {
 	event: EventManager
@@ -45,6 +47,21 @@ export class SettlerNeedsManager extends BaseManager<NeedsDeps> {
 	public update(data: SimulationTickData): void {
 		this.system.update(data)
 		this.interrupts.update(data)
+	}
+
+	public handleNeedQueueCompleted(
+		settlerId: string,
+		context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>
+	): void {
+		this.interrupts.handleNeedQueueCompleted(settlerId, context)
+	}
+
+	public handleNeedQueueFailed(
+		settlerId: string,
+		context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>,
+		reason: SettlerActionFailureReason
+	): void {
+		this.interrupts.handleNeedQueueFailed(settlerId, context, reason)
 	}
 
 	serialize(): NeedsSnapshot {

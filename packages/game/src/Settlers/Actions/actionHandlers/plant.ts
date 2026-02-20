@@ -1,11 +1,11 @@
-import { WorkActionType } from '../../Work/types'
+import { SettlerActionType } from '../types'
 import { SettlerActionFailureReason } from '../../failureReasons'
 import type { ActionHandler } from './types'
 
 export const PlantActionHandler: ActionHandler = {
-	type: WorkActionType.Plant,
+	type: SettlerActionType.Plant,
 	start: ({ action, managers, complete, fail }) => {
-		if (action.type !== WorkActionType.Plant) {
+		if (action.type !== SettlerActionType.Plant) {
 			return
 		}
 
