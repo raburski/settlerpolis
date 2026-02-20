@@ -1,9 +1,8 @@
 import { SettlerState } from '../../../Population/types'
 import { WorkActionType, WorkStepType } from '../types'
 import type { StepHandler, StepHandlerResult } from './types'
-import { ReservationBag } from '../reservations'
 import { MoveTargetType } from '../../../Movement/types'
-import { ReservationKind } from '../../../Reservation'
+import { ReservationKind, type ReservationRef } from '../../../Reservation'
 
 export const FishHandler: StepHandler = {
 	type: WorkStepType.Fish,
@@ -12,7 +11,8 @@ export const FishHandler: StepHandler = {
 			return { actions: [] }
 		}
 
-		const reservations = new ReservationBag()
+		const reservationRefs: ReservationRef[] = []
+		const releaseReservations = () => reservationSystem.releaseMany(reservationRefs)
 		const nodeReservation = reservationSystem.reserve({
 			kind: ReservationKind.Node,
 			nodeId: step.resourceNodeId,
@@ -21,17 +21,17 @@ export const FishHandler: StepHandler = {
 		if (!nodeReservation || nodeReservation.kind !== ReservationKind.Node) {
 			return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
 		}
-		reservations.add(() => reservationSystem.release(nodeReservation.ref))
+		reservationRefs.push(nodeReservation.ref)
 
 		const building = managers.buildings.getBuildingInstance(step.buildingInstanceId)
 		if (!building) {
-			reservations.releaseAll()
+			releaseReservations()
 			return { actions: [] }
 		}
 
 		const node = managers.resourceNodes.getNode(step.resourceNodeId)
 		if (!node) {
-			reservations.releaseAll()
+			releaseReservations()
 			return { actions: [] }
 		}
 
@@ -44,10 +44,10 @@ export const FishHandler: StepHandler = {
 			ownerId: assignment.assignmentId
 		})
 		if (!storageReservation || storageReservation.kind !== ReservationKind.Storage) {
-			reservations.releaseAll()
+			releaseReservations()
 			return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
 		}
-		reservations.add(() => reservationSystem.release(storageReservation.ref))
+		reservationRefs.push(storageReservation.ref)
 
 		return {
 			actions: [

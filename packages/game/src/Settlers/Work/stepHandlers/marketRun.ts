@@ -5,10 +5,9 @@ import type { Position } from '../../../types'
 import { calculateDistance } from '../../../utils'
 import { WorkAction, WorkActionType, WorkStepType } from '../types'
 import type { StepHandler } from './types'
-import { ReservationBag } from '../reservations'
 import { MoveTargetType } from '../../../Movement/types'
 import { assignRecipientsToRouteSegments, buildRouteSegments } from './routeDeliveryPlanner'
-import { ReservationKind } from '../../../Reservation'
+import { ReservationKind, type ReservationRef } from '../../../Reservation'
 
 type TilePosition = { x: number, y: number }
 
@@ -620,7 +619,8 @@ export const MarketRunHandler: StepHandler = {
 		}
 
 		const actions: WorkAction[] = []
-		const reservations = new ReservationBag()
+		const reservationRefs: ReservationRef[] = []
+		const releaseReservations = () => reservationSystem.releaseMany(reservationRefs)
 
 		let remaining = carriedQuantity
 		if (!isCarrying) {
@@ -654,7 +654,7 @@ export const MarketRunHandler: StepHandler = {
 					const reservationId = reservation.reservationId
 					const reservedQuantity = reservation.quantity
 					const reservationRef = reservation.ref
-					reservations.add(() => reservationSystem.release(reservationRef))
+					reservationRefs.push(reservationRef)
 					remaining = reservedQuantity
 					const withdrawPosition = resolveWalkablePosition(collision, market.position, tileSize) ?? market.position
 					actions.push(
@@ -676,6 +676,7 @@ export const MarketRunHandler: StepHandler = {
 		}
 
 		if (remaining <= 0) {
+			releaseReservations()
 			return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
 		}
 
@@ -765,7 +766,7 @@ export const MarketRunHandler: StepHandler = {
 					continue
 				}
 
-				reservations.add(() => reservationSystem.release(reservation.ref))
+				reservationRefs.push(reservation.ref)
 				actions.push({
 					type: WorkActionType.DeliverStorage,
 					buildingInstanceId: candidate.payload.building.id,
@@ -814,7 +815,7 @@ export const MarketRunHandler: StepHandler = {
 				ownerId: assignment.assignmentId
 			})
 			if (returnReservation && returnReservation.kind === ReservationKind.Storage) {
-				reservations.add(() => reservationSystem.release(returnReservation.ref))
+				reservationRefs.push(returnReservation.ref)
 				const deliverPosition = resolveWalkablePosition(collision, market.position, tileSize) ?? market.position
 				actions.push(
 					{ type: WorkActionType.Move, position: deliverPosition, targetType: MoveTargetType.Building, targetId: market.id, setState: SettlerState.CarryingItem },
@@ -840,6 +841,7 @@ export const MarketRunHandler: StepHandler = {
 		}
 
 		if (actions.length === 0) {
+			releaseReservations()
 			return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
 		}
 

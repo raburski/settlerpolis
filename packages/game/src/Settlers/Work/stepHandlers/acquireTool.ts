@@ -2,9 +2,8 @@ import { SettlerState } from '../../../Population/types'
 import { WorkActionType, WorkStepType } from '../types'
 import type { WorkAction } from '../types'
 import type { StepHandler, StepHandlerResult } from './types'
-import { ReservationBag } from '../reservations'
 import { MoveTargetType } from '../../../Movement/types'
-import { ReservationKind } from '../../../Reservation'
+import { ReservationKind, type ReservationRef } from '../../../Reservation'
 
 export const AcquireToolHandler: StepHandler = {
 	type: WorkStepType.AcquireTool,
@@ -18,7 +17,8 @@ export const AcquireToolHandler: StepHandler = {
 			return { actions: [] }
 		}
 
-		const reservations = new ReservationBag()
+		const reservationRefs: ReservationRef[] = []
+		const releaseReservations = () => reservationSystem.releaseMany(reservationRefs)
 		const toolItemType = managers.population.getToolItemType(step.profession)
 		if (settler.profession === step.profession) {
 			if (!toolItemType || settler.stateContext.equippedItemType === toolItemType) {
@@ -60,7 +60,7 @@ export const AcquireToolHandler: StepHandler = {
 			}
 			toolItemId = reservedTool.itemId
 			toolPosition = reservedTool.position
-			reservations.add(() => reservationSystem.release(reservedTool.ref))
+			reservationRefs.push(reservedTool.ref)
 		}
 
 		const roadData = managers.roads.getRoadData(settler.mapId) || undefined
@@ -69,7 +69,7 @@ export const AcquireToolHandler: StepHandler = {
 			allowDiagonal: true
 		})
 		if (!path || path.length === 0) {
-			reservations.releaseAll()
+			releaseReservations()
 			return {
 				actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }]
 			}

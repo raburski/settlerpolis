@@ -2,9 +2,8 @@ import { SettlerState } from '../../../Population/types'
 import { WorkActionType, WorkStepType } from '../types'
 import type { WorkAction } from '../types'
 import type { StepHandler, StepHandlerResult } from './types'
-import { ReservationBag } from '../reservations'
 import { MoveTargetType } from '../../../Movement/types'
-import { ReservationKind } from '../../../Reservation'
+import { ReservationKind, type ReservationRef } from '../../../Reservation'
 
 export const ProduceHandler: StepHandler = {
 	type: WorkStepType.Produce,
@@ -18,7 +17,8 @@ export const ProduceHandler: StepHandler = {
 			return { actions: [] }
 		}
 
-		const reservations = new ReservationBag()
+		const reservationRefs: ReservationRef[] = []
+		const releaseReservations = () => reservationSystem.releaseMany(reservationRefs)
 
 		const inputReservations = step.recipe.inputs.map(input => {
 			const reservation = reservationSystem.reserve({
@@ -33,7 +33,7 @@ export const ProduceHandler: StepHandler = {
 			if (!reservation || reservation.kind !== ReservationKind.Storage) {
 				return null
 			}
-			reservations.add(() => reservationSystem.release(reservation.ref))
+			reservationRefs.push(reservation.ref)
 			return {
 				itemType: input.itemType,
 				quantity: input.quantity,
@@ -44,7 +44,7 @@ export const ProduceHandler: StepHandler = {
 		})
 
 		if (inputReservations.some(res => !res)) {
-			reservations.releaseAll()
+			releaseReservations()
 			return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
 		}
 
@@ -60,7 +60,7 @@ export const ProduceHandler: StepHandler = {
 			if (!reservation || reservation.kind !== ReservationKind.Storage) {
 				return null
 			}
-			reservations.add(() => reservationSystem.release(reservation.ref))
+			reservationRefs.push(reservation.ref)
 			return {
 				itemType: output.itemType,
 				quantity: output.quantity,
@@ -71,7 +71,7 @@ export const ProduceHandler: StepHandler = {
 		})
 
 		if (outputReservations.some(res => !res)) {
-			reservations.releaseAll()
+			releaseReservations()
 			return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
 		}
 
