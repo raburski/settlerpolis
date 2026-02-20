@@ -6,6 +6,7 @@ import { ReservationBag } from '../reservations'
 import { MoveTargetType } from '../../../Movement/types'
 import { calculateDistance } from '../../../utils'
 import type { WorkAction } from '../types'
+import { ReservationKind } from '../../../Reservation'
 
 export const TransportHandler: StepHandler = {
 	type: WorkStepType.Transport,
@@ -141,11 +142,15 @@ export const TransportHandler: StepHandler = {
 
 		if (step.source.type === TransportSourceType.Ground) {
 			const source = step.source as Extract<TransportSource, { type: TransportSourceType.Ground }>
-			const reserved = reservationSystem.reserveLootItem(source.itemId, assignment.assignmentId)
-			if (!reserved) {
+			const sourceReservation = reservationSystem.reserve({
+				kind: ReservationKind.Loot,
+				itemId: source.itemId,
+				ownerId: assignment.assignmentId
+			})
+			if (!sourceReservation || sourceReservation.kind !== ReservationKind.Loot) {
 				return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
 			}
-			reservations.add(() => reservationSystem.releaseLootReservation(source.itemId, assignment.assignmentId))
+			reservations.add(() => reservationSystem.release(sourceReservation.ref))
 
 			if (!canReach(settler.position, source.position)) {
 				reservations.releaseAll()
@@ -153,6 +158,7 @@ export const TransportHandler: StepHandler = {
 			}
 
 			let targetReservationId: string | null = null
+			let targetReservationRef: { kind: ReservationKind.Storage, reservationId: string } | null = null
 			let targetPosition = targetBuilding.position
 			const precheckTarget = resolveReachableTarget(source.position, targetPosition)
 			if (!precheckTarget) {
@@ -161,14 +167,22 @@ export const TransportHandler: StepHandler = {
 			}
 			targetPosition = precheckTarget
 			if (step.target.type === TransportTargetType.Storage) {
-				const reservation = reservationSystem.reserveStorageIncoming(step.target.buildingInstanceId, step.itemType, step.quantity, assignment.assignmentId)
-				if (!reservation) {
+				const reservation = reservationSystem.reserve({
+					kind: ReservationKind.Storage,
+					direction: 'incoming',
+					buildingInstanceId: step.target.buildingInstanceId,
+					itemType: step.itemType,
+					quantity: step.quantity,
+					ownerId: assignment.assignmentId
+				})
+				if (!reservation || reservation.kind !== ReservationKind.Storage) {
 					reservations.releaseAll()
 					return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
 				}
 				targetReservationId = reservation.reservationId
+				targetReservationRef = reservation.ref
 				targetPosition = reservation.position
-				reservations.add(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
+				reservations.add(() => reservationSystem.release(reservation.ref))
 
 				const reachableTarget = resolveReachableTarget(source.position, targetPosition)
 				if (!reachableTarget) {
@@ -183,12 +197,25 @@ export const TransportHandler: StepHandler = {
 			])
 			const actions: WorkAction[] = [
 				{ type: WorkActionType.Move, position: source.position, targetType: MoveTargetType.Item, targetId: source.itemId, setState: SettlerState.MovingToItem },
-				{ type: WorkActionType.PickupLoot, itemId: source.itemId, setState: SettlerState.CarryingItem },
+				{
+					type: WorkActionType.PickupLoot,
+					itemId: source.itemId,
+					reservationRefs: [sourceReservation.ref],
+					setState: SettlerState.CarryingItem
+				},
 				{ type: WorkActionType.Move, position: targetPosition, targetType: step.target.type === TransportTargetType.Storage ? MoveTargetType.StorageSlot : MoveTargetType.Building, targetId: targetReservationId || targetBuilding.id, setState: SettlerState.CarryingItem },
 				// Construction consumes collectedResources (pre-storage), so it uses a dedicated action.
 				step.target.type === TransportTargetType.Construction
 					? { type: WorkActionType.DeliverConstruction, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, setState: SettlerState.Working }
-					: { type: WorkActionType.DeliverStorage, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, reservationId: targetReservationId || undefined, setState: SettlerState.Working }
+					: {
+						type: WorkActionType.DeliverStorage,
+						buildingInstanceId: targetBuilding.id,
+						itemType: step.itemType,
+						quantity: step.quantity,
+						reservationId: targetReservationId || undefined,
+						reservationRefs: targetReservationRef ? [targetReservationRef] : undefined,
+						setState: SettlerState.Working
+					}
 			]
 			if (egressPosition) {
 				actions.push({
@@ -201,8 +228,7 @@ export const TransportHandler: StepHandler = {
 			}
 
 			return {
-				actions,
-				releaseReservations: () => reservations.releaseAll()
+				actions
 			}
 		}
 
@@ -223,11 +249,18 @@ export const TransportHandler: StepHandler = {
 				return { actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }] }
 			}
 
-			const reservation = reservationSystem.reserveStorageOutgoing(step.source.buildingInstanceId, step.itemType, step.quantity, assignment.assignmentId)
-			if (!reservation) {
+			const reservation = reservationSystem.reserve({
+				kind: ReservationKind.Storage,
+				direction: 'outgoing',
+				buildingInstanceId: step.source.buildingInstanceId,
+				itemType: step.itemType,
+				quantity: step.quantity,
+				ownerId: assignment.assignmentId
+			})
+			if (!reservation || reservation.kind !== ReservationKind.Storage) {
 				return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
 			}
-			reservations.add(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
+			reservations.add(() => reservationSystem.release(reservation.ref))
 
 			let sourcePosition = reservation.position
 			const reachableSourceSlot = resolveReachableTarget(settler.position, sourcePosition)
@@ -238,6 +271,7 @@ export const TransportHandler: StepHandler = {
 			sourcePosition = reachableSourceSlot
 
 			let targetReservationId: string | null = null
+			let targetReservationRef: { kind: ReservationKind.Storage, reservationId: string } | null = null
 			let targetPosition = targetBuilding.position
 			const precheckSlotTarget = resolveReachableTarget(reservation.position, targetPosition)
 			if (!precheckSlotTarget) {
@@ -246,14 +280,22 @@ export const TransportHandler: StepHandler = {
 			}
 			targetPosition = precheckSlotTarget
 			if (step.target.type === TransportTargetType.Storage) {
-				const targetReservation = reservationSystem.reserveStorageIncoming(step.target.buildingInstanceId, step.itemType, step.quantity, assignment.assignmentId)
-				if (!targetReservation) {
+				const targetReservation = reservationSystem.reserve({
+					kind: ReservationKind.Storage,
+					direction: 'incoming',
+					buildingInstanceId: step.target.buildingInstanceId,
+					itemType: step.itemType,
+					quantity: step.quantity,
+					ownerId: assignment.assignmentId
+				})
+				if (!targetReservation || targetReservation.kind !== ReservationKind.Storage) {
 					reservations.releaseAll()
 					return { actions: [{ type: WorkActionType.Wait, durationMs: 1000, setState: SettlerState.WaitingForWork }] }
 				}
 				targetReservationId = targetReservation.reservationId
+				targetReservationRef = targetReservation.ref
 				targetPosition = targetReservation.position
-				reservations.add(() => reservationSystem.releaseStorageReservation(targetReservation.reservationId))
+				reservations.add(() => reservationSystem.release(targetReservation.ref))
 
 				const reachableTarget = resolveReachableTarget(reservation.position, targetPosition)
 				if (!reachableTarget) {
@@ -268,12 +310,28 @@ export const TransportHandler: StepHandler = {
 			])
 			const actions: WorkAction[] = [
 				{ type: WorkActionType.Move, position: sourcePosition, targetType: MoveTargetType.StorageSlot, targetId: reservation.reservationId, setState: SettlerState.MovingToBuilding },
-				{ type: WorkActionType.WithdrawStorage, buildingInstanceId: sourceBuilding.id, itemType: step.itemType, quantity: step.quantity, reservationId: reservation.reservationId, setState: SettlerState.CarryingItem },
+				{
+					type: WorkActionType.WithdrawStorage,
+					buildingInstanceId: sourceBuilding.id,
+					itemType: step.itemType,
+					quantity: step.quantity,
+					reservationId: reservation.reservationId,
+					reservationRefs: [reservation.ref],
+					setState: SettlerState.CarryingItem
+				},
 				{ type: WorkActionType.Move, position: targetPosition, targetType: step.target.type === TransportTargetType.Storage ? MoveTargetType.StorageSlot : MoveTargetType.Building, targetId: targetReservationId || targetBuilding.id, setState: SettlerState.CarryingItem },
 				// Construction consumes collectedResources (pre-storage), so it uses a dedicated action.
 				step.target.type === TransportTargetType.Construction
 					? { type: WorkActionType.DeliverConstruction, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, setState: SettlerState.Working }
-					: { type: WorkActionType.DeliverStorage, buildingInstanceId: targetBuilding.id, itemType: step.itemType, quantity: step.quantity, reservationId: targetReservationId || undefined, setState: SettlerState.Working }
+					: {
+						type: WorkActionType.DeliverStorage,
+						buildingInstanceId: targetBuilding.id,
+						itemType: step.itemType,
+						quantity: step.quantity,
+						reservationId: targetReservationId || undefined,
+						reservationRefs: targetReservationRef ? [targetReservationRef] : undefined,
+						setState: SettlerState.Working
+					}
 			]
 			if (egressPosition) {
 				actions.push({
@@ -286,8 +344,7 @@ export const TransportHandler: StepHandler = {
 			}
 
 			return {
-				actions,
-				releaseReservations: () => reservations.releaseAll()
+				actions
 			}
 		}
 

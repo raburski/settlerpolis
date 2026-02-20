@@ -43,8 +43,7 @@ export class HomeRelocationDispatchRule implements BehaviourDispatchRule {
 
 		context.managers.population.setSettlerWaitReason(context.settlerId, undefined)
 		const queueContext: ActionQueueContext = {
-			kind: ActionQueueContextKind.Work,
-			reservationOwnerId: context.assignment.assignmentId
+			kind: ActionQueueContextKind.Work
 		}
 		context.actionsManager.enqueue(
 			context.settlerId,

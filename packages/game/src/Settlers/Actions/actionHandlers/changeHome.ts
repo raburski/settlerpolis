@@ -1,5 +1,6 @@
 import { WorkActionType } from '../../Work/types'
 import type { ActionHandler } from './types'
+import { ReservationKind } from '../../../Reservation'
 
 export const ChangeHomeActionHandler: ActionHandler = {
 	type: WorkActionType.ChangeHome,
@@ -8,7 +9,11 @@ export const ChangeHomeActionHandler: ActionHandler = {
 			return
 		}
 
-		const success = managers.reservations.commitHouseReservation(action.reservationId, action.houseId)
+		const success = managers.reservations.commit({
+			kind: ReservationKind.House,
+			reservationId: action.reservationId,
+			expectedHouseId: action.houseId
+		})
 		if (!success) {
 			fail('home_move_failed')
 			return

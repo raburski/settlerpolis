@@ -274,7 +274,7 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 		}
 
 		this.managers.work.onStepIssued(settlerId, context.assignment, context.step)
-		const { actions, releaseReservations } = this.buildActionsForStep(settlerId, context.assignment, context.step)
+		const actions = this.buildActionsForStep(settlerId, context.assignment, context.step)
 
 		if (!actions || actions.length === 0) {
 			if (context.step.type === WorkStepType.Wait) {
@@ -283,14 +283,12 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 				this.managers.population.setSettlerWaitReason(settlerId, WorkWaitReason.NoWork)
 			}
 			this.managers.population.setSettlerState(settlerId, SettlerState.WaitingForWork)
-			releaseReservations?.()
 			return
 		}
 
 		const queueContext: ActionQueueContext = {
 			kind: ActionQueueContextKind.Work,
-			step: context.step,
-			reservationOwnerId: context.assignment.assignmentId
+			step: context.step
 		}
 		this.managers.actions.enqueue(settlerId, actions, undefined, undefined, queueContext)
 	}
@@ -306,10 +304,9 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 
 	buildWorkQueueCallbacks(
 		settlerId: SettlerId,
-		step?: WorkStep,
-		releaseReservations?: () => void
+		step?: WorkStep
 	): { onComplete: () => void, onFail: (reason: string) => void } {
-		return this.stepLifecycle.buildCallbacks(settlerId, step, releaseReservations)
+		return this.stepLifecycle.buildCallbacks(settlerId, step)
 	}
 
 	clearSettlerState(settlerId: SettlerId): void {
@@ -342,10 +339,10 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 		settlerId: SettlerId,
 		assignment: WorkAssignment,
 		step: WorkStep
-	): { actions: WorkAction[], releaseReservations?: () => void } {
+	): WorkAction[] {
 		const handler = StepHandlers[step.type]
 		if (!handler) {
-			return { actions: [] }
+			return []
 		}
 		return handler.build({
 			settlerId,
@@ -354,7 +351,7 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 			managers: this.managers,
 			reservationSystem: this.managers.reservations,
 			simulationTimeMs: this.managers.work.getNowMs()
-		})
+		}).actions
 	}
 
 	private findYieldSidePosition(

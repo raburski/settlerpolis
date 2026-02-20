@@ -8,6 +8,7 @@ import { MoveTargetType } from '../../../Movement/types'
 import type { FoodSource } from '../policies/FoodSourcePolicy'
 import { NeedType } from '../NeedTypes'
 import type { NeedPlanResult } from '../types'
+import { ReservationKind } from '../../../Reservation'
 
 const EAT_DURATION_MS = 2500
 
@@ -18,7 +19,6 @@ export interface EatPlanDeps {
 
 export const buildEatPlan = (settlerId: string, source: FoodSource, deps: EatPlanDeps): NeedPlanResult => {
 	const actions: WorkAction[] = []
-	const releaseFns: Array<() => void> = []
 	let satisfyValue: number | undefined
 
 	if (source.type === 'storage') {
@@ -30,25 +30,54 @@ export const buildEatPlan = (settlerId: string, source: FoodSource, deps: EatPla
 		if (typeof buildingDef?.amenityNeeds?.hunger === 'number') {
 			satisfyValue = buildingDef.amenityNeeds.hunger
 		}
-		const reservation = deps.reservations.reserveStorageOutgoingInternal(building.id, source.itemType, 1, settlerId)
-		if (!reservation) {
+		const reservation = deps.reservations.reserve({
+			kind: ReservationKind.Storage,
+			direction: 'outgoing',
+			buildingInstanceId: building.id,
+			itemType: source.itemType,
+			quantity: 1,
+			ownerId: settlerId,
+			allowInternal: true
+		})
+		if (!reservation || reservation.kind !== ReservationKind.Storage) {
 			return { reason: 'food_unavailable' }
 		}
-		releaseFns.push(() => deps.reservations.releaseStorageReservation(reservation.reservationId))
 
 		let amenityReservation: AmenitySlotReservationResult | null = null
 		if (buildingDef?.amenitySlots && buildingDef.amenitySlots.count > 0) {
-			amenityReservation = deps.reservations.reserveAmenitySlot(building.id, settlerId)
-			if (!amenityReservation) {
-				releaseFns.forEach(fn => fn())
+			const amenity = deps.reservations.reserve({
+				kind: ReservationKind.Amenity,
+				buildingInstanceId: building.id,
+				settlerId
+			})
+			if (!amenity || amenity.kind !== ReservationKind.Amenity) {
+				deps.reservations.release(reservation.ref)
 				return { reason: 'amenity_full' }
 			}
-			releaseFns.push(() => deps.reservations.releaseAmenitySlot(amenityReservation!.reservationId))
+			amenityReservation = {
+				reservationId: amenity.reservationId,
+				slotIndex: amenity.slotIndex,
+				position: amenity.position
+			}
 		}
 
 		actions.push(
-			{ type: WorkActionType.Move, position: reservation.position, targetType: MoveTargetType.StorageSlot, targetId: reservation.reservationId, setState: SettlerState.MovingToBuilding },
-			{ type: WorkActionType.WithdrawStorage, buildingInstanceId: building.id, itemType: source.itemType, quantity: 1, reservationId: reservation.reservationId, setState: SettlerState.CarryingItem }
+			{
+				type: WorkActionType.Move,
+				position: reservation.position,
+				targetType: MoveTargetType.StorageSlot,
+				targetId: reservation.reservationId,
+				setState: SettlerState.MovingToBuilding
+			},
+			{
+				type: WorkActionType.WithdrawStorage,
+				buildingInstanceId: building.id,
+				itemType: source.itemType,
+				quantity: 1,
+				reservationId: reservation.reservationId,
+				reservationRefs: [reservation.ref],
+				setState: SettlerState.CarryingItem
+			}
 		)
 
 		if (amenityReservation) {
@@ -57,20 +86,29 @@ export const buildEatPlan = (settlerId: string, source: FoodSource, deps: EatPla
 				position: amenityReservation.position,
 				targetType: MoveTargetType.AmenitySlot,
 				targetId: amenityReservation.reservationId,
+				reservationRefs: [{ kind: ReservationKind.Amenity, reservationId: amenityReservation.reservationId }],
 				setState: SettlerState.CarryingItem
 			})
 		}
 	}
 
 	if (source.type === 'ground') {
-		const reserved = deps.reservations.reserveLootItem(source.itemId, settlerId)
-		if (!reserved) {
+		const lootReservation = deps.reservations.reserve({
+			kind: ReservationKind.Loot,
+			itemId: source.itemId,
+			ownerId: settlerId
+		})
+		if (!lootReservation || lootReservation.kind !== ReservationKind.Loot) {
 			return { reason: 'food_reserved' }
 		}
-		releaseFns.push(() => deps.reservations.releaseLootReservation(source.itemId, settlerId))
 		actions.push(
 			{ type: WorkActionType.Move, position: source.position, targetType: MoveTargetType.Item, targetId: source.itemId, setState: SettlerState.MovingToItem },
-			{ type: WorkActionType.PickupLoot, itemId: source.itemId, setState: SettlerState.CarryingItem }
+			{
+				type: WorkActionType.PickupLoot,
+				itemId: source.itemId,
+				reservationRefs: [lootReservation.ref],
+				setState: SettlerState.CarryingItem
+			}
 		)
 	}
 
@@ -87,8 +125,7 @@ export const buildEatPlan = (settlerId: string, source: FoodSource, deps: EatPla
 			id: uuidv4(),
 			needType: NeedType.Hunger,
 			actions,
-			satisfyValue,
-			releaseReservations: () => releaseFns.forEach(fn => fn())
+			satisfyValue
 		}
 	}
 }

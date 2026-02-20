@@ -4,6 +4,7 @@ import type { WorkAction } from '../types'
 import type { StepHandler, StepHandlerResult } from './types'
 import { ReservationBag } from '../reservations'
 import { MoveTargetType } from '../../../Movement/types'
+import { ReservationKind } from '../../../Reservation'
 
 export const AcquireToolHandler: StepHandler = {
 	type: WorkStepType.AcquireTool,
@@ -46,15 +47,20 @@ export const AcquireToolHandler: StepHandler = {
 		let toolItemId = step.toolItemId
 		let toolPosition = step.toolPosition
 		if (!toolItemId || !toolPosition) {
-			const reservedTool = reservationSystem.reserveToolForProfession(settler.mapId, step.profession, settlerId)
-			if (!reservedTool) {
+			const reservedTool = reservationSystem.reserve({
+				kind: ReservationKind.Tool,
+				mapId: settler.mapId,
+				profession: step.profession,
+				ownerId: settlerId
+			})
+			if (!reservedTool || reservedTool.kind !== ReservationKind.Tool) {
 				return {
 					actions: [{ type: WorkActionType.Wait, durationMs: 2000, setState: SettlerState.WaitingForWork }]
 				}
 			}
 			toolItemId = reservedTool.itemId
 			toolPosition = reservedTool.position
-			reservations.add(() => reservationSystem.releaseToolReservation(toolItemId!))
+			reservations.add(() => reservationSystem.release(reservedTool.ref))
 		}
 
 		const roadData = managers.roads.getRoadData(settler.mapId) || undefined
@@ -71,7 +77,12 @@ export const AcquireToolHandler: StepHandler = {
 
 		const actions: WorkAction[] = [
 			{ type: WorkActionType.Move, position: toolPosition!, targetType: MoveTargetType.Tool, targetId: toolItemId, setState: SettlerState.MovingToTool },
-			{ type: WorkActionType.PickupTool, itemId: toolItemId!, setState: SettlerState.MovingToTool },
+			{
+				type: WorkActionType.PickupTool,
+				itemId: toolItemId!,
+				reservationRefs: [{ kind: ReservationKind.Tool, itemId: toolItemId! }],
+				setState: SettlerState.MovingToTool
+			},
 			{ type: WorkActionType.ChangeProfession, profession: step.profession, setState: SettlerState.Idle }
 		]
 
@@ -89,8 +100,7 @@ export const AcquireToolHandler: StepHandler = {
 		}
 
 		return {
-			actions,
-			releaseReservations: () => reservations.releaseAll()
+			actions
 		}
 	}
 }

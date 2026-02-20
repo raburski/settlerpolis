@@ -4,6 +4,7 @@ import type { ItemType } from '../../Items/types'
 import type { ProductionRecipe } from '../../Buildings/types'
 import type { RoadType } from '../../Roads'
 import type { MoveTargetType } from '../../Movement/types'
+import type { ReservationRef } from '../../Reservation'
 import type {
 	BuildingInstanceId,
 	LogisticsRequestId,
@@ -143,7 +144,7 @@ export type TransportTarget =
 	| { type: TransportTargetType.Storage, buildingInstanceId: BuildingInstanceId }
 	| { type: TransportTargetType.Construction, buildingInstanceId: BuildingInstanceId }
 
-export type WorkAction =
+export type WorkAction = (
 	| { type: WorkActionType.Move, position: Position, targetType?: MoveTargetType, targetId?: string, speedMultiplier?: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.FollowPath, path: Position[], targetType?: MoveTargetType, targetId?: string, speedMultiplier?: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Wait, durationMs: number, setState?: import('../../Population/types').SettlerState }
@@ -163,6 +164,9 @@ export type WorkAction =
 	| { type: WorkActionType.Consume, itemType?: ItemType, quantity?: number, durationMs: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.Sleep, durationMs: number, setState?: import('../../Population/types').SettlerState }
 	| { type: WorkActionType.ProspectNode, nodeId: ResourceNodeId, setState?: import('../../Population/types').SettlerState }
+ ) & {
+	reservationRefs?: ReservationRef[]
+}
 
 export interface WorkProvider {
 	id: WorkProviderId

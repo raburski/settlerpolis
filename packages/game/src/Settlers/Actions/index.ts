@@ -11,7 +11,6 @@ import type { NPCManager } from '../../NPC'
 import type { WildlifeManager } from '../../Wildlife'
 import type { WorkAction } from '../Work/types'
 import { WorkActionType } from '../Work/types'
-import { MoveTargetType } from '../../Movement/types'
 import type { Logger } from '../../Logs'
 import { Receiver } from '../../Receiver'
 import { WorkProviderEvents } from '../Work/events'
@@ -22,6 +21,7 @@ import { SimulationEvents } from '../../Simulation/events'
 import type { SimulationTickData } from '../../Simulation/types'
 import { SettlerActionsState } from './SettlerActionsState'
 import { SettlerActionsEvents } from './events'
+import { releaseActionReservations } from './releaseReservations'
 
 export interface SettlerActionsDeps {
 	movement: MovementManager
@@ -114,7 +114,10 @@ export class SettlerActionsManager {
 			return
 		}
 		this.managers.movement.cancelMovement(settlerId)
-		this.releaseReservations(queue.actions, queue.context?.reservationOwnerId, settlerId)
+		releaseActionReservations({
+			actions: queue.actions,
+			deps: this.managers
+		})
 		this.state.deleteQueue(settlerId)
 	}
 
@@ -136,7 +139,10 @@ export class SettlerActionsManager {
 		const currentAction = queue.actions[queue.index]
 		const removedActions = queue.actions.slice(queue.index + 1)
 		if (removedActions.length > 0) {
-			this.releaseReservations(removedActions, queue.context?.reservationOwnerId, settlerId)
+			releaseActionReservations({
+				actions: removedActions,
+				deps: this.managers
+			})
 		}
 
 		queue.actions = [currentAction, ...actions]
@@ -279,7 +285,10 @@ export class SettlerActionsManager {
 		if (!queue) {
 			return
 		}
-		this.releaseReservations(queue.actions, queue.context?.reservationOwnerId, settlerId)
+		releaseActionReservations({
+			actions: queue.actions,
+			deps: this.managers
+		})
 		this.state.deleteQueue(settlerId)
 		if (reason) {
 			this.event.emit(Receiver.All, SettlerActionsEvents.SS.QueueFailed, {
@@ -297,47 +306,6 @@ export class SettlerActionsManager {
 		queue.onComplete?.()
 	}
 
-	private releaseReservations(actions: WorkAction[], reservationOwnerId: string | undefined, settlerId: string): void {
-		for (const action of actions) {
-			if (action.type === WorkActionType.WithdrawStorage || action.type === WorkActionType.DeliverStorage) {
-				if (action.reservationId) {
-					this.managers.reservations.releaseStorageReservation(action.reservationId)
-				}
-				continue
-			}
-
-			if (action.type === WorkActionType.PickupLoot || action.type === WorkActionType.PickupTool) {
-				if (reservationOwnerId) {
-					this.managers.reservations.releaseLootReservation(action.itemId, reservationOwnerId)
-				}
-				this.managers.reservations.releaseLootReservation(action.itemId, settlerId)
-				continue
-			}
-
-			if (action.type === WorkActionType.HarvestNode) {
-				this.managers.reservations.releaseNode(action.nodeId, reservationOwnerId || settlerId)
-				continue
-			}
-
-			if (action.type === WorkActionType.HuntNpc) {
-				const npc = this.managers.npc.getNPC(action.npcId)
-				const reservedBy = npc?.attributes?.reservedBy
-				if (reservedBy === settlerId) {
-					this.managers.npc.removeNPCAttribute(action.npcId, 'reservedBy')
-				}
-				continue
-			}
-
-			if (action.type === WorkActionType.ChangeHome) {
-				this.managers.reservations.releaseHouseReservation(action.reservationId)
-				continue
-			}
-
-			if (action.type === WorkActionType.Move && action.targetType === MoveTargetType.AmenitySlot && action.targetId) {
-				this.managers.reservations.releaseAmenitySlot(action.targetId)
-			}
-		}
-	}
 }
 
 export type ActionSystemDeps = SettlerActionsDeps

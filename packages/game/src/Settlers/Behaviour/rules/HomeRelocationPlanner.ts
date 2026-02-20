@@ -9,6 +9,7 @@ import type { PopulationManager } from '../../../Population'
 import { SettlerState } from '../../../Population/types'
 import type { WorkAction, WorkAssignment } from '../../Work/types'
 import { WorkActionType, WorkProviderType } from '../../Work/types'
+import { ReservationKind } from '../../../Reservation'
 
 const HOME_MOVE_CHECK_COOLDOWN_MS = 15000
 const HOME_MOVE_COOLDOWN_MS = 90000
@@ -152,8 +153,12 @@ export class HomeRelocationPlanner {
 			return null
 		}
 
-		const reservationId = deps.reservations.reserveHouseSlot(bestHouse.id, settlerId)
-		if (!reservationId) {
+		const houseReservation = deps.reservations.reserve({
+			kind: ReservationKind.House,
+			houseId: bestHouse.id,
+			settlerId
+		})
+		if (!houseReservation || houseReservation.kind !== ReservationKind.House) {
 			return null
 		}
 
@@ -161,7 +166,12 @@ export class HomeRelocationPlanner {
 			{ type: WorkActionType.Move, position: currentHouse.position, targetType: MoveTargetType.House, targetId: currentHouse.id, setState: SettlerState.MovingHome },
 			{ type: WorkActionType.Wait, durationMs: HOME_MOVE_PACK_MS, setState: SettlerState.Packing },
 			{ type: WorkActionType.Move, position: bestHouse.position, targetType: MoveTargetType.House, targetId: bestHouse.id, setState: SettlerState.MovingHome },
-			{ type: WorkActionType.ChangeHome, reservationId, houseId: bestHouse.id },
+			{
+				type: WorkActionType.ChangeHome,
+				reservationId: houseReservation.reservationId,
+				houseId: bestHouse.id,
+				reservationRefs: [houseReservation.ref]
+			},
 			{ type: WorkActionType.Wait, durationMs: HOME_MOVE_UNPACK_MS, setState: SettlerState.Unpacking },
 			{ type: WorkActionType.Move, position: workplace.position, targetType: MoveTargetType.Building, targetId: workplace.id, setState: SettlerState.MovingToBuilding }
 		]

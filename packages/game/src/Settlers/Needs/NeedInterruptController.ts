@@ -154,8 +154,7 @@ export class NeedInterruptController {
 		const context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }> = {
 			kind: ActionQueueContextKind.Need,
 			needType,
-			satisfyValue: plan.satisfyValue,
-			reservationOwnerId: settlerId
+			satisfyValue: plan.satisfyValue
 		}
 
 		const enqueued = this.behaviour.enqueueNeedPlan(settlerId, plan.actions, context)

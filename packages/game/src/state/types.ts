@@ -209,8 +209,8 @@ export enum ActionQueueContextKind {
 }
 
 export type ActionQueueContext =
-	| { kind: ActionQueueContextKind.Work, step?: WorkStep, reservationOwnerId?: string }
-	| { kind: ActionQueueContextKind.Need, needType: NeedType, satisfyValue?: number, reservationOwnerId?: string }
+	| { kind: ActionQueueContextKind.Work, step?: WorkStep }
+	| { kind: ActionQueueContextKind.Need, needType: NeedType, satisfyValue?: number }
 
 export interface NPCSnapshot {
 	npcs: NPC[]

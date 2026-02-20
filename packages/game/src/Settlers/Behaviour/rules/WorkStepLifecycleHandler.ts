@@ -26,37 +26,32 @@ export class WorkStepLifecycleHandler {
 
 	public buildCallbacks(
 		settlerId: SettlerId,
-		step?: WorkStep,
-		releaseReservations?: () => void
+		step?: WorkStep
 	): { onComplete: () => void, onFail: (reason: string) => void } {
 		return {
 			onComplete: () => {
 				if (!step) {
-					releaseReservations?.()
 					this.deps.managers.population.setSettlerState(settlerId, SettlerState.Idle)
 					this.deps.dispatchNextStep(settlerId)
 					return
 				}
 				const assignment = this.deps.work.getAssignment(settlerId)
 				if (!assignment) {
-					releaseReservations?.()
 					return
 				}
-				this.handleStepCompleted(settlerId, assignment, step, releaseReservations)
+				this.handleStepCompleted(settlerId, assignment, step)
 			},
 			onFail: (reason: string) => {
 				if (!step) {
-					releaseReservations?.()
 					this.deps.managers.population.setSettlerState(settlerId, SettlerState.Idle)
 					this.deps.dispatchNextStep(settlerId)
 					return
 				}
 				const assignment = this.deps.work.getAssignment(settlerId)
 				if (!assignment) {
-					releaseReservations?.()
 					return
 				}
-				this.handleStepFailed(settlerId, step, reason, releaseReservations)
+				this.handleStepFailed(settlerId, step, reason)
 			}
 		}
 	}
@@ -71,10 +66,8 @@ export class WorkStepLifecycleHandler {
 	private handleStepCompleted(
 		settlerId: SettlerId,
 		assignment: WorkAssignment,
-		step: WorkStep,
-		releaseReservations?: () => void
+		step: WorkStep
 	): void {
-		releaseReservations?.()
 		this.deps.event.emit(Receiver.All, WorkProviderEvents.SS.StepCompleted, { settlerId, step })
 		this.deps.managers.population.setSettlerLastStep(settlerId, step.type, undefined)
 		this.deps.managers.population.setSettlerState(settlerId, SettlerState.Idle)
@@ -98,10 +91,8 @@ export class WorkStepLifecycleHandler {
 	private handleStepFailed(
 		settlerId: SettlerId,
 		step: WorkStep,
-		reason: string,
-		releaseReservations?: () => void
+		reason: string
 	): void {
-		releaseReservations?.()
 		this.deps.event.emit(Receiver.All, WorkProviderEvents.SS.StepFailed, { settlerId, step, reason })
 		this.clearConstructionWorker(settlerId, step)
 		let retryDelayMs = 1000

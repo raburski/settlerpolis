@@ -43,7 +43,6 @@ export interface NeedPlan {
 	needType: NeedType
 	actions: WorkAction[]
 	satisfyValue?: number
-	releaseReservations?: () => void
 }
 
 export interface NeedPlanResult {
