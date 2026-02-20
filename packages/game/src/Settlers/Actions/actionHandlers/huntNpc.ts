@@ -1,4 +1,4 @@
-import { WorkActionType } from '../../Work/types'
+import { SettlerActionType } from '../types'
 import { SettlerActionFailureReason } from '../../failureReasons'
 import type { ActionHandler } from './types'
 import { calculateDistance } from '../../../utils'
@@ -6,9 +6,9 @@ import { calculateDistance } from '../../../utils'
 const MAX_HUNT_RANGE = 96
 
 export const HuntNpcActionHandler: ActionHandler = {
-	type: WorkActionType.HuntNpc,
+	type: SettlerActionType.HuntNpc,
 	start: ({ settlerId, action, managers, complete, fail }) => {
-		if (action.type !== WorkActionType.HuntNpc) {
+		if (action.type !== SettlerActionType.HuntNpc) {
 			return
 		}
 

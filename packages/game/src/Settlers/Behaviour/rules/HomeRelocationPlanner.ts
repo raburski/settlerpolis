@@ -7,8 +7,10 @@ import type { RoadManager } from '../../../Roads'
 import { calculateDistance } from '../../../utils'
 import type { PopulationManager } from '../../../Population'
 import { SettlerState } from '../../../Population/types'
-import type { WorkAction, WorkAssignment } from '../../Work/types'
-import { WorkActionType, WorkProviderType } from '../../Work/types'
+import type { WorkAssignment } from '../../Work/types'
+import { WorkProviderType } from '../../Work/types'
+import type { SettlerAction } from '../../Actions/types'
+import { SettlerActionType } from '../../Actions/types'
 import { ReservationKind } from '../../../Reservation'
 
 const HOME_MOVE_CHECK_COOLDOWN_MS = 15000
@@ -27,7 +29,7 @@ export interface HomeRelocationPlannerDeps {
 }
 
 export interface HomeRelocationPlan {
-	actions: WorkAction[]
+	actions: SettlerAction[]
 }
 
 export class HomeRelocationPlanner {
@@ -148,18 +150,18 @@ export class HomeRelocationPlanner {
 				continue
 			}
 
-			const actions: WorkAction[] = [
-				{ type: WorkActionType.Move, position: currentHouse.position, targetType: MoveTargetType.House, targetId: currentHouse.id, setState: SettlerState.MovingHome },
-				{ type: WorkActionType.Wait, durationMs: HOME_MOVE_PACK_MS, setState: SettlerState.Packing },
-				{ type: WorkActionType.Move, position: candidate.house.position, targetType: MoveTargetType.House, targetId: candidate.house.id, setState: SettlerState.MovingHome },
+			const actions: SettlerAction[] = [
+				{ type: SettlerActionType.Move, position: currentHouse.position, targetType: MoveTargetType.House, targetId: currentHouse.id, setState: SettlerState.MovingHome },
+				{ type: SettlerActionType.Wait, durationMs: HOME_MOVE_PACK_MS, setState: SettlerState.Packing },
+				{ type: SettlerActionType.Move, position: candidate.house.position, targetType: MoveTargetType.House, targetId: candidate.house.id, setState: SettlerState.MovingHome },
 				{
-					type: WorkActionType.ChangeHome,
+					type: SettlerActionType.ChangeHome,
 					reservationId: houseReservation.reservationId,
 					houseId: candidate.house.id,
 					reservationRefs: [houseReservation.ref]
 				},
-				{ type: WorkActionType.Wait, durationMs: HOME_MOVE_UNPACK_MS, setState: SettlerState.Unpacking },
-				{ type: WorkActionType.Move, position: workplace.position, targetType: MoveTargetType.Building, targetId: workplace.id, setState: SettlerState.MovingToBuilding }
+				{ type: SettlerActionType.Wait, durationMs: HOME_MOVE_UNPACK_MS, setState: SettlerState.Unpacking },
+				{ type: SettlerActionType.Move, position: workplace.position, targetType: MoveTargetType.Building, targetId: workplace.id, setState: SettlerState.MovingToBuilding }
 			]
 
 			return { actions }

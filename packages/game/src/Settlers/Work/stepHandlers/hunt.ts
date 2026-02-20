@@ -1,5 +1,6 @@
 import { SettlerState } from '../../../Population/types'
-import { WorkActionType, WorkStepType } from '../types'
+import { WorkStepType } from '../types'
+import { SettlerActionType } from '../../Actions/types'
 import type { StepHandler, StepHandlerResult } from './types'
 import { MoveTargetType } from '../../../Movement/types'
 import { ReservationKind, type ReservationRef } from '../../../Reservation'
@@ -24,7 +25,7 @@ export const HuntHandler: StepHandler = {
 			ownerId: settlerId
 		})
 		if (!npcReservation || npcReservation.kind !== ReservationKind.Npc) {
-			return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
+			return { actions: [{ type: SettlerActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
 		}
 		reservationRefs.push(npcReservation.ref)
 
@@ -44,7 +45,7 @@ export const HuntHandler: StepHandler = {
 		})
 		if (!storageReservation || storageReservation.kind !== ReservationKind.Storage) {
 			releaseReservations()
-			return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
+			return { actions: [{ type: SettlerActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
 		}
 		reservationRefs.push(storageReservation.ref)
 
@@ -52,10 +53,10 @@ export const HuntHandler: StepHandler = {
 
 		return {
 			actions: [
-				{ type: WorkActionType.Move, position: targetPosition, targetType: MoveTargetType.Resource, targetId: npc.id, setState: SettlerState.MovingToResource },
-				{ type: WorkActionType.Wait, durationMs: step.durationMs, setState: SettlerState.Harvesting },
+				{ type: SettlerActionType.Move, position: targetPosition, targetType: MoveTargetType.Resource, targetId: npc.id, setState: SettlerState.MovingToResource },
+				{ type: SettlerActionType.Wait, durationMs: step.durationMs, setState: SettlerState.Harvesting },
 				{
-					type: WorkActionType.HuntNpc,
+					type: SettlerActionType.HuntNpc,
 					npcId: npc.id,
 					outputItemType: step.outputItemType,
 					quantity: step.quantity,
@@ -64,14 +65,14 @@ export const HuntHandler: StepHandler = {
 					setState: SettlerState.CarryingItem
 				},
 				{
-					type: WorkActionType.Move,
+					type: SettlerActionType.Move,
 					position: storageReservation.position,
 					targetType: MoveTargetType.StorageSlot,
 					targetId: storageReservation.reservationId,
 					setState: SettlerState.CarryingItem
 				},
 				{
-					type: WorkActionType.DeliverStorage,
+					type: SettlerActionType.DeliverStorage,
 					buildingInstanceId: building.id,
 					itemType: step.outputItemType,
 					quantity: step.quantity,
@@ -79,7 +80,7 @@ export const HuntHandler: StepHandler = {
 					reservationRefs: [storageReservation.ref],
 					setState: SettlerState.Working
 				},
-				{ type: WorkActionType.Move, position: building.position, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding }
+				{ type: SettlerActionType.Move, position: building.position, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding }
 			]
 		}
 	}

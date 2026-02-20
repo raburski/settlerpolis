@@ -1,11 +1,11 @@
-import { WorkActionType } from '../../Work/types'
+import { SettlerActionType } from '../types'
 import { SettlerActionFailureReason } from '../../failureReasons'
 import type { ActionHandler } from './types'
 
 export const PickupToolActionHandler: ActionHandler = {
-	type: WorkActionType.PickupTool,
+	type: SettlerActionType.PickupTool,
 	start: ({ settlerId, action, managers, complete, fail }) => {
-		if (action.type !== WorkActionType.PickupTool) {
+		if (action.type !== SettlerActionType.PickupTool) {
 			return
 		}
 		const client = managers.population.getServerClient()

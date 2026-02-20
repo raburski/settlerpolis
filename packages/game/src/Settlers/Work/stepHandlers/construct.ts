@@ -1,5 +1,6 @@
 import { SettlerState } from '../../../Population/types'
-import { WorkActionType, WorkStepType } from '../types'
+import { WorkStepType } from '../types'
+import { SettlerActionType } from '../../Actions/types'
 import type { StepHandler, StepHandlerResult } from './types'
 import { MoveTargetType } from '../../../Movement/types'
 import { getRandomPositionInBuildingFootprint, isWithinBuildingFootprint } from '../../../Buildings/utils'
@@ -37,8 +38,8 @@ export const ConstructHandler: StepHandler = {
 
 		return {
 			actions: [
-				{ type: WorkActionType.Move, position: workPosition, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding },
-				{ type: WorkActionType.Construct, buildingInstanceId: building.id, durationMs: step.durationMs, setState: SettlerState.Working }
+				{ type: SettlerActionType.Move, position: workPosition, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding },
+				{ type: SettlerActionType.Construct, buildingInstanceId: building.id, durationMs: step.durationMs, setState: SettlerState.Working }
 			]
 		}
 	}

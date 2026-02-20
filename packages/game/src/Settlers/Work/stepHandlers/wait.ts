@@ -1,5 +1,6 @@
 import { SettlerState } from '../../../Population/types'
-import { WorkActionType, WorkProviderType, WorkStepType, WorkWaitReason } from '../types'
+import { WorkProviderType, WorkStepType, WorkWaitReason } from '../types'
+import { SettlerActionType } from '../../Actions/types'
 import type { StepHandler, StepHandlerResult } from './types'
 import { MoveTargetType } from '../../../Movement/types'
 
@@ -18,8 +19,8 @@ export const WaitHandler: StepHandler = {
 				const durationMs = step.retryAtMs ? Math.max(0, step.retryAtMs - simulationTimeMs) : 1500
 				return {
 					actions: [
-						{ type: WorkActionType.Move, position: building.position, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding },
-						{ type: WorkActionType.Wait, durationMs, setState: SettlerState.WaitingForWork }
+						{ type: SettlerActionType.Move, position: building.position, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding },
+						{ type: SettlerActionType.Wait, durationMs, setState: SettlerState.WaitingForWork }
 					]
 				}
 			}
@@ -33,14 +34,14 @@ export const WaitHandler: StepHandler = {
 				const durationMs = step.retryAtMs ? Math.max(0, step.retryAtMs - simulationTimeMs) : 1500
 				return {
 					actions: [
-						{ type: WorkActionType.Move, position: building.position, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding },
-						{ type: WorkActionType.Wait, durationMs, setState: SettlerState.WaitingForWork }
+						{ type: SettlerActionType.Move, position: building.position, targetType: MoveTargetType.Building, targetId: building.id, setState: SettlerState.MovingToBuilding },
+						{ type: SettlerActionType.Wait, durationMs, setState: SettlerState.WaitingForWork }
 					]
 				}
 			}
 		}
 
 		const durationMs = step.retryAtMs ? Math.max(0, step.retryAtMs - simulationTimeMs) : 1500
-		return { actions: [{ type: WorkActionType.Wait, durationMs, setState: SettlerState.WaitingForWork }] }
+		return { actions: [{ type: SettlerActionType.Wait, durationMs, setState: SettlerState.WaitingForWork }] }
 	}
 }

@@ -1,11 +1,11 @@
-import { WorkActionType } from '../../Work/types'
+import { SettlerActionType } from '../types'
 import { SettlerActionFailureReason } from '../../failureReasons'
 import type { ActionHandler } from './types'
 
 export const DeliverStorageActionHandler: ActionHandler = {
-	type: WorkActionType.DeliverStorage,
+	type: SettlerActionType.DeliverStorage,
 	start: ({ settlerId, action, managers, complete, fail }) => {
-		if (action.type !== WorkActionType.DeliverStorage) {
+		if (action.type !== SettlerActionType.DeliverStorage) {
 			return
 		}
 		const ok = managers.storage.addToStorage(action.buildingInstanceId, action.itemType, action.quantity, action.reservationId)

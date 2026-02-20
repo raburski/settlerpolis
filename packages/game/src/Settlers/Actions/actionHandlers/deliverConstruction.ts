@@ -1,11 +1,11 @@
-import { WorkActionType } from '../../Work/types'
+import { SettlerActionType } from '../types'
 import { SettlerActionFailureReason } from '../../failureReasons'
 import type { ActionHandler } from './types'
 
 export const DeliverConstructionActionHandler: ActionHandler = {
-	type: WorkActionType.DeliverConstruction,
+	type: SettlerActionType.DeliverConstruction,
 	start: ({ settlerId, action, managers, complete, fail }) => {
-		if (action.type !== WorkActionType.DeliverConstruction) {
+		if (action.type !== SettlerActionType.DeliverConstruction) {
 			return
 		}
 		const ok = managers.buildings.addResourceToBuilding(action.buildingInstanceId, action.itemType, action.quantity)

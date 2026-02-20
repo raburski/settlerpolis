@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { HomeRelocationPlanner } from '../../src/Settlers/Behaviour/rules/HomeRelocationPlanner'
 import { ReservationKind } from '../../src/Reservation'
-import { WorkActionType, WorkAssignmentStatus, WorkProviderType, WorkStepType } from '../../src/Settlers/Work/types'
+import { SettlerActionType } from '../../src/Settlers/Actions/types'
+import { WorkAssignmentStatus, WorkProviderType, WorkStepType } from '../../src/Settlers/Work/types'
 import { SettlerActionsManager } from '../../src/Settlers/Actions'
 import { TransportHandler } from '../../src/Settlers/Work/stepHandlers/transport'
 import { SettlerState } from '../../src/Population/types'
@@ -87,9 +88,9 @@ describe('Settler reservation lifecycle', () => {
 		expect(reserve).toHaveBeenCalledTimes(2)
 		expect(reserve.mock.calls[0]?.[0]?.houseId).toBe('house-best')
 		expect(reserve.mock.calls[1]?.[0]?.houseId).toBe('house-good')
-		const changeHome = plan!.actions.find(action => action.type === WorkActionType.ChangeHome)
-		expect(changeHome?.type).toBe(WorkActionType.ChangeHome)
-		if (changeHome?.type === WorkActionType.ChangeHome) {
+		const changeHome = plan!.actions.find(action => action.type === SettlerActionType.ChangeHome)
+		expect(changeHome?.type).toBe(SettlerActionType.ChangeHome)
+		if (changeHome?.type === SettlerActionType.ChangeHome) {
 			expect(changeHome.houseId).toBe('house-good')
 		}
 	})
@@ -162,7 +163,7 @@ describe('Settler reservation lifecycle', () => {
 			simulationTimeMs: 0
 		})
 
-		expect(result.actions[0]?.type).toBe(WorkActionType.Wait)
+		expect(result.actions[0]?.type).toBe(SettlerActionType.Wait)
 		expect(releaseMany).toHaveBeenCalledTimes(1)
 		expect(releaseMany).toHaveBeenCalledWith([sourceRef])
 	})
@@ -202,7 +203,7 @@ describe('Settler reservation lifecycle', () => {
 
 		const ref = { kind: ReservationKind.Storage, reservationId: 'slot-res-1' } as const
 		manager.enqueue('settler-1', [{
-			type: WorkActionType.Wait,
+			type: SettlerActionType.Wait,
 			durationMs: 1000,
 			reservationRefs: [ref]
 		} as any])

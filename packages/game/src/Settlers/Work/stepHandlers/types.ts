@@ -1,4 +1,5 @@
-import type { WorkAction, WorkAssignment, WorkStep, WorkStepType } from '../types'
+import type { WorkAssignment, WorkStep, WorkStepType } from '../types'
+import type { SettlerAction } from '../../Actions/types'
 import type { WorkProviderDeps } from '..'
 import type { ReservationSystem } from '../../../Reservation'
 
@@ -12,7 +13,7 @@ export interface StepHandlerContext {
 }
 
 export interface StepHandlerResult {
-	actions: WorkAction[]
+	actions: SettlerAction[]
 }
 
 export interface StepHandler {

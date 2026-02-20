@@ -1,12 +1,12 @@
 import type { ReservationSystem } from '../../Reservation'
-import type { WorkAction } from '../Work/types'
+import type { SettlerAction } from './types'
 
 interface ReleaseReservationDeps {
 	reservations: ReservationSystem
 }
 
 interface ReleaseReservationsParams {
-	actions: WorkAction[]
+	actions: SettlerAction[]
 	deps: ReleaseReservationDeps
 }
 

@@ -1,10 +1,10 @@
-import { WorkActionType } from '../../Work/types'
+import { SettlerActionType } from '../types'
 import type { ActionHandler } from './types'
 
 export const ProduceActionHandler: ActionHandler = {
-	type: WorkActionType.Produce,
+	type: SettlerActionType.Produce,
 	start: ({ action, managers, complete }) => {
-		if (action.type !== WorkActionType.Produce) {
+		if (action.type !== SettlerActionType.Produce) {
 			return
 		}
 		const building = managers.buildings.getBuildingInstance(action.buildingInstanceId)

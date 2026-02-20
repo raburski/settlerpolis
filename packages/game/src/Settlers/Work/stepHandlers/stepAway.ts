@@ -1,5 +1,6 @@
 import { SettlerState } from '../../../Population/types'
-import { WorkActionType, WorkStepType } from '../types'
+import { WorkStepType } from '../types'
+import { SettlerActionType } from '../../Actions/types'
 import type { StepHandler, StepHandlerResult } from './types'
 
 export const StepAwayHandler: StepHandler = {
@@ -10,7 +11,7 @@ export const StepAwayHandler: StepHandler = {
 		}
 		return {
 			actions: [{
-				type: WorkActionType.Move,
+				type: SettlerActionType.Move,
 				position: step.targetPosition,
 				targetType: step.targetType,
 				targetId: step.targetId,

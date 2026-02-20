@@ -18,9 +18,10 @@ import { ConstructionStage } from '../../Buildings/types'
 import { ProviderRegistry } from './ProviderRegistry'
 import { WorkProviderEvents, WorkDispatchReason } from './events'
 import type { WorkStepCompletedEventData, WorkStepFailedEventData, WorkStepIssuedEventData } from './events'
-import type { WorkAssignment, WorkAction, LogisticsRequest, WorkStep, WorkProvider } from './types'
+import type { WorkAssignment, LogisticsRequest, WorkStep, WorkProvider } from './types'
 import { WorkProviderType, WorkAssignmentStatus } from './types'
 import { StepHandlers } from './stepHandlers'
+import type { SettlerAction } from '../Actions/types'
 import type { WorkProviderSnapshot } from '../../state/types'
 import { AssignmentStore } from './AssignmentStore'
 import { ProviderFactory } from './ProviderFactory'
@@ -508,7 +509,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		return this.registry.get(assignment.providerId)
 	}
 
-	private enqueueExitOrIdle(settlerId: string, exitActions: WorkAction[] | null): void {
+	private enqueueExitOrIdle(settlerId: string, exitActions: SettlerAction[] | null): void {
 		if (!exitActions || exitActions.length === 0) {
 			this.managers.population.setSettlerState(settlerId, SettlerState.Idle)
 			return
@@ -519,25 +520,13 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		this.actionsManager.enqueue(settlerId, exitActions, finalizeExit, () => finalizeExit())
 	}
 
-	private buildExitActions(assignment: WorkAssignment, settlerId: string): WorkAction[] | null {
+	private buildExitActions(assignment: WorkAssignment, settlerId: string): SettlerAction[] | null {
 		const provider = this.resolveProviderForAssignment(assignment)
 		const step: WorkStep | null = provider?.requestUnassignStep?.(settlerId) ?? null
 		if (!step) {
 			return null
 		}
-		const handler = StepHandlers[step.type]
-		if (!handler) {
-			return null
-		}
-		const result = handler.build({
-			settlerId,
-			assignment,
-			step,
-			managers: this.managers,
-			reservationSystem: this.managers.reservations,
-			simulationTimeMs: this.simulationTimeMs
-		})
-		return result.actions
+		return this.buildActionsForStep(settlerId, assignment, step)
 	}
 
 	private emitWorkerUnassigned(assignment: WorkAssignment, settlerId: string): void {
@@ -580,6 +569,25 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 	public getNowMs(): number {
 		return this.simulationTimeMs
+	}
+
+	public buildActionsForStep(
+		settlerId: SettlerId,
+		assignment: WorkAssignment,
+		step: WorkStep
+	): SettlerAction[] {
+		const handler = StepHandlers[step.type]
+		if (!handler) {
+			return []
+		}
+		return handler.build({
+			settlerId,
+			assignment,
+			step,
+			managers: this.managers,
+			reservationSystem: this.managers.reservations,
+			simulationTimeMs: this.simulationTimeMs
+		}).actions
 	}
 
 	public isSettlerPaused(settlerId: string): boolean {

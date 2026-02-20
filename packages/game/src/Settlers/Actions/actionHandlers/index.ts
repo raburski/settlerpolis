@@ -1,5 +1,5 @@
 import type { ActionHandler } from './types'
-import { WorkActionType } from '../../Work/types'
+import { SettlerActionType } from '../types'
 import { MoveActionHandler } from './move'
 import { FollowPathActionHandler } from './followPath'
 import { WaitActionHandler } from './wait'
@@ -20,26 +20,26 @@ import { ChangeProfessionActionHandler } from './changeProfession'
 import { ChangeHomeActionHandler } from './changeHome'
 import { ProspectNodeActionHandler } from './prospectNode'
 
-export const ActionHandlers: Record<WorkActionType, ActionHandler> = {
-	[WorkActionType.Move]: MoveActionHandler,
-	[WorkActionType.FollowPath]: FollowPathActionHandler,
-	[WorkActionType.Wait]: WaitActionHandler,
-	[WorkActionType.Construct]: ConstructActionHandler,
-	[WorkActionType.BuildRoad]: BuildRoadActionHandler,
-	[WorkActionType.PickupTool]: PickupToolActionHandler,
-	[WorkActionType.PickupLoot]: PickupLootActionHandler,
-	[WorkActionType.WithdrawStorage]: WithdrawStorageActionHandler,
-	[WorkActionType.DeliverStorage]: DeliverStorageActionHandler,
-	[WorkActionType.DeliverConstruction]: DeliverConstructionActionHandler,
-	[WorkActionType.HarvestNode]: HarvestNodeActionHandler,
-	[WorkActionType.HuntNpc]: HuntNpcActionHandler,
-	[WorkActionType.Produce]: ProduceActionHandler,
-	[WorkActionType.Plant]: PlantActionHandler,
-	[WorkActionType.ChangeProfession]: ChangeProfessionActionHandler,
-	[WorkActionType.ChangeHome]: ChangeHomeActionHandler,
-	[WorkActionType.Consume]: ConsumeActionHandler,
-	[WorkActionType.Sleep]: SleepActionHandler,
-	[WorkActionType.ProspectNode]: ProspectNodeActionHandler
+export const ActionHandlers: Record<SettlerActionType, ActionHandler> = {
+	[SettlerActionType.Move]: MoveActionHandler,
+	[SettlerActionType.FollowPath]: FollowPathActionHandler,
+	[SettlerActionType.Wait]: WaitActionHandler,
+	[SettlerActionType.Construct]: ConstructActionHandler,
+	[SettlerActionType.BuildRoad]: BuildRoadActionHandler,
+	[SettlerActionType.PickupTool]: PickupToolActionHandler,
+	[SettlerActionType.PickupLoot]: PickupLootActionHandler,
+	[SettlerActionType.WithdrawStorage]: WithdrawStorageActionHandler,
+	[SettlerActionType.DeliverStorage]: DeliverStorageActionHandler,
+	[SettlerActionType.DeliverConstruction]: DeliverConstructionActionHandler,
+	[SettlerActionType.HarvestNode]: HarvestNodeActionHandler,
+	[SettlerActionType.HuntNpc]: HuntNpcActionHandler,
+	[SettlerActionType.Produce]: ProduceActionHandler,
+	[SettlerActionType.Plant]: PlantActionHandler,
+	[SettlerActionType.ChangeProfession]: ChangeProfessionActionHandler,
+	[SettlerActionType.ChangeHome]: ChangeHomeActionHandler,
+	[SettlerActionType.Consume]: ConsumeActionHandler,
+	[SettlerActionType.Sleep]: SleepActionHandler,
+	[SettlerActionType.ProspectNode]: ProspectNodeActionHandler
 }
 
 export * from './types'

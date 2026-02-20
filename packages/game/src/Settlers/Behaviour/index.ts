@@ -1,10 +1,9 @@
 import { BaseManager } from '../../Managers'
 import { WorkProviderEvents } from '../Work/events'
 import type { WorkAssignmentRemovedEventData, WorkDispatchRequestedEventData } from '../Work/events'
-import type { WorkAssignment, WorkStep, WorkAction } from '../Work/types'
-import { WorkActionType, WorkStepType, WorkWaitReason } from '../Work/types'
+import type { WorkAssignment, WorkStep } from '../Work/types'
+import { WorkStepType, WorkWaitReason } from '../Work/types'
 import { SettlerState } from '../../Population/types'
-import { StepHandlers } from '../Work/stepHandlers'
 import type { ActionQueueContext } from '../../state/types'
 import { ActionQueueContextKind } from '../../state/types'
 import type { SettlerId } from '../../ids'
@@ -13,6 +12,8 @@ import type { SimulationTickData } from '../../Simulation/types'
 import type { NeedType } from '../Needs/NeedTypes'
 import { SettlerActionsEvents } from '../Actions/events'
 import type { ActionQueueCompletedEventData, ActionQueueFailedEventData } from '../Actions/events'
+import type { SettlerAction } from '../Actions/types'
+import { SettlerActionType } from '../Actions/types'
 import { SettlerBehaviourState, type SettlerBehaviourSnapshot } from './SettlerBehaviourState'
 import type { SettlerBehaviourDeps } from './deps'
 import { MovementEvents } from '../../Movement/events'
@@ -85,18 +86,30 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 
 	private readonly handleActionQueueCompleted = (data: ActionQueueCompletedEventData): void => {
 		const context = data.context
-		if (!context || context.kind !== ActionQueueContextKind.Work) {
+		if (!context) {
 			return
 		}
-		this.buildWorkQueueCallbacks(data.settlerId, context.step).onComplete()
+		if (context.kind === ActionQueueContextKind.Work) {
+			this.buildWorkQueueCallbacks(data.settlerId, context.step).onComplete()
+			return
+		}
+		if (context.kind === ActionQueueContextKind.Need) {
+			this.managers.needs.handleNeedQueueCompleted(data.settlerId, context)
+		}
 	}
 
 	private readonly handleActionQueueFailed = (data: ActionQueueFailedEventData): void => {
 		const context = data.context
-		if (!context || context.kind !== ActionQueueContextKind.Work) {
+		if (!context) {
 			return
 		}
-		this.buildWorkQueueCallbacks(data.settlerId, context.step).onFail(data.reason)
+		if (context.kind === ActionQueueContextKind.Work) {
+			this.buildWorkQueueCallbacks(data.settlerId, context.step).onFail(data.reason)
+			return
+		}
+		if (context.kind === ActionQueueContextKind.Need) {
+			this.managers.needs.handleNeedQueueFailed(data.settlerId, context, data.reason)
+		}
 	}
 
 	private readonly handleMovementSSYieldRequested = (
@@ -135,8 +148,8 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 		const yieldMode = stepAsideTarget ? 'side' : 'swap'
 
 		const stepAsideTargetId = `yield:${yieldMode}:${data.requesterEntityId}:${Math.round(yieldTarget.x)},${Math.round(yieldTarget.y)}`
-		const stepAsideAction: WorkAction = {
-			type: WorkActionType.Move,
+		const stepAsideAction: SettlerAction = {
+			type: SettlerActionType.Move,
 			position: yieldTarget,
 			targetType: MoveTargetType.Spot,
 			targetId: stepAsideTargetId,
@@ -198,7 +211,7 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 
 	enqueueNeedPlan(
 		settlerId: SettlerId,
-		actions: WorkAction[],
+		actions: SettlerAction[],
 		context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>
 	): boolean {
 		if (this.managers.actions.isBusy(settlerId)) {
@@ -275,7 +288,7 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 		}
 
 		this.managers.work.onStepIssued(settlerId, context.assignment, context.step)
-		const actions = this.buildActionsForStep(settlerId, context.assignment, context.step)
+		const actions = this.managers.work.buildActionsForStep(settlerId, context.assignment, context.step)
 
 		if (!actions || actions.length === 0) {
 			if (context.step.type === WorkStepType.Wait) {
@@ -334,25 +347,6 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 		for (const rule of this.stepDispatchRules) {
 			rule.reset?.()
 		}
-	}
-
-	private buildActionsForStep(
-		settlerId: SettlerId,
-		assignment: WorkAssignment,
-		step: WorkStep
-	): WorkAction[] {
-		const handler = StepHandlers[step.type]
-		if (!handler) {
-			return []
-		}
-		return handler.build({
-			settlerId,
-			assignment,
-			step,
-			managers: this.managers,
-			reservationSystem: this.managers.reservations,
-			simulationTimeMs: this.managers.work.getNowMs()
-		}).actions
 	}
 
 	private findYieldSidePosition(

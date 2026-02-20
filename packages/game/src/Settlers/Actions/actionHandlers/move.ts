@@ -1,4 +1,4 @@
-import { WorkActionType } from '../../Work/types'
+import { SettlerActionType } from '../types'
 import { SettlerActionFailureReason } from '../../failureReasons'
 import { MoveTargetType } from '../../../Movement/types'
 import { ConstructionStage } from '../../../Buildings/types'
@@ -7,9 +7,9 @@ import type { ActionHandler } from './types'
 import type { Position } from '../../../types'
 
 export const MoveActionHandler: ActionHandler = {
-	type: WorkActionType.Move,
+	type: SettlerActionType.Move,
 	start: ({ settlerId, action, managers, complete, fail }) => {
-		if (action.type !== WorkActionType.Move) {
+		if (action.type !== SettlerActionType.Move) {
 			return
 		}
 		const settler = managers.population.getSettler(settlerId)
