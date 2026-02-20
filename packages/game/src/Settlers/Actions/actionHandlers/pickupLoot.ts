@@ -1,4 +1,5 @@
 import { WorkActionType } from '../../Work/types'
+import { SettlerActionFailureReason } from '../../failureReasons'
 import type { ActionHandler } from './types'
 
 export const PickupLootActionHandler: ActionHandler = {
@@ -10,7 +11,7 @@ export const PickupLootActionHandler: ActionHandler = {
 		const client = managers.population.getServerClient()
 		const item = managers.loot.pickItem(action.itemId, client)
 		if (!item) {
-			fail('loot_pickup_failed')
+			fail(SettlerActionFailureReason.LootPickupFailed)
 			return
 		}
 		managers.population.setSettlerCarryingItem(settlerId, item.itemType, 1)

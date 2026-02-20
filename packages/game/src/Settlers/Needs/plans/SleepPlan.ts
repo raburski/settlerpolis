@@ -9,6 +9,7 @@ import type { NeedPlanResult } from '../types'
 import type { BuildingManager } from '../../../Buildings'
 import type { ReservationSystem, AmenitySlotReservationResult } from '../../../Reservation'
 import { ReservationKind } from '../../../Reservation'
+import { NeedPlanningFailureReason } from '../../failureReasons'
 
 const SLEEP_DURATION_MS = 8000
 
@@ -35,7 +36,7 @@ export const buildSleepPlan = (settlerId: string, bed: BedLocation, deps: SleepP
 			settlerId
 		})
 		if (!amenity || amenity.kind !== ReservationKind.Amenity) {
-			return { reason: 'amenity_full' }
+			return { reason: NeedPlanningFailureReason.AmenityFull }
 		}
 		amenityReservation = {
 			reservationId: amenity.reservationId,

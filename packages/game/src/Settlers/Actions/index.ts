@@ -22,6 +22,7 @@ import type { SimulationTickData } from '../../Simulation/types'
 import { SettlerActionsState } from './SettlerActionsState'
 import { SettlerActionsEvents } from './events'
 import { releaseActionReservations } from './releaseReservations'
+import { SettlerActionFailureReason } from '../failureReasons'
 
 export interface SettlerActionsDeps {
 	movement: MovementManager
@@ -125,7 +126,7 @@ export class SettlerActionsManager {
 		settlerId: string,
 		actions: WorkAction[],
 		onComplete?: () => void,
-		onFail?: (reason: string) => void
+		onFail?: (reason: SettlerActionFailureReason) => void
 	): boolean {
 		const queue = this.state.getQueue(settlerId)
 		if (!queue) {
@@ -152,7 +153,7 @@ export class SettlerActionsManager {
 		return true
 	}
 
-	public enqueue(settlerId: string, actions: WorkAction[], onComplete?: () => void, onFail?: (reason: string) => void, context?: ActionQueueContext): void {
+	public enqueue(settlerId: string, actions: WorkAction[], onComplete?: () => void, onFail?: (reason: SettlerActionFailureReason) => void, context?: ActionQueueContext): void {
 		if (actions.length === 0) {
 			if (onComplete) {
 				onComplete()
@@ -189,7 +190,7 @@ export class SettlerActionsManager {
 
 		const handler = ActionHandlers[action.type]
 		if (!handler) {
-			this.failAction(settlerId, 'unknown_action')
+			this.failAction(settlerId, SettlerActionFailureReason.UnknownAction)
 			return
 		}
 
@@ -228,7 +229,7 @@ export class SettlerActionsManager {
 		this.startNextAction(settlerId)
 	}
 
-	private failAction(settlerId: string, reason: string): void {
+	private failAction(settlerId: string, reason: SettlerActionFailureReason): void {
 		const queue = this.state.getQueue(settlerId)
 		if (!queue) {
 			return
@@ -280,7 +281,7 @@ export class SettlerActionsManager {
 		}
 	}
 
-	private finishQueue(settlerId: string, reason?: string): void {
+	private finishQueue(settlerId: string, reason?: SettlerActionFailureReason): void {
 		const queue = this.state.getQueue(settlerId)
 		if (!queue) {
 			return

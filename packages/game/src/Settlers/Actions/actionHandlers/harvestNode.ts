@@ -1,4 +1,5 @@
 import { WorkActionType } from '../../Work/types'
+import { SettlerActionFailureReason } from '../../failureReasons'
 import type { ActionHandler } from './types'
 
 export const HarvestNodeActionHandler: ActionHandler = {
@@ -9,7 +10,7 @@ export const HarvestNodeActionHandler: ActionHandler = {
 		}
 		const item = managers.resourceNodes.harvestNode(action.nodeId, settlerId)
 		if (!item) {
-			fail('harvest_failed')
+			fail(SettlerActionFailureReason.HarvestFailed)
 			return
 		}
 		managers.population.setSettlerCarryingItem(settlerId, item.itemType, action.quantity)

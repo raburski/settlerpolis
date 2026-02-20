@@ -21,7 +21,7 @@ type HouseReservationResult = Extract<ReservationAcquireResult, { kind: Reservat
 type HouseReservationRef = Extract<ReservationRef, { kind: ReservationKind.House }>
 type HouseReservationCommitRequest = Extract<ReservationCommitRequest, { kind: ReservationKind.House }>
 
-export const canReserveHouseSlot = (houseId: string, context: ReservationHandlerContext): boolean => {
+const canReserveHouseSlot = (houseId: string, context: ReservationHandlerContext): boolean => {
 	const capacity = getHouseCapacity(houseId, context)
 	if (capacity <= 0) {
 		return false

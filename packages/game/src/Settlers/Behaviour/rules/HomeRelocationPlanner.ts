@@ -112,9 +112,6 @@ export class HomeRelocationPlanner {
 		const tileSize = this.getTileSize(deps, mapId)
 		const minImprovement = HOME_MOVE_MIN_IMPROVEMENT_TILES * tileSize
 
-		let bestHouse: typeof currentHouse | null = null
-		let bestCost = currentCost
-
 		const houses = deps.buildings.getAllBuildings()
 			.filter(building => building.mapId === mapId && building.playerId === workplace.playerId)
 			.filter(building => building.stage === ConstructionStage.Completed)
@@ -127,56 +124,48 @@ export class HomeRelocationPlanner {
 				if ((definition.maxOccupants ?? 0) <= 0) {
 					return false
 				}
-				return deps.reservations.canReserveHouseSlot(building.id)
+				return true
 			})
 
-		for (const house of houses) {
-			const cost = this.estimateCommuteDistance(deps, mapId, house.position, workplace.position)
-			if (cost === null) {
+		const candidateHouses = houses
+			.map(house => ({
+				house,
+				cost: this.estimateCommuteDistance(deps, mapId, house.position, workplace.position)
+			}))
+			.filter(candidate => candidate.cost !== null)
+			.map(candidate => ({ house: candidate.house, cost: candidate.cost as number }))
+			.filter(candidate => candidate.cost <= currentCost * HOME_MOVE_IMPROVEMENT_RATIO)
+			.filter(candidate => currentCost - candidate.cost >= minImprovement)
+			.sort((left, right) => left.cost - right.cost)
+
+		for (const candidate of candidateHouses) {
+			const houseReservation = deps.reservations.reserve({
+				kind: ReservationKind.House,
+				houseId: candidate.house.id,
+				settlerId
+			})
+			if (!houseReservation || houseReservation.kind !== ReservationKind.House) {
 				continue
 			}
-			if (cost < bestCost) {
-				bestCost = cost
-				bestHouse = house
-			}
+
+			const actions: WorkAction[] = [
+				{ type: WorkActionType.Move, position: currentHouse.position, targetType: MoveTargetType.House, targetId: currentHouse.id, setState: SettlerState.MovingHome },
+				{ type: WorkActionType.Wait, durationMs: HOME_MOVE_PACK_MS, setState: SettlerState.Packing },
+				{ type: WorkActionType.Move, position: candidate.house.position, targetType: MoveTargetType.House, targetId: candidate.house.id, setState: SettlerState.MovingHome },
+				{
+					type: WorkActionType.ChangeHome,
+					reservationId: houseReservation.reservationId,
+					houseId: candidate.house.id,
+					reservationRefs: [houseReservation.ref]
+				},
+				{ type: WorkActionType.Wait, durationMs: HOME_MOVE_UNPACK_MS, setState: SettlerState.Unpacking },
+				{ type: WorkActionType.Move, position: workplace.position, targetType: MoveTargetType.Building, targetId: workplace.id, setState: SettlerState.MovingToBuilding }
+			]
+
+			return { actions }
 		}
 
-		if (!bestHouse) {
-			return null
-		}
-
-		if (bestCost > currentCost * HOME_MOVE_IMPROVEMENT_RATIO) {
-			return null
-		}
-
-		if (currentCost - bestCost < minImprovement) {
-			return null
-		}
-
-		const houseReservation = deps.reservations.reserve({
-			kind: ReservationKind.House,
-			houseId: bestHouse.id,
-			settlerId
-		})
-		if (!houseReservation || houseReservation.kind !== ReservationKind.House) {
-			return null
-		}
-
-		const actions: WorkAction[] = [
-			{ type: WorkActionType.Move, position: currentHouse.position, targetType: MoveTargetType.House, targetId: currentHouse.id, setState: SettlerState.MovingHome },
-			{ type: WorkActionType.Wait, durationMs: HOME_MOVE_PACK_MS, setState: SettlerState.Packing },
-			{ type: WorkActionType.Move, position: bestHouse.position, targetType: MoveTargetType.House, targetId: bestHouse.id, setState: SettlerState.MovingHome },
-			{
-				type: WorkActionType.ChangeHome,
-				reservationId: houseReservation.reservationId,
-				houseId: bestHouse.id,
-				reservationRefs: [houseReservation.ref]
-			},
-			{ type: WorkActionType.Wait, durationMs: HOME_MOVE_UNPACK_MS, setState: SettlerState.Unpacking },
-			{ type: WorkActionType.Move, position: workplace.position, targetType: MoveTargetType.Building, targetId: workplace.id, setState: SettlerState.MovingToBuilding }
-		]
-
-		return { actions }
+		return null
 	}
 
 	private estimateCommuteDistance(

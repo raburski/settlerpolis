@@ -1,5 +1,6 @@
 import type { SettlerId } from '../../ids'
 import type { ActionQueueContext } from '../../state/types'
+import type { SettlerActionFailureReason } from '../failureReasons'
 
 export interface ActionQueueCompletedEventData {
 	settlerId: SettlerId
@@ -9,7 +10,7 @@ export interface ActionQueueCompletedEventData {
 export interface ActionQueueFailedEventData {
 	settlerId: SettlerId
 	context?: ActionQueueContext
-	reason: string
+	reason: SettlerActionFailureReason
 }
 
 export const SettlerActionsEvents = {

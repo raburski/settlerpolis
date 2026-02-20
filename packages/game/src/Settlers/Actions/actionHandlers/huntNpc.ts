@@ -1,4 +1,5 @@
 import { WorkActionType } from '../../Work/types'
+import { SettlerActionFailureReason } from '../../failureReasons'
 import type { ActionHandler } from './types'
 import { calculateDistance } from '../../../utils'
 
@@ -13,11 +14,11 @@ export const HuntNpcActionHandler: ActionHandler = {
 
 		const npc = managers.npc.getNPC(action.npcId)
 		if (!npc || npc.active === false) {
-			fail('npc_missing')
+			fail(SettlerActionFailureReason.NpcMissing)
 			return
 		}
 		if (action.wildlifeType && npc.attributes?.wildlifeType && npc.attributes.wildlifeType !== action.wildlifeType) {
-			fail('wrong_target')
+			fail(SettlerActionFailureReason.WrongTarget)
 			return
 		}
 
@@ -25,7 +26,7 @@ export const HuntNpcActionHandler: ActionHandler = {
 		if (settler) {
 			const distance = calculateDistance(settler.position, npc.position)
 			if (distance > MAX_HUNT_RANGE) {
-				fail('out_of_range')
+				fail(SettlerActionFailureReason.OutOfRange)
 				return
 			}
 		}

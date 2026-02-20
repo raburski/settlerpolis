@@ -1,4 +1,5 @@
 import { WorkActionType } from '../../Work/types'
+import { SettlerActionFailureReason } from '../../failureReasons'
 import type { ActionHandler } from './types'
 
 export const DeliverStorageActionHandler: ActionHandler = {
@@ -9,7 +10,7 @@ export const DeliverStorageActionHandler: ActionHandler = {
 		}
 		const ok = managers.storage.addToStorage(action.buildingInstanceId, action.itemType, action.quantity, action.reservationId)
 		if (!ok) {
-			fail('storage_deliver_failed')
+			fail(SettlerActionFailureReason.StorageDeliverFailed)
 			return
 		}
 		const settler = managers.population.getSettler(settlerId)

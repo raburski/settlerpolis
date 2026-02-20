@@ -1,5 +1,6 @@
 import type { SettlerId, WorkAssignmentId } from '../../ids'
 import type { WorkAction, WorkAssignment, WorkStep } from './types'
+import type { SettlerActionFailureReason } from '../failureReasons'
 
 export enum WorkDispatchReason {
 	WorkFlow = 'work_flow',
@@ -16,7 +17,7 @@ export interface WorkActionCompletedEventData {
 export interface WorkActionFailedEventData {
 	settlerId: SettlerId
 	action: WorkAction
-	reason: string
+	reason: SettlerActionFailureReason
 }
 
 export interface WorkStepIssuedEventData {
@@ -32,7 +33,7 @@ export interface WorkStepCompletedEventData {
 export interface WorkStepFailedEventData {
 	settlerId: SettlerId
 	step: WorkStep
-	reason: string
+	reason: SettlerActionFailureReason
 }
 
 export interface WorkAssignmentCreatedEventData {

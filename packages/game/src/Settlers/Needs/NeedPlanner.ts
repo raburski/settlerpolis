@@ -11,6 +11,7 @@ import { FoodSourcePolicy } from './policies/FoodSourcePolicy'
 import { BedPolicy } from './policies/BedPolicy'
 import { buildEatPlan } from './plans/EatPlan'
 import { buildSleepPlan } from './plans/SleepPlan'
+import { NeedPlanningFailureReason } from '../failureReasons'
 
 export interface NeedPlannerDeps {
 	buildings: BuildingManager
@@ -41,7 +42,7 @@ export class NeedPlanner {
 			case NeedType.Hunger: {
 				const source = this.foodSourcePolicy.findFoodSource(settlerId)
 				if (!source) {
-					return { reason: 'no_food_source' }
+					return { reason: NeedPlanningFailureReason.NoFoodSource }
 				}
 				return buildEatPlan(settlerId, source, {
 					buildings: this.managers.buildings,
@@ -51,7 +52,7 @@ export class NeedPlanner {
 			case NeedType.Fatigue: {
 				const bed = this.bedPolicy.findBed(settlerId)
 				if (!bed) {
-					return { reason: 'no_home' }
+					return { reason: NeedPlanningFailureReason.NoHome }
 				}
 				return buildSleepPlan(settlerId, bed, {
 					buildings: this.managers.buildings,
@@ -60,7 +61,7 @@ export class NeedPlanner {
 			}
 			default: {
 				this.logger.warn(`[NeedPlanner] Unknown need type ${needType}`)
-				return { reason: 'unknown_need_type' }
+				return { reason: NeedPlanningFailureReason.UnknownNeedType }
 			}
 		}
 	}

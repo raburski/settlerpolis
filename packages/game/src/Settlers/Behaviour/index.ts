@@ -31,6 +31,7 @@ import {
 	WaitStepDispatchRule,
 	WorkStepLifecycleHandler
 } from './rules'
+import type { SettlerActionFailureReason } from '../failureReasons'
 
 export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 	private readonly state = new SettlerBehaviourState()
@@ -305,7 +306,7 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 	buildWorkQueueCallbacks(
 		settlerId: SettlerId,
 		step?: WorkStep
-	): { onComplete: () => void, onFail: (reason: string) => void } {
+	): { onComplete: () => void, onFail: (reason: SettlerActionFailureReason) => void } {
 		return this.stepLifecycle.buildCallbacks(settlerId, step)
 	}
 

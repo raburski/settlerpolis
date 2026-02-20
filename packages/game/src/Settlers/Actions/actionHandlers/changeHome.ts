@@ -1,4 +1,5 @@
 import { WorkActionType } from '../../Work/types'
+import { SettlerActionFailureReason } from '../../failureReasons'
 import type { ActionHandler } from './types'
 import { ReservationKind } from '../../../Reservation'
 
@@ -15,7 +16,7 @@ export const ChangeHomeActionHandler: ActionHandler = {
 			expectedHouseId: action.houseId
 		})
 		if (!success) {
-			fail('home_move_failed')
+			fail(SettlerActionFailureReason.HomeMoveFailed)
 			return
 		}
 

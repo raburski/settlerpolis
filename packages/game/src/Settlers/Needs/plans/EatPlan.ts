@@ -9,6 +9,7 @@ import type { FoodSource } from '../policies/FoodSourcePolicy'
 import { NeedType } from '../NeedTypes'
 import type { NeedPlanResult } from '../types'
 import { ReservationKind } from '../../../Reservation'
+import { NeedPlanningFailureReason } from '../../failureReasons'
 
 const EAT_DURATION_MS = 2500
 
@@ -24,7 +25,7 @@ export const buildEatPlan = (settlerId: string, source: FoodSource, deps: EatPla
 	if (source.type === 'storage') {
 		const building = deps.buildings.getBuildingInstance(source.buildingInstanceId)
 		if (!building) {
-			return { reason: 'food_building_missing' }
+			return { reason: NeedPlanningFailureReason.FoodBuildingMissing }
 		}
 		const buildingDef = deps.buildings.getBuildingDefinition(building.buildingId)
 		if (typeof buildingDef?.amenityNeeds?.hunger === 'number') {
@@ -40,7 +41,7 @@ export const buildEatPlan = (settlerId: string, source: FoodSource, deps: EatPla
 			allowInternal: true
 		})
 		if (!reservation || reservation.kind !== ReservationKind.Storage) {
-			return { reason: 'food_unavailable' }
+			return { reason: NeedPlanningFailureReason.FoodUnavailable }
 		}
 
 		let amenityReservation: AmenitySlotReservationResult | null = null
@@ -52,7 +53,7 @@ export const buildEatPlan = (settlerId: string, source: FoodSource, deps: EatPla
 			})
 			if (!amenity || amenity.kind !== ReservationKind.Amenity) {
 				deps.reservations.release(reservation.ref)
-				return { reason: 'amenity_full' }
+				return { reason: NeedPlanningFailureReason.AmenityFull }
 			}
 			amenityReservation = {
 				reservationId: amenity.reservationId,
@@ -99,7 +100,7 @@ export const buildEatPlan = (settlerId: string, source: FoodSource, deps: EatPla
 			ownerId: settlerId
 		})
 		if (!lootReservation || lootReservation.kind !== ReservationKind.Loot) {
-			return { reason: 'food_reserved' }
+			return { reason: NeedPlanningFailureReason.FoodReserved }
 		}
 		actions.push(
 			{ type: WorkActionType.Move, position: source.position, targetType: MoveTargetType.Item, targetId: source.itemId, setState: SettlerState.MovingToItem },

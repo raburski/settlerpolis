@@ -1,4 +1,5 @@
 import { WorkActionType } from '../../Work/types'
+import { SettlerActionFailureReason } from '../../failureReasons'
 import type { ActionHandler } from './types'
 
 export const PlantActionHandler: ActionHandler = {
@@ -10,7 +11,7 @@ export const PlantActionHandler: ActionHandler = {
 
 		const building = managers.buildings.getBuildingInstance(action.buildingInstanceId)
 		if (!building) {
-			fail('building_not_found')
+			fail(SettlerActionFailureReason.BuildingNotFound)
 			return
 		}
 
@@ -25,7 +26,7 @@ export const PlantActionHandler: ActionHandler = {
 		})
 
 		if (!planted) {
-			fail('plant_failed')
+			fail(SettlerActionFailureReason.PlantFailed)
 			return
 		}
 

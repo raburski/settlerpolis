@@ -10,8 +10,7 @@ import {
 import {
 	reserveHouseReservation,
 	releaseHouseReservation,
-	commitHouseReservation,
-	canReserveHouseSlot
+	commitHouseReservation
 } from './handler/house'
 import { reserveLootReservation, releaseLootReservation } from './handler/loot'
 import { reserveNodeReservation, releaseNodeReservation } from './handler/node'
@@ -125,10 +124,6 @@ export class ReservationSystem extends BaseManager<ReservationSystemDeps> {
 			return false
 		}
 		return handler(request, this.getContext())
-	}
-
-	public canReserveHouseSlot(houseId: string): boolean {
-		return canReserveHouseSlot(houseId, this.getContext())
 	}
 
 	serialize(): ReservationSnapshot {

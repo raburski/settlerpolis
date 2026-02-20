@@ -9,9 +9,12 @@ import type { SettlerBehaviourDeps } from '../deps'
 import type { SettlerWorkManager } from '../../Work'
 import type { SettlerBehaviourState } from '../SettlerBehaviourState'
 import { isWarehouseLogisticsAssignment } from './assignmentPredicates'
+import { isMovementActionFailureReason, SettlerActionFailureReason } from '../../failureReasons'
 
 const MOVEMENT_RECOVERY_COOLDOWN_MS = 8000
 const MOVEMENT_FAILURE_MAX_RETRIES = 3
+const isWorkWaitReason = (reason: string): reason is WorkWaitReason =>
+	(Object.values(WorkWaitReason) as string[]).includes(reason)
 
 export interface WorkStepLifecycleHandlerDeps {
 	managers: SettlerBehaviourDeps
@@ -27,7 +30,7 @@ export class WorkStepLifecycleHandler {
 	public buildCallbacks(
 		settlerId: SettlerId,
 		step?: WorkStep
-	): { onComplete: () => void, onFail: (reason: string) => void } {
+	): { onComplete: () => void, onFail: (reason: SettlerActionFailureReason) => void } {
 		return {
 			onComplete: () => {
 				if (!step) {
@@ -41,7 +44,7 @@ export class WorkStepLifecycleHandler {
 				}
 				this.handleStepCompleted(settlerId, assignment, step)
 			},
-			onFail: (reason: string) => {
+			onFail: (reason: SettlerActionFailureReason) => {
 				if (!step) {
 					this.deps.managers.population.setSettlerState(settlerId, SettlerState.Idle)
 					this.deps.dispatchNextStep(settlerId)
@@ -91,18 +94,17 @@ export class WorkStepLifecycleHandler {
 	private handleStepFailed(
 		settlerId: SettlerId,
 		step: WorkStep,
-		reason: string
+		reason: SettlerActionFailureReason
 	): void {
 		this.deps.event.emit(Receiver.All, WorkProviderEvents.SS.StepFailed, { settlerId, step, reason })
 		this.clearConstructionWorker(settlerId, step)
 		let retryDelayMs = 1000
-		const isWaitReason = (Object.values(WorkWaitReason) as string[]).includes(reason)
-		let waitReason: WorkWaitReason = isWaitReason ? (reason as WorkWaitReason) : WorkWaitReason.NoWork
+		let waitReason: WorkWaitReason = isWorkWaitReason(reason) ? reason : WorkWaitReason.NoWork
 		let shouldDispatch = true
-		if (reason === 'movement_failed' || reason === 'movement_cancelled') {
+		if (isMovementActionFailureReason(reason)) {
 			const currentFailures = this.deps.state.incrementMovementFailureCount(settlerId)
 			retryDelayMs = MOVEMENT_RECOVERY_COOLDOWN_MS
-			waitReason = reason === 'movement_failed'
+			waitReason = reason === SettlerActionFailureReason.MovementFailed
 				? WorkWaitReason.MovementFailed
 				: WorkWaitReason.MovementCancelled
 			this.deps.state.setMovementRecovery(settlerId, this.deps.work.getNowMs() + retryDelayMs, waitReason)
