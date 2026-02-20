@@ -8,6 +8,8 @@ import { NeedType } from '../NeedTypes'
 import type { NeedPlanResult } from '../types'
 import type { BuildingManager } from '../../../Buildings'
 import type { ReservationSystem, AmenitySlotReservationResult } from '../../../Reservation'
+import { ReservationKind } from '../../../Reservation'
+import { NeedPlanningFailureReason } from '../../failureReasons'
 
 const SLEEP_DURATION_MS = 8000
 
@@ -18,7 +20,6 @@ export interface SleepPlanDeps {
 
 export const buildSleepPlan = (settlerId: string, bed: BedLocation, deps: SleepPlanDeps): NeedPlanResult => {
 	const actions: WorkAction[] = []
-	const releaseFns: Array<() => void> = []
 	let satisfyValue: number | undefined
 	let amenityReservation: AmenitySlotReservationResult | null = null
 
@@ -29,11 +30,19 @@ export const buildSleepPlan = (settlerId: string, bed: BedLocation, deps: SleepP
 	}
 
 	if (buildingDef?.amenitySlots && buildingDef.amenitySlots.count > 0) {
-		amenityReservation = deps.reservations.reserveAmenitySlot(bed.buildingInstanceId, settlerId)
-		if (!amenityReservation) {
-			return { reason: 'amenity_full' }
+		const amenity = deps.reservations.reserve({
+			kind: ReservationKind.Amenity,
+			buildingInstanceId: bed.buildingInstanceId,
+			settlerId
+		})
+		if (!amenity || amenity.kind !== ReservationKind.Amenity) {
+			return { reason: NeedPlanningFailureReason.AmenityFull }
 		}
-		releaseFns.push(() => deps.reservations.releaseAmenitySlot(amenityReservation!.reservationId))
+		amenityReservation = {
+			reservationId: amenity.reservationId,
+			slotIndex: amenity.slotIndex,
+			position: amenity.position
+		}
 	}
 
 	const moveTargetPosition = amenityReservation?.position ?? bed.position
@@ -45,6 +54,9 @@ export const buildSleepPlan = (settlerId: string, bed: BedLocation, deps: SleepP
 		position: moveTargetPosition,
 		targetType: moveTargetType,
 		targetId: moveTargetId,
+		reservationRefs: amenityReservation
+			? [{ kind: ReservationKind.Amenity, reservationId: amenityReservation.reservationId }]
+			: undefined,
 		setState: SettlerState.MovingToBuilding
 	})
 
@@ -59,8 +71,7 @@ export const buildSleepPlan = (settlerId: string, bed: BedLocation, deps: SleepP
 			id: uuidv4(),
 			needType: NeedType.Fatigue,
 			actions,
-			satisfyValue,
-			releaseReservations: () => releaseFns.forEach(fn => fn())
+			satisfyValue
 		}
 	}
 }

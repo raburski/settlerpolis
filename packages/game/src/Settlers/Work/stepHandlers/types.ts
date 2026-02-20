@@ -13,7 +13,6 @@ export interface StepHandlerContext {
 
 export interface StepHandlerResult {
 	actions: WorkAction[]
-	releaseReservations?: () => void
 }
 
 export interface StepHandler {

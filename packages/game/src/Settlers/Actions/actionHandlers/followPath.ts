@@ -1,4 +1,5 @@
 import { WorkActionType } from '../../Work/types'
+import { SettlerActionFailureReason } from '../../failureReasons'
 import type { ActionHandler } from './types'
 
 export const FollowPathActionHandler: ActionHandler = {
@@ -8,7 +9,7 @@ export const FollowPathActionHandler: ActionHandler = {
 			return
 		}
 		if (!action.path || action.path.length === 0) {
-			fail('movement_failed')
+			fail(SettlerActionFailureReason.MovementFailed)
 			return
 		}
 
@@ -24,13 +25,13 @@ export const FollowPathActionHandler: ActionHandler = {
 					complete()
 				},
 				onCancelled: () => {
-					fail('movement_cancelled')
+					fail(SettlerActionFailureReason.MovementCancelled)
 				}
 			}
 		})
 
 		if (!started) {
-			fail('movement_failed')
+			fail(SettlerActionFailureReason.MovementFailed)
 		}
 	},
 	onComplete: ({ settlerId, managers }) => {

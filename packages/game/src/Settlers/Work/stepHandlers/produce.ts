@@ -2,8 +2,8 @@ import { SettlerState } from '../../../Population/types'
 import { WorkActionType, WorkStepType } from '../types'
 import type { WorkAction } from '../types'
 import type { StepHandler, StepHandlerResult } from './types'
-import { ReservationBag } from '../reservations'
 import { MoveTargetType } from '../../../Movement/types'
+import { ReservationKind, type ReservationRef } from '../../../Reservation'
 
 export const ProduceHandler: StepHandler = {
 	type: WorkStepType.Produce,
@@ -17,43 +17,61 @@ export const ProduceHandler: StepHandler = {
 			return { actions: [] }
 		}
 
-		const reservations = new ReservationBag()
+		const reservationRefs: ReservationRef[] = []
+		const releaseReservations = () => reservationSystem.releaseMany(reservationRefs)
 
 		const inputReservations = step.recipe.inputs.map(input => {
-			const reservation = reservationSystem.reserveStorageOutgoingInternal(building.id, input.itemType, input.quantity, assignment.assignmentId)
-			if (!reservation) {
+			const reservation = reservationSystem.reserve({
+				kind: ReservationKind.Storage,
+				direction: 'outgoing',
+				buildingInstanceId: building.id,
+				itemType: input.itemType,
+				quantity: input.quantity,
+				ownerId: assignment.assignmentId,
+				allowInternal: true
+			})
+			if (!reservation || reservation.kind !== ReservationKind.Storage) {
 				return null
 			}
-			reservations.add(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
+			reservationRefs.push(reservation.ref)
 			return {
 				itemType: input.itemType,
 				quantity: input.quantity,
 				reservationId: reservation.reservationId,
+				ref: reservation.ref,
 				position: reservation.position
 			}
 		})
 
 		if (inputReservations.some(res => !res)) {
-			reservations.releaseAll()
+			releaseReservations()
 			return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
 		}
 
 		const outputReservations = step.recipe.outputs.map(output => {
-			const reservation = reservationSystem.reserveStorageIncoming(building.id, output.itemType, output.quantity, assignment.assignmentId)
-			if (!reservation) {
+			const reservation = reservationSystem.reserve({
+				kind: ReservationKind.Storage,
+				direction: 'incoming',
+				buildingInstanceId: building.id,
+				itemType: output.itemType,
+				quantity: output.quantity,
+				ownerId: assignment.assignmentId
+			})
+			if (!reservation || reservation.kind !== ReservationKind.Storage) {
 				return null
 			}
-			reservations.add(() => reservationSystem.releaseStorageReservation(reservation.reservationId))
+			reservationRefs.push(reservation.ref)
 			return {
 				itemType: output.itemType,
 				quantity: output.quantity,
 				reservationId: reservation.reservationId,
+				ref: reservation.ref,
 				position: reservation.position
 			}
 		})
 
 		if (outputReservations.some(res => !res)) {
-			reservations.releaseAll()
+			releaseReservations()
 			return { actions: [{ type: WorkActionType.Wait, durationMs: 1500, setState: SettlerState.WaitingForWork }] }
 		}
 
@@ -68,6 +86,7 @@ export const ProduceHandler: StepHandler = {
 					itemType: input!.itemType,
 					quantity: input!.quantity,
 					reservationId: input!.reservationId,
+					reservationRefs: [input!.ref],
 					setState: SettlerState.Working
 				}
 			)
@@ -86,14 +105,14 @@ export const ProduceHandler: StepHandler = {
 					itemType: output!.itemType,
 					quantity: output!.quantity,
 					reservationId: output!.reservationId,
+					reservationRefs: [output!.ref],
 					setState: SettlerState.Working
 				}
 			)
 		}
 
 		return {
-			actions,
-			releaseReservations: () => reservations.releaseAll()
+			actions
 		}
 	}
 }

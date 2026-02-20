@@ -1,4 +1,5 @@
 import { WorkActionType } from '../../Work/types'
+import { SettlerActionFailureReason } from '../../failureReasons'
 import { MoveTargetType } from '../../../Movement/types'
 import { ConstructionStage } from '../../../Buildings/types'
 import { calculateDistance } from '../../../utils'
@@ -82,21 +83,21 @@ export const MoveActionHandler: ActionHandler = {
 											complete()
 										},
 										onCancelled: () => {
-											fail('movement_cancelled')
+											fail(SettlerActionFailureReason.MovementCancelled)
 										}
 									}
 								})
 								if (!startedInner) {
-									fail('movement_failed')
+									fail(SettlerActionFailureReason.MovementFailed)
 								}
 							},
 							onCancelled: () => {
-								fail('movement_cancelled')
+								fail(SettlerActionFailureReason.MovementCancelled)
 							}
 						}
 					})
 					if (!started) {
-						fail('movement_failed')
+						fail(SettlerActionFailureReason.MovementFailed)
 					}
 					return
 				}
@@ -125,21 +126,21 @@ export const MoveActionHandler: ActionHandler = {
 											complete()
 										},
 										onCancelled: () => {
-											fail('movement_cancelled')
+											fail(SettlerActionFailureReason.MovementCancelled)
 										}
 									}
 								})
 								if (!startedInner) {
-									fail('movement_failed')
+									fail(SettlerActionFailureReason.MovementFailed)
 								}
 							},
 							onCancelled: () => {
-								fail('movement_cancelled')
+								fail(SettlerActionFailureReason.MovementCancelled)
 							}
 						}
 					})
 					if (!started) {
-						fail('movement_failed')
+						fail(SettlerActionFailureReason.MovementFailed)
 					}
 					return
 				}
@@ -156,12 +157,12 @@ export const MoveActionHandler: ActionHandler = {
 					complete()
 				},
 				onCancelled: () => {
-					fail('movement_cancelled')
+					fail(SettlerActionFailureReason.MovementCancelled)
 				}
 			}
 		})
 		if (!started) {
-			fail('movement_failed')
+			fail(SettlerActionFailureReason.MovementFailed)
 		}
 	}
 	,

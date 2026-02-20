@@ -1,5 +1,6 @@
 import type { WorkAction } from '../Work/types'
 import type { NeedLevel, NeedPriority, NeedType } from './NeedTypes'
+import type { NeedPlanFailureReason } from '../failureReasons'
 
 export interface NeedThresholdEventData {
 	settlerId: string
@@ -29,7 +30,7 @@ export interface NeedPlanCreatedEventData {
 export interface NeedPlanFailedEventData {
 	settlerId: string
 	needType: NeedType
-	reason: string
+	reason: NeedPlanFailureReason
 }
 
 export interface PausedContext {
@@ -43,10 +44,9 @@ export interface NeedPlan {
 	needType: NeedType
 	actions: WorkAction[]
 	satisfyValue?: number
-	releaseReservations?: () => void
 }
 
 export interface NeedPlanResult {
 	plan?: NeedPlan
-	reason?: string
+	reason?: NeedPlanFailureReason
 }

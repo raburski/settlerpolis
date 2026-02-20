@@ -1,4 +1,5 @@
 import { WorkActionType } from '../../Work/types'
+import { SettlerActionFailureReason } from '../../failureReasons'
 import type { ActionHandler } from './types'
 
 export const DeliverConstructionActionHandler: ActionHandler = {
@@ -9,7 +10,7 @@ export const DeliverConstructionActionHandler: ActionHandler = {
 		}
 		const ok = managers.buildings.addResourceToBuilding(action.buildingInstanceId, action.itemType, action.quantity)
 		if (!ok) {
-			fail('construction_deliver_failed')
+			fail(SettlerActionFailureReason.ConstructionDeliverFailed)
 			return
 		}
 		managers.population.setSettlerCarryingItem(settlerId, undefined)

@@ -12,6 +12,10 @@ import { ActionQueueContextKind, type ActionQueueContext } from '../../state/typ
 import { SettlerActionsEvents } from '../Actions/events'
 import type { ActionQueueCompletedEventData, ActionQueueFailedEventData } from '../Actions/events'
 import type { WorkAction } from '../Work/types'
+import {
+	type NeedPlanFailureReason,
+	NeedPlanningFailureReason
+} from '../failureReasons'
 
 interface NeedInterruptState {
 	activeNeed: NeedType | null
@@ -129,7 +133,7 @@ export class NeedInterruptController {
 
 		const planResult = this.planner.createPlan(settlerId, needType)
 		if (!planResult.plan) {
-			this.emitPlanFailed(settlerId, needType, planResult.reason || 'plan_failed')
+			this.emitPlanFailed(settlerId, needType, planResult.reason || NeedPlanningFailureReason.PlanFailed)
 			state.cooldowns[needType] = FAIL_COOLDOWN_MS
 			return
 		}
@@ -154,13 +158,12 @@ export class NeedInterruptController {
 		const context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }> = {
 			kind: ActionQueueContextKind.Need,
 			needType,
-			satisfyValue: plan.satisfyValue,
-			reservationOwnerId: settlerId
+			satisfyValue: plan.satisfyValue
 		}
 
 		const enqueued = this.behaviour.enqueueNeedPlan(settlerId, plan.actions, context)
 		if (!enqueued) {
-			this.emitPlanFailed(settlerId, needType, 'action_system_busy')
+			this.emitPlanFailed(settlerId, needType, NeedPlanningFailureReason.ActionSystemBusy)
 			this.finishInterrupt(settlerId, needType, false)
 		}
 	}
@@ -186,7 +189,7 @@ export class NeedInterruptController {
 		this.behaviour.endNeedInterrupt(settlerId, needType)
 	}
 
-	private emitPlanFailed(settlerId: string, needType: NeedType, reason: string): void {
+	private emitPlanFailed(settlerId: string, needType: NeedType, reason: NeedPlanFailureReason): void {
 		this.logger.warn(`[Needs] Plan failed for ${settlerId} (${needType}): ${reason}`)
 		this.event.emit(Receiver.All, NeedsEvents.SS.NeedPlanFailed, {
 			settlerId,

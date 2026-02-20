@@ -1,10 +1,11 @@
 import type { WorkAction } from '../Work/types'
 import { WorkActionType } from '../Work/types'
 import type { ActionQueueContext, ActionSystemSnapshot } from '../../state/types'
+import type { SettlerActionFailureReason } from '../failureReasons'
 
 export interface ActionQueueCallbacks {
 	onComplete?: () => void
-	onFail?: (reason: string) => void
+	onFail?: (reason: SettlerActionFailureReason) => void
 }
 
 export interface ActionQueueRuntimeState extends ActionQueueCallbacks {

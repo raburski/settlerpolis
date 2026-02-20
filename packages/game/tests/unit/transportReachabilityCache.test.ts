@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { TransportHandler } from '../../src/Settlers/Work/stepHandlers/transport'
+import { ReservationKind } from '../../src/Reservation'
 import {
 	TransportSourceType,
 	TransportTargetType,
@@ -64,13 +65,26 @@ describe('TransportHandler reachability memoization', () => {
 		}
 
 		const reservationSystem = {
-			reserveLootItem: () => true,
-			releaseLootReservation: () => {},
-			reserveStorageIncoming: () => ({
-				reservationId: 'incoming-1',
-				position: targetPosition
-			}),
-			releaseStorageReservation: () => {}
+			reserve: (request: { kind: ReservationKind }) => {
+				if (request.kind === ReservationKind.Loot) {
+					return {
+						kind: ReservationKind.Loot,
+						ref: { kind: ReservationKind.Loot, itemId: 'loot-1', ownerId: 'assignment-1' }
+					}
+				}
+				if (request.kind === ReservationKind.Storage) {
+					return {
+						kind: ReservationKind.Storage,
+						ref: { kind: ReservationKind.Storage, reservationId: 'incoming-1' },
+						reservationId: 'incoming-1',
+						slotId: 'slot-1',
+						position: targetPosition,
+						quantity: 1
+					}
+				}
+				return null
+			},
+			release: () => {}
 		}
 
 		const result = TransportHandler.build({
