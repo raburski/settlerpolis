@@ -27,8 +27,9 @@ import { EventBus } from '../EventBus'
 import { Event, FXType } from '@rugged/game'
 import type { CityCharterStateData } from '@rugged/game'
 import { cityCharterService } from '../services/CityCharterService'
+import { timeService } from '../services/TimeService'
 import { UiEvents } from '../uiEvents'
-import { DEFAULT_DAY_MOMENT, type DayMoment } from '../dayMoment'
+import type { DayMoment } from '../dayMoment'
 
 export const UIContainer = () => {
 	const [isVisible, setIsVisible] = useState(true)
@@ -39,7 +40,7 @@ export const UIContainer = () => {
 	const [isPrioritiesOpen, setIsPrioritiesOpen] = useState(false)
 	const [isCharterOpen, setIsCharterOpen] = useState(false)
 	const [isReputationOpen, setIsReputationOpen] = useState(false)
-	const [dayMoment, setDayMoment] = useState<DayMoment>(DEFAULT_DAY_MOMENT)
+	const [dayMoment, setDayMoment] = useState<DayMoment>(timeService.getState().dayPhase)
 	const [saveLoadMode, setSaveLoadMode] = useState<'save' | 'load' | null>(null)
 	const [showDebug, setShowDebug] = useState(false)
 	const stockButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -226,6 +227,12 @@ export const UIContainer = () => {
 	}, [])
 
 	useEffect(() => {
+		return timeService.subscribe((state) => {
+			setDayMoment((previous) => (previous === state.dayPhase ? previous : state.dayPhase))
+		})
+	}, [])
+
+	useEffect(() => {
 		EventBus.emit(UiEvents.World.DayMomentChanged, { moment: dayMoment })
 	}, [dayMoment])
 
@@ -275,7 +282,7 @@ export const UIContainer = () => {
 				isWorldMapOpen={isWorldMapOpen}
 				onToggleWorldMap={() => setIsWorldMapOpen((prev) => !prev)}
 				dayMoment={dayMoment}
-				onSelectDayMoment={setDayMoment}
+				onSelectDayMoment={timeService.fastForwardToDayPhase}
 				isPrioritiesOpen={isPrioritiesOpen}
 				onTogglePriorities={() => {
 					setIsStockOpen(false)

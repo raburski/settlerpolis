@@ -1,4 +1,4 @@
-import type { TimeData, Time } from '../Time/types'
+import type { DayPhase, TimeData, Time } from '../Time/types'
 import type { Player } from '../Players/types'
 import type { Inventory } from '../Inventory/types'
 import type { MapObject } from '../MapObjects/types'
@@ -81,6 +81,7 @@ export interface SimulationSnapshot {
 export interface TimeSnapshot {
 	timeData: TimeData
 	lastBroadcastHour: number
+	lastBroadcastDayPhase?: DayPhase
 	tickAccumulatorMs: number
 }
 

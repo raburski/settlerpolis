@@ -1,4 +1,7 @@
 export const TimeEvents = {
+	CS: {
+		FastForwardToPhase: 'cs:time:fast-forward-to-phase'
+	},
 	SS: {
 		Update: 'time:ss:update',
 		SetSpeed: 'time:ss:set-speed',
@@ -11,6 +14,7 @@ export const TimeEvents = {
 		SpeedSet: 'time:sc:speed-set',
 		Paused: 'time:sc:paused',
 		Resumed: 'time:sc:resumed',
-		Sync: 'time:sc:sync'
+		Sync: 'time:sc:sync',
+		DayPhaseSync: 'time:sc:day-phase-sync'
 	}
-} as const 
+} as const

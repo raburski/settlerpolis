@@ -64,9 +64,9 @@ const ResourceEmoji: React.FC<{ itemType: string }> = ({ itemType }) => {
 }
 
 const dayMomentOptions: Array<{ moment: DayMoment; icon: string; label: string }> = [
-	{ moment: 'dawn', icon: '🌅', label: 'Dawn' },
+	{ moment: 'morning', icon: '🌅', label: 'Morning' },
 	{ moment: 'midday', icon: '☀️', label: 'Midday' },
-	{ moment: 'dusk', icon: '🌇', label: 'Dusk' },
+	{ moment: 'evening', icon: '🌇', label: 'Evening' },
 	{ moment: 'night', icon: '🌙', label: 'Night' }
 ]
 
