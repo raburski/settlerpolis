@@ -6,6 +6,7 @@ import {
 	AssetContainer,
 	Color3,
 	MeshBuilder,
+	PBRMaterial,
 	SceneLoader,
 	Skeleton,
 	StandardMaterial,
@@ -410,6 +411,7 @@ export class SettlerView extends BaseMovementView {
 					mesh.refreshBoundingInfo()
 					mesh.computeWorldMatrix(true)
 				})
+				this.applyModelLighting(render)
 				if (this.modelInstanceSkeletons.length === 1) {
 					const skeleton = this.modelInstanceSkeletons[0]
 					this.modelMeshes.forEach((mesh) => {
@@ -642,6 +644,52 @@ export class SettlerView extends BaseMovementView {
 		}
 		baseMesh.material = this.invisibleMaterial
 		baseMesh.visibility = 1
+	}
+
+	private applyModelLighting(render: SettlerRenderDefinition): void {
+		const configured = render.lighting || {}
+		const uniqueMaterials = new Set<object>()
+		this.modelMeshes.forEach((mesh) => {
+			const material = mesh.material
+			if (!material || uniqueMaterials.has(material)) return
+			uniqueMaterials.add(material)
+			if (!(material instanceof PBRMaterial)) return
+
+			const hasSharedEmissiveTexture =
+				Boolean(material.emissiveTexture) &&
+				Boolean(material.albedoTexture) &&
+				material.emissiveTexture === material.albedoTexture
+			const shouldApplyDefaultTweaks = hasSharedEmissiveTexture && !material.metallicTexture
+
+			const defaultEmissiveStrength = shouldApplyDefaultTweaks ? 0.72 : 1
+			const emissiveStrength = clamp(
+				Number.isFinite(configured.emissiveStrength)
+					? (configured.emissiveStrength as number)
+					: defaultEmissiveStrength,
+				0,
+				2
+			)
+			const defaultMetallic = shouldApplyDefaultTweaks ? 0.08 : material.metallic
+			const defaultRoughness = shouldApplyDefaultTweaks ? 0.9 : material.roughness
+
+			material.metallic = clamp(
+				Number.isFinite(configured.metallic)
+					? (configured.metallic as number)
+					: defaultMetallic,
+				0,
+				1
+			)
+			material.roughness = clamp(
+				Number.isFinite(configured.roughness)
+					? (configured.roughness as number)
+					: defaultRoughness,
+				0,
+				1
+			)
+			if (material.emissiveTexture) {
+				material.emissiveColor = new Color3(emissiveStrength, emissiveStrength, emissiveStrength)
+			}
+		})
 	}
 
 	private syncAnimation(): void {

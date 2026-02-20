@@ -133,6 +133,11 @@ export interface SettlerRenderDefinition {
 	profession: ProfessionType
 	modelSrc: string
 	animationSrc?: string
+	lighting?: {
+		emissiveStrength?: number
+		metallic?: number
+		roughness?: number
+	}
 	transform?: {
 		rotation?: { x: number; y: number; z: number }
 		scale?: { x: number; y: number; z: number }

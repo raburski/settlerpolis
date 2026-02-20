@@ -213,6 +213,7 @@ const FILL_LIGHT_DIFFUSE_MULTIPLIER = 0.5
 const FILL_LIGHT_GROUND_MULTIPLIER = 0.42
 const FILL_LIGHT_SPECULAR_MULTIPLIER = 0.2
 const AMBIENT_COLOR_MULTIPLIER = 0.28
+const GROUND_SHADER_EXPOSURE_MULTIPLIER = 0.84
 const DAY_MOMENT_TRANSITION_MS = 900
 
 interface DayMomentTransitionState {
@@ -799,13 +800,14 @@ export class BabylonRenderer {
 	private applyDayMomentShaderUniforms(profile = this.dayMomentLighting): void {
 		const tint = new Color3(profile.tint[0], profile.tint[1], profile.tint[2])
 		const exposure = profile.exposure
+		const groundExposure = exposure * GROUND_SHADER_EXPOSURE_MULTIPLIER
 		if (this.groundShaderMaterial) {
 			this.groundShaderMaterial.setColor3('dayTint', tint)
-			this.groundShaderMaterial.setFloat('dayExposure', exposure)
+			this.groundShaderMaterial.setFloat('dayExposure', groundExposure)
 		}
 		if (this.groundPaletteMaterial) {
 			this.groundPaletteMaterial.setColor3('dayTint', tint)
-			this.groundPaletteMaterial.setFloat('dayExposure', exposure)
+			this.groundPaletteMaterial.setFloat('dayExposure', groundExposure)
 		}
 		if (this.waterMaterial) {
 			this.waterMaterial.setColor3('dayTint', tint)
