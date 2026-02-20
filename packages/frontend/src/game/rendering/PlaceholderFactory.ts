@@ -9,6 +9,7 @@ interface EmojiMaterialCache {
 export class PlaceholderFactory {
 	private emojiCache: Map<string, EmojiMaterialCache> = new Map()
 	private scene: Scene
+	private readonly placeholderEmissive = new Color3(0.05, 0.05, 0.05)
 
 	constructor(scene: Scene) {
 		this.scene = scene
@@ -36,7 +37,9 @@ export class PlaceholderFactory {
 		const material = new StandardMaterial(`emoji-mat-${emoji}`, this.scene)
 		material.diffuseTexture = texture
 		material.specularColor = Color3.Black()
-		material.emissiveColor = Color3.White()
+		// Keep placeholders readable while allowing scene lights/shadows to affect them.
+		material.emissiveColor = this.placeholderEmissive
+		material.disableLighting = false
 
 		this.emojiCache.set(emoji, { material, texture })
 		mesh.material = material
@@ -46,6 +49,8 @@ export class PlaceholderFactory {
 		const material = new StandardMaterial(`tint-${hex}`, this.scene)
 		material.diffuseColor = Color3.FromHexString(hex)
 		material.specularColor = Color3.Black()
+		material.emissiveColor = this.placeholderEmissive
+		material.disableLighting = false
 		mesh.material = material
 	}
 }

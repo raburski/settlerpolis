@@ -4,6 +4,11 @@
       "profession": "builder",
       "modelSrc": "/assets/library/settlers/builder1.glb",
       "animationSrc": "/assets/library/settlers/builder1_animations.glb",
+      "lighting": {
+        "emissiveStrength": 0.1,
+        "metallic": 0.08,
+        "roughness": 0.9
+      },
       "transform": {
         "scale": {
           "x": 1,
