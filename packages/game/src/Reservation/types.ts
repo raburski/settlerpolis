@@ -1,6 +1,7 @@
 import type { ItemType } from '../Items/types'
 import type { ProfessionType } from '../Population/types'
 import type { Position } from '../types'
+import type { ReservationHandlerContext } from './handlerContext'
 import type {
 	BuildingInstanceId,
 	LootItemId,
@@ -19,6 +20,12 @@ export enum ReservationKind {
 	Amenity = 'amenity',
 	House = 'house',
 	Npc = 'npc'
+}
+
+export interface AmenitySlotReservationResult {
+	reservationId: string
+	slotIndex: number
+	position: Position
 }
 
 export type ReservationRef =
@@ -117,3 +124,18 @@ export type ReservationCommitRequest = {
 	reservationId: ReservationId
 	expectedHouseId?: BuildingInstanceId
 }
+
+export type ReservationReserveHandler = (
+	request: ReservationRequest,
+	context: ReservationHandlerContext
+) => ReservationAcquireResult | null
+
+export type ReservationReleaseHandler = (
+	reservation: ReservationRef,
+	context: ReservationHandlerContext
+) => void
+
+export type ReservationCommitHandler = (
+	request: ReservationCommitRequest,
+	context: ReservationHandlerContext
+) => boolean
