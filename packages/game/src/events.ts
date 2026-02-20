@@ -57,7 +57,14 @@ import type { AffinityUpdateEventData, AffinityUpdatedEventData, AffinityListEve
 import type { FXPlayEventData } from './FX/types'
 import type { CutsceneTriggerEventData } from './Cutscene/types'
 import type { MapLoadData, MapLoadResponseData, MapTransitionData, MapTransitionResponseData } from './Map/types'
-import type { TimeUpdateEventData, TimeSpeedUpdateEventData, TimePauseEventData, TimeSyncEventData } from './Time/types'
+import type {
+	TimeDayPhaseSyncEventData,
+	TimeFastForwardToPhaseEventData,
+	TimePauseEventData,
+	TimeSpeedUpdateEventData,
+	TimeSyncEventData,
+	TimeUpdateEventData
+} from './Time/types'
 import type { PlaceBuildingData, CancelBuildingData, SetProductionPausedData, SetProductionPlanData, SetGlobalProductionPlanData, SetWorkAreaData, SetStorageRequestsData, BuildingPlacedData, BuildingProgressData, BuildingCompletedData, BuildingCancelledData, BuildingCatalogData, BuildingWorkAreaUpdatedData, BuildingStorageRequestsUpdatedData, BuildingWorkerQueueUpdatedData, ProductionPlanUpdatedData, GlobalProductionPlanUpdatedData, ConstructionStage } from './Buildings/types'
 import type { RequestWorkerData, UnassignWorkerData, RequestListData, PopulationListData, PopulationStatsData, Settler, ProfessionType, SettlerPatchedData, WorkerRequestFailureReason } from './Population/types'
 import type { WorkAssignment, LogisticsRequest } from './Settlers/Work/types'
@@ -193,6 +200,7 @@ export type EventPayloads = Record<string, unknown> & {
 	[MapEvents.SC.Load]: MapLoadResponseData
 	[MapEvents.SC.Transition]: MapTransitionResponseData
 
+	[TimeEvents.CS.FastForwardToPhase]: TimeFastForwardToPhaseEventData
 	[TimeEvents.SS.Update]: TimeUpdateEventData
 	[TimeEvents.SS.SetSpeed]: TimeSpeedUpdateEventData
 	[TimeEvents.SS.Pause]: TimePauseEventData
@@ -203,6 +211,7 @@ export type EventPayloads = Record<string, unknown> & {
 	[TimeEvents.SC.Paused]: TimePauseEventData
 	[TimeEvents.SC.Resumed]: TimePauseEventData
 	[TimeEvents.SC.Sync]: TimeSyncEventData
+	[TimeEvents.SC.DayPhaseSync]: TimeDayPhaseSyncEventData
 
 	[BuildingsEvents.CS.Place]: PlaceBuildingData
 	[BuildingsEvents.CS.Cancel]: CancelBuildingData

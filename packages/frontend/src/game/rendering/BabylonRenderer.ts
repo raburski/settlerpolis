@@ -135,7 +135,7 @@ interface DayMomentLightingProfile {
 }
 
 const DAY_MOMENT_LIGHTING: Record<DayMoment, DayMomentLightingProfile> = {
-	dawn: {
+	morning: {
 		clearColor: [0.55, 0.46, 0.39],
 		lightDirection: [0.35, 1, 0.1],
 		lightIntensity: 0.76,
@@ -165,7 +165,7 @@ const DAY_MOMENT_LIGHTING: Record<DayMoment, DayMomentLightingProfile> = {
 		tint: [1, 1, 1],
 		exposure: 1
 	},
-	dusk: {
+	evening: {
 		clearColor: [0.37, 0.27, 0.32],
 		lightDirection: [-0.24, 1, -0.18],
 		lightIntensity: 0.68,

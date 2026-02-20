@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { EventBus } from '../../game/EventBus'
-import { Event } from '@rugged/game'
 import { Time } from '@rugged/game'
+import { timeService } from '../services/TimeService'
 import styles from './World.module.css'
 
 type WorldProps = {
@@ -9,40 +8,14 @@ type WorldProps = {
 }
 
 export const World: React.FC<WorldProps> = ({ className }) => {
-	const [time, setTime] = useState<Time>({
-		hours: 0,
-		minutes: 0,
-		day: 1,
-		month: 1,
-		year: 1
-	})
-	const [isPaused, setIsPaused] = useState(false)
+	const [time, setTime] = useState<Time>(timeService.getState().time)
+	const [isPaused, setIsPaused] = useState(timeService.getState().isPaused)
 
 	useEffect(() => {
-		const handleTimeUpdate = (data: { time: Time }) => {
-			setTime(data.time)
-		}
-
-		const handleTimeSync = (data: { time: Time, isPaused: boolean }) => {
-			setTime(data.time)
-			setIsPaused(data.isPaused)
-		}
-
-		const handlePause = (data: { isPaused: boolean }) => {
-			setIsPaused(data.isPaused)
-		}
-
-		EventBus.on(Event.Time.SC.Updated, handleTimeUpdate)
-		EventBus.on(Event.Time.SC.Sync, handleTimeSync)
-		EventBus.on(Event.Time.SC.Paused, handlePause)
-		EventBus.on(Event.Time.SC.Resumed, handlePause)
-
-		return () => {
-			EventBus.off(Event.Time.SC.Updated, handleTimeUpdate)
-			EventBus.off(Event.Time.SC.Sync, handleTimeSync)
-			EventBus.off(Event.Time.SC.Paused, handlePause)
-			EventBus.off(Event.Time.SC.Resumed, handlePause)
-		}
+		return timeService.subscribe((state) => {
+			setTime(state.time)
+			setIsPaused(state.isPaused)
+		})
 	}, [])
 
 	const formatTime = (hours: number, minutes: number) => {
