@@ -15,6 +15,8 @@ import type { PopulationManager } from '../../Population'
 import type { SettlerActionsManager } from '../Actions'
 import type { SettlerWorkRuntimePort } from '../Work/runtime'
 import type { SettlerActionFailureReason } from '../failureReasons'
+import type { EventManager } from '../../events'
+import { MovementEvents } from '../../Movement/events'
 
 interface NavigationQueueExecution {
 	settlerId: string
@@ -28,6 +30,7 @@ export interface YieldRequestedData {
 }
 
 export interface SettlerNavigationDeps {
+	event: EventManager
 	map: MapManager
 	movement: MovementManager
 	population: PopulationManager
@@ -40,7 +43,13 @@ export class SettlerNavigationManager {
 	private pendingExecutions = new Map<string, NavigationQueueExecution>()
 	private executionSequence = 0
 
-	constructor(private readonly deps: SettlerNavigationDeps) {}
+	constructor(private readonly deps: SettlerNavigationDeps) {
+		this.deps.event.on<YieldRequestedData>(MovementEvents.SS.YieldRequested, this.handleMovementSSYieldRequested)
+	}
+
+	private readonly handleMovementSSYieldRequested = (data: YieldRequestedData): void => {
+		this.onYieldRequested(data)
+	}
 
 	public onYieldRequested(data: YieldRequestedData): void {
 		const blocker = this.deps.population.getSettler(data.blockerEntityId)

@@ -1,7 +1,6 @@
 import { BaseManager } from '../../Managers'
 import { WorkProviderEvents } from '../Work/events'
 import type { WorkAssignmentRemovedEventData } from '../Work/events'
-import type { WorkStep } from '../Work/types'
 import { WorkStepType, WorkWaitReason } from '../Work/types'
 import { SettlerState } from '../../Population/types'
 import type { ActionQueueContext } from '../../state/types'
@@ -13,7 +12,6 @@ import { SettlerActionsEvents } from '../Actions/events'
 import type { ActionQueueCompletedEventData, ActionQueueFailedEventData } from '../Actions/events'
 import { SettlerBehaviourState, type SettlerBehaviourSnapshot } from './SettlerBehaviourState'
 import type { SettlerBehaviourDeps } from './deps'
-import { MovementEvents } from '../../Movement/events'
 import {
 	ActiveStepDispatchRule,
 	BehaviourRuleResult,
@@ -24,8 +22,7 @@ import {
 	NoAssignmentDispatchRule,
 	NoStepDispatchRule,
 	PauseDispatchRule,
-	WaitStepDispatchRule,
-	WorkStepLifecycleHandler
+	WaitStepDispatchRule
 } from './rules'
 import type { SettlerActionFailureReason } from '../failureReasons'
 import {
@@ -60,35 +57,15 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 		new WaitStepDispatchRule(),
 		new ActiveStepDispatchRule()
 	]
-	private readonly stepLifecycle: WorkStepLifecycleHandler
 	private pendingIntents: BehaviourIntent[] = []
 	private arrivalOrder = 0
 
 	constructor(managers: SettlerBehaviourDeps) {
 		super(managers)
-		this.stepLifecycle = new WorkStepLifecycleHandler({
-			managers,
-			work: managers.work,
-			state: this.state,
-			event: managers.event,
-			dispatchNextStep: (settlerId: SettlerId) => {
-				this.enqueueIntent({
-					type: BehaviourIntentType.RequestDispatch,
-					priority: BehaviourIntentPriority.Normal,
-					settlerId,
-					reason: RequestDispatchReason.QueueCompleted
-				})
-			}
-		})
-
 		this.managers.event.on<SimulationTickData>(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
 		this.managers.event.on<WorkAssignmentRemovedEventData>(WorkProviderEvents.SS.AssignmentRemoved, this.handleAssignmentRemoved)
 		this.managers.event.on<ActionQueueCompletedEventData>(SettlerActionsEvents.SS.QueueCompleted, this.handleActionQueueCompleted)
 		this.managers.event.on<ActionQueueFailedEventData>(SettlerActionsEvents.SS.QueueFailed, this.handleActionQueueFailed)
-		this.managers.event.on<{ requesterEntityId: string, blockerEntityId: string, mapId: string, tile: { x: number, y: number } }>(
-			MovementEvents.SS.YieldRequested,
-			this.handleMovementSSYieldRequested
-		)
 	}
 
 	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
@@ -119,7 +96,7 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 			return
 		}
 		if (context.kind === ActionQueueContextKind.Work) {
-			this.buildWorkQueueCallbacks(data.settlerId, context.step).onComplete()
+			this.managers.work.onWorkQueueCompleted(data.settlerId, context.step)
 			return
 		}
 		if (context.kind === ActionQueueContextKind.Routed) {
@@ -133,18 +110,12 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 			return
 		}
 		if (context.kind === ActionQueueContextKind.Work) {
-			this.buildWorkQueueCallbacks(data.settlerId, context.step).onFail(data.reason)
+			this.managers.work.onWorkQueueFailed(data.settlerId, context.step, data.reason)
 			return
 		}
 		if (context.kind === ActionQueueContextKind.Routed) {
 			this.routeRoutedQueueFailed(context.owner, context.token, data.reason)
 		}
-	}
-
-	private readonly handleMovementSSYieldRequested = (
-		data: { requesterEntityId: string, blockerEntityId: string, mapId: string, tile: { x: number, y: number } }
-	): void => {
-		this.managers.navigation.onYieldRequested(data)
 	}
 
 	private enqueueIntent(intent: BehaviourIntent): void {
@@ -473,13 +444,6 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 		if (owner === QueueOwner.Navigation) {
 			this.managers.navigation.discardRoutedExecution(token)
 		}
-	}
-
-	buildWorkQueueCallbacks(
-		settlerId: SettlerId,
-		step?: WorkStep
-	): { onComplete: () => void, onFail: (reason: SettlerActionFailureReason) => void } {
-		return this.stepLifecycle.buildCallbacks(settlerId, step)
 	}
 
 	clearSettlerState(settlerId: SettlerId): void {
