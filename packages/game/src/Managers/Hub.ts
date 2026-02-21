@@ -28,6 +28,7 @@ import type { SettlerWorkManager } from '../Settlers/Work'
 import type { SettlerBehaviourManager } from '../Settlers/Behaviour'
 import type { SettlerActionsManager } from '../Settlers/Actions'
 import type { SettlerNeedsManager } from '../Settlers/Needs'
+import type { SettlerNavigationManager } from '../Settlers/Navigation'
 import type { RoadManager } from '../Roads'
 import type { EventManager } from '../events'
 import type { Logger } from '../Logs'
@@ -69,6 +70,7 @@ export interface Managers {
 	behaviour: SettlerBehaviourManager
 	work: SettlerWorkManager
 	needs: SettlerNeedsManager
+	navigation: SettlerNavigationManager
 	wildlife: WildlifeManager
 	cityCharter: CityCharterManager
 	trade: TradeManager
@@ -109,6 +111,7 @@ export class ManagersHub implements Managers {
 	behaviour!: SettlerBehaviourManager
 	work!: SettlerWorkManager
 	needs!: SettlerNeedsManager
+	navigation!: SettlerNavigationManager
 	wildlife!: WildlifeManager
 	cityCharter!: CityCharterManager
 	trade!: TradeManager

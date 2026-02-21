@@ -97,6 +97,17 @@ export interface WorkAssignment {
 	status: WorkAssignmentStatus
 }
 
+export interface WorkPausedContext {
+	assignmentId?: WorkAssignmentId
+	providerId?: WorkProviderId
+	providerType?: WorkProviderType
+}
+
+export type WorkDispatchStepResult =
+	| { status: 'no_assignment' }
+	| { status: 'provider_missing', assignment: WorkAssignment }
+	| { status: 'step', assignment: WorkAssignment, step: WorkStep | null }
+
 export type WorkStep =
 	| { type: WorkStepType.AcquireTool, profession: ProfessionType, toolItemId?: LootItemId, toolPosition?: Position }
 	| { type: WorkStepType.Construct, buildingInstanceId: BuildingInstanceId, durationMs: number }

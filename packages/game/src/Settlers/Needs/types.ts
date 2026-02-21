@@ -33,17 +33,28 @@ export interface NeedPlanFailedEventData {
 	reason: NeedPlanFailureReason
 }
 
-export interface PausedContext {
-	assignmentId?: string
-	providerId?: string
-	providerType?: string
-}
-
 export interface NeedPlan {
 	id: string
 	needType: NeedType
 	actions: SettlerAction[]
 	satisfyValue?: number
+}
+
+export interface NeedInterruptPlanRequest {
+	settlerId: string
+	needType: NeedType
+	priority: NeedPriority
+	plan: NeedPlan
+}
+
+export interface NeedActionPlan {
+	actions: SettlerAction[]
+	satisfyValue?: number
+}
+
+export interface NeedActionPlanResult {
+	plan?: NeedActionPlan
+	reason?: NeedPlanFailureReason
 }
 
 export interface NeedPlanResult {

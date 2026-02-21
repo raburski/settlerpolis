@@ -10,7 +10,7 @@ import type { MovementEntity } from '../Movement/types'
 import type { NeedsState } from '../Settlers/Needs/NeedsState'
 import type { NeedType, NeedPriority } from '../Settlers/Needs/NeedTypes'
 import type { NeedLevel } from '../Settlers/Needs/NeedTypes'
-import type { WorkAssignment, LogisticsRequest, WorkWaitReason, WorkStep } from '../Settlers/Work/types'
+import type { WorkAssignment, LogisticsRequest, WorkPausedContext, WorkWaitReason, WorkStep } from '../Settlers/Work/types'
 import type { SettlerAction } from '../Settlers/Actions/types'
 import type { ProductionStatus, ProductionPlan } from '../Buildings/types'
 import type { NPC, NPCRoutineStep } from '../NPC/types'
@@ -19,7 +19,6 @@ import type { Flag } from '../Flags/types'
 import type { AffinityData } from '../Affinity/types'
 import type { ResourceNodeInstance } from '../ResourceNodes/types'
 import type { RoadData, RoadType } from '../Roads/types'
-import type { PausedContext } from '../Settlers/Needs/types'
 import type { Trigger } from '../Triggers/types'
 import type { ScheduledEvent } from '../Scheduler/types'
 import type { Position } from '../types'
@@ -175,7 +174,7 @@ export interface WorkProviderSnapshot {
 	assignmentsByBuilding: MapEntries<string[]>
 	productionStateByBuilding: MapEntries<{ status: ProductionStatus, progress: number }>
 	lastConstructionAssignAt: MapEntries<number>
-	pausedContexts: MapEntries<PausedContext | null>
+	pausedContexts: MapEntries<WorkPausedContext | null>
 	logistics: LogisticsSnapshot
 	pendingWorkerRequests?: Array<{ buildingInstanceId: BuildingInstanceId, requestedAtMs: number }>
 }

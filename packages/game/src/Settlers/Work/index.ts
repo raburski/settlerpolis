@@ -9,7 +9,6 @@ import { Receiver } from '../../Receiver'
 import { v4 as uuidv4 } from 'uuid'
 import { calculateDistance } from '../../utils'
 import { SettlerState, ProfessionType } from '../../Population/types'
-import type { PausedContext } from '../Needs/types'
 import type { RequestWorkerData, UnassignWorkerData } from '../../Population/types'
 import { WorkerRequestFailureReason } from '../../Population/types'
 import type { ItemType } from '../../Items/types'
@@ -18,7 +17,7 @@ import { ConstructionStage } from '../../Buildings/types'
 import { ProviderRegistry } from './ProviderRegistry'
 import { WorkProviderEvents, WorkDispatchReason } from './events'
 import type { WorkStepCompletedEventData, WorkStepFailedEventData, WorkStepIssuedEventData } from './events'
-import type { WorkAssignment, LogisticsRequest, WorkStep, WorkProvider } from './types'
+import type { WorkAssignment, LogisticsRequest, WorkPausedContext, WorkStep, WorkProvider, WorkDispatchStepResult } from './types'
 import { WorkProviderType, WorkAssignmentStatus } from './types'
 import { StepHandlers } from './stepHandlers'
 import type { SettlerAction } from '../Actions/types'
@@ -33,6 +32,12 @@ import { RoadCoordinator } from './coordinators/RoadCoordinator'
 import { ProspectingCoordinator } from './coordinators/ProspectingCoordinator'
 import { LogisticsProvider } from './providers/LogisticsProvider'
 import type { SettlerWorkRuntimePort } from './runtime'
+import {
+	BehaviourIntentType,
+	type BehaviourIntent,
+	BehaviourIntentPriority,
+	RequestDispatchReason
+} from '../Behaviour/intentTypes'
 
 export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements SettlerWorkRuntimePort {
 	private registry = new ProviderRegistry()
@@ -47,8 +52,9 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 	private prospectingCoordinator: ProspectingCoordinator
 	private simulationTimeMs = 0
 	private constructionAssignCooldownMs = 2000
-	private pausedContexts = new Map<string, PausedContext | null>()
+	private pausedContexts = new Map<string, WorkPausedContext | null>()
 	private pendingWorkerRequests: Array<{ buildingInstanceId: string, requestedAtMs: number }> = []
+	private pendingIntents: BehaviourIntent[] = []
 
 	constructor(
 		managers: WorkProviderDeps,
@@ -223,13 +229,13 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		this.unassignWorker({ settlerId: data.settlerId })
 	}
 
-	private applyPause(settlerId: string, reason: string): PausedContext | null {
+	private applyPause(settlerId: string, reason: string): WorkPausedContext | null {
 		if (this.pausedContexts.has(settlerId)) {
 			return this.pausedContexts.get(settlerId) ?? null
 		}
 
 		const assignment = this.assignments.get(settlerId)
-		let context: PausedContext | null = null
+		let context: WorkPausedContext | null = null
 
 		if (assignment) {
 			assignment.status = WorkAssignmentStatus.Paused
@@ -556,7 +562,19 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 	}
 
 	private emitDispatchRequested(settlerId: string, reason: WorkDispatchReason): void {
+		this.pendingIntents.push({
+			type: BehaviourIntentType.RequestDispatch,
+			priority: this.mapDispatchPriority(reason),
+			settlerId,
+			reason: this.mapDispatchReason(reason)
+		})
 		this.managers.event.emit(Receiver.All, WorkProviderEvents.SS.DispatchRequested, { settlerId, reason })
+	}
+
+	public consumePendingIntents(): BehaviourIntent[] {
+		const intents = this.pendingIntents
+		this.pendingIntents = []
+		return intents
 	}
 
 	public getAssignment(settlerId: string): WorkAssignment | undefined {
@@ -565,6 +583,25 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 	public getProvider(providerId: string): WorkProvider | undefined {
 		return this.registry.get(providerId)
+	}
+
+	public requestDispatchStep(settlerId: SettlerId): WorkDispatchStepResult {
+		const assignment = this.assignments.get(settlerId)
+		if (!assignment) {
+			return { status: 'no_assignment' }
+		}
+		const provider = this.registry.get(assignment.providerId)
+		if (!provider) {
+			return {
+				status: 'provider_missing',
+				assignment
+			}
+		}
+		return {
+			status: 'step',
+			assignment,
+			step: provider.requestNextStep(settlerId)
+		}
 	}
 
 	public getNowMs(): number {
@@ -594,7 +631,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		return this.pausedContexts.has(settlerId)
 	}
 
-	public pauseAssignment(settlerId: string, reason = 'NEED'): PausedContext | null {
+	public pauseAssignment(settlerId: string, reason = 'NEED'): WorkPausedContext | null {
 		return this.applyPause(settlerId, reason)
 	}
 
@@ -692,6 +729,34 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 	public requestImmediateDispatch(settlerId: string): void {
 		this.emitDispatchRequested(settlerId, WorkDispatchReason.ImmediateRequest)
+	}
+
+	private mapDispatchReason(reason: WorkDispatchReason): RequestDispatchReason {
+		switch (reason) {
+			case WorkDispatchReason.WorkerAssigned:
+				return RequestDispatchReason.ProviderAssigned
+			case WorkDispatchReason.ImmediateRequest:
+				return RequestDispatchReason.Immediate
+			case WorkDispatchReason.ResumeAfterDeserialize:
+				return RequestDispatchReason.ResumeAfterDeserialize
+			case WorkDispatchReason.WorkFlow:
+			default:
+				return RequestDispatchReason.QueueCompleted
+		}
+	}
+
+	private mapDispatchPriority(reason: WorkDispatchReason): BehaviourIntentPriority {
+		switch (reason) {
+			case WorkDispatchReason.ImmediateRequest:
+				return BehaviourIntentPriority.High
+			case WorkDispatchReason.WorkerAssigned:
+				return BehaviourIntentPriority.Normal
+			case WorkDispatchReason.ResumeAfterDeserialize:
+				return BehaviourIntentPriority.Low
+			case WorkDispatchReason.WorkFlow:
+			default:
+				return BehaviourIntentPriority.Normal
+		}
 	}
 
 	deserialize(state: WorkProviderSnapshot): void {

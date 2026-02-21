@@ -1,7 +1,7 @@
 import { BaseManager } from '../../Managers'
 import { WorkProviderEvents } from '../Work/events'
-import type { WorkAssignmentRemovedEventData, WorkDispatchRequestedEventData } from '../Work/events'
-import type { WorkAssignment, WorkStep } from '../Work/types'
+import type { WorkAssignmentRemovedEventData } from '../Work/events'
+import type { WorkStep } from '../Work/types'
 import { WorkStepType, WorkWaitReason } from '../Work/types'
 import { SettlerState } from '../../Population/types'
 import type { ActionQueueContext } from '../../state/types'
@@ -9,15 +9,11 @@ import { ActionQueueContextKind } from '../../state/types'
 import type { SettlerId } from '../../ids'
 import { SimulationEvents } from '../../Simulation/events'
 import type { SimulationTickData } from '../../Simulation/types'
-import type { NeedType } from '../Needs/NeedTypes'
 import { SettlerActionsEvents } from '../Actions/events'
 import type { ActionQueueCompletedEventData, ActionQueueFailedEventData } from '../Actions/events'
-import type { SettlerAction } from '../Actions/types'
-import { SettlerActionType } from '../Actions/types'
 import { SettlerBehaviourState, type SettlerBehaviourSnapshot } from './SettlerBehaviourState'
 import type { SettlerBehaviourDeps } from './deps'
 import { MovementEvents } from '../../Movement/events'
-import { MoveTargetType } from '../../Movement/types'
 import {
 	ActiveStepDispatchRule,
 	BehaviourRuleResult,
@@ -28,19 +24,35 @@ import {
 	NoAssignmentDispatchRule,
 	NoStepDispatchRule,
 	PauseDispatchRule,
-	ProviderDispatchRule,
 	WaitStepDispatchRule,
 	WorkStepLifecycleHandler
 } from './rules'
 import type { SettlerActionFailureReason } from '../failureReasons'
+import {
+	BehaviourIntentType,
+	type BehaviourIntent,
+	BehaviourIntentPriority,
+	EnqueueActionsReason,
+	PauseAssignmentReason,
+	RequestDispatchReason,
+	SetWaitStateReason
+} from './intentTypes'
+import { IntentOrigin, rankIntent, rankOrigin, type TaggedIntent } from './intentPolicy'
+
+interface ResolvedSettlerIntents {
+	settlerId: SettlerId
+	assignmentIntent?: BehaviourIntent
+	waitIntent?: BehaviourIntent
+	enqueueIntent?: Extract<BehaviourIntent, { type: BehaviourIntentType.EnqueueActions }>
+	dispatchIntent?: Extract<BehaviourIntent, { type: BehaviourIntentType.RequestDispatch }>
+}
 
 export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 	private readonly state = new SettlerBehaviourState()
 	private readonly preDispatchRules: BehaviourDispatchRule[] = [
 		new PauseDispatchRule(),
 		new NoAssignmentDispatchRule(),
-		new MovementRecoveryDispatchRule(),
-		new ProviderDispatchRule()
+		new MovementRecoveryDispatchRule()
 	]
 	private readonly stepDispatchRules: BehaviourDispatchRule[] = [
 		new HomeRelocationDispatchRule(),
@@ -49,6 +61,8 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 		new ActiveStepDispatchRule()
 	]
 	private readonly stepLifecycle: WorkStepLifecycleHandler
+	private pendingIntents: BehaviourIntent[] = []
+	private arrivalOrder = 0
 
 	constructor(managers: SettlerBehaviourDeps) {
 		super(managers)
@@ -57,27 +71,42 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 			work: managers.work,
 			state: this.state,
 			event: managers.event,
-			dispatchNextStep: (settlerId: SettlerId) => this.dispatchNextStep(settlerId)
+			dispatchNextStep: (settlerId: SettlerId) => {
+				this.enqueueIntent({
+					type: BehaviourIntentType.RequestDispatch,
+					priority: BehaviourIntentPriority.Normal,
+					settlerId,
+					reason: RequestDispatchReason.QueueCompleted
+				})
+			}
 		})
 
 		this.managers.event.on<SimulationTickData>(SimulationEvents.SS.Tick, this.handleSimulationSSTick)
-		this.managers.event.on<WorkDispatchRequestedEventData>(WorkProviderEvents.SS.DispatchRequested, this.handleDispatchRequested)
 		this.managers.event.on<WorkAssignmentRemovedEventData>(WorkProviderEvents.SS.AssignmentRemoved, this.handleAssignmentRemoved)
 		this.managers.event.on<ActionQueueCompletedEventData>(SettlerActionsEvents.SS.QueueCompleted, this.handleActionQueueCompleted)
 		this.managers.event.on<ActionQueueFailedEventData>(SettlerActionsEvents.SS.QueueFailed, this.handleActionQueueFailed)
-		this.managers.event.on<{ requesterEntityId: string, blockerEntityId: string, mapId: string, tile: { x: number, y: number } }>(MovementEvents.SS.YieldRequested, this.handleMovementSSYieldRequested)
+		this.managers.event.on<{ requesterEntityId: string, blockerEntityId: string, mapId: string, tile: { x: number, y: number } }>(
+			MovementEvents.SS.YieldRequested,
+			this.handleMovementSSYieldRequested
+		)
 	}
 
-	private readonly handleSimulationSSTick = (_data: SimulationTickData): void => {
-		this.managers.work.refreshWorldDemand(_data)
-		this.managers.needs.update(_data)
+	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
+		this.managers.work.refreshWorldDemand(data)
+		this.managers.needs.update(data)
+		this.managers.navigation.update()
 
-		this.processPendingDispatches()
-		this.recoverOrphanedMovingSettlers()
-	}
+		this.collectPendingDispatchIntents()
 
-	private readonly handleDispatchRequested = (data: WorkDispatchRequestedEventData): void => {
-		this.dispatchNextStep(data.settlerId)
+		const tagged = [
+			...this.tagIntents(IntentOrigin.Needs, this.managers.needs.consumePendingIntents()),
+			...this.tagIntents(IntentOrigin.Navigation, this.managers.navigation.consumePendingIntents()),
+			...this.tagIntents(IntentOrigin.Work, this.managers.work.consumePendingIntents()),
+			...this.tagIntents(IntentOrigin.Behaviour, this.consumePendingIntents())
+		]
+
+		const resolved = this.resolvePerSettler(tagged)
+		this.executeResolvedIntents(resolved)
 	}
 
 	private readonly handleAssignmentRemoved = (data: WorkAssignmentRemovedEventData): void => {
@@ -115,128 +144,28 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 	private readonly handleMovementSSYieldRequested = (
 		data: { requesterEntityId: string, blockerEntityId: string, mapId: string, tile: { x: number, y: number } }
 	): void => {
-		const blocker = this.managers.population.getSettler(data.blockerEntityId)
-		if (!blocker) {
-			return
-		}
-		if (blocker.mapId !== data.mapId) {
-			return
-		}
-		if (this.managers.movement.hasActiveMovement(blocker.id)) {
-			return
-		}
-		if (
-			blocker.state !== SettlerState.Idle &&
-			blocker.state !== SettlerState.WaitingForWork &&
-			blocker.state !== SettlerState.Assigned &&
-			blocker.state !== SettlerState.Working
-		) {
-			return
-		}
-
-		const requesterPosition = this.managers.movement.getEntityPosition(data.requesterEntityId)
-		const stepAsideTarget = requesterPosition
-			? this.findYieldSidePosition(blocker.mapId, blocker.id, blocker.position, requesterPosition)
-			: null
-		const swapTarget = stepAsideTarget || !requesterPosition
-			? null
-			: this.findYieldSwapPosition(blocker.mapId, data.requesterEntityId, blocker.position, requesterPosition)
-		const yieldTarget = stepAsideTarget ?? swapTarget
-		if (!yieldTarget) {
-			return
-		}
-		const yieldMode = stepAsideTarget ? 'side' : 'swap'
-
-		const stepAsideTargetId = `yield:${yieldMode}:${data.requesterEntityId}:${Math.round(yieldTarget.x)},${Math.round(yieldTarget.y)}`
-		const stepAsideAction: SettlerAction = {
-			type: SettlerActionType.Move,
-			position: yieldTarget,
-			targetType: MoveTargetType.Spot,
-			targetId: stepAsideTargetId,
-			setState: SettlerState.Moving
-		}
-
-		if (this.managers.actions.isBusy(blocker.id)) {
-			if (!this.managers.actions.isCurrentActionYieldInterruptible(blocker.id)) {
-				return
-			}
-			this.managers.actions.expediteCurrentWaitAction(blocker.id)
-			this.managers.actions.insertActionsAfterCurrent(blocker.id, [stepAsideAction])
-			return
-		}
-
-		this.managers.actions.enqueue(blocker.id, [stepAsideAction], () => {
-			if (this.managers.actions.isBusy(blocker.id)) {
-				return
-			}
-			const assignment = this.managers.work.getAssignment(blocker.id)
-			if (!assignment) {
-				this.managers.population.setSettlerWaitReason(blocker.id, undefined)
-				this.managers.population.setSettlerState(blocker.id, SettlerState.Idle)
-				return
-			}
-			this.dispatchNextStep(blocker.id)
-		})
+		this.managers.navigation.onYieldRequested(data)
 	}
 
-	private recoverOrphanedMovingSettlers(): void {
-		for (const settler of this.managers.population.getSettlers()) {
-			if (!this.isTransitState(settler.state)) {
-				continue
-			}
-			if (this.managers.actions.isBusy(settler.id)) {
-				continue
-			}
-			if (this.managers.movement.hasActiveMovement(settler.id)) {
-				continue
-			}
-			const assignment = this.managers.work.getAssignment(settler.id)
-			if (!assignment) {
-				this.managers.population.setSettlerWaitReason(settler.id, undefined)
-				this.managers.population.setSettlerState(settler.id, SettlerState.Idle)
-				continue
-			}
-			this.dispatchNextStep(settler.id)
-		}
+	private enqueueIntent(intent: BehaviourIntent): void {
+		this.pendingIntents.push(intent)
 	}
 
-	private isTransitState(state: SettlerState): boolean {
-		return state === SettlerState.Moving
-			|| state === SettlerState.MovingToItem
-			|| state === SettlerState.CarryingItem
-			|| state === SettlerState.MovingToBuilding
-			|| state === SettlerState.MovingToTool
-			|| state === SettlerState.MovingToResource
+	private consumePendingIntents(): BehaviourIntent[] {
+		const intents = this.pendingIntents
+		this.pendingIntents = []
+		return intents
 	}
 
-	enqueueNeedPlan(
-		settlerId: SettlerId,
-		actions: SettlerAction[],
-		context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>
-	): boolean {
-		if (this.managers.actions.isBusy(settlerId)) {
-			return false
-		}
-		this.managers.actions.enqueue(settlerId, actions, undefined, undefined, context)
-		return true
+	private tagIntents(origin: IntentOrigin, intents: BehaviourIntent[]): TaggedIntent[] {
+		return intents.map(intent => ({
+			origin,
+			intent,
+			arrivalOrder: ++this.arrivalOrder
+		}))
 	}
 
-	public beginNeedInterrupt(settlerId: SettlerId, _needType: NeedType): void {
-		this.state.clearPendingDispatch(settlerId)
-		this.managers.work.pauseAssignment(settlerId, 'NEED')
-		if (this.managers.actions.isBusy(settlerId)) {
-			this.managers.actions.abort(settlerId)
-		}
-	}
-
-	public endNeedInterrupt(settlerId: SettlerId, _needType: NeedType): void {
-		this.managers.work.resumeAssignment(settlerId)
-		if (!this.managers.actions.isBusy(settlerId)) {
-			this.dispatchNextStep(settlerId)
-		}
-	}
-
-	processPendingDispatches(): void {
+	private collectPendingDispatchIntents(): void {
 		if (!this.state.hasPendingDispatches()) {
 			return
 		}
@@ -250,8 +179,168 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 				continue
 			}
 			this.state.clearPendingDispatch(settlerId)
-			this.dispatchNextStep(settlerId)
+			this.enqueueIntent({
+				type: BehaviourIntentType.RequestDispatch,
+				priority: BehaviourIntentPriority.Normal,
+				settlerId,
+				reason: RequestDispatchReason.Recovery
+			})
 		}
+	}
+
+	private resolvePerSettler(taggedIntents: TaggedIntent[]): ResolvedSettlerIntents[] {
+		const bySettler = new Map<string, TaggedIntent[]>()
+		for (const tagged of taggedIntents) {
+			const list = bySettler.get(tagged.intent.settlerId)
+			if (list) {
+				list.push(tagged)
+			} else {
+				bySettler.set(tagged.intent.settlerId, [tagged])
+			}
+		}
+
+		const resolved: ResolvedSettlerIntents[] = []
+		for (const [settlerId, intents] of bySettler.entries()) {
+			intents.sort((a, b) => {
+				const priorityDelta = rankIntent(b.intent) - rankIntent(a.intent)
+				if (priorityDelta !== 0) {
+					return priorityDelta
+				}
+				const originDelta = rankOrigin(b.origin) - rankOrigin(a.origin)
+				if (originDelta !== 0) {
+					return originDelta
+				}
+				return b.arrivalOrder - a.arrivalOrder
+			})
+
+			const entry: ResolvedSettlerIntents = { settlerId }
+			for (const tagged of intents) {
+				switch (tagged.intent.type) {
+					case BehaviourIntentType.PauseAssignment:
+					case BehaviourIntentType.ResumeAssignment:
+						if (!entry.assignmentIntent) {
+							entry.assignmentIntent = tagged.intent
+						}
+						break
+					case BehaviourIntentType.SetWaitState:
+						if (!entry.waitIntent) {
+							entry.waitIntent = tagged.intent
+						}
+						break
+					case BehaviourIntentType.EnqueueActions:
+						if (!entry.enqueueIntent) {
+							entry.enqueueIntent = tagged.intent
+						}
+						break
+					case BehaviourIntentType.RequestDispatch:
+						if (!entry.dispatchIntent) {
+							entry.dispatchIntent = tagged.intent
+						}
+						break
+				}
+			}
+
+			if (entry.enqueueIntent && entry.dispatchIntent) {
+				if (rankIntent(entry.dispatchIntent) >= rankIntent(entry.enqueueIntent)) {
+					entry.enqueueIntent = undefined
+				} else {
+					entry.dispatchIntent = undefined
+				}
+			}
+			resolved.push(entry)
+		}
+
+		return resolved
+	}
+
+	private executeResolvedIntents(resolvedIntents: ResolvedSettlerIntents[]): void {
+		for (const resolved of resolvedIntents) {
+			if (resolved.assignmentIntent) {
+				this.executeAssignmentIntent(resolved.assignmentIntent)
+			}
+			if (resolved.waitIntent && !this.managers.actions.isBusy(resolved.settlerId)) {
+				this.executeWaitIntent(resolved.waitIntent)
+			}
+			if (resolved.enqueueIntent) {
+				this.executeEnqueueIntent(resolved.enqueueIntent)
+			}
+			if (resolved.dispatchIntent) {
+				this.executeDispatchIntent(resolved.dispatchIntent)
+			}
+		}
+	}
+
+	private executeAssignmentIntent(intent: BehaviourIntent): void {
+		if (intent.type === BehaviourIntentType.PauseAssignment) {
+			if (intent.reason === PauseAssignmentReason.NeedInterrupt) {
+				this.state.clearPendingDispatch(intent.settlerId)
+				this.managers.work.pauseAssignment(intent.settlerId, 'NEED')
+				if (this.managers.actions.isBusy(intent.settlerId)) {
+					this.managers.actions.abort(intent.settlerId)
+				}
+				return
+			}
+			this.managers.work.pauseAssignment(intent.settlerId, intent.reason)
+			return
+		}
+		if (intent.type === BehaviourIntentType.ResumeAssignment) {
+			this.managers.work.resumeAssignment(intent.settlerId)
+		}
+	}
+
+	private executeWaitIntent(intent: BehaviourIntent): void {
+		if (intent.type !== BehaviourIntentType.SetWaitState) {
+			return
+		}
+
+		if (intent.reason === SetWaitStateReason.ClearWait) {
+			this.managers.population.setSettlerWaitReason(intent.settlerId, undefined)
+			this.managers.population.setSettlerState(intent.settlerId, intent.state ?? SettlerState.Idle)
+			return
+		}
+
+		this.managers.population.setSettlerWaitReason(intent.settlerId, intent.waitReason ?? WorkWaitReason.NoWork)
+		this.managers.population.setSettlerState(intent.settlerId, intent.state ?? SettlerState.WaitingForWork)
+	}
+
+	private executeEnqueueIntent(intent: Extract<BehaviourIntent, { type: BehaviourIntentType.EnqueueActions }>): void {
+		if (intent.actions.length === 0) {
+			if (intent.context.kind === ActionQueueContextKind.Need) {
+				this.managers.needs.onNeedPlanEnqueueFailed(intent.settlerId, intent.context.needType)
+			}
+			return
+		}
+
+		if (this.managers.actions.isBusy(intent.settlerId)) {
+			if (intent.reason === EnqueueActionsReason.NavigationYield) {
+				if (!this.managers.actions.isCurrentActionYieldInterruptible(intent.settlerId)) {
+					return
+				}
+				this.managers.actions.expediteCurrentWaitAction(intent.settlerId)
+				this.managers.actions.insertActionsAfterCurrent(intent.settlerId, intent.actions)
+				return
+			}
+			if (intent.context.kind === ActionQueueContextKind.Need) {
+				this.managers.needs.onNeedPlanEnqueueFailed(intent.settlerId, intent.context.needType)
+			}
+			return
+		}
+
+		this.managers.actions.enqueue(intent.settlerId, intent.actions, undefined, undefined, intent.context)
+	}
+
+	private executeDispatchIntent(intent: Extract<BehaviourIntent, { type: BehaviourIntentType.RequestDispatch }>): void {
+		const now = this.managers.work.getNowMs()
+		if (typeof intent.atMs === 'number' && now < intent.atMs) {
+			this.state.schedulePendingDispatch(intent.settlerId, intent.atMs)
+			return
+		}
+		if (this.managers.actions.isBusy(intent.settlerId)) {
+			this.state.schedulePendingDispatch(intent.settlerId, now + 250)
+			return
+		}
+		this.state.clearPendingDispatch(intent.settlerId)
+		this.dispatchNextStep(intent.settlerId)
 	}
 
 	dispatchNextStep(settlerId: SettlerId): void {
@@ -274,11 +363,21 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 			return
 		}
 
-		if (!context.provider || !context.assignment) {
+		if (!context.assignment) {
 			return
 		}
 
-		context.step = context.provider.requestNextStep(settlerId)
+		const dispatchResult = this.managers.work.requestDispatchStep(settlerId)
+		if (dispatchResult.status === 'provider_missing') {
+			this.managers.population.setSettlerWaitReason(settlerId, WorkWaitReason.ProviderMissing)
+			this.managers.population.setSettlerLastStep(settlerId, undefined, WorkWaitReason.ProviderMissing)
+			this.managers.work.unassignSettler(settlerId)
+			return
+		}
+		if (dispatchResult.status === 'no_assignment') {
+			return
+		}
+		context.step = dispatchResult.step
 		if (this.applyDispatchRules(this.stepDispatchRules, context)) {
 			return
 		}
@@ -337,6 +436,8 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 
 	reset(): void {
 		this.resetRules()
+		this.pendingIntents = []
+		this.arrivalOrder = 0
 		this.state.reset()
 	}
 
@@ -346,95 +447,6 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 		}
 		for (const rule of this.stepDispatchRules) {
 			rule.reset?.()
-		}
-	}
-
-	private findYieldSidePosition(
-		mapId: string,
-		blockerEntityId: string,
-		currentPosition: { x: number, y: number },
-		requesterPosition: { x: number, y: number }
-	): { x: number, y: number } | null {
-		const map = this.managers.map.getMap(mapId)
-		if (!map) {
-			return null
-		}
-		const tileWidth = map.tiledMap.tilewidth || 32
-		const tileHeight = map.tiledMap.tileheight || 32
-		const baseTileX = Math.floor(currentPosition.x / tileWidth)
-		const baseTileY = Math.floor(currentPosition.y / tileHeight)
-		const requesterTileX = Math.floor(requesterPosition.x / tileWidth)
-		const requesterTileY = Math.floor(requesterPosition.y / tileHeight)
-		const incoming = {
-			x: Math.sign(baseTileX - requesterTileX),
-			y: Math.sign(baseTileY - requesterTileY)
-		}
-
-		if (incoming.x === 0 && incoming.y === 0) {
-			return null
-		}
-
-		const sideDirections = [
-			{ x: -incoming.y, y: incoming.x },
-			{ x: incoming.y, y: -incoming.x }
-		]
-
-		for (const direction of sideDirections) {
-			const tileX = baseTileX + direction.x
-			const tileY = baseTileY + direction.y
-			if (tileX < 0 || tileY < 0 || tileX >= map.collision.width || tileY >= map.collision.height) {
-				continue
-			}
-			const tileIndex = tileY * map.collision.width + tileX
-			if (map.collision.data[tileIndex] !== 0) {
-				continue
-			}
-			if (!this.managers.movement.isTileFreeForYield(mapId, tileX, tileY, blockerEntityId)) {
-				continue
-			}
-			return {
-				x: tileX * tileWidth + tileWidth / 2,
-				y: tileY * tileHeight + tileHeight / 2
-			}
-		}
-
-		return null
-	}
-
-	private findYieldSwapPosition(
-		mapId: string,
-		requesterEntityId: string,
-		blockerPosition: { x: number, y: number },
-		requesterPosition: { x: number, y: number }
-	): { x: number, y: number } | null {
-		const map = this.managers.map.getMap(mapId)
-		if (!map) {
-			return null
-		}
-		if (!this.managers.movement.hasActiveMovement(requesterEntityId)) {
-			return null
-		}
-
-		const tileWidth = map.tiledMap.tilewidth || 32
-		const tileHeight = map.tiledMap.tileheight || 32
-		const blockerTileX = Math.floor(blockerPosition.x / tileWidth)
-		const blockerTileY = Math.floor(blockerPosition.y / tileHeight)
-		const requesterTileX = Math.floor(requesterPosition.x / tileWidth)
-		const requesterTileY = Math.floor(requesterPosition.y / tileHeight)
-
-		const dx = Math.abs(blockerTileX - requesterTileX)
-		const dy = Math.abs(blockerTileY - requesterTileY)
-		if (Math.max(dx, dy) !== 1) {
-			return null
-		}
-
-		if (!this.managers.movement.isTileFreeForYield(mapId, requesterTileX, requesterTileY, requesterEntityId)) {
-			return null
-		}
-
-		return {
-			x: requesterTileX * tileWidth + tileWidth / 2,
-			y: requesterTileY * tileHeight + tileHeight / 2
 		}
 	}
 }

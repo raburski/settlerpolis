@@ -10,12 +10,23 @@ import type { ReservationSystem } from '../../Reservation'
 import { NeedsSystem } from './NeedsSystem'
 import { NeedPlanner } from './NeedPlanner'
 import { NeedInterruptController } from './NeedInterruptController'
-import type { NeedsBehaviourApi } from './NeedInterruptController'
 import type { NeedsSnapshot } from '../../state/types'
 import { ActionQueueContextKind, type ActionQueueContext } from '../../state/types'
 import { NeedsManagerState } from './NeedsManagerState'
 import type { SimulationTickData } from '../../Simulation/types'
 import type { SettlerActionFailureReason } from '../failureReasons'
+import type { NeedInterruptPlanRequest } from './types'
+import { NeedType } from './NeedTypes'
+import { NeedPriority } from './NeedTypes'
+import {
+	BehaviourIntentType,
+	type BehaviourIntent,
+	BehaviourIntentPriority,
+	EnqueueActionsReason,
+	PauseAssignmentReason,
+	RequestDispatchReason,
+	ResumeAssignmentReason
+} from '../Behaviour/intentTypes'
 
 export interface NeedsDeps {
 	event: EventManager
@@ -25,7 +36,6 @@ export interface NeedsDeps {
 	population: PopulationManager
 	items: ItemsManager
 	reservations: ReservationSystem
-	behaviour: NeedsBehaviourApi
 }
 
 export class SettlerNeedsManager extends BaseManager<NeedsDeps> {
@@ -33,6 +43,7 @@ export class SettlerNeedsManager extends BaseManager<NeedsDeps> {
 	private readonly planner: NeedPlanner
 	private readonly interrupts: NeedInterruptController
 	private readonly state = new NeedsManagerState()
+	private pendingIntents: BehaviourIntent[] = []
 
 	constructor(
 		managers: NeedsDeps,
@@ -41,7 +52,7 @@ export class SettlerNeedsManager extends BaseManager<NeedsDeps> {
 		super(managers)
 		this.system = new NeedsSystem({ population: managers.population }, managers.event)
 		this.planner = new NeedPlanner(managers, logger)
-		this.interrupts = new NeedInterruptController(managers.event, this.system, this.planner, managers.behaviour, logger)
+		this.interrupts = new NeedInterruptController(managers.event, this.system, this.planner, logger)
 	}
 
 	public update(data: SimulationTickData): void {
@@ -49,11 +60,26 @@ export class SettlerNeedsManager extends BaseManager<NeedsDeps> {
 		this.interrupts.update(data)
 	}
 
+	public consumePendingInterruptPlans(): NeedInterruptPlanRequest[] {
+		return this.interrupts.consumePendingInterruptPlans()
+	}
+
+	public consumePendingIntents(): BehaviourIntent[] {
+		const planRequests = this.interrupts.consumePendingInterruptPlans()
+		for (const request of planRequests) {
+			this.bufferIntentsForInterruptPlan(request)
+		}
+		const intents = this.pendingIntents
+		this.pendingIntents = []
+		return intents
+	}
+
 	public handleNeedQueueCompleted(
 		settlerId: string,
 		context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>
 	): void {
 		this.interrupts.handleNeedQueueCompleted(settlerId, context)
+		this.bufferPostInterruptIntents(settlerId, RequestDispatchReason.QueueCompleted)
 	}
 
 	public handleNeedQueueFailed(
@@ -62,6 +88,67 @@ export class SettlerNeedsManager extends BaseManager<NeedsDeps> {
 		reason: SettlerActionFailureReason
 	): void {
 		this.interrupts.handleNeedQueueFailed(settlerId, context, reason)
+		this.bufferPostInterruptIntents(settlerId, RequestDispatchReason.Recovery)
+	}
+
+	public handleNeedPlanEnqueueFailed(settlerId: string, needType: NeedType): void {
+		this.interrupts.handleNeedPlanEnqueueFailed(settlerId, needType)
+		this.bufferPostInterruptIntents(settlerId, RequestDispatchReason.Recovery)
+	}
+
+	public onNeedPlanEnqueueFailed(settlerId: string, needType: NeedType): void {
+		this.handleNeedPlanEnqueueFailed(settlerId, needType)
+	}
+
+	private bufferIntentsForInterruptPlan(request: NeedInterruptPlanRequest): void {
+		const { settlerId, needType, plan, priority } = request
+		if (!plan.actions || plan.actions.length === 0) {
+			this.handleNeedPlanEnqueueFailed(settlerId, needType)
+			return
+		}
+
+		const mappedPriority = this.mapNeedPriority(priority)
+		const context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }> = {
+			kind: ActionQueueContextKind.Need,
+			needType,
+			satisfyValue: plan.satisfyValue
+		}
+
+		this.pendingIntents.push({
+			type: BehaviourIntentType.PauseAssignment,
+			priority: mappedPriority,
+			settlerId,
+			reason: PauseAssignmentReason.NeedInterrupt
+		})
+		this.pendingIntents.push({
+			type: BehaviourIntentType.EnqueueActions,
+			priority: mappedPriority,
+			settlerId,
+			actions: plan.actions,
+			context,
+			reason: EnqueueActionsReason.NeedPlan
+		})
+	}
+
+	private bufferPostInterruptIntents(settlerId: string, dispatchReason: RequestDispatchReason): void {
+		this.pendingIntents.push({
+			type: BehaviourIntentType.ResumeAssignment,
+			priority: BehaviourIntentPriority.High,
+			settlerId,
+			reason: ResumeAssignmentReason.NeedInterruptEnded
+		})
+		this.pendingIntents.push({
+			type: BehaviourIntentType.RequestDispatch,
+			priority: BehaviourIntentPriority.Normal,
+			settlerId,
+			reason: dispatchReason
+		})
+	}
+
+	private mapNeedPriority(priority: NeedPriority): BehaviourIntentPriority {
+		return priority === NeedPriority.Critical
+			? BehaviourIntentPriority.Critical
+			: BehaviourIntentPriority.High
 	}
 
 	serialize(): NeedsSnapshot {
