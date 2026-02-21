@@ -14,7 +14,6 @@ import type {
 	NeedInterruptEventData
 } from './types'
 import type { NeedInterruptSnapshot } from '../../state/types'
-import type { ActionQueueContext } from '../../state/types'
 import {
 	type SettlerActionFailureReason,
 	type NeedPlanFailureReason,
@@ -59,23 +58,24 @@ export class NeedInterruptController {
 
 	public handleNeedQueueCompleted(
 		settlerId: string,
-		context: Extract<ActionQueueContext, { kind: 'need' }>
+		needType: NeedType,
+		satisfyValue?: number
 	): void {
-		if (typeof context.satisfyValue === 'number') {
-			this.needs.resolveNeed(settlerId, context.needType, context.satisfyValue)
+		if (typeof satisfyValue === 'number') {
+			this.needs.resolveNeed(settlerId, needType, satisfyValue)
 		} else {
-			this.needs.satisfyNeed(settlerId, context.needType)
+			this.needs.satisfyNeed(settlerId, needType)
 		}
-		this.finishInterrupt(settlerId, context.needType, true)
+		this.finishInterrupt(settlerId, needType, true)
 	}
 
 	public handleNeedQueueFailed(
 		settlerId: string,
-		context: Extract<ActionQueueContext, { kind: 'need' }>,
+		needType: NeedType,
 		reason: SettlerActionFailureReason
 	): void {
-		this.emitPlanFailed(settlerId, context.needType, reason)
-		this.finishInterrupt(settlerId, context.needType, false)
+		this.emitPlanFailed(settlerId, needType, reason)
+		this.finishInterrupt(settlerId, needType, false)
 	}
 
 	public handleNeedPlanEnqueueFailed(settlerId: string, needType: NeedType): void {

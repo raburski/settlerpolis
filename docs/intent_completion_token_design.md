@@ -69,7 +69,7 @@ Map<QueueExecutionToken, ExecutionRecord>
 
 ## 4. Intent Contract Change
 
-`ENQUEUE_ACTIONS` intent carries routing metadata:
+`ENQUEUE_ACTIONS` intent carries token only:
 
 ```ts
 {
@@ -77,13 +77,12 @@ Map<QueueExecutionToken, ExecutionRecord>
   priority: BehaviourIntentPriority,
   settlerId: string,
   actions: SettlerAction[],
-  queueOwner: QueueOwner,
   completionToken: QueueExecutionToken,
   reason: EnqueueActionsReason
 }
 ```
 
-Behaviour passes `{ owner, token }` to action queue context when enqueueing.
+Behaviour derives `owner` from local intent tagging (`IntentOrigin`) and passes `{ owner, token }` to action queue context when enqueueing.
 
 ## 5. Control Flow
 
@@ -97,7 +96,7 @@ sequenceDiagram
   participant Act as SettlerActionsManager
 
   Work->>Work: create token T + store ExecutionRecord[T]
-  Work-->>Beh: ENQUEUE_ACTIONS(queueOwner=work, completionToken=T)
+  Work-->>Beh: ENQUEUE_ACTIONS(completionToken=T)
   Beh->>Act: enqueue(actions, context={owner:work, token:T})
 ```
 
@@ -183,19 +182,14 @@ onQueueCompleted(token: QueueExecutionToken): void
 onQueueFailed(token: QueueExecutionToken, reason: SettlerActionFailureReason): void
 ```
 
-and token lifecycle methods:
-
-```ts
-registerExecution(record): QueueExecutionToken
-consumePendingIntents(): BehaviourIntent[]
-```
+Token registration stays owner-internal (`private registerExecution(...)`) and is not exposed as public cross-manager API.
 
 ## 9. Migration Plan
 
 ### Phase A: Introduce token context model
 
 1. Add `QueueOwner`, `QueueExecutionToken`, `QueueExecutionContext`.
-2. Extend `ENQUEUE_ACTIONS` intent with `queueOwner` and `completionToken`.
+2. Extend `ENQUEUE_ACTIONS` intent with `completionToken` only.
 
 ### Phase B: Owner maps
 

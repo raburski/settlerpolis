@@ -55,7 +55,8 @@ export type BehaviourIntent =
 		priority: BehaviourIntentPriority
 		settlerId: string
 		actions: SettlerAction[]
-		context: ActionQueueContext
+		context?: ActionQueueContext
+		completionToken?: string
 		reason: EnqueueActionsReason
 	}
 	| {
@@ -85,4 +86,3 @@ export type BehaviourIntent =
 		reason: RequestDispatchReason
 		atMs?: number
 	}
-

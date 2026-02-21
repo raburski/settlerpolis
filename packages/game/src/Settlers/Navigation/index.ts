@@ -8,13 +8,17 @@ import {
 	RequestDispatchReason,
 	SetWaitStateReason
 } from '../Behaviour/intentTypes'
-import { ActionQueueContextKind } from '../../state/types'
 import { SettlerActionType, type SettlerAction } from '../Actions/types'
 import type { MapManager } from '../../Map'
 import type { MovementManager } from '../../Movement'
 import type { PopulationManager } from '../../Population'
 import type { SettlerActionsManager } from '../Actions'
 import type { SettlerWorkRuntimePort } from '../Work/runtime'
+import type { SettlerActionFailureReason } from '../failureReasons'
+
+interface NavigationQueueExecution {
+	settlerId: string
+}
 
 export interface YieldRequestedData {
 	requesterEntityId: string
@@ -33,6 +37,8 @@ export interface SettlerNavigationDeps {
 
 export class SettlerNavigationManager {
 	private pendingIntents: BehaviourIntent[] = []
+	private pendingExecutions = new Map<string, NavigationQueueExecution>()
+	private executionSequence = 0
 
 	constructor(private readonly deps: SettlerNavigationDeps) {}
 
@@ -78,15 +84,16 @@ export class SettlerNavigationManager {
 			targetId: stepAsideTargetId,
 			setState: SettlerState.Moving
 		}
+		const token = this.registerExecution({
+			settlerId: blocker.id
+		})
 
 		this.pendingIntents.push({
 			type: BehaviourIntentType.EnqueueActions,
 			priority: BehaviourIntentPriority.High,
 			settlerId: blocker.id,
 			actions: [stepAsideAction],
-			context: {
-				kind: ActionQueueContextKind.Work
-			},
+			completionToken: token,
 			reason: EnqueueActionsReason.NavigationYield
 		})
 	}
@@ -128,6 +135,62 @@ export class SettlerNavigationManager {
 		const intents = this.pendingIntents
 		this.pendingIntents = []
 		return intents
+	}
+
+	public handleRoutedQueueCompleted(token: string): void {
+		const execution = this.consumeExecution(token)
+		if (!execution) {
+			return
+		}
+		this.enqueuePostYieldIntent(execution.settlerId)
+	}
+
+	public handleRoutedQueueFailed(token: string, _reason: SettlerActionFailureReason): void {
+		const execution = this.consumeExecution(token)
+		if (!execution) {
+			return
+		}
+		this.enqueuePostYieldIntent(execution.settlerId)
+	}
+
+	public discardRoutedExecution(token: string): void {
+		this.consumeExecution(token)
+	}
+
+	private enqueuePostYieldIntent(settlerId: string): void {
+		const assignment = this.deps.work.getAssignment(settlerId)
+		if (!assignment) {
+			this.pendingIntents.push({
+				type: BehaviourIntentType.SetWaitState,
+				priority: BehaviourIntentPriority.Low,
+				settlerId,
+				reason: SetWaitStateReason.ClearWait,
+				waitReason: undefined,
+				state: SettlerState.Idle
+			})
+			return
+		}
+		this.pendingIntents.push({
+			type: BehaviourIntentType.RequestDispatch,
+			priority: BehaviourIntentPriority.Normal,
+			settlerId,
+			reason: RequestDispatchReason.Recovery
+		})
+	}
+
+	private registerExecution(execution: NavigationQueueExecution): string {
+		const token = `nav:${++this.executionSequence}`
+		this.pendingExecutions.set(token, execution)
+		return token
+	}
+
+	private consumeExecution(token: string): NavigationQueueExecution | undefined {
+		const execution = this.pendingExecutions.get(token)
+		if (!execution) {
+			return undefined
+		}
+		this.pendingExecutions.delete(token)
+		return execution
 	}
 
 	private isTransitState(state: SettlerState): boolean {

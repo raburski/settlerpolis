@@ -205,12 +205,19 @@ export interface ActionSystemQueueSnapshot {
 
 export enum ActionQueueContextKind {
 	Work = 'work',
-	Need = 'need'
+	Routed = 'routed'
+}
+
+export enum QueueOwner {
+	Work = 'work',
+	Needs = 'needs',
+	Navigation = 'navigation',
+	Behaviour = 'behaviour'
 }
 
 export type ActionQueueContext =
 	| { kind: ActionQueueContextKind.Work, step?: WorkStep }
-	| { kind: ActionQueueContextKind.Need, needType: NeedType, satisfyValue?: number }
+	| { kind: ActionQueueContextKind.Routed, owner: QueueOwner, token: string }
 
 export interface NPCSnapshot {
 	npcs: NPC[]

@@ -5,7 +5,7 @@ import type { WorkStep } from '../Work/types'
 import { WorkStepType, WorkWaitReason } from '../Work/types'
 import { SettlerState } from '../../Population/types'
 import type { ActionQueueContext } from '../../state/types'
-import { ActionQueueContextKind } from '../../state/types'
+import { ActionQueueContextKind, QueueOwner } from '../../state/types'
 import type { SettlerId } from '../../ids'
 import { SimulationEvents } from '../../Simulation/events'
 import type { SimulationTickData } from '../../Simulation/types'
@@ -43,7 +43,7 @@ interface ResolvedSettlerIntents {
 	settlerId: SettlerId
 	assignmentIntent?: BehaviourIntent
 	waitIntent?: BehaviourIntent
-	enqueueIntent?: Extract<BehaviourIntent, { type: BehaviourIntentType.EnqueueActions }>
+	enqueueIntent?: TaggedIntent & { intent: Extract<BehaviourIntent, { type: BehaviourIntentType.EnqueueActions }> }
 	dispatchIntent?: Extract<BehaviourIntent, { type: BehaviourIntentType.RequestDispatch }>
 }
 
@@ -122,8 +122,8 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 			this.buildWorkQueueCallbacks(data.settlerId, context.step).onComplete()
 			return
 		}
-		if (context.kind === ActionQueueContextKind.Need) {
-			this.managers.needs.handleNeedQueueCompleted(data.settlerId, context)
+		if (context.kind === ActionQueueContextKind.Routed) {
+			this.routeRoutedQueueCompleted(context.owner, context.token)
 		}
 	}
 
@@ -136,8 +136,8 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 			this.buildWorkQueueCallbacks(data.settlerId, context.step).onFail(data.reason)
 			return
 		}
-		if (context.kind === ActionQueueContextKind.Need) {
-			this.managers.needs.handleNeedQueueFailed(data.settlerId, context, data.reason)
+		if (context.kind === ActionQueueContextKind.Routed) {
+			this.routeRoutedQueueFailed(context.owner, context.token, data.reason)
 		}
 	}
 
@@ -229,7 +229,7 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 						break
 					case BehaviourIntentType.EnqueueActions:
 						if (!entry.enqueueIntent) {
-							entry.enqueueIntent = tagged.intent
+							entry.enqueueIntent = tagged as TaggedIntent & { intent: Extract<BehaviourIntent, { type: BehaviourIntentType.EnqueueActions }> }
 						}
 						break
 					case BehaviourIntentType.RequestDispatch:
@@ -241,7 +241,7 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 			}
 
 			if (entry.enqueueIntent && entry.dispatchIntent) {
-				if (rankIntent(entry.dispatchIntent) >= rankIntent(entry.enqueueIntent)) {
+				if (rankIntent(entry.dispatchIntent) >= rankIntent(entry.enqueueIntent.intent)) {
 					entry.enqueueIntent = undefined
 				} else {
 					entry.dispatchIntent = undefined
@@ -303,30 +303,47 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 		this.managers.population.setSettlerState(intent.settlerId, intent.state ?? SettlerState.WaitingForWork)
 	}
 
-	private executeEnqueueIntent(intent: Extract<BehaviourIntent, { type: BehaviourIntentType.EnqueueActions }>): void {
+	private executeEnqueueIntent(
+		tagged: TaggedIntent & { intent: Extract<BehaviourIntent, { type: BehaviourIntentType.EnqueueActions }> }
+	): void {
+		const { intent } = tagged
+		const queueOwner = this.mapOriginToQueueOwner(tagged.origin)
+		if (queueOwner && !intent.completionToken) {
+			this.handleRoutedEnqueueRejected(queueOwner, intent.completionToken)
+			return
+		}
+
 		if (intent.actions.length === 0) {
-			if (intent.context.kind === ActionQueueContextKind.Need) {
-				this.managers.needs.onNeedPlanEnqueueFailed(intent.settlerId, intent.context.needType)
-			}
+			this.handleRoutedEnqueueRejected(queueOwner, intent.completionToken)
 			return
 		}
 
 		if (this.managers.actions.isBusy(intent.settlerId)) {
 			if (intent.reason === EnqueueActionsReason.NavigationYield) {
 				if (!this.managers.actions.isCurrentActionYieldInterruptible(intent.settlerId)) {
+					this.handleRoutedEnqueueRejected(queueOwner, intent.completionToken)
 					return
 				}
 				this.managers.actions.expediteCurrentWaitAction(intent.settlerId)
 				this.managers.actions.insertActionsAfterCurrent(intent.settlerId, intent.actions)
+				if (queueOwner === QueueOwner.Navigation && intent.completionToken) {
+					this.managers.navigation.discardRoutedExecution(intent.completionToken)
+				}
 				return
 			}
-			if (intent.context.kind === ActionQueueContextKind.Need) {
-				this.managers.needs.onNeedPlanEnqueueFailed(intent.settlerId, intent.context.needType)
-			}
+			this.handleRoutedEnqueueRejected(queueOwner, intent.completionToken)
 			return
 		}
 
-		this.managers.actions.enqueue(intent.settlerId, intent.actions, undefined, undefined, intent.context)
+		const queueContext: ActionQueueContext | undefined = queueOwner && intent.completionToken
+			? {
+				kind: ActionQueueContextKind.Routed,
+				owner: queueOwner,
+				token: intent.completionToken
+			}
+			: intent.context
+
+		this.managers.actions.enqueue(intent.settlerId, intent.actions, undefined, undefined, queueContext)
 	}
 
 	private executeDispatchIntent(intent: Extract<BehaviourIntent, { type: BehaviourIntentType.RequestDispatch }>): void {
@@ -413,6 +430,49 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 			}
 		}
 		return false
+	}
+
+	private mapOriginToQueueOwner(origin: IntentOrigin): QueueOwner | undefined {
+		if (origin === IntentOrigin.Needs) {
+			return QueueOwner.Needs
+		}
+		if (origin === IntentOrigin.Navigation) {
+			return QueueOwner.Navigation
+		}
+		return undefined
+	}
+
+	private routeRoutedQueueCompleted(owner: QueueOwner, token: string): void {
+		if (owner === QueueOwner.Needs) {
+			this.managers.needs.handleRoutedQueueCompleted(token)
+			return
+		}
+		if (owner === QueueOwner.Navigation) {
+			this.managers.navigation.handleRoutedQueueCompleted(token)
+		}
+	}
+
+	private routeRoutedQueueFailed(owner: QueueOwner, token: string, reason: SettlerActionFailureReason): void {
+		if (owner === QueueOwner.Needs) {
+			this.managers.needs.handleRoutedQueueFailed(token, reason)
+			return
+		}
+		if (owner === QueueOwner.Navigation) {
+			this.managers.navigation.handleRoutedQueueFailed(token, reason)
+		}
+	}
+
+	private handleRoutedEnqueueRejected(owner: QueueOwner | undefined, token: string | undefined): void {
+		if (!owner || !token) {
+			return
+		}
+		if (owner === QueueOwner.Needs) {
+			this.managers.needs.handleRoutedEnqueueRejected(token)
+			return
+		}
+		if (owner === QueueOwner.Navigation) {
+			this.managers.navigation.discardRoutedExecution(token)
+		}
 	}
 
 	buildWorkQueueCallbacks(
