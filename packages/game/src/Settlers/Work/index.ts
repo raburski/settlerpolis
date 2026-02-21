@@ -568,7 +568,6 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 			settlerId,
 			reason: this.mapDispatchReason(reason)
 		})
-		this.managers.event.emit(Receiver.All, WorkProviderEvents.SS.DispatchRequested, { settlerId, reason })
 	}
 
 	public consumePendingIntents(): BehaviourIntent[] {
@@ -579,10 +578,6 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 	public getAssignment(settlerId: string): WorkAssignment | undefined {
 		return this.assignments.get(settlerId)
-	}
-
-	public getProvider(providerId: string): WorkProvider | undefined {
-		return this.registry.get(providerId)
 	}
 
 	public requestDispatchStep(settlerId: SettlerId): WorkDispatchStepResult {
@@ -828,7 +823,6 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 	}
 }
 
-export { SettlerWorkManager as WorkProviderManager }
 export { WorkProviderEvents }
 export * from './types'
 export * from './deps'

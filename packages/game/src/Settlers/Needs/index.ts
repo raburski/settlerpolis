@@ -60,10 +60,6 @@ export class SettlerNeedsManager extends BaseManager<NeedsDeps> {
 		this.interrupts.update(data)
 	}
 
-	public consumePendingInterruptPlans(): NeedInterruptPlanRequest[] {
-		return this.interrupts.consumePendingInterruptPlans()
-	}
-
 	public consumePendingIntents(): BehaviourIntent[] {
 		const planRequests = this.interrupts.consumePendingInterruptPlans()
 		for (const request of planRequests) {

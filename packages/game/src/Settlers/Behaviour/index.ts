@@ -451,5 +451,4 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 	}
 }
 
-export { SettlerBehaviourManager as DispatchCoordinator }
 export type { SettlerBehaviourDeps } from './deps'
