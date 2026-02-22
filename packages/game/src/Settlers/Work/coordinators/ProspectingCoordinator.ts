@@ -3,7 +3,7 @@ import type { AssignmentStore } from '../AssignmentStore'
 import type { ProviderFactory } from '../ProviderFactory'
 import type { WorkAssignment } from '../types'
 import { WorkAssignmentStatus, WorkProviderType } from '../types'
-import { SettlerState, ProfessionType } from '../../../Population/types'
+import { SettlerState, ProfessionType, type Settler } from '../../../Population/types'
 import { ConstructionStage } from '../../../Buildings/types'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -15,7 +15,12 @@ export class ProspectingCoordinator {
 		private assignments: AssignmentStore,
 		private providers: ProviderFactory,
 		private getNowMs: () => number,
-		private dispatchNextStep: (settlerId: string) => void
+		private dispatchNextStep: (settlerId: string) => void,
+		private getAssignmentCandidates: (
+			mapId: string,
+			playerId: string,
+			options?: { profession?: ProfessionType | null, allowFallbackToCarrier?: boolean }
+		) => Settler[]
 	) {}
 
 	assignProspectingWorkers(): void {
@@ -25,9 +30,10 @@ export class ProspectingCoordinator {
 				continue
 			}
 			const provider = this.providers.getProspecting(group.mapId, group.playerId)
-			const available = this.managers.population.getAvailableSettlers(group.mapId, group.playerId)
-				.filter(settler => settler.profession === ProfessionType.Prospector)
-				.filter(settler => !this.assignments.has(settler.id))
+			const available = this.getAssignmentCandidates(group.mapId, group.playerId, {
+				profession: ProfessionType.Prospector,
+				allowFallbackToCarrier: false
+			})
 
 			let assigned = 0
 			for (const settler of available) {

@@ -6,10 +6,14 @@ import { NeedsEvents } from './events'
 import { NeedType, NeedPriority } from './NeedTypes'
 import type { NeedsSystem } from './NeedsSystem'
 import type { NeedPlanner } from './NeedPlanner'
-import type { NeedPlanFailedEventData, NeedPlanCreatedEventData, NeedInterruptEventData, NeedSatisfiedEventData } from './types'
+import type {
+	NeedInterruptPlanRequest,
+	NeedPlan,
+	NeedPlanFailedEventData,
+	NeedPlanCreatedEventData,
+	NeedInterruptEventData
+} from './types'
 import type { NeedInterruptSnapshot } from '../../state/types'
-import { ActionQueueContextKind, type ActionQueueContext } from '../../state/types'
-import type { SettlerAction } from '../Actions/types'
 import {
 	type SettlerActionFailureReason,
 	type NeedPlanFailureReason,
@@ -30,24 +34,14 @@ const createCooldowns = (): Record<NeedType, number> => ({
 	[NeedType.Fatigue]: 0
 })
 
-export interface NeedsBehaviourApi {
-	enqueueNeedPlan(
-		settlerId: string,
-		actions: SettlerAction[],
-		context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>
-	): boolean
-	beginNeedInterrupt(settlerId: string, needType: NeedType): void
-	endNeedInterrupt(settlerId: string, needType: NeedType): void
-}
-
 export class NeedInterruptController {
 	private stateBySettler = new Map<string, NeedInterruptState>()
+	private pendingInterruptPlans: NeedInterruptPlanRequest[] = []
 
 	constructor(
 		private event: EventManager,
 		private needs: NeedsSystem,
 		private planner: NeedPlanner,
-		private behaviour: NeedsBehaviourApi,
 		private logger: Logger
 	) {
 		this.setupEventHandlers()
@@ -60,33 +54,43 @@ export class NeedInterruptController {
 		this.event.on(NeedsEvents.SS.NeedBecameCritical, data => {
 			this.handleNeedTrigger(data.settlerId, data.needType, NeedPriority.Critical)
 		})
-		this.event.on(NeedsEvents.SS.NeedSatisfied, (data: NeedSatisfiedEventData) => {
-			this.handleNeedSatisfied(data)
-		})
 	}
 
 	public handleNeedQueueCompleted(
 		settlerId: string,
-		context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>
+		needType: NeedType,
+		satisfyValue?: number
 	): void {
-		if (typeof context.satisfyValue === 'number') {
-			this.needs.resolveNeed(settlerId, context.needType, context.satisfyValue)
+		if (typeof satisfyValue === 'number') {
+			this.needs.resolveNeed(settlerId, needType, satisfyValue)
 		} else {
-			this.needs.satisfyNeed(settlerId, context.needType)
+			this.needs.satisfyNeed(settlerId, needType)
 		}
+		this.finishInterrupt(settlerId, needType, true)
 	}
 
 	public handleNeedQueueFailed(
 		settlerId: string,
-		context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }>,
+		needType: NeedType,
 		reason: SettlerActionFailureReason
 	): void {
-		this.emitPlanFailed(settlerId, context.needType, reason)
-		this.finishInterrupt(settlerId, context.needType, false)
+		this.emitPlanFailed(settlerId, needType, reason)
+		this.finishInterrupt(settlerId, needType, false)
+	}
+
+	public handleNeedPlanEnqueueFailed(settlerId: string, needType: NeedType): void {
+		this.emitPlanFailed(settlerId, needType, NeedPlanningFailureReason.ActionSystemBusy)
+		this.finishInterrupt(settlerId, needType, false)
 	}
 
 	public update(data: SimulationTickData): void {
 		this.tickCooldowns(data)
+	}
+
+	public consumePendingInterruptPlans(): NeedInterruptPlanRequest[] {
+		const pending = this.pendingInterruptPlans
+		this.pendingInterruptPlans = []
+		return pending
 	}
 
 	private getState(settlerId: string): NeedInterruptState {
@@ -116,14 +120,7 @@ export class NeedInterruptController {
 
 	private handleNeedTrigger(settlerId: string, needType: NeedType, priority: NeedPriority): void {
 		const state = this.getState(settlerId)
-		if (state.cooldowns[needType] > 0) {
-			return
-		}
-
-		if (state.activeNeed) {
-			if (state.activeNeed === needType && state.priority === NeedPriority.Urgent && priority === NeedPriority.Critical) {
-				state.priority = NeedPriority.Critical
-			}
+		if (this.shouldSkipNeedTrigger(state, needType, priority)) {
 			return
 		}
 
@@ -134,10 +131,26 @@ export class NeedInterruptController {
 			return
 		}
 
-		const plan = planResult.plan
+		this.queueNeedInterruptPlan(settlerId, needType, priority, planResult.plan)
+	}
+
+	private shouldSkipNeedTrigger(state: NeedInterruptState, needType: NeedType, priority: NeedPriority): boolean {
+		if (state.cooldowns[needType] > 0) {
+			return true
+		}
+		if (!state.activeNeed) {
+			return false
+		}
+		if (state.activeNeed === needType && state.priority === NeedPriority.Urgent && priority === NeedPriority.Critical) {
+			state.priority = NeedPriority.Critical
+		}
+		return true
+	}
+
+	private queueNeedInterruptPlan(settlerId: string, needType: NeedType, priority: NeedPriority, plan: NeedPlan): void {
+		const state = this.getState(settlerId)
 		state.activeNeed = needType
 		state.priority = priority
-		this.behaviour.beginNeedInterrupt(settlerId, needType)
 		this.emitInterruptRequested(settlerId, needType, priority)
 
 		this.event.emit(Receiver.All, NeedsEvents.SS.NeedPlanCreated, {
@@ -151,25 +164,12 @@ export class NeedInterruptController {
 			level: priority
 		} as NeedInterruptEventData)
 
-		const context: Extract<ActionQueueContext, { kind: ActionQueueContextKind.Need }> = {
-			kind: ActionQueueContextKind.Need,
+		this.pendingInterruptPlans.push({
+			settlerId,
 			needType,
-			satisfyValue: plan.satisfyValue
-		}
-
-		const enqueued = this.behaviour.enqueueNeedPlan(settlerId, plan.actions, context)
-		if (!enqueued) {
-			this.emitPlanFailed(settlerId, needType, NeedPlanningFailureReason.ActionSystemBusy)
-			this.finishInterrupt(settlerId, needType, false)
-		}
-	}
-
-	private handleNeedSatisfied(data: NeedSatisfiedEventData): void {
-		const state = this.getState(data.settlerId)
-		if (state.activeNeed !== data.needType) {
-			return
-		}
-		this.finishInterrupt(data.settlerId, data.needType, true)
+			priority,
+			plan
+		})
 	}
 
 	private finishInterrupt(settlerId: string, needType: NeedType, success: boolean): void {
@@ -182,7 +182,6 @@ export class NeedInterruptController {
 			settlerId,
 			needType
 		})
-		this.behaviour.endNeedInterrupt(settlerId, needType)
 	}
 
 	private emitPlanFailed(settlerId: string, needType: NeedType, reason: NeedPlanFailureReason): void {
@@ -213,6 +212,7 @@ export class NeedInterruptController {
 
 	deserialize(state: NeedInterruptSnapshot[]): void {
 		this.stateBySettler.clear()
+		this.pendingInterruptPlans = []
 		for (const entry of state) {
 			this.stateBySettler.set(entry.settlerId, {
 				activeNeed: entry.activeNeed,
@@ -224,5 +224,6 @@ export class NeedInterruptController {
 
 	reset(): void {
 		this.stateBySettler.clear()
+		this.pendingInterruptPlans = []
 	}
 }

@@ -16,6 +16,7 @@ import type { WildlifeManager } from '../../Wildlife'
 import type { SettlerActionsManager } from '../Actions'
 import type { SettlerWorkManager } from '../Work'
 import type { SettlerNeedsManager } from '../Needs'
+import type { SettlerNavigationManager } from '../Navigation'
 
 export interface SettlerBehaviourDeps {
 	event: EventManager
@@ -36,4 +37,5 @@ export interface SettlerBehaviourDeps {
 	actions: SettlerActionsManager
 	work: SettlerWorkManager
 	needs: SettlerNeedsManager
+	navigation: SettlerNavigationManager
 }

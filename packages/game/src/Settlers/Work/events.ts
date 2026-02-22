@@ -46,11 +46,6 @@ export interface WorkAssignmentRemovedEventData {
 	settlerId: SettlerId
 }
 
-export interface WorkDispatchRequestedEventData {
-	settlerId: SettlerId
-	reason: WorkDispatchReason
-}
-
 export const WorkProviderEvents = {
 	CS: {
 		SetLogisticsPriorities: 'cs:work:logistics-priorities'
@@ -65,7 +60,6 @@ export const WorkProviderEvents = {
 		StepCompleted: 'ss:work:step-completed',
 		StepFailed: 'ss:work:step-failed',
 		AssignmentCreated: 'ss:work:assignment-created',
-		AssignmentRemoved: 'ss:work:assignment-removed',
-		DispatchRequested: 'ss:work:dispatch-requested'
+		AssignmentRemoved: 'ss:work:assignment-removed'
 	}
 } as const

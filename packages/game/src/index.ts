@@ -34,6 +34,7 @@ import { SettlerWorkManager } from './Settlers/Work'
 import { SettlerActionsManager } from './Settlers/Actions'
 import { SettlerBehaviourManager } from './Settlers/Behaviour'
 import { SettlerNeedsManager } from './Settlers/Needs'
+import { SettlerNavigationManager } from './Settlers/Navigation'
 import { ManagersHub } from './Managers'
 import { WildlifeManager } from './Wildlife'
 import { SnapshotService } from './state/SnapshotService'
@@ -51,6 +52,7 @@ export * from './Settlers/Work'
 export * from './Settlers/Behaviour'
 export * from './Settlers/Actions'
 export * from './Settlers/Needs'
+export * from './Settlers/Navigation'
 export * from './Roads'
 export * from './Wildlife'
 export * from './CityCharter'
@@ -148,16 +150,15 @@ export class GameManager {
 		// Create RoadManager after StorageManager so it can consume road materials
 		this.managers.roads = new RoadManager(this.managers, this.managers.logs.getLogger('RoadManager'))
 		
-		// Create ReservationSystem after Storage/Loot/ResourceNodes/Population
-		this.managers.reservations = new ReservationSystem(this.managers)
+			// Create ReservationSystem after Storage/Loot/ResourceNodes/Population
+			this.managers.reservations = new ReservationSystem(this.managers)
 
-		// Create Settler actions/behaviour/work managers as peer managers.
-		this.managers.actions = new SettlerActionsManager(this.managers, this.managers.event, this.managers.logs.getLogger('SettlerActionsManager'))
-		this.managers.work = new SettlerWorkManager(this.managers, this.managers.logs.getLogger('SettlerWorkManager'))
-		this.managers.behaviour = new SettlerBehaviourManager(this.managers)
-
-		// Create SettlerNeedsManager after Behaviour so behaviour executes need plans.
-		this.managers.needs = new SettlerNeedsManager(this.managers, this.managers.logs.getLogger('SettlerNeedsManager'))
+			// Create Settler actions/behaviour/work managers as peer managers.
+			this.managers.actions = new SettlerActionsManager(this.managers, this.managers.event, this.managers.logs.getLogger('SettlerActionsManager'))
+			this.managers.work = new SettlerWorkManager(this.managers, this.managers.logs.getLogger('SettlerWorkManager'))
+			this.managers.needs = new SettlerNeedsManager(this.managers, this.managers.logs.getLogger('SettlerNeedsManager'))
+			this.managers.navigation = new SettlerNavigationManager(this.managers)
+			this.managers.behaviour = new SettlerBehaviourManager(this.managers)
 		
 		this.managers.trigger = new TriggerManager(this.managers, this.managers.logs.getLogger('TriggerManager'))
 

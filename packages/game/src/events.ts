@@ -30,8 +30,7 @@ import type {
 	WorkStepCompletedEventData,
 	WorkStepFailedEventData,
 	WorkAssignmentCreatedEventData,
-	WorkAssignmentRemovedEventData,
-	WorkDispatchRequestedEventData
+	WorkAssignmentRemovedEventData
 } from './Settlers/Work/events'
 import { SettlerActionsEvents } from './Settlers/Actions/events'
 import type { ActionQueueCompletedEventData, ActionQueueFailedEventData } from './Settlers/Actions/events'
@@ -310,7 +309,6 @@ export type EventPayloads = Record<string, unknown> & {
 	[WorkProviderEvents.SS.StepFailed]: WorkStepFailedEventData
 	[WorkProviderEvents.SS.AssignmentCreated]: WorkAssignmentCreatedEventData
 	[WorkProviderEvents.SS.AssignmentRemoved]: WorkAssignmentRemovedEventData
-	[WorkProviderEvents.SS.DispatchRequested]: WorkDispatchRequestedEventData
 	[SettlerActionsEvents.SS.QueueCompleted]: ActionQueueCompletedEventData
 	[SettlerActionsEvents.SS.QueueFailed]: ActionQueueFailedEventData
 
