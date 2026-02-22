@@ -1,4 +1,5 @@
 import { AbstractMesh, AssetContainer, Mesh, MeshBuilder, SceneLoader, TransformNode, Vector3 } from '@babylonjs/core'
+import type { Scene } from '@babylonjs/core'
 import '@babylonjs/loaders'
 import type { BabylonRenderer } from './BabylonRenderer'
 import type { MapObject } from '@rugged/game'
@@ -8,6 +9,8 @@ import { resourceNodeRenderService } from '../services/ResourceNodeRenderService
 const BASE_OFFSET = 100000
 const perfNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
 const TREE_GROWTH_SCALES = [0.4, 0.7, 1]
+const MODEL_RETRY_DELAY_MS = 1000
+const MODEL_MAX_RETRIES = 6
 
 interface Batch {
 	type: 'emoji' | 'model'
@@ -76,10 +79,12 @@ export class ResourceNodeBatcher {
 	private tileHalf: number
 	private renderUnsubscribe: (() => void) | null = null
 	private shadowRebakePending = false
+	private failedModelSrcs = new Set<string>()
+	private unsupportedModelSrcs = new Set<string>()
+	private modelRetryTimers = new Map<string, number>()
+	private modelRetryCounts = new Map<string, number>()
 
-	private static modelContainerCache = new Map<string, Promise<AssetContainer>>()
-	private static failedModelSrcs = new Set<string>()
-	private static unsupportedModelSrcs = new Set<string>()
+	private static modelContainerCacheByScene = new WeakMap<Scene, Map<string, Promise<AssetContainer>>>()
 
 	constructor(renderer: BabylonRenderer, tileSize: number) {
 		this.renderer = renderer
@@ -122,23 +127,18 @@ export class ResourceNodeBatcher {
 
 	add(object: MapObject): boolean {
 		if (!object?.metadata?.resourceNode) return false
+		const nodeType = resolveResourceNodeTypeForRender(object)
+		if (nodeType === 'tree') {
+			return false
+		}
 		this.objectsById.set(object.id, object)
 		const baseScale = getSeededScale(object.id)
 		const growthState = this.resolveGrowthState(object, baseScale)
 		const scale = growthState ? baseScale * (growthState.stageScales[growthState.stageIndex] ?? 1) : baseScale
-		const nodeType = object?.metadata?.resourceNodeType
-		const render = resourceNodeRenderService.isLoaded()
-			? resourceNodeRenderService.getRenderModel(nodeType, object.id)
-			: null
+		const render = this.resolveResourceModelRender(object, nodeType)
 		if (render?.modelSrc) {
 			const modelKey = this.getModelBatchKey(render)
 			this.trackBatchNodeType(modelKey, nodeType)
-			if (ResourceNodeBatcher.failedModelSrcs.has(render.modelSrc)) {
-				return this.addEmojiNode(object, scale)
-			}
-			if (ResourceNodeBatcher.unsupportedModelSrcs.has(render.modelSrc)) {
-				return this.addEmojiNode(object, scale)
-			}
 			this.ensureModelBatch(modelKey, render)
 			if (this.idToBatchKey.has(object.id)) return true
 			const elevation = this.getNodeElevation(object, render)
@@ -253,6 +253,9 @@ export class ResourceNodeBatcher {
 			this.renderUnsubscribe()
 			this.renderUnsubscribe = null
 		}
+		this.modelRetryTimers.forEach((timerId) => window.clearTimeout(timerId))
+		this.modelRetryTimers.clear()
+		this.modelRetryCounts.clear()
 		for (const batch of this.batches.values()) {
 			if (batch.hasBuffer) {
 				batch.baseMeshes.forEach((mesh) => {
@@ -290,8 +293,8 @@ export class ResourceNodeBatcher {
 		const toUpgrade: MapObject[] = []
 		for (const [id, obj] of this.objectsById.entries()) {
 			if (!obj?.metadata?.resourceNode) continue
-			const nodeType = obj.metadata?.resourceNodeType
-			const render = resourceNodeRenderService.getRenderModel(nodeType, id)
+			const nodeType = resolveResourceNodeTypeForRender(obj)
+			const render = this.resolveResourceModelRender(obj, nodeType)
 			if (!render?.modelSrc) continue
 			const key = this.idToBatchKey.get(id)
 			if (!key || key.startsWith('emoji:') || key.startsWith('pending-emoji:')) {
@@ -495,6 +498,58 @@ export class ResourceNodeBatcher {
 		return footprintScale > 1 ? baseScale * footprintScale : baseScale
 	}
 
+	private resolveResourceModelRender(object: MapObject, nodeType?: string): ModelRenderConfig | null {
+		if (!resourceNodeRenderService.isLoaded()) {
+			return null
+		}
+		const resourceRender = resourceNodeRenderService.getRenderModelForResourceNode(
+			{
+				nodeType,
+				itemType: object.item.itemType
+			},
+			object.id
+		)
+		if (resourceRender?.modelSrc && this.isModelRenderable(resourceRender.modelSrc)) {
+			return resourceRender
+		}
+		return null
+	}
+
+	private isModelRenderable(modelSrc: string): boolean {
+		return !this.failedModelSrcs.has(modelSrc) && !this.unsupportedModelSrcs.has(modelSrc)
+	}
+
+	private clearModelRetry(modelSrc: string): void {
+		const timerId = this.modelRetryTimers.get(modelSrc)
+		if (timerId !== undefined) {
+			window.clearTimeout(timerId)
+			this.modelRetryTimers.delete(modelSrc)
+		}
+		this.modelRetryCounts.delete(modelSrc)
+	}
+
+	private scheduleModelRetry(modelSrc: string): void {
+		if (this.modelRetryTimers.has(modelSrc)) {
+			return
+		}
+		const nextCount = (this.modelRetryCounts.get(modelSrc) ?? 0) + 1
+		if (nextCount > MODEL_MAX_RETRIES) {
+			return
+		}
+		this.modelRetryCounts.set(modelSrc, nextCount)
+		const delayMs = MODEL_RETRY_DELAY_MS * nextCount
+		const timerId = window.setTimeout(() => {
+			this.modelRetryTimers.delete(modelSrc)
+			this.failedModelSrcs.delete(modelSrc)
+			this.unsupportedModelSrcs.delete(modelSrc)
+			if (!this.worker) {
+				return
+			}
+			this.refreshRenderBatches()
+		}, delayMs)
+		this.modelRetryTimers.set(modelSrc, timerId)
+	}
+
 	private getFootprintScale(object: MapObject): number {
 		const metadata = object?.metadata as { footprint?: { width?: number; height?: number; length?: number } } | undefined
 		const footprint = metadata?.footprint
@@ -569,12 +624,14 @@ export class ResourceNodeBatcher {
 		const modelSrc = renderConfig.modelSrc
 		if (!modelSrc) return null
 		const scene = this.renderer.scene
+		const modelContainerCache = ResourceNodeBatcher.getSceneModelContainerCache(scene)
 		try {
 			const container = await ResourceNodeBatcher.getModelContainer(scene, modelSrc)
 			if (container.skeletons?.length) {
-				ResourceNodeBatcher.unsupportedModelSrcs.add(modelSrc)
-				ResourceNodeBatcher.modelContainerCache.delete(modelSrc)
+				this.unsupportedModelSrcs.add(modelSrc)
+				modelContainerCache.delete(modelSrc)
 				container.dispose()
+				this.scheduleModelRetry(modelSrc)
 				return null
 			}
 
@@ -606,9 +663,10 @@ export class ResourceNodeBatcher {
 
 			const meshes = Array.from(meshSet)
 			if (meshes.length === 0) {
-				ResourceNodeBatcher.unsupportedModelSrcs.add(modelSrc)
-				ResourceNodeBatcher.modelContainerCache.delete(modelSrc)
+				this.unsupportedModelSrcs.add(modelSrc)
+				modelContainerCache.delete(modelSrc)
 				container.dispose()
+				this.scheduleModelRetry(modelSrc)
 				return null
 			}
 			const isPickable = this.pickableBatchKeys.has(batchKey)
@@ -668,6 +726,7 @@ export class ResourceNodeBatcher {
 					z: (offset.z ?? 0) * this.tileSize
 				}
 			})
+			this.clearModelRetry(modelSrc)
 
 			return {
 				type: 'model',
@@ -677,9 +736,13 @@ export class ResourceNodeBatcher {
 				root
 			}
 		} catch (error) {
-			ResourceNodeBatcher.failedModelSrcs.add(modelSrc)
-			ResourceNodeBatcher.modelContainerCache.delete(modelSrc)
+			if (isSceneDisposedError(error)) {
+				return null
+			}
+			this.failedModelSrcs.add(modelSrc)
+			modelContainerCache.delete(modelSrc)
 			console.warn('[ResourceNodeBatcher] Failed to load model', modelSrc, error)
+			this.scheduleModelRetry(modelSrc)
 			return null
 		}
 	}
@@ -705,7 +768,8 @@ export class ResourceNodeBatcher {
 		scene: import('@babylonjs/core').Scene,
 		modelSrc: string
 	): Promise<AssetContainer> {
-		const cached = ResourceNodeBatcher.modelContainerCache.get(modelSrc)
+		const modelContainerCache = ResourceNodeBatcher.getSceneModelContainerCache(scene)
+		const cached = modelContainerCache.get(modelSrc)
 		if (cached) return cached
 		const { rootUrl, fileName } = splitAssetUrl(modelSrc)
 		const promise = SceneLoader.LoadAssetContainerAsync(rootUrl, fileName, scene)
@@ -714,11 +778,19 @@ export class ResourceNodeBatcher {
 				return container
 			})
 			.catch((error) => {
-				ResourceNodeBatcher.modelContainerCache.delete(modelSrc)
+				modelContainerCache.delete(modelSrc)
 				throw error
 			})
-		ResourceNodeBatcher.modelContainerCache.set(modelSrc, promise)
+		modelContainerCache.set(modelSrc, promise)
 		return promise
+	}
+
+	private static getSceneModelContainerCache(scene: Scene): Map<string, Promise<AssetContainer>> {
+		const existing = ResourceNodeBatcher.modelContainerCacheByScene.get(scene)
+		if (existing) return existing
+		const created = new Map<string, Promise<AssetContainer>>()
+		ResourceNodeBatcher.modelContainerCacheByScene.set(scene, created)
+		return created
 	}
 
 	private trackBatchId(batchKey: string, objectId: string): void {
@@ -890,7 +962,8 @@ export class ResourceNodeBatcher {
 }
 
 function getTreeGrowthMetadata(object: MapObject): { durationMs: number; elapsedMs: number } | null {
-	if (object?.metadata?.resourceNodeType !== 'tree') return null
+	const nodeType = resolveResourceNodeTypeForRender(object)
+	if (nodeType !== 'tree') return null
 	const growth = object?.metadata?.growth
 	const durationMs = Number(growth?.durationMs)
 	if (!Number.isFinite(durationMs) || durationMs <= 0) return null
@@ -922,6 +995,31 @@ function splitAssetUrl(url: string): { rootUrl: string; fileName: string } {
 		rootUrl: trimmed.slice(0, lastSlash + 1),
 		fileName: trimmed.slice(lastSlash + 1)
 	}
+}
+
+function resolveResourceNodeTypeForRender(object: MapObject | null | undefined): string | undefined {
+	const metadataType = object?.metadata?.resourceNodeType
+	if (typeof metadataType === 'string' && metadataType.length > 0) {
+		return metadataType
+	}
+	const itemType = object?.item?.itemType
+	if (itemType === 'tree') {
+		return 'tree'
+	}
+	if (itemType === 'fish') {
+		return 'fish'
+	}
+	if (itemType === 'wheat') {
+		return 'wheat_crop'
+	}
+	return undefined
+}
+
+function isSceneDisposedError(error: unknown): boolean {
+	if (!(error instanceof Error)) {
+		return false
+	}
+	return error.message.includes('Scene has been disposed')
 }
 
 function getBounds(meshes: AbstractMesh[]): { min: Vector3; max: Vector3 } | null {

@@ -78,7 +78,7 @@ export class MapObjectView extends BaseEntityView {
 	private constructionRoot: TransformNode | null = null
 	private constructionMeshes: AbstractMesh[] = []
 
-	private static modelContainerCache = new Map<string, Promise<AssetContainer>>()
+	private static modelContainerCacheByScene = new WeakMap<Scene, Map<string, Promise<AssetContainer>>>()
 	private static failedModelSrcs = new Set<string>()
 	private static failedModelLogged = new Set<string>()
 	private static modelLoadStats = new Map<
@@ -91,7 +91,8 @@ export class MapObjectView extends BaseEntityView {
 		scene: import('@babylonjs/core').Scene,
 		modelSrc: string
 	): Promise<AssetContainer> {
-		const cached = MapObjectView.modelContainerCache.get(modelSrc)
+		const modelContainerCache = MapObjectView.getSceneModelContainerCache(scene)
+		const cached = modelContainerCache.get(modelSrc)
 		if (cached) return cached
 		const { rootUrl, fileName } = splitAssetUrl(modelSrc)
 		const promise = SceneLoader.LoadAssetContainerAsync(rootUrl, fileName, scene)
@@ -100,11 +101,19 @@ export class MapObjectView extends BaseEntityView {
 				return container
 			})
 			.catch((error) => {
-				MapObjectView.modelContainerCache.delete(modelSrc)
+				modelContainerCache.delete(modelSrc)
 				throw error
 			})
-		MapObjectView.modelContainerCache.set(modelSrc, promise)
+		modelContainerCache.set(modelSrc, promise)
 		return promise
+	}
+
+	private static getSceneModelContainerCache(scene: Scene): Map<string, Promise<AssetContainer>> {
+		const existing = MapObjectView.modelContainerCacheByScene.get(scene)
+		if (existing) return existing
+		const created = new Map<string, Promise<AssetContainer>>()
+		MapObjectView.modelContainerCacheByScene.set(scene, created)
+		return created
 	}
 
 	constructor(scene: GameScene, mapObject: MapObject) {
@@ -167,8 +176,14 @@ export class MapObjectView extends BaseEntityView {
 		this.disposeConstructionPlaceholder(true)
 
 		if (this.mapObject.metadata?.resourceNode) {
-			const nodeType = this.mapObject.metadata?.resourceNodeType
-			const renderConfig = resourceNodeRenderService.getRenderModel(nodeType, this.mapObject.id)
+			const nodeType = resolveResourceNodeTypeForRender(this.mapObject)
+			const renderConfig = resourceNodeRenderService.getRenderModelForResourceNode(
+				{
+					nodeType,
+					itemType: this.mapObject.item.itemType
+				},
+				this.mapObject.id
+			)
 			if (
 				renderConfig?.modelSrc &&
 				this.modelFailedSrc !== renderConfig.modelSrc &&
@@ -240,8 +255,13 @@ export class MapObjectView extends BaseEntityView {
 			this.applyInvisibleBase()
 			return
 		}
+		const isRetryableResourceRender = this.isRetryableResourceRender(render.modelSrc)
 		if (MapObjectView.failedModelSrcs.has(render.modelSrc)) {
-			return
+			if (isRetryableResourceRender) {
+				MapObjectView.failedModelSrcs.delete(render.modelSrc)
+			} else {
+				return
+			}
 		}
 		if (this.modelLoading) {
 			return
@@ -351,7 +371,9 @@ export class MapObjectView extends BaseEntityView {
 			if (isSceneDisposedError(error)) {
 				return
 			}
-			MapObjectView.failedModelSrcs.add(render.modelSrc)
+			if (!isRetryableResourceRender) {
+				MapObjectView.failedModelSrcs.add(render.modelSrc)
+			}
 			if (!MapObjectView.failedModelLogged.has(render.modelSrc)) {
 				MapObjectView.failedModelLogged.add(render.modelSrc)
 				console.warn('[MapObjectView] Failed to load model', render.modelSrc, error)
@@ -363,6 +385,20 @@ export class MapObjectView extends BaseEntityView {
 		} finally {
 			this.modelLoading = null
 		}
+	}
+
+	private isRetryableResourceRender(modelSrc: string): boolean {
+		if (!this.mapObject.metadata?.resourceNode) {
+			return false
+		}
+		const resourceRender = resourceNodeRenderService.getRenderModelForResourceNode(
+			{
+				nodeType: resolveResourceNodeTypeForRender(this.mapObject),
+				itemType: this.mapObject.item.itemType
+			},
+			this.mapObject.id
+		)
+		return resourceRender?.modelSrc === modelSrc
 	}
 
 	private applyModelTransform(render: {
@@ -808,6 +844,24 @@ export class MapObjectView extends BaseEntityView {
 			})
 		}
 	}
+}
+
+function resolveResourceNodeTypeForRender(mapObject: MapObject | null | undefined): string | undefined {
+	const metadataType = mapObject?.metadata?.resourceNodeType
+	if (typeof metadataType === 'string' && metadataType.length > 0) {
+		return metadataType
+	}
+	const itemType = mapObject?.item?.itemType
+	if (itemType === 'tree') {
+		return 'tree'
+	}
+	if (itemType === 'fish') {
+		return 'fish'
+	}
+	if (itemType === 'wheat') {
+		return 'wheat_crop'
+	}
+	return undefined
 }
 
 function isSceneDisposedError(error: unknown): boolean {
