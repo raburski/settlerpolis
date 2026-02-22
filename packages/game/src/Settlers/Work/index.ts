@@ -8,7 +8,7 @@ import { Logger } from '../../Logs'
 import { Receiver } from '../../Receiver'
 import { v4 as uuidv4 } from 'uuid'
 import { calculateDistance } from '../../utils'
-import { SettlerState, ProfessionType } from '../../Population/types'
+import { SettlerState, ProfessionType, type Settler } from '../../Population/types'
 import type { RequestWorkerData, UnassignWorkerData } from '../../Population/types'
 import { WorkerRequestFailureReason } from '../../Population/types'
 import type { ItemType } from '../../Items/types'
@@ -112,7 +112,8 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 			this.assignments,
 			this.providers,
 			() => this.simulationTimeMs,
-			dispatchNextStep
+			dispatchNextStep,
+			(mapId, playerId, options) => this.getAssignmentCandidates(mapId, playerId, options)
 		)
 
 		this.prospectingCoordinator = new ProspectingCoordinator(
@@ -120,7 +121,8 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 			this.assignments,
 			this.providers,
 			() => this.simulationTimeMs,
-			dispatchNextStep
+			dispatchNextStep,
+			(mapId, playerId, options) => this.getAssignmentCandidates(mapId, playerId, options)
 		)
 
 		this.setupEventHandlers()
@@ -202,7 +204,10 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 	public onWorkQueueCompleted(settlerId: SettlerId, step?: WorkStep): void {
 		if (!step) {
-			this.managers.population.setSettlerState(settlerId, SettlerState.Idle)
+			this.managers.population.setSettlerState(
+				settlerId,
+				this.assignments.has(settlerId) ? SettlerState.Assigned : SettlerState.Idle
+			)
 			this.emitDispatchRequested(settlerId, WorkDispatchReason.WorkFlow)
 			return
 		}
@@ -215,7 +220,10 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 	public onWorkQueueFailed(settlerId: SettlerId, step: WorkStep | undefined, reason: SettlerActionFailureReason): void {
 		if (!step) {
-			this.managers.population.setSettlerState(settlerId, SettlerState.Idle)
+			this.managers.population.setSettlerState(
+				settlerId,
+				this.assignments.has(settlerId) ? SettlerState.Assigned : SettlerState.Idle
+			)
 			this.emitDispatchRequested(settlerId, WorkDispatchReason.WorkFlow)
 			return
 		}
@@ -266,7 +274,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 	private handleStepCompleted(settlerId: SettlerId, assignment: WorkAssignment, step: WorkStep): void {
 		this.managers.event.emit(Receiver.All, WorkProviderEvents.SS.StepCompleted, { settlerId, step })
 		this.managers.population.setSettlerLastStep(settlerId, step.type, undefined)
-		this.managers.population.setSettlerState(settlerId, SettlerState.Idle)
+		this.managers.population.setSettlerState(settlerId, SettlerState.Assigned)
 		this.clearConstructionWorker(settlerId, step)
 		this.clearMovementFailureState(settlerId)
 
@@ -810,29 +818,42 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		requiredProfession?: ProfessionType | null,
 		options: { allowFallbackToCarrier?: boolean } = {}
 	) {
-		const idleSettlers = this.managers.population.getAvailableSettlers(mapId, playerId)
-		if (idleSettlers.length === 0) {
+		const candidates = this.getAssignmentCandidates(mapId, playerId, {
+			profession: requiredProfession,
+			allowFallbackToCarrier: options.allowFallbackToCarrier
+		})
+		if (candidates.length === 0) {
 			return null
 		}
 
-		if (requiredProfession) {
-			const matching = idleSettlers.filter(s => s.profession === requiredProfession)
-			if (matching.length > 0) {
-				return this.findClosestSettler(matching, position)
-			}
-			if (options.allowFallbackToCarrier !== false) {
-				const carriers = idleSettlers.filter(s => s.profession === ProfessionType.Carrier)
-				if (carriers.length > 0) {
-					return this.findClosestSettler(carriers, position)
-				}
-			}
-			return null
-		}
-
-		return this.findClosestSettler(idleSettlers, position)
+		return this.findClosestSettler(candidates, position)
 	}
 
-	private findClosestSettler(settlers: Array<{ position: { x: number, y: number } }>, position: { x: number, y: number }) {
+	public getAssignmentCandidates(
+		mapId: string,
+		playerId: string,
+		options: { profession?: ProfessionType | null, allowFallbackToCarrier?: boolean } = {}
+	): Settler[] {
+		const base = this.managers.population.getAvailableSettlers(mapId, playerId)
+			.filter(settler => !settler.stateContext.assignmentId)
+			.filter(settler => !this.assignments.has(settler.id))
+
+		if (!options.profession) {
+			return base
+		}
+
+		const matching = base.filter(settler => settler.profession === options.profession)
+		if (matching.length > 0) {
+			return matching
+		}
+
+		if (options.allowFallbackToCarrier === false) {
+			return []
+		}
+		return base.filter(settler => settler.profession === ProfessionType.Carrier)
+	}
+
+	private findClosestSettler(settlers: Settler[], position: { x: number, y: number }) {
 		let closest = settlers[0]
 		let closestDistance = calculateDistance(position, closest.position)
 		for (let i = 1; i < settlers.length; i++) {
