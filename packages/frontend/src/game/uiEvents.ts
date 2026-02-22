@@ -27,7 +27,9 @@ export const UiEvents = {
 	Construction: {
 		Toggle: 'ui:construction:toggle',
 		Select: 'ui:construction:select',
-		Cancel: 'ui:construction:cancel'
+		Cancel: 'ui:construction:cancel',
+		ServiceRangePreview: 'ui:construction:service-range-preview',
+		ServiceRangeClear: 'ui:construction:service-range-clear'
 	},
 	Road: {
 		Select: 'ui:road:select',

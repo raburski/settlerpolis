@@ -125,6 +125,10 @@ export class BuildingPlacementManager {
 		this.state.dragStartTile = null
 		this.state.dragCurrentTile = null
 		this.rotationLocked = false
+		const building = this.buildings.get(buildingId)
+		if (!building?.marketDistribution) {
+			this.clearServiceRangePreview()
+		}
 		this.createGhostMesh()
 		this.setupMouseHandlers()
 	}
@@ -136,6 +140,7 @@ export class BuildingPlacementManager {
 		this.rotationLocked = false
 		this.destroyGhostMesh()
 		this.removeMouseHandlers()
+		this.clearServiceRangePreview()
 	}
 
 	private createGhostMesh() {
@@ -229,10 +234,24 @@ export class BuildingPlacementManager {
 		const centerX = snappedX + (footprint.width * tileSize) / 2
 		const centerY = snappedY + (footprint.height * tileSize) / 2
 		this.ghostRoot.position = new Vector3(centerX, tileSize * 0.5, centerY)
+		if (building.marketDistribution) {
+			this.emitServiceRangePreview(building, snappedX, snappedY)
+		}
 		this.updateGhostTint()
 		if (rotationChanged && this.state.dragStartTile && this.state.dragCurrentTile) {
 			this.updateLinePreview()
 		}
+	}
+
+	private emitServiceRangePreview(building: BuildingDefinition, worldX: number, worldY: number): void {
+		EventBus.emit(UiEvents.Construction.ServiceRangePreview, {
+			buildingDefinition: building,
+			position: { x: worldX, y: worldY }
+		})
+	}
+
+	private clearServiceRangePreview(): void {
+		EventBus.emit(UiEvents.Construction.ServiceRangeClear, {})
 	}
 
 	private setInitialGhostPosition(): void {

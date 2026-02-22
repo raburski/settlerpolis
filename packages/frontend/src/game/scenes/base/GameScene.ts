@@ -1,7 +1,15 @@
 import { EventBus } from '../../EventBus'
 import { UiEvents } from '../../uiEvents'
 import { MapScene } from './MapScene'
-import { Event } from '@rugged/game'
+import {
+	Event,
+	RoadType,
+	buildMarketRoadBlockadeTiles,
+	buildRoadNetworkWalk,
+	findClosestRoadTile,
+	type RoadGridData,
+	type TilePosition
+} from '@rugged/game'
 import { createLocalPlayer, type LocalPlayer } from '../../entities/LocalPlayer'
 import { createRemotePlayer, type RemotePlayer } from '../../entities/RemotePlayer'
 import { createNPC, type NPCController } from '../../entities/NPC'
@@ -45,6 +53,7 @@ export abstract class GameScene extends MapScene {
 	protected resourceNodeSelectionManager: ResourceNodeSelectionManager | null = null
 	protected mapPopoverManager: MapPopoverManager | null = null
 	private marketReachBuildingId: string | null = null
+	private marketReachPreview: { buildingDefinition: BuildingDefinition; position: { x: number; y: number }; playerId: string } | null = null
 	protected keyboard: Keyboard | null = null
 	protected portalManager: PortalManager | null = null
 	protected buildingPlacementManager: BuildingPlacementManager | null = null
@@ -391,6 +400,8 @@ export abstract class GameScene extends MapScene {
 		EventBus.on(UiEvents.Building.Select, this.handleBuildingSelected, this)
 		EventBus.on(UiEvents.Building.Close, this.handleBuildingClosed, this)
 		EventBus.on(UiEvents.Building.Highlight, this.handleBuildingHighlight, this)
+		EventBus.on(UiEvents.Construction.ServiceRangePreview, this.handleConstructionServiceRangePreview, this)
+		EventBus.on(UiEvents.Construction.ServiceRangeClear, this.handleConstructionServiceRangeClear, this)
 		EventBus.on(UiEvents.Camera.Focus, this.handleCameraFocus, this)
 	}
 
@@ -964,9 +975,7 @@ export abstract class GameScene extends MapScene {
 		if (!this.roadOverlay || data.mapId !== this.mapKey) return
 		const perfStart = DEBUG_LOAD_TIMING ? performance.now() : 0
 		this.roadOverlay.setTiles(data.tiles)
-		if (this.marketReachBuildingId) {
-			this.updateMarketReachOverlay()
-		}
+		this.updateMarketReachOverlay()
 		if (DEBUG_LOAD_TIMING) {
 			const elapsed = performance.now() - perfStart
 			console.info(
@@ -979,9 +988,7 @@ export abstract class GameScene extends MapScene {
 		if (!this.roadOverlay || data.mapId !== this.mapKey) return
 		const perfStart = DEBUG_LOAD_TIMING ? performance.now() : 0
 		this.roadOverlay.applyUpdates(data.tiles)
-		if (this.marketReachBuildingId) {
-			this.updateMarketReachOverlay()
-		}
+		this.updateMarketReachOverlay()
 		if (DEBUG_LOAD_TIMING) {
 			const elapsed = performance.now() - perfStart
 			console.info(
@@ -1016,12 +1023,14 @@ export abstract class GameScene extends MapScene {
 
 	private handleBuildingSelected = (data: { buildingInstance: BuildingInstance; buildingDefinition: BuildingDefinition }) => {
 		if (!data?.buildingInstance || !data?.buildingDefinition) {
-			this.clearMarketReachOverlay()
+			this.marketReachBuildingId = null
+			this.updateMarketReachOverlay()
 			return
 		}
 		const definition = data.buildingDefinition
 		if (!definition.marketDistribution) {
-			this.clearMarketReachOverlay()
+			this.marketReachBuildingId = null
+			this.updateMarketReachOverlay()
 			return
 		}
 		this.marketReachBuildingId = data.buildingInstance.id
@@ -1029,39 +1038,55 @@ export abstract class GameScene extends MapScene {
 	}
 
 	private handleBuildingClosed = () => {
-		this.clearMarketReachOverlay()
+		this.marketReachBuildingId = null
+		this.updateMarketReachOverlay()
 	}
 
 	private handleBuildingHighlight = (data: { buildingInstanceId: string; highlighted: boolean }) => {
 		if (!data?.highlighted && this.marketReachBuildingId === data.buildingInstanceId) {
-			this.clearMarketReachOverlay()
+			this.marketReachBuildingId = null
+			this.updateMarketReachOverlay()
 		}
 	}
 
-	private clearMarketReachOverlay(): void {
-		this.marketReachBuildingId = null
-		this.roadOverlay?.clearHighlightTiles()
+	private handleConstructionServiceRangePreview = (
+		data: { buildingDefinition?: BuildingDefinition; position?: { x: number; y: number } }
+	) => {
+		const definition = data?.buildingDefinition
+		const position = data?.position
+		if (!definition?.marketDistribution || !position) {
+			this.marketReachPreview = null
+			this.updateMarketReachOverlay()
+			return
+		}
+		this.marketReachPreview = {
+			buildingDefinition: definition,
+			position: { x: position.x, y: position.y },
+			playerId: playerService.playerId
+		}
+		this.updateMarketReachOverlay()
+	}
+
+	private handleConstructionServiceRangeClear = () => {
+		this.marketReachPreview = null
+		this.updateMarketReachOverlay()
 	}
 
 	private updateMarketReachOverlay(): void {
-		if (!this.roadOverlay || !this.marketReachBuildingId || !this.map) {
+		if (!this.roadOverlay || !this.map) {
 			return
 		}
-		const instance = buildingService.getBuildingInstance(this.marketReachBuildingId)
-		if (!instance || instance.mapId !== this.mapKey) {
-			this.clearMarketReachOverlay()
-			return
-		}
-		const definition = buildingService.getBuildingDefinition(instance.buildingId)
-		if (!definition?.marketDistribution) {
-			this.clearMarketReachOverlay()
+
+		const source = this.getMarketReachSource()
+		if (!source) {
+			this.roadOverlay.clearHighlightTiles()
 			return
 		}
 
 		const tileSize = this.map.tileWidth || 32
-		const marketTile = {
-			x: Math.floor(instance.position.x / tileSize),
-			y: Math.floor(instance.position.y / tileSize)
+		const marketTile: TilePosition = {
+			x: Math.floor(source.position.x / tileSize),
+			y: Math.floor(source.position.y / tileSize)
 		}
 		const roadTiles = this.roadOverlay.getRoadTiles()
 		if (roadTiles.length === 0) {
@@ -1071,107 +1096,80 @@ export abstract class GameScene extends MapScene {
 
 		const mapWidthTiles = Math.floor(this.map.widthInPixels / tileSize)
 		const mapHeightTiles = Math.floor(this.map.heightInPixels / tileSize)
-		const roadSet = new Set<string>()
-		for (const tile of roadTiles) {
-			roadSet.add(this.roadKey(tile.x, tile.y))
-		}
+		const roadData = this.buildRoadDataFromTiles(roadTiles, mapWidthTiles, mapHeightTiles)
+		const blockedRoadTiles = buildMarketRoadBlockadeTiles(
+			buildingService.getAllBuildingInstances(),
+			(buildingId) => buildingService.getBuildingDefinition(buildingId),
+			this.mapKey,
+			source.playerId,
+			tileSize
+		)
 
-		const roadSearchRadius = Math.max(0, definition.marketDistribution.roadSearchRadiusTiles ?? 8)
-		const maxDistanceTiles = Math.max(1, definition.marketDistribution.maxDistanceTiles ?? 25)
-		const startRoad = this.findClosestRoadTile(roadSet, marketTile, roadSearchRadius, mapWidthTiles, mapHeightTiles)
+		const roadSearchRadius = Math.max(0, source.buildingDefinition.marketDistribution.roadSearchRadiusTiles ?? 8)
+		const maxDistanceTiles = Math.max(1, source.buildingDefinition.marketDistribution.maxDistanceTiles ?? 25)
+		const startRoad = findClosestRoadTile(roadData, marketTile, roadSearchRadius, blockedRoadTiles)
 		if (!startRoad) {
 			this.roadOverlay.clearHighlightTiles()
 			return
 		}
 
-		const reachable = this.buildRoadReach(roadSet, startRoad, maxDistanceTiles, mapWidthTiles, mapHeightTiles)
-		this.roadOverlay.setHighlightTiles(reachable, '#6fbf6a', 0.45)
+		const roadRoute = buildRoadNetworkWalk(roadData, startRoad, maxDistanceTiles, blockedRoadTiles)
+		if (roadRoute.length === 0) {
+			this.roadOverlay.clearHighlightTiles()
+			return
+		}
+
+		const reachableByKey = new Map<string, TilePosition>()
+		for (const tile of roadRoute) {
+			reachableByKey.set(`${tile.x},${tile.y}`, tile)
+		}
+		this.roadOverlay.setHighlightTiles(Array.from(reachableByKey.values()), '#6fbf6a', 0.45)
 	}
 
-	private buildRoadReach(
-		roadSet: Set<string>,
-		start: { x: number; y: number },
-		maxSteps: number,
-		width: number,
-		height: number
-	): Array<{ x: number; y: number }> {
-		const queue: Array<{ x: number; y: number }> = [start]
-		let head = 0
-		const distanceByKey = new Map<string, number>([[this.roadKey(start.x, start.y), 0]])
-		const reachable: Array<{ x: number; y: number }> = [start]
+	private getMarketReachSource():
+		| { buildingDefinition: BuildingDefinition; position: { x: number; y: number }; playerId: string }
+		| null {
+		if (this.marketReachPreview?.buildingDefinition.marketDistribution) {
+			return this.marketReachPreview
+		}
+		if (!this.marketReachBuildingId) {
+			return null
+		}
+		const instance = buildingService.getBuildingInstance(this.marketReachBuildingId)
+		if (!instance || instance.mapId !== this.mapKey) {
+			this.marketReachBuildingId = null
+			return null
+		}
+		const definition = buildingService.getBuildingDefinition(instance.buildingId)
+		if (!definition?.marketDistribution) {
+			this.marketReachBuildingId = null
+			return null
+		}
+		return {
+			buildingDefinition: definition,
+			position: instance.position,
+			playerId: instance.playerId
+		}
+	}
 
-		while (head < queue.length) {
-			const current = queue[head]
-			head += 1
-			const currentKey = this.roadKey(current.x, current.y)
-			const currentDistance = distanceByKey.get(currentKey) ?? 0
-			if (currentDistance >= maxSteps) {
+	private buildRoadDataFromTiles(
+		tiles: RoadTile[],
+		mapWidthTiles: number,
+		mapHeightTiles: number
+	): RoadGridData {
+		const data = new Array<RoadType | null>(mapWidthTiles * mapHeightTiles).fill(RoadType.None)
+		for (const tile of tiles) {
+			if (tile.x < 0 || tile.y < 0 || tile.x >= mapWidthTiles || tile.y >= mapHeightTiles) {
 				continue
 			}
-			const neighbors = [
-				{ x: current.x, y: current.y - 1 },
-				{ x: current.x + 1, y: current.y },
-				{ x: current.x, y: current.y + 1 },
-				{ x: current.x - 1, y: current.y }
-			]
-			for (const neighbor of neighbors) {
-				if (!this.isRoadTile(roadSet, neighbor, width, height)) {
-					continue
-				}
-				const neighborKey = this.roadKey(neighbor.x, neighbor.y)
-				if (distanceByKey.has(neighborKey)) {
-					continue
-				}
-				distanceByKey.set(neighborKey, currentDistance + 1)
-				queue.push(neighbor)
-				reachable.push(neighbor)
-			}
+			const index = tile.y * mapWidthTiles + tile.x
+			data[index] = tile.roadType
 		}
-
-		return reachable
-	}
-
-	private findClosestRoadTile(
-		roadSet: Set<string>,
-		origin: { x: number; y: number },
-		maxRadius: number,
-		width: number,
-		height: number
-	): { x: number; y: number } | null {
-		if (this.isRoadTile(roadSet, origin, width, height)) {
-			return origin
+		return {
+			width: mapWidthTiles,
+			height: mapHeightTiles,
+			data
 		}
-		for (let radius = 1; radius <= maxRadius; radius += 1) {
-			for (let dx = -radius; dx <= radius; dx += 1) {
-				const dy = radius - Math.abs(dx)
-				const candidates = [
-					{ x: origin.x + dx, y: origin.y + dy },
-					{ x: origin.x + dx, y: origin.y - dy }
-				]
-				for (const candidate of candidates) {
-					if (this.isRoadTile(roadSet, candidate, width, height)) {
-						return candidate
-					}
-				}
-			}
-		}
-		return null
-	}
-
-	private isRoadTile(
-		roadSet: Set<string>,
-		tile: { x: number; y: number },
-		width: number,
-		height: number
-	): boolean {
-		if (tile.x < 0 || tile.y < 0 || tile.x >= width || tile.y >= height) {
-			return false
-		}
-		return roadSet.has(this.roadKey(tile.x, tile.y))
-	}
-
-	private roadKey(x: number, y: number): string {
-		return `${x},${y}`
 	}
 
 	protected transitionToScene(targetScene: string, targetX: number = 0, targetY: number = 0) {
@@ -1284,6 +1282,8 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(UiEvents.Building.Select, this.handleBuildingSelected)
 		EventBus.off(UiEvents.Building.Close, this.handleBuildingClosed)
 		EventBus.off(UiEvents.Building.Highlight, this.handleBuildingHighlight)
+		EventBus.off(UiEvents.Construction.ServiceRangePreview, this.handleConstructionServiceRangePreview)
+		EventBus.off(UiEvents.Construction.ServiceRangeClear, this.handleConstructionServiceRangeClear)
 		EventBus.off(UiEvents.Camera.Focus, this.handleCameraFocus)
 	}
 
