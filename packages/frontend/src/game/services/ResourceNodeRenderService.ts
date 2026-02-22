@@ -32,6 +32,18 @@ class ResourceNodeRenderService {
 		return resolveResourceNodeRender(definition, seedKey)
 	}
 
+	getRenderModelForResourceNode(
+		options: {
+			nodeType?: string | null
+			itemType?: string | null
+		},
+		seedKey?: string | number
+	): ResourceNodeRenderModel | null {
+		const resolvedId = this.resolveRenderId(options)
+		if (!resolvedId) return null
+		return this.getRenderModel(resolvedId, seedKey)
+	}
+
 	subscribe(listener: Listener): () => void {
 		this.listeners.add(listener)
 		return () => {
@@ -70,6 +82,18 @@ class ResourceNodeRenderService {
 				)
 			}
 		}
+	}
+
+	private resolveRenderId(options: { nodeType?: string | null; itemType?: string | null }): string | null {
+		const nodeType = typeof options.nodeType === 'string' ? options.nodeType.trim() : ''
+		const itemType = typeof options.itemType === 'string' ? options.itemType.trim() : ''
+		if (nodeType && this.renders.has(nodeType)) {
+			return nodeType
+		}
+		if (itemType && this.renders.has(itemType)) {
+			return itemType
+		}
+		return null
 	}
 }
 
