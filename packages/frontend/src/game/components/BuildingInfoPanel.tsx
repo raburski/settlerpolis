@@ -408,7 +408,11 @@ export const BuildingInfoPanel: React.FC = () => {
 		// Listen for worker assigned
 		const handleWorkerAssigned = (data: { buildingInstanceId: string, settlerId: string }) => {
 			if (buildingInstance && buildingInstance.id === data.buildingInstanceId) {
-				const isConstruction = buildingInstance.stage === ConstructionStage.CollectingResources || buildingInstance.stage === ConstructionStage.Constructing
+				const isConstruction = (
+					buildingInstance.stage === ConstructionStage.ClearingSite ||
+					buildingInstance.stage === ConstructionStage.CollectingResources ||
+					buildingInstance.stage === ConstructionStage.Constructing
+				)
 				setWorkerStatus(isConstruction ? 'Worker assigned! Construction speeded up.' : 'Worker assigned! Building is now operational.')
 				setErrorMessage(null) // Clear any errors
 				// Clear status after 3 seconds
@@ -564,7 +568,11 @@ export const BuildingInfoPanel: React.FC = () => {
 	}, [buildingInstance?.playerId, tradeRouteType])
 
 	const handleCancelConstruction = () => {
-		if (buildingInstance && (buildingInstance.stage === ConstructionStage.CollectingResources || buildingInstance.stage === ConstructionStage.Constructing)) {
+		if (buildingInstance && (
+			buildingInstance.stage === ConstructionStage.ClearingSite ||
+			buildingInstance.stage === ConstructionStage.CollectingResources ||
+			buildingInstance.stage === ConstructionStage.Constructing
+		)) {
 			EventBus.emit(Event.Buildings.CS.Cancel, {
 				buildingInstanceId: buildingInstance.id
 			})
@@ -638,8 +646,13 @@ export const BuildingInfoPanel: React.FC = () => {
 		return null
 	}
 
-	const canCancel = buildingInstance.stage === ConstructionStage.CollectingResources || buildingInstance.stage === ConstructionStage.Constructing
+	const canCancel = (
+		buildingInstance.stage === ConstructionStage.ClearingSite ||
+		buildingInstance.stage === ConstructionStage.CollectingResources ||
+		buildingInstance.stage === ConstructionStage.Constructing
+	)
 	const isCompleted = buildingInstance.stage === ConstructionStage.Completed
+	const isClearingSite = buildingInstance.stage === ConstructionStage.ClearingSite
 	const canDemolish = isCompleted
 	const isConstructing = buildingInstance.stage === ConstructionStage.Constructing
 	const isCollectingResources = buildingInstance.stage === ConstructionStage.CollectingResources
@@ -874,7 +887,15 @@ export const BuildingInfoPanel: React.FC = () => {
 				<div className={sharedStyles.infoRow}>
 					<span className={sharedStyles.label}>Status:</span>
 					<span className={sharedStyles.value}>
-						{isCompleted ? '✅ Completed' : isConstructing ? '🔨 Under Construction' : isCollectingResources ? '📦 Collecting Resources' : '🏗️ Foundation'}
+						{isCompleted
+							? '✅ Completed'
+							: isConstructing
+								? '🔨 Under Construction'
+								: isCollectingResources
+									? '📦 Collecting Resources'
+									: isClearingSite
+										? '🪓 Clearing Site'
+										: '🏗️ Foundation'}
 					</span>
 				</div>
 

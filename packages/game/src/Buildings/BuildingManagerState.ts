@@ -20,6 +20,9 @@ export class BuildingManagerState {
 	public globalProductionPlansByPlayer = new Map<string, Map<BuildingId, ProductionPlan>>()
 	public defaultProductionPlans = new Map<BuildingId, ProductionPlan>()
 	public productionCountsByBuilding = new Map<string, Map<string, number>>()
+	public siteClearingNodesByBuilding = new Map<string, Set<string>>()
+	public siteClearingWorkersByBuilding = new Map<string, string>()
+	public siteClearingBuildingByWorker = new Map<string, string>()
 
 	public serialize(): BuildingsSnapshot {
 		const buildings: BuildingInstanceSnapshot[] = Array.from(this.buildings.values()).map(building => ({
@@ -53,6 +56,11 @@ export class BuildingManagerState {
 				playerId,
 				Array.from(plans.entries())
 			])),
+			siteClearingNodesByBuilding: Array.from(this.siteClearingNodesByBuilding.entries()).map(([buildingId, nodeIds]) => ([
+				buildingId,
+				Array.from(nodeIds.values())
+			])),
+			siteClearingWorkersByBuilding: Array.from(this.siteClearingWorkersByBuilding.entries())
 		}
 	}
 
@@ -101,6 +109,18 @@ export class BuildingManagerState {
 		for (const [playerId, plans] of state.globalProductionPlans ?? []) {
 			this.globalProductionPlansByPlayer.set(playerId, new Map(plans))
 		}
+
+		this.siteClearingNodesByBuilding.clear()
+		for (const [buildingId, nodeIds] of state.siteClearingNodesByBuilding ?? []) {
+			this.siteClearingNodesByBuilding.set(buildingId, new Set(nodeIds))
+		}
+
+		this.siteClearingWorkersByBuilding.clear()
+		this.siteClearingBuildingByWorker.clear()
+		for (const [buildingId, settlerId] of state.siteClearingWorkersByBuilding ?? []) {
+			this.siteClearingWorkersByBuilding.set(buildingId, settlerId)
+			this.siteClearingBuildingByWorker.set(settlerId, buildingId)
+		}
 	}
 
 	public reset(): void {
@@ -111,5 +131,8 @@ export class BuildingManagerState {
 		this.autoProductionState.clear()
 		this.buildingToMapObject.clear()
 		this.unlockedFlagsByPlayerMap.clear()
+		this.siteClearingNodesByBuilding.clear()
+		this.siteClearingWorkersByBuilding.clear()
+		this.siteClearingBuildingByWorker.clear()
 	}
 }

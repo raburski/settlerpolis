@@ -111,7 +111,7 @@ export type WorkDispatchStepResult =
 export type WorkStep =
 	| { type: WorkStepType.AcquireTool, profession: ProfessionType, toolItemId?: LootItemId, toolPosition?: Position }
 	| { type: WorkStepType.Construct, buildingInstanceId: BuildingInstanceId, durationMs: number }
-	| { type: WorkStepType.Harvest, buildingInstanceId: BuildingInstanceId, resourceNodeId: ResourceNodeId, outputItemType: ItemType, quantity: number, durationMs: number }
+	| { type: WorkStepType.Harvest, buildingInstanceId: BuildingInstanceId, resourceNodeId: ResourceNodeId, outputItemType: ItemType, quantity: number, durationMs: number, constructionSiteBuildingId?: BuildingInstanceId }
 	| { type: WorkStepType.Fish, buildingInstanceId: BuildingInstanceId, resourceNodeId: ResourceNodeId, targetPosition: Position, outputItemType: ItemType, quantity: number, durationMs: number }
 	| { type: WorkStepType.Hunt, buildingInstanceId: BuildingInstanceId, npcId: NPCId, outputItemType: ItemType, quantity: number, durationMs: number, wildlifeType?: string }
 	| { type: WorkStepType.Produce, buildingInstanceId: BuildingInstanceId, recipe: ProductionRecipe, durationMs: number }

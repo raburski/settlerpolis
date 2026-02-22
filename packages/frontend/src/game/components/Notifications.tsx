@@ -17,14 +17,16 @@ interface Notification {
 interface UiNotificationPayload {
 	message: string
 	type?: NotificationType
+	durationMs?: number
 }
 
 export function Notifications() {
 	const [notifications, setNotifications] = useState<Notification[]>([])
 	const counter = useRef(0)
+	const DEFAULT_DURATION_MS = 3200
 
 	useEffect(() => {
-		const addNotification = (text: string, type: NotificationType = 'info') => {
+		const addNotification = (text: string, type: NotificationType = 'info', durationMs: number = DEFAULT_DURATION_MS) => {
 			const notification = {
 				id: counter.current++,
 				text,
@@ -33,7 +35,7 @@ export function Notifications() {
 			setNotifications(prev => [...prev, notification])
 			setTimeout(() => {
 				setNotifications(prev => prev.filter(item => item.id !== notification.id))
-			}, 3200)
+			}, durationMs)
 		}
 
 		const handleSpoilage = (data: { buildingInstanceId: string, itemType: string, spoiledQuantity: number }) => {
@@ -49,7 +51,7 @@ export function Notifications() {
 			if (!data?.message) {
 				return
 			}
-			addNotification(data.message, data.type ?? 'info')
+			addNotification(data.message, data.type ?? 'info', data.durationMs ?? DEFAULT_DURATION_MS)
 		}
 
 		EventBus.on(Event.Storage.SC.Spoilage, handleSpoilage)

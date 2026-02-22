@@ -239,6 +239,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 		this.migrateWarehouseAssignments()
 		this.processPendingWorkerRequests()
+		this.assignSiteClearingWorkers()
 		this.logisticsCoordinator.tick()
 		this.constructionCoordinator.assignConstructionWorkers()
 		this.roadCoordinator.assignRoadWorkers()
@@ -269,6 +270,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 	private handleSettlerDied(data: { settlerId: string }): void {
 		this.unassignWorker({ settlerId: data.settlerId })
+		this.managers.buildings.clearSiteClearingWorkerForSettler(data.settlerId)
 	}
 
 	private handleStepCompleted(settlerId: SettlerId, assignment: WorkAssignment, step: WorkStep): void {
@@ -280,6 +282,9 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 		if (step.type === WorkStepType.Transport && step.target.type === TransportTargetType.Construction) {
 			this.releaseConstructionInFlight(step.target.buildingInstanceId, step.itemType, step.quantity)
+		}
+		if (step.type === WorkStepType.Harvest && step.constructionSiteBuildingId) {
+			this.managers.buildings.markSiteClearingNodeCleared(step.constructionSiteBuildingId, step.resourceNodeId)
 		}
 		if (step.type === WorkStepType.Produce && assignment.buildingInstanceId) {
 			this.handleProductionCompleted(assignment.buildingInstanceId, step.recipe)
@@ -602,6 +607,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 	private unassignWorker(data: UnassignWorkerData): void {
 		const assignment = this.assignments.get(data.settlerId)
 		if (!assignment) {
+			this.managers.buildings.clearSiteClearingWorkerForSettler(data.settlerId)
 			return
 		}
 		this.clearMovementFailureState(data.settlerId)
@@ -622,6 +628,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 			this.actionsManager.abort(data.settlerId)
 		}
 		this.assignments.remove(data.settlerId)
+		this.managers.buildings.clearSiteClearingWorkerForSettler(data.settlerId)
 		this.releaseAssignmentResources(assignment, data.settlerId)
 		this.unassignFromProvider(assignment, data.settlerId)
 
@@ -827,6 +834,98 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		}
 
 		return this.findClosestSettler(candidates, position)
+	}
+
+	private assignSiteClearingWorkers(): void {
+		const pendingSites = this.managers.buildings.getBuildingsPendingSiteClearing()
+		for (const building of pendingSites) {
+			const assignedSettlerId = this.managers.buildings.getSiteClearingWorker(building.id)
+			if (assignedSettlerId && !this.isValidSiteClearingWorker(building, assignedSettlerId)) {
+				this.managers.buildings.clearSiteClearingWorker(building.id)
+			}
+
+			if (this.managers.buildings.getSiteClearingWorker(building.id)) {
+				continue
+			}
+
+			const candidate = this.findClosestWoodcutterHutWorker(building)
+			if (!candidate) {
+				continue
+			}
+
+			const assigned = this.managers.buildings.assignSiteClearingWorker(building.id, candidate.id)
+			if (!assigned) {
+				continue
+			}
+			this.emitDispatchRequested(candidate.id, WorkDispatchReason.ImmediateRequest)
+		}
+	}
+
+	private isValidSiteClearingWorker(building: BuildingInstance, settlerId: SettlerId): boolean {
+		const assignment = this.assignments.get(settlerId)
+		if (!assignment || assignment.providerType !== WorkProviderType.Building || !assignment.buildingInstanceId) {
+			return false
+		}
+		const settler = this.managers.population.getSettler(settlerId)
+		if (!settler || settler.profession !== ProfessionType.Woodcutter) {
+			return false
+		}
+		const hut = this.managers.buildings.getBuildingInstance(assignment.buildingInstanceId)
+		if (!hut || hut.mapId !== building.mapId || hut.playerId !== building.playerId) {
+			return false
+		}
+		if (hut.stage !== ConstructionStage.Completed) {
+			return false
+		}
+		const hutDef = this.managers.buildings.getBuildingDefinition(hut.buildingId)
+		if (!hutDef || hutDef.id !== 'woodcutter_hut') {
+			return false
+		}
+		const assignedSite = this.managers.buildings.getSiteClearingAssignmentForSettler(settlerId)
+		if (!assignedSite) {
+			return false
+		}
+		return assignedSite.buildingInstanceId === building.id
+	}
+
+	private findClosestWoodcutterHutWorker(building: BuildingInstance): Settler | null {
+		let best: Settler | null = null
+		let bestDistance = Number.POSITIVE_INFINITY
+
+		for (const assignment of this.assignments.getAll()) {
+			if (assignment.providerType !== WorkProviderType.Building || !assignment.buildingInstanceId) {
+				continue
+			}
+			const hut = this.managers.buildings.getBuildingInstance(assignment.buildingInstanceId)
+			if (!hut || hut.mapId !== building.mapId || hut.playerId !== building.playerId) {
+				continue
+			}
+			if (hut.stage !== ConstructionStage.Completed) {
+				continue
+			}
+			const hutDef = this.managers.buildings.getBuildingDefinition(hut.buildingId)
+			if (!hutDef || hutDef.id !== 'woodcutter_hut') {
+				continue
+			}
+
+			const settler = this.managers.population.getSettler(assignment.settlerId)
+			if (!settler || settler.profession !== ProfessionType.Woodcutter) {
+				continue
+			}
+
+			const currentSite = this.managers.buildings.getSiteClearingAssignmentForSettler(settler.id)
+			if (currentSite && currentSite.buildingInstanceId !== building.id) {
+				continue
+			}
+
+			const distance = calculateDistance(building.position, settler.position)
+			if (!best || distance < bestDistance) {
+				best = settler
+				bestDistance = distance
+			}
+		}
+
+		return best
 	}
 
 	public getAssignmentCandidates(

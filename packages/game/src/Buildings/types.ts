@@ -9,6 +9,7 @@ import type { BuildingId, BuildingInstanceId, MapId, PlayerId, ResourceNodeId } 
 export type { BuildingId, BuildingInstanceId } from '../ids'
 
 export enum ConstructionStage {
+	ClearingSite = 'clearing_site',                // Building overlaps trees; assigned woodcutter clears footprint first
 	CollectingResources = 'collecting_resources', // Building placed, resources being collected by carriers
 	Constructing = 'constructing',                // Resources collected, builder working
 	Completed = 'completed'
