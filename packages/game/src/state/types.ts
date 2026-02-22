@@ -117,6 +117,8 @@ export interface BuildingsSnapshot {
 	buildingToMapObject: MapEntries<string>
 	productionCountsByBuilding?: MapEntries<MapEntries<number>>
 	globalProductionPlans?: MapEntries<MapEntries<ProductionPlan>>
+	siteClearingNodesByBuilding?: MapEntries<string[]>
+	siteClearingWorkersByBuilding?: MapEntries<string>
 }
 
 export interface BuildingStorageSnapshot {

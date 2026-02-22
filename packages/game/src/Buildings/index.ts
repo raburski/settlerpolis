@@ -30,7 +30,7 @@ import type { MapObjectsManager } from '../MapObjects'
 import type { ItemsManager } from '../Items'
 import type { MapManager } from '../Map'
 import { PlayerJoinData, PlayerTransitionData } from '../Players/types'
-import { PlaceObjectData } from '../MapObjects/types'
+import { PlaceObjectData, type MapObject } from '../MapObjects/types'
 import { Item, ItemType } from '../Items/types'
 import { Position } from '../types'
 import type { LootManager } from '../Loot'
@@ -170,7 +170,8 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	/* METHODS */
 	private tick() {
-		const now = this.managers.simulation.getSimulationTimeMs()
+		this.processSiteClearing()
+
 		const buildingsToUpdate: BuildingInstance[] = []
 
 		// Collect all buildings that need processing
@@ -220,6 +221,67 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 				continue
 			}
 			this.processAutoProduction(building, definition.autoProduction, this.TICK_INTERVAL_MS)
+		}
+	}
+
+	private processSiteClearing(): void {
+		for (const building of this.state.buildings.values()) {
+			if (building.stage !== ConstructionStage.ClearingSite) {
+				continue
+			}
+			const pendingNodes = this.state.siteClearingNodesByBuilding.get(building.id)
+			if (!pendingNodes || pendingNodes.size === 0) {
+				this.completeSiteClearing(building)
+				continue
+			}
+
+			for (const nodeId of Array.from(pendingNodes.values())) {
+				const node = this.managers.resourceNodes.getNode(nodeId)
+				if (!node || node.mapId !== building.mapId || node.nodeType !== 'tree' || node.remainingHarvests <= 0) {
+					pendingNodes.delete(nodeId)
+				}
+			}
+
+			if (pendingNodes.size === 0) {
+				this.completeSiteClearing(building)
+			}
+		}
+	}
+
+	private completeSiteClearing(building: BuildingInstance): void {
+		this.clearSiteClearingForBuilding(building.id)
+		this.transitionToCollectingResources(building)
+	}
+
+	private clearSiteClearingForBuilding(buildingInstanceId: string): void {
+		this.clearSiteClearingWorker(buildingInstanceId)
+		this.state.siteClearingNodesByBuilding.delete(buildingInstanceId)
+	}
+
+	private transitionToCollectingResources(building: BuildingInstance): void {
+		if (building.stage !== ConstructionStage.ClearingSite) {
+			return
+		}
+
+		building.stage = ConstructionStage.CollectingResources
+		building.progress = 0
+		this.rebuildResourceRequests(building)
+
+		this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.StageChanged, {
+			buildingInstanceId: building.id,
+			stage: building.stage
+		}, building.mapId)
+
+		const mapObjectId = this.state.buildingToMapObject.get(building.id)
+		if (mapObjectId) {
+			const mapObject = this.managers.mapObjects.getObjectById(mapObjectId)
+			if (mapObject?.metadata) {
+				mapObject.metadata.stage = ConstructionStage.CollectingResources
+			}
+		}
+
+		if (this.hasAllRequiredResources(building)) {
+			this.startConstructing(building)
 		}
 	}
 
@@ -294,11 +356,16 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 
 		// Check for collisions using building footprint
-		if (this.checkBuildingCollision(client.currentGroup, position, definition, rotation)) {
+		const collisionCheck = this.checkBuildingCollision(client.currentGroup, position, definition, rotation)
+		if (collisionCheck.hasCollision) {
 			this.logger.error(`Cannot place building at position due to collision:`, position)
 			// TODO: Emit error event to client
 			return
 		}
+
+		const initialStage = collisionCheck.overlappingTreeNodeIds.length > 0
+			? ConstructionStage.ClearingSite
+			: ConstructionStage.CollectingResources
 
 		// Create a placeholder item for the building foundation
 		// We'll use a generic building item type - for Phase A, we assume this exists
@@ -323,7 +390,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 				buildingId,
 				buildingInstanceId,
 				allowOverlapResourceNodes: isMine,
-				stage: ConstructionStage.CollectingResources,
+				stage: initialStage,
 				progress: 0,
 				footprint: {
 					width: rotatedFootprint.width,
@@ -340,7 +407,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			mapId: client.currentGroup,
 			position,
 			rotation,
-			stage: ConstructionStage.CollectingResources,
+			stage: initialStage,
 			progress: 0,
 			startedAt: 0, // Will be set when construction starts (resources collected)
 			createdAt: nowMs,
@@ -359,7 +426,10 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 
 		// Initialize building resources
-		this.initializeBuildingResources(buildingInstance, definition)
+		this.initializeBuildingResources(buildingInstance, definition, initialStage === ConstructionStage.CollectingResources)
+		if (collisionCheck.overlappingTreeNodeIds.length > 0) {
+			this.state.siteClearingNodesByBuilding.set(buildingInstance.id, new Set(collisionCheck.overlappingTreeNodeIds))
+		}
 
 		// Try to place the object
 		const placedObject = this.managers.mapObjects.placeObject(client.id, placeObjectData, client, {
@@ -494,6 +564,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 	private removeBuildingInstance(building: BuildingInstance): void {
 		this.updateConstructionPenalty(building, false)
+		this.clearSiteClearingForBuilding(building.id)
 		if (building.stage === ConstructionStage.Completed) {
 			this.updateBlockedTiles(building, false)
 		}
@@ -610,7 +681,11 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 	// Initialize building with resource collection
-	private initializeBuildingResources(building: BuildingInstance, definition: BuildingDefinition): void {
+	private initializeBuildingResources(
+		building: BuildingInstance,
+		definition: BuildingDefinition,
+		enableResourceRequests: boolean
+	): void {
 		// Initialize collectedResources map
 		building.collectedResources = new Map()
 
@@ -620,15 +695,10 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			quantity: cost.quantity
 		}))
 
-		// Initialize resourceRequests set with all required item types
-		const neededResources = new Set<string>()
-		for (const cost of building.requiredResources) {
-			neededResources.add(cost.itemType)
+		this.state.resourceRequests.delete(building.id)
+		if (enableResourceRequests) {
+			this.rebuildResourceRequests(building)
 		}
-		this.state.resourceRequests.set(building.id, neededResources)
-
-		// Set stage to CollectingResources
-		building.stage = ConstructionStage.CollectingResources
 		building.progress = 0
 	}
 
@@ -658,6 +728,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			this.state.resourceRequests.set(building.id, neededResources)
 			this.logger.log(`[RESOURCE COLLECTION] Rebuilt resourceRequests for building ${building.id}: [${Array.from(neededResources).join(', ')}]`)
 		} else {
+			this.state.resourceRequests.delete(building.id)
 			this.logger.log(`[RESOURCE COLLECTION] Rebuilt resourceRequests for building ${building.id}: all resources collected`)
 		}
 	}
@@ -667,6 +738,10 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		const building = this.state.buildings.get(buildingInstanceId)
 		if (!building) {
 			this.logger.warn(`[RESOURCE DELIVERY] Building not found: ${buildingInstanceId}`)
+			return false
+		}
+		if (building.stage !== ConstructionStage.CollectingResources && building.stage !== ConstructionStage.Constructing) {
+			this.logger.log(`[RESOURCE DELIVERY] Building ${buildingInstanceId} not ready for delivery (stage=${building.stage})`)
 			return false
 		}
 
@@ -714,24 +789,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		// Check if all resources are collected
 		if (this.hasAllRequiredResources(building)) {
 			this.logger.log(`[RESOURCE DELIVERY] All required resources collected for building ${buildingInstanceId}. Transitioning to Constructing stage.`)
-			// Transition to Constructing stage
-			building.stage = ConstructionStage.Constructing
-			building.startedAt = this.managers.simulation.getSimulationTimeMs() // Start construction timer
-
-			// Emit stage changed event (this signals that all resources are collected)
-			this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.StageChanged, {
-				buildingInstanceId: building.id,
-				stage: building.stage
-			}, building.mapId)
-
-			// Update MapObject metadata
-			const mapObjectId = this.state.buildingToMapObject.get(building.id)
-			if (mapObjectId) {
-				const mapObject = this.managers.mapObjects.getObjectById(mapObjectId)
-				if (mapObject && mapObject.metadata) {
-					mapObject.metadata.stage = ConstructionStage.Constructing
-				}
-			}
+			this.startConstructing(building)
 		} else {
 			// Log what resources are still needed
 			const stillNeeded = building.requiredResources.filter(cost => {
@@ -745,6 +803,25 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}
 
 		return true
+	}
+
+	private startConstructing(building: BuildingInstance): void {
+		building.stage = ConstructionStage.Constructing
+		building.startedAt = this.managers.simulation.getSimulationTimeMs()
+
+		this.managers.event.emit(Receiver.Group, BuildingsEvents.SC.StageChanged, {
+			buildingInstanceId: building.id,
+			stage: building.stage
+		}, building.mapId)
+
+		const mapObjectId = this.state.buildingToMapObject.get(building.id)
+		if (!mapObjectId) {
+			return
+		}
+		const mapObject = this.managers.mapObjects.getObjectById(mapObjectId)
+		if (mapObject?.metadata) {
+			mapObject.metadata.stage = ConstructionStage.Constructing
+		}
 	}
 
 	// Check if construction can progress (resources collected AND builder present)
@@ -775,6 +852,7 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		
 		// Update building stage
 		building.stage = ConstructionStage.Completed
+		this.clearSiteClearingForBuilding(building.id)
 		this.updateConstructionPenalty(building, false)
 		this.updateBlockedTiles(building, true)
 
@@ -1054,7 +1132,12 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		}, building.mapId)
 	}
 
-	private checkBuildingCollision(mapId: string, position: { x: number, y: number }, definition: BuildingDefinition, rotation: number): boolean {
+	private checkBuildingCollision(
+		mapId: string,
+		position: { x: number, y: number },
+		definition: BuildingDefinition,
+		rotation: number
+	): { hasCollision: boolean; overlappingTreeNodeIds: string[] } {
 		// Get all existing buildings and map objects in this map
 		const existingBuildings = this.getBuildingsForMap(mapId)
 
@@ -1065,13 +1148,14 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		const buildingWidth = placementFootprint.width * TILE_SIZE
 		const buildingHeight = placementFootprint.height * TILE_SIZE
 		const existingObjects = this.managers.mapObjects.getObjectsInArea(mapId, position, buildingWidth, buildingHeight)
+		const treeOverlap = this.collectOverlappingTreeNodes(position, buildingWidth, buildingHeight, existingObjects, TILE_SIZE)
 
 		this.logger.debug(`Checking collision for building ${definition.id} at position (${position.x}, ${position.y}) with footprint ${definition.footprint.width}x${definition.footprint.height} (${buildingWidth}x${buildingHeight} pixels)`)
 
 		// Check collision with map tiles (non-passable tiles)
-		if (this.checkMapTileCollision(mapId, position, definition, rotation, TILE_SIZE)) {
+		if (this.checkMapTileCollision(mapId, position, definition, rotation, TILE_SIZE, treeOverlap.tiles)) {
 			this.logger.debug(`❌ Collision with map tiles at position:`, position)
-			return true
+			return { hasCollision: true, overlappingTreeNodeIds: [] }
 		}
 
 		// Check collision with existing buildings
@@ -1090,14 +1174,14 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 				building.position, existingWidth, existingHeight
 			)) {
 				this.logger.debug(`❌ Collision with existing building ${building.id}`)
-				return true // Collision detected
+				return { hasCollision: true, overlappingTreeNodeIds: [] } // Collision detected
 			}
 		}
 
 		// Check access tile collision (walkable + avoids existing buildings)
 		if (this.checkAccessTileCollision(mapId, position, definition, rotation, TILE_SIZE, existingBuildings)) {
 			this.logger.debug(`❌ Collision with access tile at position:`, position)
-			return true
+			return { hasCollision: true, overlappingTreeNodeIds: [] }
 		}
 
 		// Check collision with existing map objects
@@ -1108,6 +1192,9 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 					// Allow mines/quarries to replace deposits without collision blocking.
 					continue
 				}
+			}
+			if (this.isClearableTreeNodeObject(obj)) {
+				continue
 			}
 			// For buildings, use footprint from metadata
 			let objWidth: number
@@ -1136,13 +1223,67 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 					obj.position, objWidth, objHeight
 				)) {
 					this.logger.debug(`❌ Collision with map object ${obj.id}`)
-					return true // Collision detected
+					return { hasCollision: true, overlappingTreeNodeIds: [] } // Collision detected
 				}
 			}
 		}
 
 		this.logger.debug(`✅ No collision detected, placement allowed`)
-		return false // No collision
+		return {
+			hasCollision: false,
+			overlappingTreeNodeIds: Array.from(treeOverlap.nodeIds)
+		}
+	}
+
+	private isClearableTreeNodeObject(object: MapObject): boolean {
+		return Boolean(object.metadata?.resourceNode) && object.metadata?.resourceNodeType === 'tree'
+	}
+
+	private collectOverlappingTreeNodes(
+		position: { x: number, y: number },
+		buildingWidth: number,
+		buildingHeight: number,
+		objects: MapObject[],
+		tileSize: number
+	): { nodeIds: Set<string>; tiles: Set<string> } {
+		const nodeIds = new Set<string>()
+		const tiles = new Set<string>()
+
+		for (const object of objects) {
+			if (!this.isClearableTreeNodeObject(object)) {
+				continue
+			}
+
+			const footprintWidth = object.metadata?.footprint?.width ?? 1
+			const footprintHeight = object.metadata?.footprint?.height ?? footprintWidth
+			const objectWidth = footprintWidth * tileSize
+			const objectHeight = footprintHeight * tileSize
+			if (!this.doRectanglesOverlap(
+				position,
+				buildingWidth,
+				buildingHeight,
+				object.position,
+				objectWidth,
+				objectHeight
+			)) {
+				continue
+			}
+
+			const nodeId = object.metadata?.resourceNodeId
+			if (typeof nodeId === 'string') {
+				nodeIds.add(nodeId)
+			}
+
+			const baseTileX = Math.floor(object.position.x / tileSize)
+			const baseTileY = Math.floor(object.position.y / tileSize)
+			for (let dy = 0; dy < footprintHeight; dy += 1) {
+				for (let dx = 0; dx < footprintWidth; dx += 1) {
+					tiles.add(`${baseTileX + dx},${baseTileY + dy}`)
+				}
+			}
+		}
+
+		return { nodeIds, tiles }
 	}
 
 	/**
@@ -1158,7 +1299,8 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		position: { x: number, y: number },
 		definition: BuildingDefinition,
 		rotation: number,
-		tileSize: number
+		tileSize: number,
+		clearableTreeTiles: Set<string>
 	): boolean {
 		// Get map data
 		const map = this.managers.map.getMap(mapId)
@@ -1195,6 +1337,9 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 
 				// Check if this tile has collision (non-zero value in collision data)
 				if (this.managers.map.isCollision(mapId, checkTileX, checkTileY)) {
+					if (clearableTreeTiles.has(`${checkTileX},${checkTileY}`)) {
+						continue
+					}
 					this.logger.debug(`Collision detected at tile (${checkTileX}, ${checkTileY})`)
 					return true
 				}
@@ -1625,8 +1770,10 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 			return false
 		}
 
-		// Building needs workers if it's collecting resources (waiting for resources to be collected)
-		// Note: Resource collection is handled by carriers, not workers
+		if (building.stage === ConstructionStage.ClearingSite) {
+			return !this.state.siteClearingWorkersByBuilding.has(buildingInstanceId)
+		}
+
 		// Building needs workers if it's under construction
 		if (building.stage === ConstructionStage.Constructing) {
 			return true
@@ -1639,6 +1786,98 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 	}
 
 		return false
+	}
+
+	public getBuildingsPendingSiteClearing(): BuildingInstance[] {
+		const pending: BuildingInstance[] = []
+		for (const building of this.state.buildings.values()) {
+			if (building.stage !== ConstructionStage.ClearingSite) {
+				continue
+			}
+			const nodeIds = this.state.siteClearingNodesByBuilding.get(building.id)
+			if (!nodeIds || nodeIds.size === 0) {
+				continue
+			}
+			pending.push(building)
+		}
+		return pending
+	}
+
+	public getSiteClearingWorker(buildingInstanceId: string): string | undefined {
+		return this.state.siteClearingWorkersByBuilding.get(buildingInstanceId)
+	}
+
+	public assignSiteClearingWorker(buildingInstanceId: string, settlerId: string): boolean {
+		const building = this.state.buildings.get(buildingInstanceId)
+		if (!building || building.stage !== ConstructionStage.ClearingSite) {
+			return false
+		}
+		const pendingNodes = this.state.siteClearingNodesByBuilding.get(buildingInstanceId)
+		if (!pendingNodes || pendingNodes.size === 0) {
+			return false
+		}
+		this.clearSiteClearingWorkerForSettler(settlerId)
+		this.clearSiteClearingWorker(buildingInstanceId)
+		this.state.siteClearingWorkersByBuilding.set(buildingInstanceId, settlerId)
+		this.state.siteClearingBuildingByWorker.set(settlerId, buildingInstanceId)
+		return true
+	}
+
+	public clearSiteClearingWorker(buildingInstanceId: string): void {
+		const settlerId = this.state.siteClearingWorkersByBuilding.get(buildingInstanceId)
+		if (!settlerId) {
+			return
+		}
+		this.state.siteClearingWorkersByBuilding.delete(buildingInstanceId)
+		this.state.siteClearingBuildingByWorker.delete(settlerId)
+	}
+
+	public clearSiteClearingWorkerForSettler(settlerId: string): void {
+		const buildingInstanceId = this.state.siteClearingBuildingByWorker.get(settlerId)
+		if (!buildingInstanceId) {
+			return
+		}
+		this.state.siteClearingBuildingByWorker.delete(settlerId)
+		const current = this.state.siteClearingWorkersByBuilding.get(buildingInstanceId)
+		if (current === settlerId) {
+			this.state.siteClearingWorkersByBuilding.delete(buildingInstanceId)
+		}
+	}
+
+	public getSiteClearingAssignmentForSettler(settlerId: string): { buildingInstanceId: string; nodeIds: string[] } | null {
+		const buildingInstanceId = this.state.siteClearingBuildingByWorker.get(settlerId)
+		if (!buildingInstanceId) {
+			return null
+		}
+		const building = this.state.buildings.get(buildingInstanceId)
+		if (!building || building.stage !== ConstructionStage.ClearingSite) {
+			this.clearSiteClearingWorkerForSettler(settlerId)
+			return null
+		}
+		const nodeIds = this.state.siteClearingNodesByBuilding.get(buildingInstanceId)
+		if (!nodeIds || nodeIds.size === 0) {
+			this.clearSiteClearingWorkerForSettler(settlerId)
+			return null
+		}
+		return {
+			buildingInstanceId,
+			nodeIds: Array.from(nodeIds.values())
+		}
+	}
+
+	public markSiteClearingNodeCleared(buildingInstanceId: string, nodeId: string): void {
+		const building = this.state.buildings.get(buildingInstanceId)
+		if (!building || building.stage !== ConstructionStage.ClearingSite) {
+			return
+		}
+		const pendingNodes = this.state.siteClearingNodesByBuilding.get(buildingInstanceId)
+		if (!pendingNodes) {
+			return
+		}
+		pendingNodes.delete(nodeId)
+		if (pendingNodes.size === 0) {
+			this.completeSiteClearing(building)
+		}
 	}
 
 	public buildingNeedsResource(buildingInstanceId: string, itemType: string): boolean {

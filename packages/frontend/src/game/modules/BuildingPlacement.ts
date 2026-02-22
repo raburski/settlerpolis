@@ -1,5 +1,5 @@
 import { EventBus } from '../EventBus'
-import { Event, BuildingDefinition, ResourceNodeDefinition, MapObject } from '@rugged/game'
+import { Event, BuildingDefinition, ResourceNodeDefinition, MapObject, ConstructionStage } from '@rugged/game'
 import { UiEvents } from '../uiEvents'
 import { shouldIgnoreKeyboardEvent } from '../utils/inputGuards'
 import { AbstractMesh, Color3, SceneLoader, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core'
@@ -8,6 +8,8 @@ import type { GameScene } from '../scenes/base/GameScene'
 import type { PointerState } from '../input/InputManager'
 import { rotateVec3 } from '../../shared/transform'
 import { itemService } from '../services/ItemService'
+import { buildingService } from '../services/BuildingService'
+import { playerService } from '../services/PlayerService'
 
 const CONTENT_FOLDER = import.meta.env.VITE_GAME_CONTENT || 'settlerpolis'
 const contentModules = import.meta.glob('../../../../../content/*/index.ts', { eager: true })
@@ -15,14 +17,17 @@ const content = contentModules[`../../../../../content/${CONTENT_FOLDER}/index.t
 const HALF_PI = Math.PI / 2
 const GHOST_VISIBILITY = 1
 const GHOST_TINT_VALID = '#6fbf6a'
+const GHOST_TINT_CLEARABLE = '#e3be54'
 const GHOST_TINT_INVALID = '#e05c5c'
 const GHOST_EMISSIVE_VALID = new Color3(0.2, 0.6, 0.2)
+const GHOST_EMISSIVE_CLEARABLE = new Color3(0.7, 0.55, 0.2)
 const GHOST_EMISSIVE_INVALID = new Color3(0.7, 0.2, 0.2)
 const GHOST_MODEL_ALPHA = 0.6
 
 interface BuildingPlacementState {
 	selectedBuildingId: string | null
 	isValidPosition: boolean
+	requiresTreeClearance: boolean
 	lastMousePosition: { x: number; y: number } | null
 	rotationStep: number
 	dragStartTile: { x: number; y: number } | null
@@ -34,6 +39,7 @@ interface LinePlacement {
 	worldX: number
 	worldY: number
 	isValid: boolean
+	requiresTreeClearance: boolean
 }
 
 export class BuildingPlacementManager {
@@ -41,6 +47,7 @@ export class BuildingPlacementManager {
 	private state: BuildingPlacementState = {
 		selectedBuildingId: null,
 		isValidPosition: true,
+		requiresTreeClearance: false,
 		lastMousePosition: null,
 		rotationStep: 0,
 		dragStartTile: null,
@@ -68,6 +75,7 @@ export class BuildingPlacementManager {
 	private placedHandler: (() => void) | null = null
 	private handlersActive = false
 	private rotationLocked = false
+	private lastMissingWoodcutterNotificationAt = 0
 
 	constructor(scene: GameScene) {
 		this.scene = scene
@@ -131,6 +139,7 @@ export class BuildingPlacementManager {
 
 	private cancelSelection() {
 		this.state.selectedBuildingId = null
+		this.state.requiresTreeClearance = false
 		this.state.dragStartTile = null
 		this.state.dragCurrentTile = null
 		this.rotationLocked = false
@@ -223,7 +232,9 @@ export class BuildingPlacementManager {
 				this.applyGhostTransform()
 			}
 		}
-		this.state.isValidPosition = this.isPlacementValid(snappedX, snappedY, building)
+		const placement = this.evaluatePlacement(snappedX, snappedY, building)
+		this.state.isValidPosition = placement.isValid
+		this.state.requiresTreeClearance = placement.requiresTreeClearance
 
 		const footprint = this.getRotatedFootprint(building)
 		const centerX = snappedX + (footprint.width * tileSize) / 2
@@ -453,16 +464,26 @@ export class BuildingPlacementManager {
 
 	private updateGhostTint(): void {
 		const isValid = this.state.isValidPosition
+		const tint = !isValid
+			? GHOST_TINT_INVALID
+			: (this.state.requiresTreeClearance ? GHOST_TINT_CLEARABLE : GHOST_TINT_VALID)
+		const emissive = !isValid
+			? GHOST_EMISSIVE_INVALID
+			: (this.state.requiresTreeClearance ? GHOST_EMISSIVE_CLEARABLE : GHOST_EMISSIVE_VALID)
 		if (this.ghostBaseMesh) {
 			if (this.ghostBaseMaterial) {
-				this.ghostBaseMaterial.diffuseColor = Color3.FromHexString(isValid ? GHOST_TINT_VALID : GHOST_TINT_INVALID)
-				this.ghostBaseMaterial.emissiveColor = isValid ? GHOST_EMISSIVE_VALID : GHOST_EMISSIVE_INVALID
+				this.ghostBaseMaterial.diffuseColor = Color3.FromHexString(tint)
+				this.ghostBaseMaterial.emissiveColor = emissive
 			} else {
-				this.scene.runtime.renderer.applyTint(this.ghostBaseMesh, isValid ? GHOST_TINT_VALID : GHOST_TINT_INVALID)
+				this.scene.runtime.renderer.applyTint(this.ghostBaseMesh, tint)
 			}
 		}
 		if (this.ghostMeshes.length > 0) {
 			const material = this.getGhostModelMaterial(isValid)
+			if (isValid) {
+				material.diffuseColor = Color3.FromHexString(tint)
+				material.emissiveColor = emissive
+			}
 			this.ghostMeshes.forEach((mesh) => {
 				mesh.material = material
 			})
@@ -748,7 +769,8 @@ export class BuildingPlacementManager {
 
 		for (const tile of tiles) {
 			const world = this.getWorldFromTile(tile)
-			let isValid = this.isPlacementValid(world.x, world.y, building)
+			const placement = this.evaluatePlacement(world.x, world.y, building)
+			let isValid = placement.isValid
 
 			if (isValid) {
 				for (const placed of accepted) {
@@ -774,17 +796,22 @@ export class BuildingPlacementManager {
 				tile,
 				worldX: world.x,
 				worldY: world.y,
-				isValid
+				isValid,
+				requiresTreeClearance: placement.requiresTreeClearance
 			})
 		}
 
 		return placements
 	}
 
-	private isPlacementValid(worldX: number, worldY: number, building: BuildingDefinition): boolean {
+	private evaluatePlacement(
+		worldX: number,
+		worldY: number,
+		building: BuildingDefinition
+	): { isValid: boolean; requiresTreeClearance: boolean } {
 		const map = this.scene.map
 		if (!map) {
-			return true
+			return { isValid: true, requiresTreeClearance: false }
 		}
 
 		const tileSize = map.tileWidth || this.tileSize
@@ -809,34 +836,37 @@ export class BuildingPlacementManager {
 					checkTileX >= mapWidthTiles ||
 					checkTileY >= mapHeightTiles
 				) {
-					return false
+					return { isValid: false, requiresTreeClearance: false }
 				}
 
 				const hasRoad = this.scene.hasRoadAt(checkTileX, checkTileY)
 				const hasPendingRoad = this.scene.hasPendingRoadAt(checkTileX, checkTileY)
 				if (requiresConstructedRoad) {
 					if (!hasRoad || hasPendingRoad) {
-						return false
+						return { isValid: false, requiresTreeClearance: false }
 					}
 				} else if (hasRoad || hasPendingRoad) {
-					return false
+					return { isValid: false, requiresTreeClearance: false }
 				}
 
 				const groundType = this.scene.runtime.renderer.getGroundTypeNameAtTile(checkTileX, checkTileY)
 				if (groundType === 'mountain' || groundType === 'water_shallow' || groundType === 'water_deep') {
-					return false
+					return { isValid: false, requiresTreeClearance: false }
 				}
 
 				if (enforceGroundTypes) {
 					if (!groundType || !allowedGroundTypes.includes(groundType)) {
-						return false
+						return { isValid: false, requiresTreeClearance: false }
 					}
 				} else if (collisionGrid?.[checkTileY]?.[checkTileX]) {
-					return false
+					if (!this.hasClearableTreeAtTile(checkTileX, checkTileY)) {
+						return { isValid: false, requiresTreeClearance: false }
+					}
 				}
 			}
 		}
 
+		let requiresTreeClearance = false
 		const placementWidth = footprint.width * tileSize
 		const placementHeight = footprint.height * tileSize
 		const seenObjects = new Set<string>()
@@ -853,7 +883,6 @@ export class BuildingPlacementManager {
 				? this.shouldBlockResourceNode(obj)
 				: Boolean(obj.metadata?.buildingId || obj.metadata?.buildingInstanceId) ||
 				  Boolean(metadata?.placement?.blocksPlacement)
-			if (!blocksPlacement) continue
 
 			let objWidth = tileSize
 			let objHeight = tileSize
@@ -866,7 +895,7 @@ export class BuildingPlacementManager {
 				objHeight = (placementSize?.height || 1) * tileSize
 			}
 
-			if (this.doRectanglesOverlap(
+			if (!this.doRectanglesOverlap(
 				{ x: worldX, y: worldY },
 				placementWidth,
 				placementHeight,
@@ -874,7 +903,14 @@ export class BuildingPlacementManager {
 				objWidth,
 				objHeight
 			)) {
-				return false
+				continue
+			}
+			if (this.isClearableTreeNode(obj)) {
+				requiresTreeClearance = true
+				continue
+			}
+			if (blocksPlacement) {
+				return { isValid: false, requiresTreeClearance: false }
 			}
 		}
 
@@ -887,11 +923,37 @@ export class BuildingPlacementManager {
 				loot.width,
 				loot.height
 			)) {
-				return false
+				return { isValid: false, requiresTreeClearance: false }
 			}
 		}
 
-		return true
+		return { isValid: true, requiresTreeClearance }
+	}
+
+	private isClearableTreeNode(node: MapObject): boolean {
+		return Boolean(node.metadata?.resourceNode) && node.metadata?.resourceNodeType === 'tree'
+	}
+
+	private hasClearableTreeAtTile(tileX: number, tileY: number): boolean {
+		const tileSize = this.getTileSize()
+		const resourceNodes = this.scene.getResourceNodeObjects()
+		for (const node of resourceNodes) {
+			if (!this.isClearableTreeNode(node)) {
+				continue
+			}
+			const footprintWidth = node.metadata?.footprint?.width ?? 1
+			const footprintHeight = node.metadata?.footprint?.height ?? footprintWidth
+			const nodeTileX = Math.floor(node.position.x / tileSize)
+			const nodeTileY = Math.floor(node.position.y / tileSize)
+			if (tileX < nodeTileX || tileY < nodeTileY) {
+				continue
+			}
+			if (tileX >= nodeTileX + footprintWidth || tileY >= nodeTileY + footprintHeight) {
+				continue
+			}
+			return true
+		}
+		return false
 	}
 
 	private shouldBlockResourceNode(node: MapObject): boolean {
@@ -988,6 +1050,11 @@ export class BuildingPlacementManager {
 		}
 		const endTile = this.state.dragCurrentTile ?? (this.state.lastMousePosition ? this.getTileFromWorld(this.state.lastMousePosition.x, this.state.lastMousePosition.y) : this.state.dragStartTile)
 		const placements = this.getLinePlacements(this.state.dragStartTile, endTile, building)
+		const validPlacements = placements.filter((placement) => placement.isValid)
+		const needsSiteClearing = validPlacements.some((placement) => placement.requiresTreeClearance)
+		if (needsSiteClearing && !this.hasCompletedWoodcutterHut()) {
+			this.notifyMissingWoodcutterHut()
+		}
 		for (const placement of placements) {
 			if (placement.isValid) {
 				this.placeBuilding(placement.worldX, placement.worldY)
@@ -1024,6 +1091,39 @@ export class BuildingPlacementManager {
 			buildingId: this.state.selectedBuildingId,
 			position,
 			rotation: this.getPlacementRotation()
+		})
+	}
+
+	private hasCompletedWoodcutterHut(): boolean {
+		const currentMapId = this.scene.map?.key
+		const currentPlayerId = playerService.playerId
+		return buildingService.getAllBuildingInstances().some((building) => {
+			if (building.buildingId !== 'woodcutter_hut') {
+				return false
+			}
+			if (building.stage !== ConstructionStage.Completed) {
+				return false
+			}
+			if (currentMapId && building.mapId !== currentMapId) {
+				return false
+			}
+			if (currentPlayerId && building.playerId !== currentPlayerId) {
+				return false
+			}
+			return true
+		})
+	}
+
+	private notifyMissingWoodcutterHut(): void {
+		const now = Date.now()
+		if (now - this.lastMissingWoodcutterNotificationAt < 1500) {
+			return
+		}
+		this.lastMissingWoodcutterNotificationAt = now
+		EventBus.emit(UiEvents.Notifications.UiNotification, {
+			message: 'Build a Woodcutter Hut to clear trees at construction sites.',
+			type: 'warning',
+			durationMs: 6500
 		})
 	}
 
