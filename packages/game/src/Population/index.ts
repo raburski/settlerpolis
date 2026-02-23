@@ -460,6 +460,14 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		})
 	}
 
+	public setSettlerInsideBuilding(settlerId: string, buildingId?: string): void {
+		this.patchSettler(settlerId, {
+			stateContext: {
+				insideBuildingId: buildingId
+			}
+		})
+	}
+
 	public setSettlerNeeds(settlerId: string, needs: { hunger: number, fatigue: number }): void {
 		this.patchSettler(settlerId, {
 			needs: {

@@ -5,7 +5,8 @@ Scope: implementation-level design for `docs/brainstorm/progress/11_day_night_so
 ## 1. Implementation Goal
 
 Add evening social behavior where:
-- settlers choose social venues by preference and travel cost
+- any settler can participate
+- settlers choose social venues by preference + random + distance
 - venues expose finite physical slots
 - settlers reserve and occupy slots through existing Work -> Behaviour -> Actions flow
 - day phase transitions dynamically switch provider behavior
@@ -33,23 +34,24 @@ New/updated files:
 Phase policy (MVP):
 - `morning`, `midday`: social provider disabled
 - `evening`: social provider enabled
-- `night`: social provider disabled + reservation cleanup
+- `night`: social provider disabled for new assignments, in-flight social visits can finish
 
 Provider selection policy:
-- critical flows (needs interrupts, urgent logistics) keep priority
-- social only fills idle/eligible settlers during evening window
+- at `evening` start, settlers finish their current active step first
+- once their active step ends, they can receive social intent
+- no extra "critical work whitelist" is used in this phase
+- use fixed global social travel limit `SOCIAL_MAX_TRAVEL_TILES`
 
 Transition hooks:
 1. Time phase changes to `evening`:
 - build venue index
-- open reservation window
 - enable social provider in provider registry
 
 2. Time phase changes to `night`:
 - disable social provider
-- cancel pending social reservations
-- release occupied slots
-- mark interrupted social assignments as completed/cancelled safely
+- do not issue new social visits
+- allow already-started social dwell to complete
+- release occupancy when dwell completes
 
 3. Time phase changes to `morning`:
 - reset daily social counters/locks
@@ -87,7 +89,7 @@ export interface SocialReservation {
   buildingInstanceId: BuildingInstanceId
   slotIndex: number
   settlerId: SettlerId
-  reservedAtMs: number
+  occupiedAtMs: number
 }
 
 export interface SocialVenueRuntimeState {
@@ -96,16 +98,23 @@ export interface SocialVenueRuntimeState {
   playerId: PlayerId
   venueType: SocialVenueType
   slotWorldPositions: Position[]
-  reservations: SocialReservation[]
+  occupiedSlots: SocialReservation[]
 }
 
 export interface WorkSocialRuntimeState {
   currentPhase: DayPhase
-  windowOpen: boolean
+  maxTravelTiles: number
   venuesByMap: Map<MapId, SocialVenueRuntimeState[]>
-  reservationBySettler: Map<SettlerId, SocialReservation>
+  targetVenueBySettler: Map<SettlerId, BuildingInstanceId>
 }
 ```
+
+Selection score (MVP):
+`score = prefWeight + randomJitter - distancePenalty`
+
+Notes:
+- capacity is not part of pre-arrival scoring
+- capacity is checked only when settler arrives at venue
 
 ## 5. Engine Type Extensions
 
@@ -142,9 +151,9 @@ Work step variant:
 | {
     type: WorkStepType.SocialVisit
     buildingInstanceId: BuildingInstanceId
-    slotIndex: number
     targetPosition: Position
     dwellTimeMs: number
+    retryCount?: number
   }
 ```
 
@@ -156,8 +165,9 @@ Keep minimal sync events only.
 // server-side
 Event.Settlers.Work.SS.SocialWindowOpened
 Event.Settlers.Work.SS.SocialWindowClosed
-Event.Settlers.Work.SS.SocialReserved
-Event.Settlers.Work.SS.SocialReleased
+Event.Settlers.Work.SS.SocialOccupy
+Event.Settlers.Work.SS.SocialRelease
+Event.Settlers.Work.SS.SocialRetargeted
 
 // client sync
 Event.Settlers.Work.SC.SocialVenueStateSync
@@ -205,13 +215,13 @@ sequenceDiagram
   participant S as SocialProvider
 
   T->>W: DayPhaseSync(evening)
-  W->>W: build venue runtime index
+  W->>W: build venue runtime index (player-owned venues only)
   W->>R: enable Social provider
   R->>S: Social demand active
 
   T->>W: DayPhaseSync(night)
   W->>R: disable Social provider
-  W->>W: release reservations + cleanup
+  W->>W: keep in-flight social visits until completion
 ```
 
 ### 8.2 Social Visit Intent Flow
@@ -221,13 +231,14 @@ flowchart TD
   A[SocialProvider requestNextStep] --> B{Evening window open?}
   B -- No --> C[Wait: VenueClosed]
   B -- Yes --> D[Find eligible venue]
-  D --> E{Free slot found?}
-  E -- No --> F[Wait: VenueFull/NoSocialVenue]
-  E -- Yes --> G[Reserve slot]
-  G --> H[Return SocialVisit step]
-  H --> I[Behaviour dispatches Actions]
-  I --> J[Arrival + dwell]
-  J --> K[Release reservation]
+  D --> E[Return SocialVisit step]
+  E --> F[Behaviour dispatches Actions]
+  F --> G[Arrive venue, try occupy slot]
+  G --> H{Free slot at arrival?}
+  H -- Yes --> I[Dwell for evening window; if night starts, allow completion]
+  H -- No --> J[Retarget another venue]
+  J --> K[Enqueue new SocialVisit]
+  I --> L[Release slot on leave]
 ```
 
 ## 9. Example Building Definitions (No Points Yet)
@@ -283,9 +294,14 @@ export const tavernSocial = {
 
 ## 10. Persistence and Reset Rules
 
-- reservations are transient runtime state in Work module
-- phase jump to `night` forces immediate reservation cleanup
-- on save/load, stale reservations are revalidated and dropped if invalid
+- occupancy is transient runtime state in Work module
+- no pre-arrival reservation persists
+- on save/load, stale occupancy is revalidated and dropped if invalid
+
+Charter gating semantics:
+- locked venues remain visible in world/buildings
+- locked venues are excluded from SocialProvider candidate set
+- locked venues are excluded from social-specific UI lists
 
 ## 11. MVP Implementation Sequence
 
@@ -293,15 +309,22 @@ export const tavernSocial = {
 2. Add social runtime state in Work module.
 3. Add `WorkProviderType.Social` + `SocialProvider`.
 4. Add `WorkStepType.SocialVisit` + step handler.
-5. Add phase-transition hooks in Work manager for provider enable/disable and cleanup.
+5. Add phase-transition hooks in Work manager for provider enable/disable and day dynamics:
+- evening: enable provider, let current work steps finish first
+- night: disable new social assignment, allow in-flight social visits to finish
+- morning: reset daily locks
 6. Emit minimal venue occupancy sync for UI.
 7. Add two venue definitions (`plaza`, `tavern`) and validate behavior.
 
 ## 12. Testing Checklist
 
-- slot capacity never exceeded with concurrent reservations
-- reservation released on path failure, need interrupt, building removal
+- any settler is eligible for social provider (subject to baseline filters like alive/map/player)
+- no capacity check occurs before arrival; capacity check occurs at venue on arrival
+- full venue at arrival triggers retarget attempt
+- slot capacity never exceeded with concurrent arrivals
+- occupancy released on path failure, need interrupt, building removal
 - social provider disabled outside evening
-- evening->night transition always clears stale reservations
+- evening->night transition allows in-flight social visits to finish
 - Work provider gating is deterministic across phase changes
-- social assignments do not starve critical needs/logistics flow
+- charter-locked venues are not offered by provider
+- only same-player venues are eligible for occupancy

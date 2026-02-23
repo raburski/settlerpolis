@@ -19,6 +19,7 @@ import { PlantActionHandler } from './plant'
 import { ChangeProfessionActionHandler } from './changeProfession'
 import { ChangeHomeActionHandler } from './changeHome'
 import { ProspectNodeActionHandler } from './prospectNode'
+import { SocializeActionHandler } from './socialize'
 
 export const ActionHandlers: Record<SettlerActionType, ActionHandler> = {
 	[SettlerActionType.Move]: MoveActionHandler,
@@ -39,7 +40,8 @@ export const ActionHandlers: Record<SettlerActionType, ActionHandler> = {
 	[SettlerActionType.ChangeHome]: ChangeHomeActionHandler,
 	[SettlerActionType.Consume]: ConsumeActionHandler,
 	[SettlerActionType.Sleep]: SleepActionHandler,
-	[SettlerActionType.ProspectNode]: ProspectNodeActionHandler
+	[SettlerActionType.ProspectNode]: ProspectNodeActionHandler,
+	[SettlerActionType.Socialize]: SocializeActionHandler
 }
 
 export * from './types'

@@ -35,6 +35,7 @@ export class SettlerView extends BaseMovementView {
 	protected state: SettlerState
 	protected settlerId: string
 	private stateContext: SettlerStateContext = {}
+	private isInsideHidden: boolean = false
 	private isHighlighted: boolean = false
 	private highlightMesh: AbstractMesh | null = null
 	private carryingItemType: string | null = null
@@ -153,6 +154,7 @@ export class SettlerView extends BaseMovementView {
 		if (context) {
 			this.stateContext = context
 		}
+		this.syncInsideVisibility()
 		this.syncAnimation()
 	}
 
@@ -162,6 +164,7 @@ export class SettlerView extends BaseMovementView {
 
 	public updateStateContext(context: SettlerStateContext): void {
 		this.stateContext = context
+		this.syncInsideVisibility()
 		this.syncAnimation()
 	}
 
@@ -209,6 +212,7 @@ export class SettlerView extends BaseMovementView {
 				this.carryingMesh.dispose()
 				this.carryingMesh = null
 			}
+			this.syncInsideVisibility()
 			return
 		}
 
@@ -233,6 +237,7 @@ export class SettlerView extends BaseMovementView {
 		}
 
 		this.attachCarryMesh()
+		this.syncInsideVisibility()
 	}
 
 	public updateNeeds(_needs: any): void {
@@ -257,7 +262,7 @@ export class SettlerView extends BaseMovementView {
 		if (this.isHighlighted === highlighted) return
 		this.isHighlighted = highlighted
 		if (this.highlightMesh) {
-			this.highlightMesh.setEnabled(highlighted)
+			this.highlightMesh.setEnabled(highlighted && !this.isInsideHidden)
 		}
 	}
 
@@ -282,6 +287,7 @@ export class SettlerView extends BaseMovementView {
 		sphere.parent = this.getMesh()
 		sphere.position.y = this.height / 2 + radius + 4
 		this.highlightMesh = sphere
+		this.syncInsideVisibility()
 	}
 
 	private updateNeedsIndicator(): void {
@@ -301,6 +307,7 @@ export class SettlerView extends BaseMovementView {
 				this.needsMesh.dispose()
 				this.needsMesh = null
 			}
+			this.syncInsideVisibility()
 			return
 		}
 
@@ -319,6 +326,7 @@ export class SettlerView extends BaseMovementView {
 
 		const emoji = kind === 'hunger' ? '🍗' : '😴'
 		this.scene.runtime.renderer.applyEmoji(this.needsMesh, emoji)
+		this.syncInsideVisibility()
 	}
 
 	private async applyRender(): Promise<void> {
@@ -331,6 +339,7 @@ export class SettlerView extends BaseMovementView {
 		if (!render?.modelSrc) {
 			this.disposeModel()
 			this.applyProfessionEmoji()
+			this.syncInsideVisibility()
 			return
 		}
 
@@ -342,16 +351,19 @@ export class SettlerView extends BaseMovementView {
 			}
 			this.syncAnimation()
 			this.resolveAttachmentNodes()
+			this.syncInsideVisibility()
 			return
 		}
 
 		if (SettlerView.failedModelSrcs.has(render.modelSrc)) {
 			this.applyProfessionEmoji()
+			this.syncInsideVisibility()
 			return
 		}
 
 		this.applyInvisibleBase()
 		await this.loadRenderModel(render)
+		this.syncInsideVisibility()
 	}
 
 	private async loadRenderModel(render: SettlerRenderDefinition): Promise<void> {
@@ -362,6 +374,7 @@ export class SettlerView extends BaseMovementView {
 		if (this.modelSrc === render.modelSrc && this.modelRoot) {
 			this.applyModelTransform(render)
 			this.applyInvisibleBase()
+			this.syncInsideVisibility()
 			return
 		}
 		if (SettlerView.failedModelSrcs.has(render.modelSrc)) {
@@ -424,13 +437,13 @@ export class SettlerView extends BaseMovementView {
 				this.modelRoot.parent = this.getMesh()
 				this.applyModelTransform(render)
 				this.applyInvisibleBase()
-
 				if (render.animationSrc) {
 					await this.loadAnimationClips(render.animationSrc)
 				}
 
 				this.resolveAttachmentNodes()
 				this.syncAnimation()
+				this.syncInsideVisibility()
 				this.modelFailedSrc = null
 			})()
 			await this.modelLoading
@@ -441,8 +454,29 @@ export class SettlerView extends BaseMovementView {
 			this.modelSrc = null
 			this.modelFailedSrc = render.modelSrc
 			this.applyProfessionEmoji()
+			this.syncInsideVisibility()
 		} finally {
 			this.modelLoading = null
+		}
+	}
+
+	private syncInsideVisibility(): void {
+		const hidden = Boolean(this.stateContext.insideBuildingId)
+		this.isInsideHidden = hidden
+		const visible = !hidden
+		const baseMesh = this.getMesh()
+		baseMesh.setEnabled(visible)
+		if (this.modelRoot) {
+			this.modelRoot.setEnabled(visible)
+		}
+		if (this.carryingMesh) {
+			this.carryingMesh.setEnabled(visible)
+		}
+		if (this.needsMesh) {
+			this.needsMesh.setEnabled(visible)
+		}
+		if (this.highlightMesh) {
+			this.highlightMesh.setEnabled(this.isHighlighted && visible)
 		}
 	}
 

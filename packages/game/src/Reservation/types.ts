@@ -17,13 +17,14 @@ export enum ReservationKind {
 	Loot = 'loot',
 	Tool = 'tool',
 	Node = 'node',
-	Amenity = 'amenity',
+	Occupancy = 'occupancy',
 	House = 'house',
 	Npc = 'npc'
 }
 
-export interface AmenitySlotReservationResult {
+export interface OccupancySlotReservationResult {
 	reservationId: string
+	mode: 'outside' | 'inside'
 	slotIndex: number
 	position: Position
 }
@@ -33,7 +34,7 @@ export type ReservationRef =
 	| { kind: ReservationKind.Loot, itemId: LootItemId, ownerId?: string }
 	| { kind: ReservationKind.Tool, itemId: LootItemId }
 	| { kind: ReservationKind.Node, nodeId: ResourceNodeId, ownerId?: string }
-	| { kind: ReservationKind.Amenity, reservationId: ReservationId }
+	| { kind: ReservationKind.Occupancy, reservationId: ReservationId }
 	| { kind: ReservationKind.House, reservationId: ReservationId }
 	| { kind: ReservationKind.Npc, npcId: NPCId, ownerId: SettlerId | string }
 
@@ -64,9 +65,10 @@ export type ReservationRequest =
 		ownerId: string
 	}
 	| {
-		kind: ReservationKind.Amenity
+		kind: ReservationKind.Occupancy
 		buildingInstanceId: BuildingInstanceId
 		settlerId: SettlerId
+		mode?: 'outside' | 'inside'
 	}
 	| {
 		kind: ReservationKind.House
@@ -103,9 +105,10 @@ export type ReservationAcquireResult =
 		ref: Extract<ReservationRef, { kind: ReservationKind.Node }>
 	}
 	| {
-		kind: ReservationKind.Amenity
-		ref: Extract<ReservationRef, { kind: ReservationKind.Amenity }>
+		kind: ReservationKind.Occupancy
+		ref: Extract<ReservationRef, { kind: ReservationKind.Occupancy }>
 		reservationId: ReservationId
+		mode: 'outside' | 'inside'
 		slotIndex: number
 		position: Position
 	}

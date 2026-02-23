@@ -13,7 +13,7 @@ export interface ActionQueueRuntimeState extends ActionQueueCallbacks {
 	index: number
 	context?: ActionQueueContext
 	inProgress?: {
-		type: SettlerActionType.Wait | SettlerActionType.Construct | SettlerActionType.BuildRoad | SettlerActionType.Consume | SettlerActionType.Sleep
+		type: SettlerActionType.Wait | SettlerActionType.Construct | SettlerActionType.BuildRoad | SettlerActionType.Consume | SettlerActionType.Sleep | SettlerActionType.Socialize
 		endAtMs: number
 		buildingInstanceId?: string
 		jobId?: string

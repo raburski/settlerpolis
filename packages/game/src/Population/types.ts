@@ -90,6 +90,7 @@ export interface SettlerStateContext {
 	lastStepReason?: string        // WorkWaitReason or failure reason (debug)
 	errorReason?: string           // Reason for failure state
 	lastIdleWanderTime?: number    // Timestamp of last idle wander movement (for cooldown)
+	insideBuildingId?: BuildingInstanceId // If set, settler is considered inside this building and should be hidden on map
 	// Note: job-related data is now expressed via assignments and provider steps
 }
 

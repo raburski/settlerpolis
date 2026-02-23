@@ -3,18 +3,19 @@ export const TimeEvents = {
 		FastForwardToPhase: 'cs:time:fast-forward-to-phase'
 	},
 	SS: {
-		Update: 'time:ss:update',
-		SetSpeed: 'time:ss:set-speed',
-		Pause: 'time:ss:pause',
-		Resume: 'time:ss:resume'
+		Update: 'ss:time:update',
+		SetSpeed: 'ss:time:set-speed',
+		Pause: 'ss:time:pause',
+		Resume: 'ss:time:resume',
+		DayPhaseSync: 'ss:time:day-phase-sync'
 	},
 	SC: {
-		Updated: 'time:sc:updated',
-		TimeSet: 'time:sc:time-set',
-		SpeedSet: 'time:sc:speed-set',
-		Paused: 'time:sc:paused',
-		Resumed: 'time:sc:resumed',
-		Sync: 'time:sc:sync',
-		DayPhaseSync: 'time:sc:day-phase-sync'
+		Updated: 'sc:time:updated',
+		TimeSet: 'sc:time:time-set',
+		SpeedSet: 'sc:time:speed-set',
+		Paused: 'sc:time:paused',
+		Resumed: 'sc:time:resumed',
+		Sync: 'sc:time:sync',
+		DayPhaseSync: 'sc:time:day-phase-sync'
 	}
 } as const

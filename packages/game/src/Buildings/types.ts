@@ -61,6 +61,25 @@ export enum BuildingCategory {
 	Infrastructure = 'infrastructure'
 }
 
+export type SocialVenueType =
+	| 'entertainment'
+	| 'worship'
+	| 'culture_science'
+	| 'civic'
+
+export interface SocialVenueDefinition {
+	venueType: SocialVenueType
+}
+
+export interface OccupancyDefinition {
+	totalCapacity?: number
+	insideCapacity?: number
+	outsideSlots?: {
+		count: number
+		offsets?: Array<{ x: number, y: number }>
+	}
+}
+
 export interface BuildingDefinition {
 	id: BuildingId
 	name: string
@@ -179,14 +198,12 @@ export interface BuildingDefinition {
 		patrolPauseMs?: number
 		patrolSpeedMultiplier?: number
 	}
-	amenitySlots?: {
-		count: number
-		offsets?: Array<{ x: number, y: number }>
-	}
 	amenityNeeds?: {
 		hunger?: number
 		fatigue?: number
 	}
+	occupancy?: OccupancyDefinition
+	socialVenue?: SocialVenueDefinition
 	// Phase C: Production and storage
 	productionRecipe?: ProductionRecipe
 	productionRecipes?: ProductionRecipe[]

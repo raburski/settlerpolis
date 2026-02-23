@@ -1245,22 +1245,22 @@ export const Event = {
       Ping: 'sc:system:ping',
     },
   },
-  Time: {
-    SC: {
-      Paused: 'time:sc:paused',
-      Resumed: 'time:sc:resumed',
-      SpeedSet: 'time:sc:speed-set',
-      Sync: 'time:sc:sync',
-      TimeSet: 'time:sc:time-set',
-      Updated: 'time:sc:updated',
-    },
-    SS: {
-      Pause: 'time:ss:pause',
-      Resume: 'time:ss:resume',
-      SetSpeed: 'time:ss:set-speed',
-      Update: 'time:ss:update',
-    },
-  },
+	Time: {
+	    SC: {
+	      Paused: 'sc:time:paused',
+	      Resumed: 'sc:time:resumed',
+	      SpeedSet: 'sc:time:speed-set',
+	      Sync: 'sc:time:sync',
+	      TimeSet: 'sc:time:time-set',
+	      Updated: 'sc:time:updated',
+	    },
+	    SS: {
+	      Pause: 'ss:time:pause',
+	      Resume: 'ss:time:resume',
+	      SetSpeed: 'ss:time:set-speed',
+	      Update: 'ss:time:update',
+	    },
+	  },
   Triggers: {
     CS: {
       Trigger: 'cs:triggers:trigger',

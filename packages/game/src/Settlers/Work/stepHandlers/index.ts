@@ -10,6 +10,7 @@ import { PlantHandler } from './plant'
 import { BuildRoadHandler } from './buildRoad'
 import { TransportHandler } from './transport'
 import { MarketRunHandler } from './marketRun'
+import { SocialVisitHandler } from './socialVisit'
 import { WaitHandler } from './wait'
 import { ProspectHandler } from './prospect'
 import { StepAwayHandler } from './stepAway'
@@ -25,6 +26,7 @@ export const StepHandlers: Record<WorkStepType, StepHandler> = {
 	[WorkStepType.BuildRoad]: BuildRoadHandler,
 	[WorkStepType.Transport]: TransportHandler,
 	[WorkStepType.MarketRun]: MarketRunHandler,
+	[WorkStepType.SocialVisit]: SocialVisitHandler,
 	[WorkStepType.Prospect]: ProspectHandler,
 	[WorkStepType.Wait]: WaitHandler,
 	[WorkStepType.StepAway]: StepAwayHandler

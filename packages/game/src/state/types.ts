@@ -304,17 +304,18 @@ export interface SchedulerSnapshot {
 }
 
 export interface ReservationSnapshot {
-	amenityReservations: MapEntries<AmenityReservationSnapshot>
-	amenitySlotsByBuilding: MapEntries<Array<[number, string]>>
+	occupancyReservations: MapEntries<OccupancyReservationSnapshot>
+	occupancySlotsByBuilding: MapEntries<Array<[number, string]>>
 	houseReservations: MapEntries<HouseReservationSnapshot>
 	houseReservationsByHouse: MapEntries<MapEntries<string>>
 }
 
-export interface AmenityReservationSnapshot {
+export interface OccupancyReservationSnapshot {
 	reservationId: ReservationId
 	buildingInstanceId: BuildingInstanceId
 	settlerId: SettlerId
-	slotIndex: number
+	mode: 'outside' | 'inside'
+	slotIndex?: number
 	position: Position
 	createdAt: number
 }

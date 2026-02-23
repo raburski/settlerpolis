@@ -7,7 +7,8 @@ export enum WorkDispatchReason {
 	WorkFlow = 'work_flow',
 	WorkerAssigned = 'worker_assigned',
 	ImmediateRequest = 'immediate_request',
-	ResumeAfterDeserialize = 'resume_after_deserialize'
+	ResumeAfterDeserialize = 'resume_after_deserialize',
+	DayPhaseChanged = 'day_phase_changed'
 }
 
 export interface WorkActionCompletedEventData {
