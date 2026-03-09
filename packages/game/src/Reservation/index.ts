@@ -4,9 +4,9 @@ import { ReservationSystemState } from './ReservationSystemState'
 import type { ReservationHandlerContext } from './handlerContext'
 import type { ReservationSystemDeps } from './deps'
 import {
-	reserveAmenityReservation,
-	releaseAmenityReservation
-} from './handler/amenity'
+	reserveOccupancyReservation,
+	releaseOccupancyReservation
+} from './handler/occupancy'
 import {
 	reserveHouseReservation,
 	releaseHouseReservation,
@@ -78,7 +78,7 @@ const RESERVE_HANDLERS: Record<ReservationKind, ReservationReserveHandler> = {
 	[ReservationKind.Loot]: createReserveHandler(ReservationKind.Loot, reserveLootReservation),
 	[ReservationKind.Tool]: createReserveHandler(ReservationKind.Tool, reserveToolReservation),
 	[ReservationKind.Node]: createReserveHandler(ReservationKind.Node, reserveNodeReservation),
-	[ReservationKind.Amenity]: createReserveHandler(ReservationKind.Amenity, reserveAmenityReservation),
+	[ReservationKind.Occupancy]: createReserveHandler(ReservationKind.Occupancy, reserveOccupancyReservation),
 	[ReservationKind.House]: createReserveHandler(ReservationKind.House, reserveHouseReservation),
 	[ReservationKind.Npc]: createReserveHandler(ReservationKind.Npc, reserveNpcReservation)
 }
@@ -88,7 +88,7 @@ const RELEASE_HANDLERS: Record<ReservationKind, ReservationReleaseHandler> = {
 	[ReservationKind.Loot]: createReleaseHandler(ReservationKind.Loot, releaseLootReservation),
 	[ReservationKind.Tool]: createReleaseHandler(ReservationKind.Tool, releaseToolReservation),
 	[ReservationKind.Node]: createReleaseHandler(ReservationKind.Node, releaseNodeReservation),
-	[ReservationKind.Amenity]: createReleaseHandler(ReservationKind.Amenity, releaseAmenityReservation),
+	[ReservationKind.Occupancy]: createReleaseHandler(ReservationKind.Occupancy, releaseOccupancyReservation),
 	[ReservationKind.House]: createReleaseHandler(ReservationKind.House, releaseHouseReservation),
 	[ReservationKind.Npc]: createReleaseHandler(ReservationKind.Npc, releaseNpcReservation)
 }

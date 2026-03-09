@@ -7,7 +7,7 @@ import type { SettlerAction } from '../../Actions/types'
 import { SettlerActionType } from '../../Actions/types'
 import { MoveTargetType } from '../../../Movement/types'
 import { SettlerState } from '../../../Population/types'
-import { ReservationKind, type AmenitySlotReservationResult } from '../../../Reservation'
+import { ReservationKind, type OccupancySlotReservationResult } from '../../../Reservation'
 
 const SLEEP_DURATION_MS = 8000
 
@@ -30,7 +30,7 @@ export class FatigueNeedPlanHandler implements NeedPlanHandler {
 
 		const actions: SettlerAction[] = []
 		let satisfyValue: number | undefined
-		let amenityReservation: AmenitySlotReservationResult | null = null
+		let occupancyReservation: OccupancySlotReservationResult | null = null
 
 		const building = this.managers.buildings.getBuildingInstance(bed.buildingInstanceId)
 		const buildingDef = building ? this.managers.buildings.getBuildingDefinition(building.buildingId) : undefined
@@ -38,33 +38,43 @@ export class FatigueNeedPlanHandler implements NeedPlanHandler {
 			satisfyValue = buildingDef.amenityNeeds.fatigue
 		}
 
-		if (buildingDef?.amenitySlots && buildingDef.amenitySlots.count > 0) {
-			const amenity = this.managers.reservations.reserve({
-				kind: ReservationKind.Amenity,
+		const buildingOccupancy = buildingDef?.occupancy
+		const hasAnyOccupancy = Boolean(
+			buildingOccupancy
+			&& (
+				(buildingOccupancy.totalCapacity ?? 0) > 0
+				|| (buildingOccupancy.insideCapacity ?? 0) > 0
+				|| (buildingOccupancy.outsideSlots?.count ?? 0) > 0
+			)
+		)
+		if (hasAnyOccupancy) {
+			const occupancy = this.managers.reservations.reserve({
+				kind: ReservationKind.Occupancy,
 				buildingInstanceId: bed.buildingInstanceId,
 				settlerId
 			})
-			if (!amenity || amenity.kind !== ReservationKind.Amenity) {
-				return { reason: NeedPlanningFailureReason.AmenityFull }
+			if (!occupancy || occupancy.kind !== ReservationKind.Occupancy) {
+				return { reason: NeedPlanningFailureReason.OccupancyFull }
 			}
-			amenityReservation = {
-				reservationId: amenity.reservationId,
-				slotIndex: amenity.slotIndex,
-				position: amenity.position
+			occupancyReservation = {
+				reservationId: occupancy.reservationId,
+				mode: occupancy.mode,
+				slotIndex: occupancy.slotIndex,
+				position: occupancy.position
 			}
 		}
 
-		const moveTargetPosition = amenityReservation?.position ?? bed.position
-		const moveTargetId = amenityReservation?.reservationId ?? bed.buildingInstanceId
-		const moveTargetType = amenityReservation ? MoveTargetType.AmenitySlot : MoveTargetType.Building
+		const moveTargetPosition = occupancyReservation?.position ?? bed.position
+		const moveTargetId = occupancyReservation?.reservationId ?? bed.buildingInstanceId
+		const moveTargetType = occupancyReservation ? MoveTargetType.OccupancySlot : MoveTargetType.Building
 
 		actions.push({
 			type: SettlerActionType.Move,
 			position: moveTargetPosition,
 			targetType: moveTargetType,
 			targetId: moveTargetId,
-			reservationRefs: amenityReservation
-				? [{ kind: ReservationKind.Amenity, reservationId: amenityReservation.reservationId }]
+			reservationRefs: occupancyReservation
+				? [{ kind: ReservationKind.Occupancy, reservationId: occupancyReservation.reservationId }]
 				: undefined,
 			setState: SettlerState.MovingToBuilding
 		})

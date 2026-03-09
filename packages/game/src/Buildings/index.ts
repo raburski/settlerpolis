@@ -1680,6 +1680,19 @@ export class BuildingManager extends BaseManager<BuildingDeps> {
 		return Array.from(this.state.buildings.values())
 	}
 
+	public isBuildingUnlockedForPlayerMap(buildingId: BuildingId, playerId: string, mapId: string): boolean {
+		const definition = this.state.definitions.get(buildingId)
+		if (!definition) {
+			return false
+		}
+		if (!definition.unlockFlags || definition.unlockFlags.length === 0) {
+			return true
+		}
+		const key = this.getPlayerMapKey(playerId, mapId)
+		const unlockedFlags = this.state.unlockedFlagsByPlayerMap.get(key)
+		return definition.unlockFlags.every(flag => unlockedFlags?.has(flag))
+	}
+
 	// Get building instance (alias for consistency)
 	public getBuilding(buildingInstanceId: string): BuildingInstance | undefined {
 		return this.getBuildingInstance(buildingInstanceId)

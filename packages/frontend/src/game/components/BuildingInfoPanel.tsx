@@ -215,6 +215,37 @@ interface BuildingInfoData {
 	buildingDefinition: BuildingDefinition
 }
 
+const OCCUPANCY_TILE_SIZE_PX = 32
+const OCCUPANCY_BOUNDS_PADDING_TILES = 1
+const OCCUPANCY_ARRIVAL_DISTANCE_PX = 24
+const OCCUPANCY_TARGET_TYPE = 'occupancy_slot'
+
+const getOccupancyCapacity = (definition: BuildingDefinition): number => {
+	const configured = definition.occupancy
+	if (!configured) {
+		return 0
+	}
+	if (typeof configured.totalCapacity === 'number' && configured.totalCapacity > 0) {
+		return configured.totalCapacity
+	}
+	const inside = typeof configured.insideCapacity === 'number' ? Math.max(0, configured.insideCapacity) : 0
+	const outside = typeof configured.outsideSlots?.count === 'number' ? Math.max(0, configured.outsideSlots.count) : 0
+	return inside + outside
+}
+
+const isPositionNearBuilding = (
+	position: { x: number, y: number },
+	building: BuildingInstance,
+	definition: BuildingDefinition
+): boolean => {
+	const padding = OCCUPANCY_BOUNDS_PADDING_TILES * OCCUPANCY_TILE_SIZE_PX
+	const minX = building.position.x - padding
+	const minY = building.position.y - padding
+	const maxX = building.position.x + definition.footprint.width * OCCUPANCY_TILE_SIZE_PX + padding
+	const maxY = building.position.y + definition.footprint.height * OCCUPANCY_TILE_SIZE_PX + padding
+	return position.x >= minX && position.x <= maxX && position.y >= minY && position.y <= maxY
+}
+
 export const BuildingInfoPanel: React.FC = () => {
 	const [isVisible, setIsVisible] = useState(false)
 	const [buildingInstance, setBuildingInstance] = useState<BuildingInstance | null>(null)
@@ -226,6 +257,7 @@ export const BuildingInfoPanel: React.FC = () => {
 	const [reputation, setReputation] = useState(0)
 	const [selectedTradeNodeId, setSelectedTradeNodeId] = useState('')
 	const [selectedTradeOfferId, setSelectedTradeOfferId] = useState('')
+	const [populationVersion, setPopulationVersion] = useState(0)
 
 	const tradeRouteType = useMemo(() => resolveTradeRouteType(buildingDefinition), [buildingDefinition])
 
@@ -403,6 +435,9 @@ export const BuildingInfoPanel: React.FC = () => {
 
 			const handlePopulationSettlerUpdated = (data: { settlerId: string }) => {
 				checkWorkerMovingToBuilding(data.settlerId)
+				if (buildingInstance) {
+					setPopulationVersion((prev) => prev + 1)
+				}
 			}
 
 		// Listen for worker assigned
@@ -641,6 +676,41 @@ export const BuildingInfoPanel: React.FC = () => {
 		}
 		return Array.from(new Set(slotTypes))
 	}, [buildingDefinition, buildingInstance])
+	const occupancyCapacity = useMemo(
+		() => (buildingDefinition ? getOccupancyCapacity(buildingDefinition) : 0),
+		[buildingDefinition]
+	)
+	const currentOccupancy = useMemo(() => {
+		if (!buildingInstance || !buildingDefinition || occupancyCapacity <= 0) {
+			return 0
+		}
+		const presentSettlerIds = new Set<string>()
+		for (const settler of populationService.getSettlers()) {
+			if (settler.mapId !== buildingInstance.mapId || settler.playerId !== buildingInstance.playerId) {
+				continue
+			}
+			if (settler.stateContext.insideBuildingId === buildingInstance.id) {
+				presentSettlerIds.add(settler.id)
+				continue
+			}
+			if (settler.buildingId === buildingInstance.id && isPositionNearBuilding(settler.position, buildingInstance, buildingDefinition)) {
+				presentSettlerIds.add(settler.id)
+				continue
+			}
+			if (settler.stateContext.targetType !== OCCUPANCY_TARGET_TYPE || !settler.stateContext.targetPosition) {
+				continue
+			}
+			if (!isPositionNearBuilding(settler.stateContext.targetPosition, buildingInstance, buildingDefinition)) {
+				continue
+			}
+			const dx = settler.position.x - settler.stateContext.targetPosition.x
+			const dy = settler.position.y - settler.stateContext.targetPosition.y
+			if ((dx * dx + dy * dy) <= (OCCUPANCY_ARRIVAL_DISTANCE_PX * OCCUPANCY_ARRIVAL_DISTANCE_PX)) {
+				presentSettlerIds.add(settler.id)
+			}
+		}
+		return Math.min(occupancyCapacity, presentSettlerIds.size)
+	}, [buildingInstance, buildingDefinition, occupancyCapacity, populationVersion])
 
 	if (!isVisible || !buildingInstance || !buildingDefinition) {
 		return null
@@ -926,6 +996,15 @@ export const BuildingInfoPanel: React.FC = () => {
 					<div className={sharedStyles.infoRow}>
 						<span className={sharedStyles.label}>Construction Progress:</span>
 						<span className={sharedStyles.value}>{Math.round(buildingInstance.progress)}%</span>
+					</div>
+				)}
+
+				{occupancyCapacity > 0 && (
+					<div className={sharedStyles.infoRow}>
+						<span className={sharedStyles.label}>Occupancy:</span>
+						<span className={sharedStyles.value}>
+							{currentOccupancy} / {occupancyCapacity}
+						</span>
 					</div>
 				)}
 			</div>

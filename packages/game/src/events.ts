@@ -204,6 +204,7 @@ export type EventPayloads = Record<string, unknown> & {
 	[TimeEvents.SS.SetSpeed]: TimeSpeedUpdateEventData
 	[TimeEvents.SS.Pause]: TimePauseEventData
 	[TimeEvents.SS.Resume]: TimePauseEventData
+	[TimeEvents.SS.DayPhaseSync]: TimeDayPhaseSyncEventData
 	[TimeEvents.SC.Updated]: TimeUpdateEventData
 	[TimeEvents.SC.TimeSet]: TimeUpdateEventData
 	[TimeEvents.SC.SpeedSet]: TimeSpeedUpdateEventData

@@ -1816,8 +1816,11 @@ export const buildings: BuildingDefinition[] = [
       "patrolPauseMs": 0,
       "patrolSpeedMultiplier": 0.55
     },
-    "amenitySlots": {
-      "count": 3
+    "occupancy": {
+      "totalCapacity": 3,
+      "outsideSlots": {
+        "count": 3
+      }
     },
     "storageSlots": [
       {
@@ -1865,8 +1868,11 @@ export const buildings: BuildingDefinition[] = [
         "quantity": 1
       }
     ],
-    "amenitySlots": {
-      "count": 3
+    "occupancy": {
+      "totalCapacity": 3,
+      "outsideSlots": {
+        "count": 3
+      }
     },
     "amenityNeeds": {
       "hunger": 0.6,
@@ -1887,6 +1893,396 @@ export const buildings: BuildingDefinition[] = [
         }
       }
     ]
+  },
+  {
+    "id": "plaza",
+    "name": "Plaza",
+    "description": "Central civic square where settlers gather in the evening",
+    "category": "civil",
+    "icon": "\ud83c\udfdb\ufe0f",
+    "sprite": {
+      "foundation": "building_foundation",
+      "completed": "storehouse"
+    },
+    "render": {
+      "modelSrc": "/assets/library/agora.glb",
+      "transform": {
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "scale": {
+          "x": 1.8,
+          "y": 1.8,
+          "z": 1.8
+        },
+        "elevation": 0
+      }
+    },
+    "footprint": {
+      "width": 3,
+      "height": 3
+    },
+    "entryPoint": {
+      "x": 1,
+      "y": 3
+    },
+    "accessTiles": [
+      {
+        "x": 0,
+        "y": 3
+      },
+      {
+        "x": 1,
+        "y": 3
+      },
+      {
+        "x": 2,
+        "y": 3
+      }
+    ],
+    "constructionTime": 20,
+    "costs": [
+      {
+        "itemType": "stone",
+        "quantity": 4
+      },
+      {
+        "itemType": "planks",
+        "quantity": 2
+      }
+    ],
+    "unlockFlags": [
+      "charter:settlement"
+    ],
+    "occupancy": {
+      "totalCapacity": 9,
+      "outsideSlots": {
+        "count": 9,
+        "offsets": [
+          {
+            "x": 0,
+            "y": 3
+          },
+          {
+            "x": 1,
+            "y": 3
+          },
+          {
+            "x": 2,
+            "y": 3
+          },
+          {
+            "x": 0,
+            "y": 4
+          },
+          {
+            "x": 1,
+            "y": 4
+          },
+          {
+            "x": 2,
+            "y": 4
+          },
+          {
+            "x": 0,
+            "y": 5
+          },
+          {
+            "x": 1,
+            "y": 5
+          },
+          {
+            "x": 2,
+            "y": 5
+          }
+        ]
+      }
+    },
+    "socialVenue": {
+      "venueType": "civic"
+    }
+  },
+  {
+    "id": "tavern",
+    "name": "Tavern",
+    "description": "A lively evening house for stories, drink and music",
+    "category": "civil",
+    "icon": "\ud83c\udf7a",
+    "sprite": {
+      "foundation": "building_foundation",
+      "completed": "storehouse"
+    },
+    "render": {
+      "modelSrc": "/assets/library/agora.glb",
+      "transform": {
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "scale": {
+          "x": 1.65,
+          "y": 1.65,
+          "z": 1.65
+        },
+        "elevation": 0
+      }
+    },
+    "footprint": {
+      "width": 3,
+      "height": 3
+    },
+    "entryPoint": {
+      "x": 1,
+      "y": 3
+    },
+    "accessTiles": [
+      {
+        "x": 0,
+        "y": 3
+      },
+      {
+        "x": 1,
+        "y": 3
+      },
+      {
+        "x": 2,
+        "y": 3
+      }
+    ],
+    "constructionTime": 24,
+    "costs": [
+      {
+        "itemType": "logs",
+        "quantity": 2
+      },
+      {
+        "itemType": "planks",
+        "quantity": 5
+      },
+      {
+        "itemType": "stone",
+        "quantity": 2
+      }
+    ],
+    "unlockFlags": [
+      "charter:market-town"
+    ],
+    "occupancy": {
+      "totalCapacity": 8,
+      "insideCapacity": 8,
+      "outsideSlots": {
+        "count": 3,
+        "offsets": [
+          {
+            "x": 0,
+            "y": 3
+          },
+          {
+            "x": 1,
+            "y": 3
+          },
+          {
+            "x": 2,
+            "y": 3
+          }
+        ]
+      }
+    },
+    "socialVenue": {
+      "venueType": "entertainment"
+    },
+    "consumes": [
+      {
+        "itemType": "bread",
+        "desiredQuantity": 8
+      }
+    ],
+    "storageSlots": [
+      {
+        "itemType": "bread",
+        "offset": {
+          "x": 3,
+          "y": 0
+        }
+      }
+    ]
+  },
+  {
+    "id": "shrine",
+    "name": "Shrine",
+    "description": "A humble sacred place for prayer and reflection",
+    "category": "civil",
+    "icon": "\ud83d\udd6f\ufe0f",
+    "sprite": {
+      "foundation": "building_foundation",
+      "completed": "storehouse"
+    },
+    "render": {
+      "modelSrc": "/assets/library/agora.glb",
+      "transform": {
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "scale": {
+          "x": 1.35,
+          "y": 1.35,
+          "z": 1.35
+        },
+        "elevation": 0
+      }
+    },
+    "footprint": {
+      "width": 2,
+      "height": 2
+    },
+    "entryPoint": {
+      "x": 1,
+      "y": 2
+    },
+    "accessTiles": [
+      {
+        "x": 0,
+        "y": 2
+      },
+      {
+        "x": 1,
+        "y": 2
+      }
+    ],
+    "constructionTime": 14,
+    "costs": [
+      {
+        "itemType": "logs",
+        "quantity": 1
+      },
+      {
+        "itemType": "stone",
+        "quantity": 2
+      }
+    ],
+    "occupancy": {
+      "totalCapacity": 4,
+      "outsideSlots": {
+        "count": 4,
+        "offsets": [
+          {
+            "x": 0,
+            "y": 2
+          },
+          {
+            "x": 1,
+            "y": 2
+          },
+          {
+            "x": 0,
+            "y": 3
+          },
+          {
+            "x": 1,
+            "y": 3
+          }
+        ]
+      }
+    },
+    "socialVenue": {
+      "venueType": "worship"
+    }
+  },
+  {
+    "id": "forum",
+    "name": "Forum",
+    "description": "A public evening forum for talks, teaching and civic debate",
+    "category": "civil",
+    "icon": "\ud83d\udde3\ufe0f",
+    "sprite": {
+      "foundation": "building_foundation",
+      "completed": "storehouse"
+    },
+    "render": {
+      "modelSrc": "/assets/library/agora.glb",
+      "transform": {
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "scale": {
+          "x": 1.5,
+          "y": 1.5,
+          "z": 1.5
+        },
+        "elevation": 0
+      }
+    },
+    "footprint": {
+      "width": 3,
+      "height": 3
+    },
+    "entryPoint": {
+      "x": 1,
+      "y": 3
+    },
+    "accessTiles": [
+      {
+        "x": 0,
+        "y": 3
+      },
+      {
+        "x": 1,
+        "y": 3
+      },
+      {
+        "x": 2,
+        "y": 3
+      }
+    ],
+    "constructionTime": 18,
+    "costs": [
+      {
+        "itemType": "logs",
+        "quantity": 2
+      },
+      {
+        "itemType": "planks",
+        "quantity": 2
+      },
+      {
+        "itemType": "stone",
+        "quantity": 1
+      }
+    ],
+    "occupancy": {
+      "totalCapacity": 4,
+      "outsideSlots": {
+        "count": 4,
+        "offsets": [
+          {
+            "x": 0,
+            "y": 3
+          },
+          {
+            "x": 1,
+            "y": 3
+          },
+          {
+            "x": 2,
+            "y": 3
+          },
+          {
+            "x": 1,
+            "y": 4
+          }
+        ]
+      }
+    },
+    "socialVenue": {
+      "venueType": "culture_science"
+    }
   },
   {
     "id": "trading_post",

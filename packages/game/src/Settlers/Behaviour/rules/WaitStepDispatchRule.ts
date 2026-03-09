@@ -34,6 +34,11 @@ export class WaitStepDispatchRule implements BehaviourDispatchRule {
 			context.work.unassignSettler(context.settlerId)
 			return BehaviourRuleResult.Stop
 		}
+		if (context.assignment.providerType === WorkProviderType.Social &&
+			(context.step.reason === WorkWaitReason.VenueClosed || context.step.reason === WorkWaitReason.NoSocialVenue)) {
+			context.work.unassignSettler(context.settlerId)
+			return BehaviourRuleResult.Stop
+		}
 
 		return BehaviourRuleResult.Continue
 	}

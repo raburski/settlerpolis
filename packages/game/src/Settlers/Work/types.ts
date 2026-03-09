@@ -22,7 +22,9 @@ export enum WorkProviderType {
 	Logistics = 'logistics',
 	Construction = 'construction',
 	Road = 'road',
-	Prospecting = 'prospecting'
+	Prospecting = 'prospecting',
+	Social = 'social',
+	NightRest = 'night_rest'
 }
 
 export enum WorkAssignmentStatus {
@@ -43,6 +45,8 @@ export enum WorkStepType {
 	BuildRoad = 'build_road',
 	Transport = 'transport',
 	MarketRun = 'market_run',
+	SocialVisit = 'social_visit',
+	NightRest = 'night_rest',
 	Wait = 'wait',
 	Prospect = 'prospect',
 	StepAway = 'step_away'
@@ -67,7 +71,10 @@ export enum WorkWaitReason {
 	Paused = 'paused',
 	NeedsCritical = 'needs_critical',
 	MovementFailed = 'movement_failed',
-	MovementCancelled = 'movement_cancelled'
+	MovementCancelled = 'movement_cancelled',
+	VenueClosed = 'venue_closed',
+	VenueFull = 'venue_full',
+	NoSocialVenue = 'no_social_venue'
 }
 
 export enum TransportSourceType {
@@ -119,6 +126,8 @@ export type WorkStep =
 	| { type: WorkStepType.BuildRoad, jobId: RoadJobId, position: Position, roadType: RoadType, durationMs: number }
 	| { type: WorkStepType.Transport, source: TransportSource, target: TransportTarget, itemType: ItemType, quantity: number }
 	| { type: WorkStepType.MarketRun, buildingInstanceId: BuildingInstanceId }
+	| { type: WorkStepType.SocialVisit, buildingInstanceId: BuildingInstanceId, targetPosition: Position, dwellTimeMs: number }
+	| { type: WorkStepType.NightRest, houseId?: BuildingInstanceId, wakeAtMs: number }
 	| { type: WorkStepType.Prospect, resourceNodeId: ResourceNodeId, durationMs: number }
 	| { type: WorkStepType.Wait, reason: WorkWaitReason, retryAtMs?: number }
 	| { type: WorkStepType.StepAway, targetPosition: Position, targetType?: MoveTargetType, targetId?: string }

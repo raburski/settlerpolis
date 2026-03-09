@@ -12,7 +12,8 @@ export enum SettlerActionFailureReason {
 	PlantFailed = 'plant_failed',
 	NpcMissing = 'npc_missing',
 	WrongTarget = 'wrong_target',
-	OutOfRange = 'out_of_range'
+	OutOfRange = 'out_of_range',
+	VenueFull = 'venue_full'
 }
 
 export const isMovementActionFailureReason = (
@@ -31,7 +32,7 @@ export enum NeedPlanningFailureReason {
 	FoodBuildingMissing = 'food_building_missing',
 	FoodUnavailable = 'food_unavailable',
 	FoodReserved = 'food_reserved',
-	AmenityFull = 'amenity_full'
+	OccupancyFull = 'occupancy_full'
 }
 
 export type NeedPlanFailureReason = NeedPlanningFailureReason | SettlerActionFailureReason

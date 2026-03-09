@@ -43,15 +43,24 @@ export class BedPolicy {
 
 		const candidates = this.managers.buildings.getAllBuildings()
 			.filter(building => building.mapId === settler.mapId && building.stage === ConstructionStage.Completed)
-			.map(building => {
-				const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
-				if (typeof definition?.amenityNeeds?.fatigue !== 'number') {
-					return null
-				}
-				if (!definition.amenitySlots || definition.amenitySlots.count <= 0) {
-					return null
-				}
-				return {
+				.map(building => {
+					const definition = this.managers.buildings.getBuildingDefinition(building.buildingId)
+					if (typeof definition?.amenityNeeds?.fatigue !== 'number') {
+						return null
+					}
+					const occupancy = definition.occupancy
+					const hasAnyOccupancy = Boolean(
+						occupancy
+						&& (
+							(occupancy.totalCapacity ?? 0) > 0
+							|| (occupancy.insideCapacity ?? 0) > 0
+							|| (occupancy.outsideSlots?.count ?? 0) > 0
+						)
+					)
+					if (!hasAnyOccupancy) {
+						return null
+					}
+					return {
 					buildingInstanceId: building.id,
 					position: building.position,
 					distance: calculateDistance(settler.position, building.position)

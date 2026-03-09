@@ -2,7 +2,7 @@ import { Position } from '../types'
 import type { MapId } from '../ids'
 
 export enum MoveTargetType {
-	AmenitySlot = 'amenity_slot',
+	OccupancySlot = 'occupancy_slot',
 	Building = 'building',
 	House = 'house',
 	Item = 'item',

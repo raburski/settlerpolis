@@ -1,15 +1,16 @@
 import type {
-	AmenityReservationSnapshot,
+	OccupancyReservationSnapshot,
 	HouseReservationSnapshot,
 	ReservationSnapshot
 } from '../state/types'
 import type { Position } from '../types'
 
-interface AmenitySlotReservation {
+interface OccupancySlotReservation {
 	reservationId: string
 	buildingInstanceId: string
 	settlerId: string
-	slotIndex: number
+	mode: 'outside' | 'inside'
+	slotIndex?: number
 	position: Position
 	createdAt: number
 }
@@ -22,25 +23,26 @@ interface HouseSlotReservation {
 }
 
 export class ReservationSystemState {
-	public amenityReservations = new Map<string, AmenitySlotReservation>()
-	public amenitySlotsByBuilding = new Map<string, Map<number, string>>()
+	public occupancyReservations = new Map<string, OccupancySlotReservation>()
+	public occupancySlotsByBuilding = new Map<string, Map<number, string>>()
 	public houseReservations = new Map<string, HouseSlotReservation>()
 	public houseReservationsByHouse = new Map<string, Map<string, string>>()
 
 	public serialize(): ReservationSnapshot {
 		return {
-			amenityReservations: Array.from(this.amenityReservations.entries()).map(([reservationId, reservation]) => ([
+			occupancyReservations: Array.from(this.occupancyReservations.entries()).map(([reservationId, reservation]) => ([
 				reservationId,
 				{
-					reservationId,
-					buildingInstanceId: reservation.buildingInstanceId,
-					settlerId: reservation.settlerId,
-					slotIndex: reservation.slotIndex,
-					position: { ...reservation.position },
-					createdAt: reservation.createdAt
-				} as AmenityReservationSnapshot
-			])),
-			amenitySlotsByBuilding: Array.from(this.amenitySlotsByBuilding.entries()).map(([buildingInstanceId, slots]) => ([
+						reservationId,
+						buildingInstanceId: reservation.buildingInstanceId,
+						settlerId: reservation.settlerId,
+						mode: reservation.mode,
+						slotIndex: reservation.slotIndex,
+						position: { ...reservation.position },
+						createdAt: reservation.createdAt
+					} as OccupancyReservationSnapshot
+				])),
+			occupancySlotsByBuilding: Array.from(this.occupancySlotsByBuilding.entries()).map(([buildingInstanceId, slots]) => ([
 				buildingInstanceId,
 				Array.from(slots.entries())
 			])),
@@ -61,24 +63,25 @@ export class ReservationSystemState {
 	}
 
 	public deserialize(state: ReservationSnapshot): void {
-		this.amenityReservations.clear()
-		this.amenitySlotsByBuilding.clear()
+		this.occupancyReservations.clear()
+		this.occupancySlotsByBuilding.clear()
 		this.houseReservations.clear()
 		this.houseReservationsByHouse.clear()
 
-		for (const [reservationId, reservation] of state.amenityReservations) {
-			this.amenityReservations.set(reservationId, {
-				reservationId: reservation.reservationId,
-				buildingInstanceId: reservation.buildingInstanceId,
-				settlerId: reservation.settlerId,
-				slotIndex: reservation.slotIndex,
-				position: { ...reservation.position },
-				createdAt: reservation.createdAt
-			})
-		}
+		for (const [reservationId, reservation] of state.occupancyReservations) {
+				this.occupancyReservations.set(reservationId, {
+					reservationId: reservation.reservationId,
+					buildingInstanceId: reservation.buildingInstanceId,
+					settlerId: reservation.settlerId,
+					mode: reservation.mode,
+					slotIndex: reservation.slotIndex,
+					position: { ...reservation.position },
+					createdAt: reservation.createdAt
+				})
+			}
 
-		for (const [buildingInstanceId, slots] of state.amenitySlotsByBuilding) {
-			this.amenitySlotsByBuilding.set(buildingInstanceId, new Map(slots))
+		for (const [buildingInstanceId, slots] of state.occupancySlotsByBuilding) {
+			this.occupancySlotsByBuilding.set(buildingInstanceId, new Map(slots))
 		}
 
 		for (const [reservationId, reservation] of state.houseReservations) {
@@ -96,8 +99,8 @@ export class ReservationSystemState {
 	}
 
 	public reset(): void {
-		this.amenityReservations.clear()
-		this.amenitySlotsByBuilding.clear()
+		this.occupancyReservations.clear()
+		this.occupancySlotsByBuilding.clear()
 		this.houseReservations.clear()
 		this.houseReservationsByHouse.clear()
 	}

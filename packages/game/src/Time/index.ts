@@ -168,8 +168,24 @@ export class TimeManager {
 		}
 	}
 
+	private buildDayPhaseSyncDataFor(time: Time, dayPhase: DayPhase): TimeDayPhaseSyncEventData {
+		return {
+			time: { ...time },
+			isPaused: this.state.timeData.isPaused,
+			dayPhase,
+			dayPhaseTimeSpeed: this.getDayPhaseTimeSpeed(dayPhase),
+			dayPhaseSpeeds: { ...this.state.timeData.dayPhaseSpeeds }
+		}
+	}
+
+	private shouldEmitSyntheticEveningTransition(previousPhase: DayPhase, targetPhase: DayPhase): boolean {
+		return targetPhase === 'night' && (previousPhase === 'morning' || previousPhase === 'midday')
+	}
+
 	private broadcastDayPhaseSync(): void {
-		this.event.emit(Receiver.All, TimeEvents.SC.DayPhaseSync, this.buildDayPhaseSyncData())
+		const payload = this.buildDayPhaseSyncData()
+		this.event.emit(Receiver.All, TimeEvents.SS.DayPhaseSync, payload)
+		this.event.emit(Receiver.All, TimeEvents.SC.DayPhaseSync, payload)
 	}
 
 	private incrementDateByOneDay(time: Time): Time {
@@ -218,7 +234,19 @@ export class TimeManager {
 		if (!isDayPhase(dayPhase)) {
 			return
 		}
-		this.state.timeData.time = this.calculateFastForwardTarget(dayPhase)
+		const previousPhase = this.getCurrentDayPhase()
+		const targetTime = this.calculateFastForwardTarget(dayPhase)
+
+		if (this.shouldEmitSyntheticEveningTransition(previousPhase, dayPhase)) {
+			const eveningTime: Time = {
+				...targetTime,
+				hours: DAY_PHASE_START_HOUR.evening,
+				minutes: 0
+			}
+			const eveningPayload = this.buildDayPhaseSyncDataFor(eveningTime, 'evening')
+			this.event.emit(Receiver.All, TimeEvents.SS.DayPhaseSync, eveningPayload)
+		}
+		this.state.timeData.time = targetTime
 		this.state.tickAccumulatorMs = 0
 		this.state.lastBroadcastHour = this.state.timeData.time.hours
 		this.state.lastBroadcastDayPhase = this.getCurrentDayPhase()
@@ -226,7 +254,9 @@ export class TimeManager {
 		client.emit(Receiver.All, TimeEvents.SC.TimeSet, {
 			time: this.state.timeData.time
 		} as TimeUpdateEventData)
-		client.emit(Receiver.All, TimeEvents.SC.DayPhaseSync, this.buildDayPhaseSyncData())
+		const dayPhasePayload = this.buildDayPhaseSyncData()
+		this.event.emit(Receiver.All, TimeEvents.SS.DayPhaseSync, dayPhasePayload)
+		client.emit(Receiver.All, TimeEvents.SC.DayPhaseSync, dayPhasePayload)
 	}
 
 	public setTime(time: Time, client: EventClient) {
@@ -244,7 +274,9 @@ export class TimeManager {
 		client.emit(Receiver.All, TimeEvents.SC.TimeSet, {
 			time: this.state.timeData.time
 		} as TimeUpdateEventData)
-		client.emit(Receiver.All, TimeEvents.SC.DayPhaseSync, this.buildDayPhaseSyncData())
+		const dayPhasePayload = this.buildDayPhaseSyncData()
+		this.event.emit(Receiver.All, TimeEvents.SS.DayPhaseSync, dayPhasePayload)
+		client.emit(Receiver.All, TimeEvents.SC.DayPhaseSync, dayPhasePayload)
 	}
 
 	public setTimeSpeed(timeSpeed: number, client: EventClient) {
@@ -256,7 +288,9 @@ export class TimeManager {
 		client.emit(Receiver.All, TimeEvents.SC.SpeedSet, {
 			timeSpeed: this.state.timeData.timeSpeed
 		} as TimeSpeedUpdateEventData)
-		client.emit(Receiver.All, TimeEvents.SC.DayPhaseSync, this.buildDayPhaseSyncData())
+		const dayPhasePayload = this.buildDayPhaseSyncData()
+		this.event.emit(Receiver.All, TimeEvents.SS.DayPhaseSync, dayPhasePayload)
+		client.emit(Receiver.All, TimeEvents.SC.DayPhaseSync, dayPhasePayload)
 	}
 
 	public pause(client: EventClient) {

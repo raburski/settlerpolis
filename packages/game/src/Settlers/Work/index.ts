@@ -14,6 +14,8 @@ import { WorkerRequestFailureReason } from '../../Population/types'
 import type { ItemType } from '../../Items/types'
 import type { BuildingDefinition, BuildingInstance, ProductionRecipe, SetProductionPausedData } from '../../Buildings/types'
 import { ConstructionStage } from '../../Buildings/types'
+import { TimeEvents } from '../../Time/events'
+import { getDayPhaseFromHour, type DayPhase, type TimeDayPhaseSyncEventData } from '../../Time/types'
 import { ProviderRegistry } from './ProviderRegistry'
 import { WorkProviderEvents, WorkDispatchReason } from './events'
 import type { WorkStepCompletedEventData, WorkStepFailedEventData, WorkStepIssuedEventData } from './events'
@@ -31,6 +33,8 @@ import { ConstructionCoordinator } from './coordinators/ConstructionCoordinator'
 import { RoadCoordinator } from './coordinators/RoadCoordinator'
 import { ProspectingCoordinator } from './coordinators/ProspectingCoordinator'
 import { LogisticsProvider } from './providers/LogisticsProvider'
+import { SocialProvider } from './providers/SocialProvider'
+import { NightRestProvider } from './providers/NightRestProvider'
 import type { SettlerWorkRuntimePort } from './runtime'
 import {
 	BehaviourIntentType,
@@ -46,11 +50,18 @@ const MOVEMENT_FAILURE_MAX_RETRIES = 3
 const isWorkWaitReason = (reason: string): reason is WorkWaitReason =>
 	(Object.values(WorkWaitReason) as string[]).includes(reason)
 
+const EVENING_SOCIAL_GRACE_MIN_MS = 500
+const EVENING_SOCIAL_GRACE_MAX_MS = 18_000
+const NIGHT_REST_GRACE_MIN_MS = 500
+const NIGHT_REST_GRACE_MAX_MS = 12_000
+
 export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements SettlerWorkRuntimePort {
 	private registry = new ProviderRegistry()
 	private assignments = new AssignmentStore()
 	private providers: ProviderFactory
 	private logisticsProvider: LogisticsProvider
+	private socialProvider: SocialProvider
+	private nightRestProvider: NightRestProvider
 	private actionsManager: WorkProviderDeps['actions']
 	private productionTracker: ProductionTracker
 	private logisticsCoordinator: LogisticsCoordinator
@@ -63,6 +74,12 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 	private pendingWorkerRequests: Array<{ buildingInstanceId: string, requestedAtMs: number }> = []
 	private pendingIntents: BehaviourIntent[] = []
 	private movementFailureCounts = new Map<SettlerId, number>()
+	private currentDayPhase: DayPhase
+	private currentDayStamp: string
+	private temporarySocialAssignments = new Set<SettlerId>()
+	private temporaryNightRestAssignments = new Set<SettlerId>()
+	private pendingEveningSocialDispatchAt = new Map<SettlerId, number>()
+	private pendingNightRestDispatchAt = new Map<SettlerId, number>()
 
 	constructor(
 		managers: WorkProviderDeps,
@@ -70,6 +87,9 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 	) {
 		super(managers)
 		this.actionsManager = this.managers.actions
+		const time = this.managers.time.getCurrentTime()
+		this.currentDayPhase = getDayPhaseFromHour(time.hours)
+		this.currentDayStamp = this.buildDayStamp(time.day, time.month, time.year)
 
 		this.logisticsProvider = new LogisticsProvider(
 			this.managers,
@@ -77,6 +97,20 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 			() => this.simulationTimeMs
 		)
 		this.registry.register(this.logisticsProvider)
+
+		this.socialProvider = new SocialProvider(
+			this.managers,
+			() => this.simulationTimeMs,
+			() => this.currentDayPhase,
+			() => this.currentDayStamp
+		)
+		this.registry.register(this.socialProvider)
+
+		this.nightRestProvider = new NightRestProvider(
+			this.managers,
+			() => this.simulationTimeMs
+		)
+		this.registry.register(this.nightRestProvider)
 
 		this.providers = new ProviderFactory(this.managers, this.registry, this.logger, this.logisticsProvider)
 
@@ -138,6 +172,7 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		this.managers.event.on(BuildingsEvents.CS.SetStorageRequests, this.handleBuildingsCSSetStorageRequests)
 		this.managers.event.on(BuildingsEvents.SS.ConstructionCompleted, this.handleBuildingsSSConstructionCompleted)
 		this.managers.event.on(BuildingsEvents.SS.Removed, this.handleBuildingsSSRemoved)
+		this.managers.event.on<TimeDayPhaseSyncEventData>(TimeEvents.SS.DayPhaseSync, this.handleTimeSSDayPhaseSync)
 		this.managers.event.on(WorkProviderEvents.CS.SetLogisticsPriorities, this.handleWorkProviderCSSetLogisticsPriorities)
 		this.managers.event.on(WorkProviderEvents.SS.StepCompleted, this.handleWorkProviderSSStepCompleted)
 		this.managers.event.on(WorkProviderEvents.SS.StepFailed, this.handleWorkProviderSSStepFailed)
@@ -188,6 +223,10 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		this.logisticsCoordinator.markMapDirty(data.mapId)
 	}
 
+	private readonly handleTimeSSDayPhaseSync = (data: TimeDayPhaseSyncEventData): void => {
+		this.handleDayPhaseSync(data)
+	}
+
 	private readonly handleWorkProviderCSSetLogisticsPriorities = (data: { itemPriorities: string[] }): void => {
 		const priorities = Array.isArray(data?.itemPriorities) ? data.itemPriorities : []
 		this.logisticsProvider.setItemPriorities(priorities)
@@ -196,10 +235,16 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 	private readonly handleWorkProviderSSStepCompleted = (data: WorkStepCompletedEventData): void => {
 		this.logisticsCoordinator.handleStepEvent(data.step)
+		if (data.step.type === WorkStepType.SocialVisit) {
+			this.socialProvider.onSocialStepCompleted(data.settlerId)
+		}
 	}
 
 	private readonly handleWorkProviderSSStepFailed = (data: WorkStepFailedEventData): void => {
 		this.logisticsCoordinator.handleStepEvent(data.step)
+		if (data.step.type === WorkStepType.SocialVisit && data.reason === SettlerActionFailureReason.VenueFull) {
+			this.socialProvider.onVenueFull(data.settlerId, data.step.buildingInstanceId)
+		}
 	}
 
 	public onWorkQueueCompleted(settlerId: SettlerId, step?: WorkStep): void {
@@ -237,6 +282,14 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 	public refreshWorldDemand(data: SimulationTickData): void {
 		this.simulationTimeMs = data.nowMs
 
+		this.processEveningSocialDispatches()
+		this.processNightRestDispatches()
+		if (this.currentDayPhase !== 'evening') {
+			this.cleanupTemporarySocialAssignments()
+		}
+		if (this.currentDayPhase !== 'night') {
+			this.cleanupTemporaryNightRestAssignments()
+		}
 		this.migrateWarehouseAssignments()
 		this.processPendingWorkerRequests()
 		this.assignSiteClearingWorkers()
@@ -244,6 +297,274 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		this.constructionCoordinator.assignConstructionWorkers()
 		this.roadCoordinator.assignRoadWorkers()
 		this.prospectingCoordinator.assignProspectingWorkers()
+	}
+
+	private handleDayPhaseSync(data: TimeDayPhaseSyncEventData): void {
+		const previousPhase = this.currentDayPhase
+		const nextPhase = data.dayPhase
+		this.currentDayPhase = nextPhase
+
+		const nextDayStamp = this.buildDayStamp(data.time.day, data.time.month, data.time.year)
+		if (nextDayStamp !== this.currentDayStamp) {
+			this.currentDayStamp = nextDayStamp
+			this.socialProvider.resetDailyState()
+		}
+
+		if (previousPhase === nextPhase) {
+			return
+		}
+
+		if (nextPhase === 'evening') {
+			this.scheduleEveningSocialDispatches()
+			return
+		}
+
+		if (nextPhase === 'night') {
+			this.pendingEveningSocialDispatchAt.clear()
+			this.cleanupTemporarySocialAssignments()
+			this.scheduleNightRestDispatches()
+			return
+		}
+
+		if (previousPhase === 'evening') {
+			this.pendingEveningSocialDispatchAt.clear()
+			this.cleanupTemporarySocialAssignments()
+			this.dispatchAllSettlers(WorkDispatchReason.DayPhaseChanged)
+		}
+
+		if (previousPhase === 'night') {
+			this.pendingNightRestDispatchAt.clear()
+			this.cleanupTemporaryNightRestAssignments()
+			this.nightRestProvider.reset()
+			this.dispatchAllSettlers(WorkDispatchReason.DayPhaseChanged)
+		}
+
+		if (nextPhase === 'morning') {
+			this.socialProvider.resetDailyState()
+		}
+	}
+
+	private scheduleEveningSocialDispatches(): void {
+		this.pendingEveningSocialDispatchAt.clear()
+		for (const settler of this.managers.population.getSettlers()) {
+			this.pendingEveningSocialDispatchAt.set(
+				settler.id,
+				this.simulationTimeMs + this.getEveningSocialGraceMs(settler.id)
+			)
+		}
+	}
+
+	private processEveningSocialDispatches(): void {
+		if (this.currentDayPhase !== 'evening') {
+			this.pendingEveningSocialDispatchAt.clear()
+			return
+		}
+
+		for (const [settlerId, dispatchAtMs] of Array.from(this.pendingEveningSocialDispatchAt.entries())) {
+			if (dispatchAtMs > this.simulationTimeMs) {
+				continue
+			}
+
+			this.pendingEveningSocialDispatchAt.delete(settlerId)
+			if (!this.assignments.get(settlerId)) {
+				this.assignTemporarySocialAssignment(settlerId)
+			}
+			this.emitDispatchRequested(settlerId, WorkDispatchReason.DayPhaseChanged)
+		}
+	}
+
+	private scheduleNightRestDispatches(): void {
+		this.pendingNightRestDispatchAt.clear()
+		for (const settler of this.managers.population.getSettlers()) {
+			this.pendingNightRestDispatchAt.set(
+				settler.id,
+				this.simulationTimeMs + this.getNightRestGraceMs(settler.id)
+			)
+		}
+	}
+
+	private processNightRestDispatches(): void {
+		if (this.currentDayPhase !== 'night') {
+			this.pendingNightRestDispatchAt.clear()
+			return
+		}
+
+		for (const [settlerId, dispatchAtMs] of Array.from(this.pendingNightRestDispatchAt.entries())) {
+			if (dispatchAtMs > this.simulationTimeMs) {
+				continue
+			}
+
+			if (this.actionsManager.isBusy(settlerId)) {
+				continue
+			}
+
+			const assignment = this.assignments.get(settlerId)
+			this.pendingNightRestDispatchAt.delete(settlerId)
+			this.nightRestProvider.assign(settlerId)
+			this.nightRestProvider.setWakeAt(settlerId, this.getNightRestWakeAtMs())
+
+			if (!assignment) {
+				this.assignTemporaryNightRestAssignment(settlerId)
+			}
+
+			this.emitDispatchRequested(settlerId, WorkDispatchReason.DayPhaseChanged)
+		}
+	}
+
+	private isSettlerReadyForEveningSocial(settlerId: SettlerId): boolean {
+		const dispatchAtMs = this.pendingEveningSocialDispatchAt.get(settlerId)
+		if (dispatchAtMs === undefined) {
+			return true
+		}
+		if (dispatchAtMs > this.simulationTimeMs) {
+			return false
+		}
+		this.pendingEveningSocialDispatchAt.delete(settlerId)
+		return true
+	}
+
+	private isSettlerReadyForNightRest(settlerId: SettlerId): boolean {
+		const dispatchAtMs = this.pendingNightRestDispatchAt.get(settlerId)
+		if (dispatchAtMs === undefined) {
+			return true
+		}
+		if (dispatchAtMs > this.simulationTimeMs) {
+			return false
+		}
+		this.pendingNightRestDispatchAt.delete(settlerId)
+		return true
+	}
+
+	private getEveningSocialGraceMs(settlerId: SettlerId): number {
+		const range = Math.max(0, EVENING_SOCIAL_GRACE_MAX_MS - EVENING_SOCIAL_GRACE_MIN_MS)
+		if (range === 0) {
+			return EVENING_SOCIAL_GRACE_MIN_MS
+		}
+		const unit = this.hashToUnit(`${settlerId}:${this.currentDayStamp}:evening-social-grace`)
+		return EVENING_SOCIAL_GRACE_MIN_MS + Math.floor(unit * range)
+	}
+
+	private getNightRestGraceMs(settlerId: SettlerId): number {
+		const range = Math.max(0, NIGHT_REST_GRACE_MAX_MS - NIGHT_REST_GRACE_MIN_MS)
+		if (range === 0) {
+			return NIGHT_REST_GRACE_MIN_MS
+		}
+		const unit = this.hashToUnit(`${settlerId}:${this.currentDayStamp}:night-rest-grace`)
+		return NIGHT_REST_GRACE_MIN_MS + Math.floor(unit * range)
+	}
+
+	private getNightRestDurationMs(): number {
+		const time = this.managers.time.getCurrentTime()
+		const currentMinute = time.hours * 60 + time.minutes
+		const morningMinute = 6 * 60
+		const remainingMinutes = currentMinute < morningMinute
+			? morningMinute - currentMinute
+			: (24 * 60 - currentMinute) + morningMinute
+		const minuteSpeedMs = Math.max(100, this.managers.time.getTimeSpeed())
+		return Math.max(1_000, remainingMinutes * minuteSpeedMs)
+	}
+
+	private getNightRestWakeAtMs(): number {
+		return this.simulationTimeMs + this.getNightRestDurationMs()
+	}
+
+	private hashToUnit(seed: string): number {
+		let hash = 2166136261
+		for (let i = 0; i < seed.length; i += 1) {
+			hash ^= seed.charCodeAt(i)
+			hash = Math.imul(hash, 16777619)
+		}
+		const normalized = (hash >>> 0) / 4294967295
+		return Number.isFinite(normalized) ? normalized : 0
+	}
+
+	private assignTemporarySocialAssignment(settlerId: SettlerId): void {
+		if (this.assignments.get(settlerId)) {
+			return
+		}
+
+		const assignment: WorkAssignment = {
+			assignmentId: uuidv4(),
+			settlerId,
+			providerId: this.socialProvider.id,
+			providerType: WorkProviderType.Social,
+			assignedAt: this.simulationTimeMs,
+			status: WorkAssignmentStatus.Assigned
+		}
+
+		this.assignments.set(assignment)
+		this.socialProvider.assign(settlerId)
+		this.temporarySocialAssignments.add(settlerId)
+
+		this.managers.population.setSettlerAssignment(settlerId, assignment.assignmentId, assignment.providerId, undefined)
+		if (!this.actionsManager.isBusy(settlerId)) {
+			this.managers.population.setSettlerState(settlerId, SettlerState.Assigned)
+		}
+		this.managers.event.emit(Receiver.All, WorkProviderEvents.SS.AssignmentCreated, { assignment })
+	}
+
+	private cleanupTemporarySocialAssignments(): void {
+		for (const settlerId of Array.from(this.temporarySocialAssignments)) {
+			const assignment = this.assignments.get(settlerId)
+			if (!assignment || assignment.providerType !== WorkProviderType.Social) {
+				this.temporarySocialAssignments.delete(settlerId)
+				continue
+			}
+			if (this.actionsManager.isBusy(settlerId)) {
+				continue
+			}
+			this.unassignWorker({ settlerId })
+		}
+	}
+
+	private assignTemporaryNightRestAssignment(settlerId: SettlerId): void {
+		if (this.assignments.get(settlerId)) {
+			return
+		}
+
+		const assignment: WorkAssignment = {
+			assignmentId: uuidv4(),
+			settlerId,
+			providerId: this.nightRestProvider.id,
+			providerType: WorkProviderType.NightRest,
+			assignedAt: this.simulationTimeMs,
+			status: WorkAssignmentStatus.Assigned
+		}
+
+		this.assignments.set(assignment)
+		this.nightRestProvider.assign(settlerId)
+		this.temporaryNightRestAssignments.add(settlerId)
+
+		this.managers.population.setSettlerAssignment(settlerId, assignment.assignmentId, assignment.providerId, undefined)
+		if (!this.actionsManager.isBusy(settlerId)) {
+			this.managers.population.setSettlerState(settlerId, SettlerState.Assigned)
+		}
+		this.managers.event.emit(Receiver.All, WorkProviderEvents.SS.AssignmentCreated, { assignment })
+	}
+
+	private cleanupTemporaryNightRestAssignments(): void {
+		for (const settlerId of Array.from(this.temporaryNightRestAssignments)) {
+			const assignment = this.assignments.get(settlerId)
+			if (!assignment || assignment.providerType !== WorkProviderType.NightRest) {
+				this.temporaryNightRestAssignments.delete(settlerId)
+				this.nightRestProvider.unassign(settlerId)
+				continue
+			}
+			if (this.actionsManager.isBusy(settlerId)) {
+				continue
+			}
+			this.unassignWorker({ settlerId })
+		}
+	}
+
+	private dispatchAllSettlers(reason: WorkDispatchReason): void {
+		for (const settler of this.managers.population.getSettlers()) {
+			this.emitDispatchRequested(settler.id, reason)
+		}
+	}
+
+	private buildDayStamp(day: number, month: number, year: number): string {
+		return `${year}-${month}-${day}`
 	}
 
 	/* METHODS */
@@ -269,6 +590,11 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 	}
 
 	private handleSettlerDied(data: { settlerId: string }): void {
+		this.pendingEveningSocialDispatchAt.delete(data.settlerId)
+		this.pendingNightRestDispatchAt.delete(data.settlerId)
+		this.temporarySocialAssignments.delete(data.settlerId)
+		this.temporaryNightRestAssignments.delete(data.settlerId)
+		this.nightRestProvider.unassign(data.settlerId)
 		this.unassignWorker({ settlerId: data.settlerId })
 		this.managers.buildings.clearSiteClearingWorkerForSettler(data.settlerId)
 	}
@@ -611,6 +937,12 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 			return
 		}
 		this.clearMovementFailureState(data.settlerId)
+		if (assignment.providerType === WorkProviderType.Social) {
+			this.temporarySocialAssignments.delete(data.settlerId)
+		}
+		if (assignment.providerType === WorkProviderType.NightRest) {
+			this.temporaryNightRestAssignments.delete(data.settlerId)
+		}
 
 		const exitActions = this.buildExitActions(assignment, data.settlerId) ?? []
 		const exitFallback = exitActions.length > 0 ? exitActions : null
@@ -660,6 +992,12 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 	private resolveProviderForAssignment(assignment: WorkAssignment): WorkProvider | undefined {
 		if (assignment.providerType === WorkProviderType.Logistics) {
 			return this.logisticsProvider
+		}
+		if (assignment.providerType === WorkProviderType.Social) {
+			return this.socialProvider
+		}
+		if (assignment.providerType === WorkProviderType.NightRest) {
+			return this.nightRestProvider
 		}
 		if (assignment.providerType === WorkProviderType.Construction && assignment.buildingInstanceId) {
 			return this.providers.getConstruction(assignment.buildingInstanceId) ?? undefined
@@ -756,6 +1094,37 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 
 	public getNowMs(): number {
 		return this.simulationTimeMs
+	}
+
+	public requestNextStep(settlerId: SettlerId, assignment: WorkAssignment, provider: WorkProvider): WorkStep | null {
+		if (assignment.providerType === WorkProviderType.NightRest) {
+			if (this.currentDayPhase !== 'night') {
+				return null
+			}
+			return this.nightRestProvider.requestNextStep(settlerId)
+		}
+
+		if (this.currentDayPhase === 'night') {
+			if (!this.isSettlerReadyForNightRest(settlerId)) {
+				return null
+			}
+			this.nightRestProvider.assign(settlerId)
+			this.nightRestProvider.setWakeAt(settlerId, this.getNightRestWakeAtMs())
+			return this.nightRestProvider.requestNextStep(settlerId)
+		}
+
+		if (assignment.providerType === WorkProviderType.Social) {
+			return this.socialProvider.requestNextStep(settlerId)
+		}
+
+		if (this.currentDayPhase === 'evening' && this.isSettlerReadyForEveningSocial(settlerId)) {
+			const socialStep = this.socialProvider.requestNextStep(settlerId)
+			if (socialStep?.type === WorkStepType.SocialVisit) {
+				return socialStep
+			}
+		}
+
+		return provider.requestNextStep(settlerId)
 	}
 
 	public buildActionsForStep(
@@ -1021,6 +1390,15 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		this.constructionCoordinator.deserializeLastAssignAt(state.lastConstructionAssignAt)
 		this.pausedContexts = new Map(state.pausedContexts)
 		this.simulationTimeMs = this.managers.simulation.getSimulationTimeMs()
+		const time = this.managers.time.getCurrentTime()
+		this.currentDayPhase = getDayPhaseFromHour(time.hours)
+		this.currentDayStamp = this.buildDayStamp(time.day, time.month, time.year)
+		this.temporarySocialAssignments.clear()
+		this.temporaryNightRestAssignments.clear()
+		this.pendingEveningSocialDispatchAt.clear()
+		this.pendingNightRestDispatchAt.clear()
+		this.socialProvider.reset()
+		this.nightRestProvider.reset()
 
 		this.assignments.deserialize(state.assignments, state.assignmentsByBuilding)
 		this.pendingWorkerRequests = (state.pendingWorkerRequests || []).map(request => ({ ...request }))
@@ -1052,12 +1430,29 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 				continue
 			}
 
+			if (assignment.providerType === WorkProviderType.Social) {
+				this.socialProvider.assign(assignment.settlerId)
+				this.temporarySocialAssignments.add(assignment.settlerId)
+				continue
+			}
+
+			if (assignment.providerType === WorkProviderType.NightRest) {
+				this.nightRestProvider.assign(assignment.settlerId)
+				this.temporaryNightRestAssignments.add(assignment.settlerId)
+				continue
+			}
+
 			if (assignment.buildingInstanceId) {
 				this.providers.getBuilding(assignment.buildingInstanceId)?.assign(assignment.settlerId)
 			}
 		}
 
 		this.logisticsProvider.deserialize(state.logistics)
+		if (this.currentDayPhase === 'evening') {
+			this.scheduleEveningSocialDispatches()
+		} else if (this.currentDayPhase === 'night') {
+			this.scheduleNightRestDispatches()
+		}
 	}
 
 	public resumeAfterDeserialize(): void {
@@ -1066,6 +1461,9 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 				continue
 			}
 			if (this.pausedContexts.has(assignment.settlerId)) {
+				continue
+			}
+			if (assignment.providerType === WorkProviderType.NightRest && this.currentDayPhase !== 'night') {
 				continue
 			}
 			this.emitDispatchRequested(assignment.settlerId, WorkDispatchReason.ResumeAfterDeserialize)
@@ -1081,8 +1479,17 @@ export class SettlerWorkManager extends BaseManager<WorkProviderDeps> implements
 		this.pendingWorkerRequests = []
 		this.pendingIntents = []
 		this.movementFailureCounts.clear()
+		this.temporarySocialAssignments.clear()
+		this.temporaryNightRestAssignments.clear()
+		this.pendingEveningSocialDispatchAt.clear()
+		this.pendingNightRestDispatchAt.clear()
 		this.simulationTimeMs = 0
+		const time = this.managers.time.getCurrentTime()
+		this.currentDayPhase = getDayPhaseFromHour(time.hours)
+		this.currentDayStamp = this.buildDayStamp(time.day, time.month, time.year)
 		this.logisticsProvider.reset()
+		this.socialProvider.reset()
+		this.nightRestProvider.reset()
 	}
 }
 

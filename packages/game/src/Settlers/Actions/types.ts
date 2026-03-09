@@ -33,7 +33,8 @@ export enum SettlerActionType {
 	ChangeHome = 'change_home',
 	Consume = 'consume',
 	Sleep = 'sleep',
-	ProspectNode = 'prospect_node'
+	ProspectNode = 'prospect_node',
+	Socialize = 'socialize'
 }
 
 export type SettlerAction = (
@@ -54,8 +55,19 @@ export type SettlerAction = (
 	| { type: SettlerActionType.ChangeProfession, profession: ProfessionType, setState?: SettlerState }
 	| { type: SettlerActionType.ChangeHome, reservationId: ReservationId, houseId: BuildingInstanceId, setState?: SettlerState }
 	| { type: SettlerActionType.Consume, itemType?: ItemType, quantity?: number, durationMs: number, setState?: SettlerState }
-	| { type: SettlerActionType.Sleep, durationMs: number, setState?: SettlerState }
+	| { type: SettlerActionType.Sleep, durationMs: number, insideBuildingId?: BuildingInstanceId, setState?: SettlerState }
 	| { type: SettlerActionType.ProspectNode, nodeId: ResourceNodeId, setState?: SettlerState }
+		| {
+			type: SettlerActionType.Socialize
+			buildingInstanceId: BuildingInstanceId
+			durationMs: number
+			mode?: 'outside' | 'inside'
+			occupancySlot?: {
+				reservationId: ReservationId
+				position: Position
+			}
+		setState?: SettlerState
+	}
 ) & {
 	reservationRefs?: ReservationRef[]
 }

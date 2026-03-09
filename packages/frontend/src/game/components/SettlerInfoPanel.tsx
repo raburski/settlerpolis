@@ -7,6 +7,31 @@ import { DraggablePanel } from './DraggablePanel'
 import sharedStyles from './PanelShared.module.css'
 import { UiEvents } from '../uiEvents'
 
+const socialVenueTypes = ['entertainment', 'worship', 'culture_science', 'civic'] as const
+type SocialVenueType = (typeof socialVenueTypes)[number]
+
+const socialVenueLabels: Record<SocialVenueType, string> = {
+	entertainment: 'Entertainment',
+	worship: 'Worship',
+	culture_science: 'Culture/Science',
+	civic: 'Civic'
+}
+
+const hashToUnit = (seed: string): number => {
+	let hash = 2166136261
+	for (let i = 0; i < seed.length; i += 1) {
+		hash ^= seed.charCodeAt(i)
+		hash = Math.imul(hash, 16777619)
+	}
+	const normalized = (hash >>> 0) / 4294967295
+	return Number.isFinite(normalized) ? normalized : 0
+}
+
+const getSocialPreferenceWeight = (settlerId: string, venueType: SocialVenueType): number => {
+	const unit = hashToUnit(`${settlerId}:pref:${venueType}`)
+	return 0.35 + unit * 0.65
+}
+
 export const SettlerInfoPanel: React.FC = () => {
 	const [isVisible, setIsVisible] = useState(false)
 	const [settler, setSettler] = useState<Settler | null>(null)
@@ -175,6 +200,13 @@ export const SettlerInfoPanel: React.FC = () => {
 	const assignedBuilding = settler.buildingId ? buildingService.getBuildingInstance(settler.buildingId) : undefined
 	const assignedBuildingDef = assignedBuilding ? buildingService.getBuildingDefinition(assignedBuilding.buildingId) : undefined
 	const needs = settler.needs
+	const socialPreferences = socialVenueTypes
+		.map((venueType) => ({
+			venueType,
+			label: socialVenueLabels[venueType],
+			value: Math.round(getSocialPreferenceWeight(settler.id, venueType) * 100)
+		}))
+		.sort((a, b) => b.value - a.value)
 
 	return (
 		<DraggablePanel
@@ -303,6 +335,13 @@ export const SettlerInfoPanel: React.FC = () => {
 						{Math.round(settler.position.x)}, {Math.round(settler.position.y)}
 					</span>
 				</div>
+
+				{socialPreferences.map((pref) => (
+					<div className={sharedStyles.infoRow} key={pref.venueType}>
+						<span className={sharedStyles.label}>Pref {pref.label}:</span>
+						<span className={sharedStyles.value}>{pref.value}%</span>
+					</div>
+				))}
 			</div>
 
 			{settler.state === SettlerState.Working && (
