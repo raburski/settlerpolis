@@ -7,7 +7,7 @@ import type { SettlerAction } from '../../Actions/types'
 import { SettlerActionType } from '../../Actions/types'
 import { MoveTargetType } from '../../../Movement/types'
 import { SettlerState } from '../../../Population/types'
-import { ReservationKind, type AmenitySlotReservationResult } from '../../../Reservation'
+import { ReservationKind, type OccupancySlotReservationResult } from '../../../Reservation'
 
 const EAT_DURATION_MS = 2500
 
@@ -50,21 +50,31 @@ export class HungerNeedPlanHandler implements NeedPlanHandler {
 				return { reason: NeedPlanningFailureReason.FoodUnavailable }
 			}
 
-			let amenityReservation: AmenitySlotReservationResult | null = null
-			if (buildingDef?.amenitySlots && buildingDef.amenitySlots.count > 0) {
-				const amenity = this.managers.reservations.reserve({
-					kind: ReservationKind.Amenity,
+			let occupancyReservation: OccupancySlotReservationResult | null = null
+			const buildingOccupancy = buildingDef?.occupancy
+			const hasAnyOccupancy = Boolean(
+				buildingOccupancy
+				&& (
+					(buildingOccupancy.totalCapacity ?? 0) > 0
+					|| (buildingOccupancy.insideCapacity ?? 0) > 0
+					|| (buildingOccupancy.outsideSlots?.count ?? 0) > 0
+				)
+			)
+			if (hasAnyOccupancy) {
+				const occupancy = this.managers.reservations.reserve({
+					kind: ReservationKind.Occupancy,
 					buildingInstanceId: building.id,
 					settlerId
 				})
-				if (!amenity || amenity.kind !== ReservationKind.Amenity) {
+				if (!occupancy || occupancy.kind !== ReservationKind.Occupancy) {
 					this.managers.reservations.release(reservation.ref)
-					return { reason: NeedPlanningFailureReason.AmenityFull }
+					return { reason: NeedPlanningFailureReason.OccupancyFull }
 				}
-				amenityReservation = {
-					reservationId: amenity.reservationId,
-					slotIndex: amenity.slotIndex,
-					position: amenity.position
+				occupancyReservation = {
+					reservationId: occupancy.reservationId,
+					mode: occupancy.mode,
+					slotIndex: occupancy.slotIndex,
+					position: occupancy.position
 				}
 			}
 
@@ -87,13 +97,13 @@ export class HungerNeedPlanHandler implements NeedPlanHandler {
 				}
 			)
 
-			if (amenityReservation) {
+			if (occupancyReservation) {
 				actions.push({
 					type: SettlerActionType.Move,
-					position: amenityReservation.position,
-					targetType: MoveTargetType.AmenitySlot,
-					targetId: amenityReservation.reservationId,
-					reservationRefs: [{ kind: ReservationKind.Amenity, reservationId: amenityReservation.reservationId }],
+					position: occupancyReservation.position,
+					targetType: MoveTargetType.OccupancySlot,
+					targetId: occupancyReservation.reservationId,
+					reservationRefs: [{ kind: ReservationKind.Occupancy, reservationId: occupancyReservation.reservationId }],
 					setState: SettlerState.CarryingItem
 				})
 			}
