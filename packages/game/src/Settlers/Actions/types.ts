@@ -55,7 +55,7 @@ export type SettlerAction = (
 	| { type: SettlerActionType.ChangeProfession, profession: ProfessionType, setState?: SettlerState }
 	| { type: SettlerActionType.ChangeHome, reservationId: ReservationId, houseId: BuildingInstanceId, setState?: SettlerState }
 	| { type: SettlerActionType.Consume, itemType?: ItemType, quantity?: number, durationMs: number, setState?: SettlerState }
-	| { type: SettlerActionType.Sleep, durationMs: number, setState?: SettlerState }
+	| { type: SettlerActionType.Sleep, durationMs: number, insideBuildingId?: BuildingInstanceId, setState?: SettlerState }
 	| { type: SettlerActionType.ProspectNode, nodeId: ResourceNodeId, setState?: SettlerState }
 		| {
 			type: SettlerActionType.Socialize

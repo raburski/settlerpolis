@@ -327,7 +327,7 @@ export class PopulationManager extends BaseManager<PopulationDeps> {
 		if (!settler.needs) {
 			return false
 		}
-		return settler.needs.hunger <= NEED_CRITICAL_THRESHOLD || settler.needs.fatigue <= NEED_CRITICAL_THRESHOLD
+		return settler.needs.fatigue <= NEED_CRITICAL_THRESHOLD
 	}
 
 	private emitSettlerPatched(settler: Settler, patch: SettlerPatch): void {

@@ -11,6 +11,7 @@ import { BuildRoadHandler } from './buildRoad'
 import { TransportHandler } from './transport'
 import { MarketRunHandler } from './marketRun'
 import { SocialVisitHandler } from './socialVisit'
+import { NightRestHandler } from './nightRest'
 import { WaitHandler } from './wait'
 import { ProspectHandler } from './prospect'
 import { StepAwayHandler } from './stepAway'
@@ -27,6 +28,7 @@ export const StepHandlers: Record<WorkStepType, StepHandler> = {
 	[WorkStepType.Transport]: TransportHandler,
 	[WorkStepType.MarketRun]: MarketRunHandler,
 	[WorkStepType.SocialVisit]: SocialVisitHandler,
+	[WorkStepType.NightRest]: NightRestHandler,
 	[WorkStepType.Prospect]: ProspectHandler,
 	[WorkStepType.Wait]: WaitHandler,
 	[WorkStepType.StepAway]: StepAwayHandler
