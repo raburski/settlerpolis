@@ -208,6 +208,7 @@ const SHADOW_NORMAL_BIAS = 0.02
 const SHADOW_FRUSTUM_EDGE_FALLOFF = 0.12
 const ENVIRONMENT_SHADOW_BAKE_DEBOUNCE_MS = 80
 const ENVIRONMENT_SHADOW_BAKE_SETTLE_MS = 120
+const ENVIRONMENT_SHADOW_BAKE_MIN_INTERVAL_MS = 700
 const SELECTION_OCTREE_MIN_MESHES = 512
 const SELECTION_OCTREE_CAPACITY = 64
 const SELECTION_OCTREE_MAX_DEPTH = 3
@@ -274,6 +275,7 @@ export class BabylonRenderer {
 	private readonly environmentShadowsBaked = true
 	private shadowBakeDebounceTimer: number | null = null
 	private shadowBakeFreezeTimer: number | null = null
+	private lastEnvironmentShadowBakeAt = 0
 	private sunTarget: Vector3 = new Vector3(0, 0, 0)
 	private readonly worldGroundPlane = Plane.FromPositionAndNormal(Vector3.Zero(), Vector3.Up())
 	private ground: Mesh | null = null
@@ -745,19 +747,21 @@ export class BabylonRenderer {
 
 	private requestEnvironmentShadowBake(): void {
 		if (!this.shadowGenerator || !this.environmentShadowsBaked) return
-		if (this.shadowBakeDebounceTimer !== null) {
-			window.clearTimeout(this.shadowBakeDebounceTimer)
-		}
+		if (this.shadowBakeDebounceTimer !== null) return
+		const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+		const cooldownRemaining = Math.max(0, ENVIRONMENT_SHADOW_BAKE_MIN_INTERVAL_MS - (now - this.lastEnvironmentShadowBakeAt))
+		const delayMs = Math.max(ENVIRONMENT_SHADOW_BAKE_DEBOUNCE_MS, cooldownRemaining)
 		this.shadowBakeDebounceTimer = window.setTimeout(() => {
 			this.shadowBakeDebounceTimer = null
 			this.rebakeEnvironmentShadows()
-		}, ENVIRONMENT_SHADOW_BAKE_DEBOUNCE_MS)
+		}, delayMs)
 	}
 
 	private rebakeEnvironmentShadows(): void {
 		if (!this.shadowGenerator || !this.environmentShadowsBaked) return
 		const shadowMap = this.shadowGenerator.getShadowMap()
 		if (!shadowMap) return
+		this.lastEnvironmentShadowBakeAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
 		shadowMap.refreshRate = 1
 		if (this.shadowBakeFreezeTimer !== null) {
 			window.clearTimeout(this.shadowBakeFreezeTimer)

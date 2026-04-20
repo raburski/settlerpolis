@@ -81,7 +81,9 @@ export class InputManager {
 		const rect = this.canvas.getBoundingClientRect()
 		this.pointer.x = event.clientX - rect.left
 		this.pointer.y = event.clientY - rect.top
-		this.pointer.world = this.renderer.screenToWorld(this.pointer.x, this.pointer.y)
+		// During camera drag we use a cheap ray-plane projection to avoid frequent scene picking.
+		const useGroundPick = !(this.pointer.isDown || this.pointer.isDragging)
+		this.pointer.world = this.renderer.screenToWorld(this.pointer.x, this.pointer.y, { useGroundPick })
 	}
 
 	private handlePointerMove = (event: PointerEvent) => {
