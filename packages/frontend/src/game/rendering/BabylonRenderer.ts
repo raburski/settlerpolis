@@ -784,6 +784,10 @@ export class BabylonRenderer {
 	private shouldCastShadow(mesh: AbstractMesh): boolean {
 		if (mesh === this.ground || mesh === this.waterMesh) return false
 		if (mesh.getTotalVertices() <= 0) return false
+		const batchKey = (mesh.metadata as { resourceNodeBatchKey?: string } | undefined)?.resourceNodeBatchKey
+		if (typeof batchKey === 'string' && batchKey.length > 0) {
+			return true
+		}
 		const name = (mesh.name || '').toLowerCase()
 		if (
 			name.includes('shadow-receiver') ||

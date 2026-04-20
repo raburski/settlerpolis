@@ -632,7 +632,6 @@ export class ResourceNodeBatcher {
 				return null
 			}
 
-			container.addAllToScene()
 			const root = new TransformNode(`resource-node-root-${batchKey}`, scene)
 			const pivot = new TransformNode(`resource-node-pivot-${batchKey}`, scene)
 			pivot.parent = root
@@ -666,6 +665,10 @@ export class ResourceNodeBatcher {
 				this.scheduleModelRetry(modelSrc)
 				return null
 			}
+			meshes.forEach((mesh) => {
+				mesh.metadata = { ...(mesh.metadata || {}), resourceNodeBatchKey: batchKey }
+			})
+			container.addAllToScene()
 			const isPickable = this.pickableBatchKeys.has(batchKey)
 			meshes.forEach((mesh) => {
 				mesh.computeWorldMatrix(true)
@@ -681,7 +684,6 @@ export class ResourceNodeBatcher {
 				mesh.visibility = 1
 				mesh.thinInstanceEnablePicking = isPickable
 				mesh.alwaysSelectAsActiveMesh = true
-				mesh.metadata = { ...(mesh.metadata || {}), resourceNodeBatchKey: batchKey }
 				this.meshToBatchKey.set(mesh.uniqueId, batchKey)
 				mesh.refreshBoundingInfo()
 				mesh.computeWorldMatrix(true)
