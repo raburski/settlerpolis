@@ -66,6 +66,7 @@ export abstract class GameScene extends MapScene {
 	private cameraPanVelocity = { x: 0, y: 0 }
 	private resourceNodeBatcher: ResourceNodeBatcher | null = null
 	private resourceNodesDirty = false
+	private lastResourceChunkWindow: string | null = null
 	private lastResourceCullCenter: { x: number; y: number } | null = null
 	private lastResourceCullSize: { width: number; height: number } | null = null
 	private resourceNodeStreamTimer = 0
@@ -84,8 +85,10 @@ export abstract class GameScene extends MapScene {
 	private readonly resourceNodeChunkPadding = 1
 	private readonly resourceNodeStreamingAdditive = true
 	private readonly resourceNodeDisableCulling = false
-	private readonly resourceNodeStreamIntervalMovingMs = 320
+	private readonly resourceNodeStreamIntervalMovingMs = 420
 	private readonly resourceNodeStreamIntervalIdleMs = 550
+	private deferredShadowRebakeAfterBatch = false
+	private deferredShadowRebakeNow = false
 	private pendingMapObjectIds: string[] = []
 	private pendingMapObjectCursor = 0
 	private pendingMapObjects: Map<string, any> = new Map()
@@ -238,6 +241,7 @@ export abstract class GameScene extends MapScene {
 		this.updateCameraRotationFromKeyboard()
 		this.updateCameraZoomFromKeyboard()
 		this.updateCameraHomeFromKeyboard()
+		this.flushDeferredShadowRebakes()
 		this.keyboard?.update()
 		this.portalManager?.update()
 		this.updateResourceNodeStreaming(deltaMs)
@@ -554,8 +558,6 @@ export abstract class GameScene extends MapScene {
 		const viewSize = { width: maxX - minX, height: maxY - minY }
 		const cadenceMovementThreshold = tileSize * 0.2
 		const cadenceZoomThreshold = tileSize * 0.2
-		const movementThreshold = tileSize * 0.75
-		const zoomThreshold = tileSize * 0.5
 		const lastCenter = this.lastResourceCullCenter
 		const lastSize = this.lastResourceCullSize
 		const hasMotion = lastCenter
@@ -571,22 +573,6 @@ export abstract class GameScene extends MapScene {
 			this.resourceNodesDirty || hasPendingChunkWork || hasMotion || hasZoomMotion
 				? this.resourceNodeStreamIntervalMovingMs
 				: this.resourceNodeStreamIntervalIdleMs
-		const movedEnough = lastCenter
-			? Math.hypot(center.x - lastCenter.x, center.y - lastCenter.y) >= movementThreshold
-			: true
-		const zoomChangedEnough = lastSize
-			? Math.abs(viewSize.width - lastSize.width) >= zoomThreshold ||
-				Math.abs(viewSize.height - lastSize.height) >= zoomThreshold
-			: true
-		const shouldRefreshView = this.resourceNodesDirty || movedEnough || zoomChangedEnough
-
-		if (!shouldRefreshView) {
-			this.flushResourceNodeChunkQueries(this.resourceNodeDesiredChunks)
-			return
-		}
-
-		this.lastResourceCullCenter = center
-		this.lastResourceCullSize = viewSize
 
 		const minTileX = Math.floor(minX / tileSize)
 		const maxTileX = Math.ceil(maxX / tileSize)
@@ -598,6 +584,17 @@ export abstract class GameScene extends MapScene {
 		const maxChunkX = Math.floor(maxTileX / chunkSize) + this.resourceNodeChunkPadding
 		const minChunkY = Math.floor(minTileY / chunkSize) - this.resourceNodeChunkPadding
 		const maxChunkY = Math.floor(maxTileY / chunkSize) + this.resourceNodeChunkPadding
+		const nextChunkWindow = `${minChunkX}:${maxChunkX}:${minChunkY}:${maxChunkY}`
+		const chunkWindowChanged = this.lastResourceChunkWindow !== nextChunkWindow
+
+		if (!this.resourceNodesDirty && !chunkWindowChanged) {
+			this.flushResourceNodeChunkQueries(this.resourceNodeDesiredChunks)
+			return
+		}
+
+		this.lastResourceChunkWindow = nextChunkWindow
+		this.lastResourceCullCenter = center
+		this.lastResourceCullSize = viewSize
 
 		if (this.resourceNodeDisableCulling) {
 			this.resourceNodeBatcher.updateAll()
@@ -654,8 +651,8 @@ export abstract class GameScene extends MapScene {
 
 	private flushResourceNodeChunkQueries(desired: Set<string>): void {
 		let sent = 0
-		const cameraSpeed = Math.hypot(this.cameraPanVelocity.x, this.cameraPanVelocity.y)
-		const maxPerTick = cameraSpeed > 1 ? 2 : 4
+		const cameraSpeed = this.getCameraSpeed()
+		const maxPerTick = cameraSpeed > 0.5 ? 1 : 3
 		while (sent < maxPerTick && this.resourceNodeChunkQueueCursor < this.resourceNodeChunkQueue.length) {
 			const key = this.resourceNodeChunkQueue[this.resourceNodeChunkQueueCursor]
 			this.resourceNodeChunkQueueCursor += 1
@@ -693,9 +690,9 @@ export abstract class GameScene extends MapScene {
 	private processPendingMapObjects(): void {
 		if (this.pendingMapObjects.size === 0) return
 		const start = performance.now()
-		const cameraSpeed = Math.hypot(this.cameraPanVelocity.x, this.cameraPanVelocity.y)
-		const maxDurationMs = cameraSpeed > 1 ? 3 : 6
-		const maxPerFrame = cameraSpeed > 1 ? 64 : 200
+		const cameraSpeed = this.getCameraSpeed()
+		const maxDurationMs = cameraSpeed > 0.5 ? 2 : 6
+		const maxPerFrame = cameraSpeed > 0.5 ? 24 : 200
 		let processed = 0
 		let shouldRebakeShadowsNow = false
 		let shouldRebakeShadowsAfterBatch = false
@@ -739,10 +736,35 @@ export abstract class GameScene extends MapScene {
 			console.info(`[Perf] map-objects pending=${this.pendingMapObjects.size}`)
 		}
 		if (shouldRebakeShadowsAfterBatch) {
-			this.resourceNodeBatcher?.requestShadowRebake()
+			if (cameraSpeed > 0.35) {
+				this.deferredShadowRebakeAfterBatch = true
+			} else {
+				this.resourceNodeBatcher?.requestShadowRebake()
+			}
 		}
 		if (shouldRebakeShadowsNow) {
+			if (cameraSpeed > 0.35) {
+				this.deferredShadowRebakeNow = true
+			} else {
+				this.runtime.renderer.rebakeEnvironmentShadowsSoon()
+			}
+		}
+	}
+
+	private getCameraSpeed(): number {
+		return Math.hypot(this.cameraPanVelocity.x, this.cameraPanVelocity.y)
+	}
+
+	private flushDeferredShadowRebakes(): void {
+		if (!this.deferredShadowRebakeAfterBatch && !this.deferredShadowRebakeNow) return
+		if (this.getCameraSpeed() > 0.35) return
+		if (this.deferredShadowRebakeAfterBatch) {
+			this.resourceNodeBatcher?.requestShadowRebake()
+			this.deferredShadowRebakeAfterBatch = false
+		}
+		if (this.deferredShadowRebakeNow) {
 			this.runtime.renderer.rebakeEnvironmentShadowsSoon()
+			this.deferredShadowRebakeNow = false
 		}
 	}
 
@@ -1269,6 +1291,7 @@ export abstract class GameScene extends MapScene {
 		this.resourceNodeBatcher?.dispose()
 		this.resourceNodeBatcher = null
 		this.resourceNodesDirty = false
+		this.lastResourceChunkWindow = null
 		this.lastResourceCullCenter = null
 		this.lastResourceCullSize = null
 		this.resourceNodeStreamTimer = 0
@@ -1284,6 +1307,8 @@ export abstract class GameScene extends MapScene {
 		this.pendingMapObjectIds = []
 		this.pendingMapObjectCursor = 0
 		this.pendingMapObjects.clear()
+		this.deferredShadowRebakeAfterBatch = false
+		this.deferredShadowRebakeNow = false
 		this.flushMapObjectSpawnStats(true)
 
 		EventBus.off(Event.Players.SC.Joined, this.handlePlayerJoined)
