@@ -71,6 +71,7 @@ export abstract class GameScene extends MapScene {
 	private resourceNodeStreamTimer = 0
 	private resourceNodeStreamIntervalMs = 250
 	private resourceNodeChunkQueue: string[] = []
+	private resourceNodeChunkQueueCursor = 0
 	private resourceNodeChunkRequests: Set<string> = new Set()
 	private resourceNodeLoadedChunks: Set<string> = new Set()
 	private resourceNodeDesiredChunks: Set<string> = new Set()
@@ -83,9 +84,10 @@ export abstract class GameScene extends MapScene {
 	private readonly resourceNodeChunkPadding = 1
 	private readonly resourceNodeStreamingAdditive = true
 	private readonly resourceNodeDisableCulling = false
-	private readonly resourceNodeStreamIntervalMovingMs = 250
+	private readonly resourceNodeStreamIntervalMovingMs = 320
 	private readonly resourceNodeStreamIntervalIdleMs = 550
 	private pendingMapObjectIds: string[] = []
+	private pendingMapObjectCursor = 0
 	private pendingMapObjects: Map<string, any> = new Map()
 	private mapObjectSpawnCount = 0
 	private mapObjectSpawnTimeMs = 0
@@ -488,11 +490,7 @@ export abstract class GameScene extends MapScene {
 				}
 			}
 		}
-		const id = obj.id
-		if (!this.pendingMapObjects.has(id)) {
-			this.pendingMapObjectIds.push(id)
-		}
-		this.pendingMapObjects.set(id, obj)
+		this.enqueuePendingMapObject(obj)
 	}
 
 	private handleMapObjectDespawn = (data: { objectId: string }) => {
@@ -567,7 +565,8 @@ export abstract class GameScene extends MapScene {
 			? Math.abs(viewSize.width - lastSize.width) >= cadenceZoomThreshold ||
 				Math.abs(viewSize.height - lastSize.height) >= cadenceZoomThreshold
 			: true
-		const hasPendingChunkWork = this.resourceNodeChunkQueue.length > 0 || this.resourceNodeChunkRequests.size > 0
+		const hasPendingChunkWork =
+			this.resourceNodeChunkQueueCursor < this.resourceNodeChunkQueue.length || this.resourceNodeChunkRequests.size > 0
 		this.resourceNodeStreamIntervalMs =
 			this.resourceNodesDirty || hasPendingChunkWork || hasMotion || hasZoomMotion
 				? this.resourceNodeStreamIntervalMovingMs
@@ -637,7 +636,10 @@ export abstract class GameScene extends MapScene {
 		}
 
 		if (this.resourceNodeChunkQueue.length > 0) {
-			this.resourceNodeChunkQueue = this.resourceNodeChunkQueue.filter((key) => desired.has(key))
+			this.resourceNodeChunkQueue = this.resourceNodeChunkQueue
+				.slice(this.resourceNodeChunkQueueCursor)
+				.filter((key) => desired.has(key))
+			this.resourceNodeChunkQueueCursor = 0
 		}
 
 		for (const key of desired) {
@@ -652,10 +654,12 @@ export abstract class GameScene extends MapScene {
 
 	private flushResourceNodeChunkQueries(desired: Set<string>): void {
 		let sent = 0
-		const maxPerTick = 4
-		while (sent < maxPerTick && this.resourceNodeChunkQueue.length > 0) {
-			const key = this.resourceNodeChunkQueue.shift()
-			if (!key) break
+		const cameraSpeed = Math.hypot(this.cameraPanVelocity.x, this.cameraPanVelocity.y)
+		const maxPerTick = cameraSpeed > 1 ? 2 : 4
+		while (sent < maxPerTick && this.resourceNodeChunkQueueCursor < this.resourceNodeChunkQueue.length) {
+			const key = this.resourceNodeChunkQueue[this.resourceNodeChunkQueueCursor]
+			this.resourceNodeChunkQueueCursor += 1
+			if (!key) continue
 			if (!desired.has(key)) {
 				this.resourceNodeChunkRequests.delete(key)
 				continue
@@ -683,25 +687,22 @@ export abstract class GameScene extends MapScene {
 			})
 			sent += 1
 		}
+		this.compactResourceNodeChunkQueue()
 	}
 
 	private processPendingMapObjects(): void {
-		if (this.pendingMapObjectIds.length === 0) return
+		if (this.pendingMapObjects.size === 0) return
 		const start = performance.now()
-		const maxDurationMs = 6
-		const maxPerFrame = 200
+		const cameraSpeed = Math.hypot(this.cameraPanVelocity.x, this.cameraPanVelocity.y)
+		const maxDurationMs = cameraSpeed > 1 ? 3 : 6
+		const maxPerFrame = cameraSpeed > 1 ? 64 : 200
 		let processed = 0
 		let shouldRebakeShadowsNow = false
 		let shouldRebakeShadowsAfterBatch = false
 
-		while (this.pendingMapObjectIds.length > 0) {
-			if (processed >= maxPerFrame) break
-			if (performance.now() - start > maxDurationMs) break
-			const id = this.pendingMapObjectIds.shift()
-			if (!id) break
-			const obj = this.pendingMapObjects.get(id)
-			if (!obj) continue
-			this.pendingMapObjects.delete(id)
+		while (processed < maxPerFrame && performance.now() - start <= maxDurationMs) {
+			const obj = this.dequeuePendingMapObject()
+			if (!obj) break
 
 			const perfStart = DEBUG_LOAD_TIMING ? performance.now() : 0
 			if (obj.mapId === this.mapKey) {
@@ -732,9 +733,10 @@ export abstract class GameScene extends MapScene {
 			}
 			processed += 1
 		}
+		this.compactPendingMapObjectQueue()
 
-		if (DEBUG_LOAD_TIMING && processed > 0 && this.pendingMapObjectIds.length > 0) {
-			console.info(`[Perf] map-objects pending=${this.pendingMapObjectIds.length}`)
+		if (DEBUG_LOAD_TIMING && processed > 0 && this.pendingMapObjects.size > 0) {
+			console.info(`[Perf] map-objects pending=${this.pendingMapObjects.size}`)
 		}
 		if (shouldRebakeShadowsAfterBatch) {
 			this.resourceNodeBatcher?.requestShadowRebake()
@@ -742,6 +744,44 @@ export abstract class GameScene extends MapScene {
 		if (shouldRebakeShadowsNow) {
 			this.runtime.renderer.rebakeEnvironmentShadowsSoon()
 		}
+	}
+
+	private enqueuePendingMapObject(obj: any): void {
+		const id = obj?.id
+		if (!id) return
+		if (!this.pendingMapObjects.has(id)) {
+			this.pendingMapObjectIds.push(id)
+		}
+		this.pendingMapObjects.set(id, obj)
+	}
+
+	private dequeuePendingMapObject(): any | null {
+		while (this.pendingMapObjectCursor < this.pendingMapObjectIds.length) {
+			const id = this.pendingMapObjectIds[this.pendingMapObjectCursor]
+			this.pendingMapObjectCursor += 1
+			if (!id) continue
+			const obj = this.pendingMapObjects.get(id)
+			if (!obj) continue
+			this.pendingMapObjects.delete(id)
+			return obj
+		}
+		this.pendingMapObjectIds = []
+		this.pendingMapObjectCursor = 0
+		return null
+	}
+
+	private compactPendingMapObjectQueue(): void {
+		if (this.pendingMapObjectCursor < 1024) return
+		if (this.pendingMapObjectCursor * 2 < this.pendingMapObjectIds.length) return
+		this.pendingMapObjectIds = this.pendingMapObjectIds.slice(this.pendingMapObjectCursor)
+		this.pendingMapObjectCursor = 0
+	}
+
+	private compactResourceNodeChunkQueue(): void {
+		if (this.resourceNodeChunkQueueCursor < 256) return
+		if (this.resourceNodeChunkQueueCursor * 2 < this.resourceNodeChunkQueue.length) return
+		this.resourceNodeChunkQueue = this.resourceNodeChunkQueue.slice(this.resourceNodeChunkQueueCursor)
+		this.resourceNodeChunkQueueCursor = 0
 	}
 
 	private handleResourceNodesSync = (data: { mapId: string; nodes: any[]; chunkKey?: string }) => {
@@ -783,10 +823,7 @@ export abstract class GameScene extends MapScene {
 			if (key) {
 				this.trackResourceNodeChunk(obj.id, key)
 			}
-			if (!this.pendingMapObjects.has(obj.id)) {
-				this.pendingMapObjectIds.push(obj.id)
-			}
-			this.pendingMapObjects.set(obj.id, obj)
+			this.enqueuePendingMapObject(obj)
 			added += 1
 		})
 		if (added > 0) {
@@ -1237,6 +1274,7 @@ export abstract class GameScene extends MapScene {
 		this.resourceNodeStreamTimer = 0
 		this.resourceNodeStreamIntervalMs = this.resourceNodeStreamIntervalMovingMs
 		this.resourceNodeChunkQueue = []
+		this.resourceNodeChunkQueueCursor = 0
 		this.resourceNodeChunkRequests.clear()
 		this.resourceNodeLoadedChunks.clear()
 		this.resourceNodeDesiredChunks.clear()
@@ -1244,6 +1282,7 @@ export abstract class GameScene extends MapScene {
 		this.resourceNodeIdToChunk.clear()
 		this.resourceNodeRequestId = 0
 		this.pendingMapObjectIds = []
+		this.pendingMapObjectCursor = 0
 		this.pendingMapObjects.clear()
 		this.flushMapObjectSpawnStats(true)
 
