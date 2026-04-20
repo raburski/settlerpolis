@@ -8,6 +8,7 @@ import {
 	Engine,
 	Effect,
 	HemisphericLight,
+	InstancedMesh,
 	Matrix,
 	Observer,
 	Plane,
@@ -207,6 +208,13 @@ const SHADOW_NORMAL_BIAS = 0.02
 const SHADOW_FRUSTUM_EDGE_FALLOFF = 0.12
 const ENVIRONMENT_SHADOW_BAKE_DEBOUNCE_MS = 80
 const ENVIRONMENT_SHADOW_BAKE_SETTLE_MS = 120
+const ENVIRONMENT_SHADOW_BAKE_MIN_INTERVAL_MS = 700
+const SELECTION_OCTREE_MIN_MESHES = 4000
+const SELECTION_OCTREE_CAPACITY = 64
+const SELECTION_OCTREE_MAX_DEPTH = 3
+const SELECTION_OCTREE_REFRESH_DEBOUNCE_MS = 2500
+const CAMERA_EDGE_BASE_PADDING = 320
+const CAMERA_EDGE_HEIGHT_PADDING_FACTOR = 2.2
 const SUN_LIGHT_INTENSITY_MULTIPLIER = 1.45
 const FILL_LIGHT_INTENSITY_MULTIPLIER = 0.36
 const FILL_LIGHT_DIFFUSE_MULTIPLIER = 0.5
@@ -269,6 +277,7 @@ export class BabylonRenderer {
 	private readonly environmentShadowsBaked = true
 	private shadowBakeDebounceTimer: number | null = null
 	private shadowBakeFreezeTimer: number | null = null
+	private lastEnvironmentShadowBakeAt = 0
 	private sunTarget: Vector3 = new Vector3(0, 0, 0)
 	private readonly worldGroundPlane = Plane.FromPositionAndNormal(Vector3.Zero(), Vector3.Up())
 	private ground: Mesh | null = null
@@ -283,6 +292,7 @@ export class BabylonRenderer {
 	private groundHeightFallbackTexture: DynamicTexture | null = null
 	private groundHeightData: number[] | null = null
 	private groundHeightConfig: { mapWidth: number; mapHeight: number; tileWidth: number; tileHeight: number } | null = null
+	private maxGroundElevation = 0
 	private groundTypeGrid: Uint8Array | null = null
 	private groundTypeGridWidth = 0
 	private groundTypeGridHeight = 0
@@ -308,6 +318,23 @@ export class BabylonRenderer {
 	private dayMoment: DayMoment = DEFAULT_DAY_MOMENT
 	private dayMomentLighting: DayMomentLightingProfile = DAY_MOMENT_LIGHTING[DEFAULT_DAY_MOMENT]
 	private dayMomentTransition: DayMomentTransitionState | null = null
+	private selectionOctreeAddObserver: Observer<AbstractMesh> | null = null
+	private selectionOctreeRemoveObserver: Observer<AbstractMesh> | null = null
+	private selectionOctreeRefreshTimer: number | null = null
+	private cameraBoundsPaddingCache: {
+		alpha: number
+		beta: number
+		orthoLeft: number
+		orthoRight: number
+		orthoTop: number
+		orthoBottom: number
+		renderWidth: number
+		renderHeight: number
+		minOffsetX: number
+		maxOffsetX: number
+		minOffsetZ: number
+		maxOffsetZ: number
+	} | null = null
 
 	constructor(canvas: HTMLCanvasElement) {
 		this.engine = new Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true })
@@ -333,7 +360,7 @@ export class BabylonRenderer {
 		this.camera.upperBetaLimit = this.isoBeta
 		this.camera.mode = ArcRotateCamera.ORTHOGRAPHIC_CAMERA
 		this.camera.wheelDeltaPercentage = 0.01
-		this.camera.minZ = 0.1
+		this.camera.minZ = 0.02
 		this.camera.maxZ = 10000
 		this.updateCameraOrtho()
 
@@ -344,6 +371,7 @@ export class BabylonRenderer {
 		this.sunLight.position = new Vector3(0, SUN_DISTANCE, 0)
 
 		this.placeholderFactory = new PlaceholderFactory(this.scene)
+		this.initializeSelectionOctree()
 		this.initializeShadows()
 		this.applyDayMomentLighting()
 	}
@@ -366,6 +394,7 @@ export class BabylonRenderer {
 
 	dispose(): void {
 		this.stop()
+		this.disposeSelectionOctree()
 		this.disposeShadows()
 		this.resetWaterSurface()
 		this.scene.dispose()
@@ -382,6 +411,44 @@ export class BabylonRenderer {
 		const ratio = this.highFidelityEnabled ? (window.devicePixelRatio || 1) : 1
 		this.fidelityScale = ratio
 		this.engine.setHardwareScalingLevel(1 / ratio)
+	}
+
+	private initializeSelectionOctree(): void {
+		this.selectionOctreeAddObserver = this.scene.onNewMeshAddedObservable.add(() => {
+			this.requestSelectionOctreeRefresh()
+		})
+		this.selectionOctreeRemoveObserver = this.scene.onMeshRemovedObservable.add(() => {
+			this.requestSelectionOctreeRefresh()
+		})
+		this.requestSelectionOctreeRefresh()
+	}
+
+	private disposeSelectionOctree(): void {
+		if (this.selectionOctreeAddObserver) {
+			this.scene.onNewMeshAddedObservable.remove(this.selectionOctreeAddObserver)
+			this.selectionOctreeAddObserver = null
+		}
+		if (this.selectionOctreeRemoveObserver) {
+			this.scene.onMeshRemovedObservable.remove(this.selectionOctreeRemoveObserver)
+			this.selectionOctreeRemoveObserver = null
+		}
+		if (this.selectionOctreeRefreshTimer !== null) {
+			window.clearTimeout(this.selectionOctreeRefreshTimer)
+			this.selectionOctreeRefreshTimer = null
+		}
+	}
+
+	private requestSelectionOctreeRefresh(): void {
+		if (this.selectionOctreeRefreshTimer !== null) return
+		this.selectionOctreeRefreshTimer = window.setTimeout(() => {
+			this.selectionOctreeRefreshTimer = null
+			this.refreshSelectionOctree()
+		}, SELECTION_OCTREE_REFRESH_DEBOUNCE_MS)
+	}
+
+	private refreshSelectionOctree(): void {
+		if (this.scene.meshes.length < SELECTION_OCTREE_MIN_MESHES) return
+		this.scene.createOrUpdateSelectionOctree(SELECTION_OCTREE_CAPACITY, SELECTION_OCTREE_MAX_DEPTH)
 	}
 
 	private updateWaterAnimation(deltaMs: number): void {
@@ -404,8 +471,22 @@ export class BabylonRenderer {
 		let targetX = x
 		let targetZ = z
 		if (this.bounds) {
-			targetX = Math.max(this.bounds.minX, Math.min(this.bounds.maxX, targetX))
-			targetZ = Math.max(this.bounds.minZ, Math.min(this.bounds.maxZ, targetZ))
+			const padding = this.getCameraBoundsPadding()
+			const terrainEdgePadding = this.getTerrainEdgePadding()
+			const minX = this.bounds.minX - terrainEdgePadding - padding.minOffsetX
+			const maxX = this.bounds.maxX + terrainEdgePadding - padding.maxOffsetX
+			const minZ = this.bounds.minZ - terrainEdgePadding - padding.minOffsetZ
+			const maxZ = this.bounds.maxZ + terrainEdgePadding - padding.maxOffsetZ
+			if (minX <= maxX) {
+				targetX = Math.max(minX, Math.min(maxX, targetX))
+			} else {
+				targetX = (this.bounds.minX + this.bounds.maxX) * 0.5
+			}
+			if (minZ <= maxZ) {
+				targetZ = Math.max(minZ, Math.min(maxZ, targetZ))
+			} else {
+				targetZ = (this.bounds.minZ + this.bounds.maxZ) * 0.5
+			}
 		}
 		this.cameraTarget.x = targetX
 		this.cameraTarget.z = targetZ
@@ -497,6 +578,100 @@ export class BabylonRenderer {
 		this.camera.orthoRight = halfWidth
 		this.camera.orthoTop = halfHeight
 		this.camera.orthoBottom = -halfHeight
+		this.cameraBoundsPaddingCache = null
+	}
+
+	private getCameraBoundsPadding(): { minOffsetX: number; maxOffsetX: number; minOffsetZ: number; maxOffsetZ: number } {
+		const renderWidth = this.engine.getRenderWidth()
+		const renderHeight = this.engine.getRenderHeight()
+		if (renderWidth <= 0 || renderHeight <= 0) {
+			return { minOffsetX: 0, maxOffsetX: 0, minOffsetZ: 0, maxOffsetZ: 0 }
+		}
+		const alpha = this.camera.alpha
+		const beta = this.camera.beta
+		const orthoLeft = this.camera.orthoLeft ?? 0
+		const orthoRight = this.camera.orthoRight ?? 0
+		const orthoTop = this.camera.orthoTop ?? 0
+		const orthoBottom = this.camera.orthoBottom ?? 0
+		const cached = this.cameraBoundsPaddingCache
+		if (
+			cached &&
+			cached.alpha === alpha &&
+			cached.beta === beta &&
+			cached.orthoLeft === orthoLeft &&
+			cached.orthoRight === orthoRight &&
+			cached.orthoTop === orthoTop &&
+			cached.orthoBottom === orthoBottom &&
+			cached.renderWidth === renderWidth &&
+			cached.renderHeight === renderHeight
+		) {
+			return {
+				minOffsetX: cached.minOffsetX,
+				maxOffsetX: cached.maxOffsetX,
+				minOffsetZ: cached.minOffsetZ,
+				maxOffsetZ: cached.maxOffsetZ
+			}
+		}
+
+		const corners = [
+			this.screenToWorld(0, 0, { useGroundPick: false }),
+			this.screenToWorld(renderWidth, 0, { useGroundPick: false }),
+			this.screenToWorld(renderWidth, renderHeight, { useGroundPick: false }),
+			this.screenToWorld(0, renderHeight, { useGroundPick: false })
+		]
+		let minOffsetX = 0
+		let maxOffsetX = 0
+		let minOffsetZ = 0
+		let maxOffsetZ = 0
+		const targetX = this.cameraTarget.x
+		const targetZ = this.cameraTarget.z
+		let initialized = false
+		for (const corner of corners) {
+			if (!corner) continue
+			const offsetX = corner.x - targetX
+			const offsetZ = corner.z - targetZ
+			if (!initialized) {
+				minOffsetX = offsetX
+				maxOffsetX = offsetX
+				minOffsetZ = offsetZ
+				maxOffsetZ = offsetZ
+				initialized = true
+				continue
+			}
+			minOffsetX = Math.min(minOffsetX, offsetX)
+			maxOffsetX = Math.max(maxOffsetX, offsetX)
+			minOffsetZ = Math.min(minOffsetZ, offsetZ)
+			maxOffsetZ = Math.max(maxOffsetZ, offsetZ)
+		}
+		if (!initialized) {
+			return { minOffsetX: 0, maxOffsetX: 0, minOffsetZ: 0, maxOffsetZ: 0 }
+		}
+		this.cameraBoundsPaddingCache = {
+			alpha,
+			beta,
+			orthoLeft,
+			orthoRight,
+			orthoTop,
+			orthoBottom,
+			renderWidth,
+			renderHeight,
+			minOffsetX,
+			maxOffsetX,
+			minOffsetZ,
+			maxOffsetZ
+		}
+		return { minOffsetX, maxOffsetX, minOffsetZ, maxOffsetZ }
+	}
+
+	private getTerrainEdgePadding(): number {
+		if (this.maxGroundElevation <= 0) return CAMERA_EDGE_BASE_PADDING
+		const verticalComponent = Math.abs(Math.cos(this.camera.beta))
+		const horizontalComponent = Math.abs(Math.sin(this.camera.beta))
+		const projectedOffset =
+			verticalComponent > 1e-5
+				? this.maxGroundElevation * (horizontalComponent / verticalComponent)
+				: this.maxGroundElevation
+		return CAMERA_EDGE_BASE_PADDING + projectedOffset * CAMERA_EDGE_HEIGHT_PADDING_FACTOR
 	}
 
 	private updateDayMomentTransition(deltaMs: number): void {
@@ -697,19 +872,21 @@ export class BabylonRenderer {
 
 	private requestEnvironmentShadowBake(): void {
 		if (!this.shadowGenerator || !this.environmentShadowsBaked) return
-		if (this.shadowBakeDebounceTimer !== null) {
-			window.clearTimeout(this.shadowBakeDebounceTimer)
-		}
+		if (this.shadowBakeDebounceTimer !== null) return
+		const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+		const cooldownRemaining = Math.max(0, ENVIRONMENT_SHADOW_BAKE_MIN_INTERVAL_MS - (now - this.lastEnvironmentShadowBakeAt))
+		const delayMs = Math.max(ENVIRONMENT_SHADOW_BAKE_DEBOUNCE_MS, cooldownRemaining)
 		this.shadowBakeDebounceTimer = window.setTimeout(() => {
 			this.shadowBakeDebounceTimer = null
 			this.rebakeEnvironmentShadows()
-		}, ENVIRONMENT_SHADOW_BAKE_DEBOUNCE_MS)
+		}, delayMs)
 	}
 
 	private rebakeEnvironmentShadows(): void {
 		if (!this.shadowGenerator || !this.environmentShadowsBaked) return
 		const shadowMap = this.shadowGenerator.getShadowMap()
 		if (!shadowMap) return
+		this.lastEnvironmentShadowBakeAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
 		shadowMap.refreshRate = 1
 		if (this.shadowBakeFreezeTimer !== null) {
 			window.clearTimeout(this.shadowBakeFreezeTimer)
@@ -736,6 +913,10 @@ export class BabylonRenderer {
 	private shouldCastShadow(mesh: AbstractMesh): boolean {
 		if (mesh === this.ground || mesh === this.waterMesh) return false
 		if (mesh.getTotalVertices() <= 0) return false
+		const batchKey = (mesh.metadata as { resourceNodeBatchKey?: string } | undefined)?.resourceNodeBatchKey
+		if (typeof batchKey === 'string' && batchKey.length > 0) {
+			return true
+		}
 		const name = (mesh.name || '').toLowerCase()
 		if (
 			name.includes('shadow-receiver') ||
@@ -777,7 +958,9 @@ export class BabylonRenderer {
 
 	private configureMeshShadows(mesh: AbstractMesh): void {
 		if (!this.shadowGenerator) return
-		mesh.receiveShadows = this.shouldReceiveShadow(mesh)
+		if (!(mesh instanceof InstancedMesh)) {
+			mesh.receiveShadows = this.shouldReceiveShadow(mesh)
+		}
 		if (!this.shouldCastShadow(mesh)) {
 			return
 		}
@@ -854,6 +1037,7 @@ export class BabylonRenderer {
 		}
 		this.groundHeightData = null
 		this.groundHeightConfig = null
+		this.maxGroundElevation = 0
 		this.groundTypeGrid = null
 		this.groundTypeGridWidth = 0
 		this.groundTypeGridHeight = 0
@@ -1034,6 +1218,19 @@ export class BabylonRenderer {
 			mapHeight,
 			tileWidth,
 			tileHeight
+		}
+		let maxPositiveHeight = 0
+		for (let i = 0; i < totalTiles; i += 1) {
+			const value = heightData[i] ?? 0
+			if (value > maxPositiveHeight) {
+				maxPositiveHeight = value
+			}
+		}
+		if (maxPositiveHeight > 0) {
+			const normalizedMax = Math.max(GROUND_MOUNTAIN_MIN_HEIGHT, Math.min(1, maxPositiveHeight / 255))
+			this.maxGroundElevation = normalizedMax * heightScale
+		} else {
+			this.maxGroundElevation = 0
 		}
 
 		ground.refreshBoundingInfo()
