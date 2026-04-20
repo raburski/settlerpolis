@@ -128,9 +128,6 @@ export class ResourceNodeBatcher {
 	add(object: MapObject): boolean {
 		if (!object?.metadata?.resourceNode) return false
 		const nodeType = resolveResourceNodeTypeForRender(object)
-		if (nodeType === 'tree') {
-			return false
-		}
 		this.objectsById.set(object.id, object)
 		const baseScale = getSeededScale(object.id)
 		const growthState = this.resolveGrowthState(object, baseScale)
