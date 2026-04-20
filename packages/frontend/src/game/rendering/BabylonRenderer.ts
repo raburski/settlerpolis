@@ -8,6 +8,7 @@ import {
 	Engine,
 	Effect,
 	HemisphericLight,
+	InstancedMesh,
 	Matrix,
 	Observer,
 	Plane,
@@ -777,7 +778,9 @@ export class BabylonRenderer {
 
 	private configureMeshShadows(mesh: AbstractMesh): void {
 		if (!this.shadowGenerator) return
-		mesh.receiveShadows = this.shouldReceiveShadow(mesh)
+		if (!(mesh instanceof InstancedMesh)) {
+			mesh.receiveShadows = this.shouldReceiveShadow(mesh)
+		}
 		if (!this.shouldCastShadow(mesh)) {
 			return
 		}
