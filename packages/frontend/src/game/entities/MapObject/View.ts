@@ -151,6 +151,7 @@ export class MapObjectView extends BaseEntityView {
 		const centerX = mapObject.position.x + width / 2
 		const centerY = mapObject.position.y + length / 2
 		super(scene, mesh, { width, length, height }, { x: centerX, y: centerY })
+		mesh.freezeWorldMatrix()
 
 		MapObjectView.ensureDebugSubscription()
 		MapObjectView.debugInstances.add(this)

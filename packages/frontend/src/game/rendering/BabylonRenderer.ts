@@ -208,6 +208,10 @@ const SHADOW_NORMAL_BIAS = 0.02
 const SHADOW_FRUSTUM_EDGE_FALLOFF = 0.12
 const ENVIRONMENT_SHADOW_BAKE_DEBOUNCE_MS = 80
 const ENVIRONMENT_SHADOW_BAKE_SETTLE_MS = 120
+const SELECTION_OCTREE_MIN_MESHES = 512
+const SELECTION_OCTREE_CAPACITY = 64
+const SELECTION_OCTREE_MAX_DEPTH = 3
+const SELECTION_OCTREE_REFRESH_DEBOUNCE_MS = 250
 const SUN_LIGHT_INTENSITY_MULTIPLIER = 1.45
 const FILL_LIGHT_INTENSITY_MULTIPLIER = 0.36
 const FILL_LIGHT_DIFFUSE_MULTIPLIER = 0.5
@@ -309,6 +313,9 @@ export class BabylonRenderer {
 	private dayMoment: DayMoment = DEFAULT_DAY_MOMENT
 	private dayMomentLighting: DayMomentLightingProfile = DAY_MOMENT_LIGHTING[DEFAULT_DAY_MOMENT]
 	private dayMomentTransition: DayMomentTransitionState | null = null
+	private selectionOctreeAddObserver: Observer<AbstractMesh> | null = null
+	private selectionOctreeRemoveObserver: Observer<AbstractMesh> | null = null
+	private selectionOctreeRefreshTimer: number | null = null
 
 	constructor(canvas: HTMLCanvasElement) {
 		this.engine = new Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true })
@@ -345,6 +352,7 @@ export class BabylonRenderer {
 		this.sunLight.position = new Vector3(0, SUN_DISTANCE, 0)
 
 		this.placeholderFactory = new PlaceholderFactory(this.scene)
+		this.initializeSelectionOctree()
 		this.initializeShadows()
 		this.applyDayMomentLighting()
 	}
@@ -367,6 +375,7 @@ export class BabylonRenderer {
 
 	dispose(): void {
 		this.stop()
+		this.disposeSelectionOctree()
 		this.disposeShadows()
 		this.resetWaterSurface()
 		this.scene.dispose()
@@ -383,6 +392,44 @@ export class BabylonRenderer {
 		const ratio = this.highFidelityEnabled ? (window.devicePixelRatio || 1) : 1
 		this.fidelityScale = ratio
 		this.engine.setHardwareScalingLevel(1 / ratio)
+	}
+
+	private initializeSelectionOctree(): void {
+		this.selectionOctreeAddObserver = this.scene.onNewMeshAddedObservable.add(() => {
+			this.requestSelectionOctreeRefresh()
+		})
+		this.selectionOctreeRemoveObserver = this.scene.onMeshRemovedObservable.add(() => {
+			this.requestSelectionOctreeRefresh()
+		})
+		this.requestSelectionOctreeRefresh()
+	}
+
+	private disposeSelectionOctree(): void {
+		if (this.selectionOctreeAddObserver) {
+			this.scene.onNewMeshAddedObservable.remove(this.selectionOctreeAddObserver)
+			this.selectionOctreeAddObserver = null
+		}
+		if (this.selectionOctreeRemoveObserver) {
+			this.scene.onMeshRemovedObservable.remove(this.selectionOctreeRemoveObserver)
+			this.selectionOctreeRemoveObserver = null
+		}
+		if (this.selectionOctreeRefreshTimer !== null) {
+			window.clearTimeout(this.selectionOctreeRefreshTimer)
+			this.selectionOctreeRefreshTimer = null
+		}
+	}
+
+	private requestSelectionOctreeRefresh(): void {
+		if (this.selectionOctreeRefreshTimer !== null) return
+		this.selectionOctreeRefreshTimer = window.setTimeout(() => {
+			this.selectionOctreeRefreshTimer = null
+			this.refreshSelectionOctree()
+		}, SELECTION_OCTREE_REFRESH_DEBOUNCE_MS)
+	}
+
+	private refreshSelectionOctree(): void {
+		if (this.scene.meshes.length < SELECTION_OCTREE_MIN_MESHES) return
+		this.scene.createOrUpdateSelectionOctree(SELECTION_OCTREE_CAPACITY, SELECTION_OCTREE_MAX_DEPTH)
 	}
 
 	private updateWaterAnimation(deltaMs: number): void {
