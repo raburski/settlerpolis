@@ -258,10 +258,6 @@ export abstract class GameScene extends MapScene {
 			settler.update(deltaMs)
 		})
 
-		this.mapObjects.forEach((mapObject) => {
-			mapObject.controller.update(deltaMs)
-		})
-
 		this.buildingPlacementManager?.update()
 		this.workAreaSelectionManager?.update()
 		this.roadPlacementManager?.update()
@@ -275,7 +271,6 @@ export abstract class GameScene extends MapScene {
 		this.remotePlayers.forEach((player) => player.view.syncFromBody())
 		this.npcs.forEach((controller) => controller.view.syncFromBody())
 		this.settlers.forEach((settler) => settler.view.syncFromBody())
-		this.mapObjects.forEach((mapObject) => mapObject.view.syncFromBody())
 		this.droppedItems.forEach((item) => item.view.syncFromBody())
 
 		this.textDisplayService?.update()
