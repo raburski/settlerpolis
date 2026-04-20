@@ -8,6 +8,7 @@ interface EmojiMaterialCache {
 
 export class PlaceholderFactory {
 	private emojiCache: Map<string, EmojiMaterialCache> = new Map()
+	private tintCache: Map<string, StandardMaterial> = new Map()
 	private scene: Scene
 	private readonly placeholderEmissive = new Color3(0.05, 0.05, 0.05)
 
@@ -46,11 +47,18 @@ export class PlaceholderFactory {
 	}
 
 	applyTint(mesh: AbstractMesh, hex: string): void {
-		const material = new StandardMaterial(`tint-${hex}`, this.scene)
+		const key = hex.toLowerCase()
+		const cached = this.tintCache.get(key)
+		if (cached) {
+			mesh.material = cached
+			return
+		}
+		const material = new StandardMaterial(`tint-${key}`, this.scene)
 		material.diffuseColor = Color3.FromHexString(hex)
 		material.specularColor = Color3.Black()
 		material.emissiveColor = this.placeholderEmissive
 		material.disableLighting = false
+		this.tintCache.set(key, material)
 		mesh.material = material
 	}
 }

@@ -65,8 +65,6 @@ export class MapObjectView extends BaseEntityView {
 	private modelInstanceRoots: TransformNode[] = []
 	private modelInstanceSkeletons: Skeleton[] = []
 	private modelInstanceAnimationGroups: AnimationGroup[] = []
-	private invisibleMaterial: StandardMaterial | null = null
-	private highlightMaterial: StandardMaterial | null = null
 	private debugBoundsMesh: Mesh | null = null
 	private debugBoundsMaterial: StandardMaterial | null = null
 	private debugRootMesh: Mesh | null = null
@@ -86,6 +84,10 @@ export class MapObjectView extends BaseEntityView {
 		{ count: number; totalMs: number; lastLogAt: number; lastMs: number }
 	>()
 	private static constructionMaterialCache = new WeakMap<Scene, ConstructionMaterialSet>()
+	private static sharedBaseMaterialCache = new WeakMap<
+		Scene,
+		{ invisible: StandardMaterial; highlight: StandardMaterial }
+	>()
 
 	private static async getModelContainer(
 		scene: import('@babylonjs/core').Scene,
@@ -114,6 +116,29 @@ export class MapObjectView extends BaseEntityView {
 		const created = new Map<string, Promise<AssetContainer>>()
 		MapObjectView.modelContainerCacheByScene.set(scene, created)
 		return created
+	}
+
+	private static getSharedBaseMaterials(scene: Scene): { invisible: StandardMaterial; highlight: StandardMaterial } {
+		const existing = MapObjectView.sharedBaseMaterialCache.get(scene)
+		if (existing) return existing
+
+		const invisible = new StandardMaterial('map-object-invisible-shared', scene)
+		invisible.diffuseColor = Color3.Black()
+		invisible.emissiveColor = Color3.Black()
+		invisible.specularColor = Color3.Black()
+		invisible.alpha = 0
+		invisible.disableDepthWrite = true
+
+		const highlight = new StandardMaterial('map-object-highlight-shared', scene)
+		highlight.diffuseColor = Color3.FromHexString(BUILDING_HIGHLIGHT_TINT)
+		highlight.emissiveColor = BUILDING_HIGHLIGHT_EMISSIVE
+		highlight.specularColor = Color3.Black()
+		highlight.alpha = BUILDING_HIGHLIGHT_ALPHA
+		highlight.disableDepthWrite = true
+
+		const materials = { invisible, highlight }
+		MapObjectView.sharedBaseMaterialCache.set(scene, materials)
+		return materials
 	}
 
 	constructor(scene: GameScene, mapObject: MapObject) {
@@ -441,29 +466,15 @@ export class MapObjectView extends BaseEntityView {
 
 	private applyInvisibleBase(): void {
 		const baseMesh = this.getMesh()
-		if (!this.invisibleMaterial) {
-			this.invisibleMaterial = new StandardMaterial(`map-object-invisible-${this.mapObject.id}`, baseMesh.getScene())
-			this.invisibleMaterial.diffuseColor = Color3.Black()
-			this.invisibleMaterial.emissiveColor = Color3.Black()
-			this.invisibleMaterial.specularColor = Color3.Black()
-			this.invisibleMaterial.alpha = 0
-			this.invisibleMaterial.disableDepthWrite = true
-		}
-		baseMesh.material = this.invisibleMaterial
+		const materials = MapObjectView.getSharedBaseMaterials(baseMesh.getScene())
+		baseMesh.material = materials.invisible
 		baseMesh.visibility = 1
 	}
 
 	private applyHighlightBase(): void {
 		const baseMesh = this.getMesh()
-		if (!this.highlightMaterial) {
-			this.highlightMaterial = new StandardMaterial(`map-object-highlight-${this.mapObject.id}`, baseMesh.getScene())
-			this.highlightMaterial.diffuseColor = Color3.FromHexString(BUILDING_HIGHLIGHT_TINT)
-			this.highlightMaterial.emissiveColor = BUILDING_HIGHLIGHT_EMISSIVE
-			this.highlightMaterial.specularColor = Color3.Black()
-			this.highlightMaterial.alpha = BUILDING_HIGHLIGHT_ALPHA
-			this.highlightMaterial.disableDepthWrite = true
-		}
-		baseMesh.material = this.highlightMaterial
+		const materials = MapObjectView.getSharedBaseMaterials(baseMesh.getScene())
+		baseMesh.material = materials.highlight
 		baseMesh.visibility = 1
 	}
 
@@ -618,10 +629,6 @@ export class MapObjectView extends BaseEntityView {
 		this.modelRoot = null
 		this.modelSrc = null
 		this.modelLoading = null
-		if (this.invisibleMaterial) {
-			this.invisibleMaterial.dispose()
-			this.invisibleMaterial = null
-		}
 		if (this.debugBoundsMesh) {
 			this.debugBoundsMesh.dispose()
 			this.debugBoundsMesh = null
@@ -740,10 +747,6 @@ export class MapObjectView extends BaseEntityView {
 		}
 		this.disposeConstructionPlaceholder(true)
 		this.disposeModel()
-		if (this.highlightMaterial) {
-			this.highlightMaterial.dispose()
-			this.highlightMaterial = null
-		}
 		this.resourceRenderUnsubscribe?.()
 		this.itemRenderUnsubscribe?.()
 		this.unsubscribe?.()
