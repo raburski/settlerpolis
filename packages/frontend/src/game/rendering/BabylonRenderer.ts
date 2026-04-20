@@ -213,6 +213,8 @@ const SELECTION_OCTREE_MIN_MESHES = 4000
 const SELECTION_OCTREE_CAPACITY = 64
 const SELECTION_OCTREE_MAX_DEPTH = 3
 const SELECTION_OCTREE_REFRESH_DEBOUNCE_MS = 2500
+const CAMERA_EDGE_BASE_PADDING = 320
+const CAMERA_EDGE_HEIGHT_PADDING_FACTOR = 2.2
 const SUN_LIGHT_INTENSITY_MULTIPLIER = 1.45
 const FILL_LIGHT_INTENSITY_MULTIPLIER = 0.36
 const FILL_LIGHT_DIFFUSE_MULTIPLIER = 0.5
@@ -662,14 +664,14 @@ export class BabylonRenderer {
 	}
 
 	private getTerrainEdgePadding(): number {
-		if (this.maxGroundElevation <= 0) return 0
+		if (this.maxGroundElevation <= 0) return CAMERA_EDGE_BASE_PADDING
 		const verticalComponent = Math.abs(Math.cos(this.camera.beta))
 		const horizontalComponent = Math.abs(Math.sin(this.camera.beta))
 		const projectedOffset =
 			verticalComponent > 1e-5
 				? this.maxGroundElevation * (horizontalComponent / verticalComponent)
 				: this.maxGroundElevation
-		return projectedOffset + 8
+		return CAMERA_EDGE_BASE_PADDING + projectedOffset * CAMERA_EDGE_HEIGHT_PADDING_FACTOR
 	}
 
 	private updateDayMomentTransition(deltaMs: number): void {
