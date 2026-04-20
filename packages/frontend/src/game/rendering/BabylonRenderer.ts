@@ -290,6 +290,7 @@ export class BabylonRenderer {
 	private groundHeightFallbackTexture: DynamicTexture | null = null
 	private groundHeightData: number[] | null = null
 	private groundHeightConfig: { mapWidth: number; mapHeight: number; tileWidth: number; tileHeight: number } | null = null
+	private maxGroundElevation = 0
 	private groundTypeGrid: Uint8Array | null = null
 	private groundTypeGridWidth = 0
 	private groundTypeGridHeight = 0
@@ -469,10 +470,11 @@ export class BabylonRenderer {
 		let targetZ = z
 		if (this.bounds) {
 			const padding = this.getCameraBoundsPadding()
-			const minX = this.bounds.minX - padding.minOffsetX
-			const maxX = this.bounds.maxX - padding.maxOffsetX
-			const minZ = this.bounds.minZ - padding.minOffsetZ
-			const maxZ = this.bounds.maxZ - padding.maxOffsetZ
+			const terrainEdgePadding = this.getTerrainEdgePadding()
+			const minX = this.bounds.minX - terrainEdgePadding - padding.minOffsetX
+			const maxX = this.bounds.maxX + terrainEdgePadding - padding.maxOffsetX
+			const minZ = this.bounds.minZ - terrainEdgePadding - padding.minOffsetZ
+			const maxZ = this.bounds.maxZ + terrainEdgePadding - padding.maxOffsetZ
 			if (minX <= maxX) {
 				targetX = Math.max(minX, Math.min(maxX, targetX))
 			} else {
@@ -657,6 +659,17 @@ export class BabylonRenderer {
 			maxOffsetZ
 		}
 		return { minOffsetX, maxOffsetX, minOffsetZ, maxOffsetZ }
+	}
+
+	private getTerrainEdgePadding(): number {
+		if (this.maxGroundElevation <= 0) return 0
+		const verticalComponent = Math.abs(Math.cos(this.camera.beta))
+		const horizontalComponent = Math.abs(Math.sin(this.camera.beta))
+		const projectedOffset =
+			verticalComponent > 1e-5
+				? this.maxGroundElevation * (horizontalComponent / verticalComponent)
+				: this.maxGroundElevation
+		return projectedOffset + 8
 	}
 
 	private updateDayMomentTransition(deltaMs: number): void {
@@ -1022,6 +1035,7 @@ export class BabylonRenderer {
 		}
 		this.groundHeightData = null
 		this.groundHeightConfig = null
+		this.maxGroundElevation = 0
 		this.groundTypeGrid = null
 		this.groundTypeGridWidth = 0
 		this.groundTypeGridHeight = 0
@@ -1202,6 +1216,19 @@ export class BabylonRenderer {
 			mapHeight,
 			tileWidth,
 			tileHeight
+		}
+		let maxPositiveHeight = 0
+		for (let i = 0; i < totalTiles; i += 1) {
+			const value = heightData[i] ?? 0
+			if (value > maxPositiveHeight) {
+				maxPositiveHeight = value
+			}
+		}
+		if (maxPositiveHeight > 0) {
+			const normalizedMax = Math.max(GROUND_MOUNTAIN_MIN_HEIGHT, Math.min(1, maxPositiveHeight / 255))
+			this.maxGroundElevation = normalizedMax * heightScale
+		} else {
+			this.maxGroundElevation = 0
 		}
 
 		ground.refreshBoundingInfo()
