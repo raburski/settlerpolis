@@ -1,0 +1,37 @@
+.root {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+}
+
+.trigger {
+	display: inline-flex;
+}
+
+.popover {
+	position: absolute;
+	right: 0;
+	bottom: calc(100% + 8px);
+	min-width: 170px;
+	max-width: 220px;
+	padding: 7px 8px;
+	border: 2px solid #2c1810;
+	background: rgba(24, 18, 13, 0.98);
+	color: #efe7d2;
+	font-family: 'Press Start 2P', monospace;
+	font-size: 0.5rem;
+	line-height: 1.45;
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+	opacity: 0;
+	transform: translateY(3px);
+	pointer-events: none;
+	transition: opacity 0.14s ease, transform 0.14s ease;
+	white-space: normal;
+	z-index: 2;
+}
+
+.root:hover .popover,
+.root:focus-within .popover {
+	opacity: 1;
+	transform: translateY(0);
+}

@@ -204,6 +204,7 @@ export class WorkAreaSelectionManager {
 		})
 
 		this.cancelSelection()
+		EventBus.emit(UiEvents.Building.WorkAreaCancel, {})
 	}
 
 	public update() {}

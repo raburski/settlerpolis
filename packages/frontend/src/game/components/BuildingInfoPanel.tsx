@@ -9,9 +9,9 @@ import { storageService } from '../services/StorageService'
 import { productionService } from '../services/ProductionService'
 import { tradeService } from '../services/TradeService'
 import { reputationService } from '../services/ReputationService'
-import { DraggablePanel } from './DraggablePanel'
+import { ProgressBarRow } from './ProgressBarRow'
+import { StorageResourceTile } from './StorageResourceTile'
 import styles from './BuildingInfoPanel.module.css'
-import sharedStyles from './PanelShared.module.css'
 import confirmStyles from './ConfirmDialog.module.css'
 import { UiEvents } from '../uiEvents'
 import { worldMapData, type WorldMapNodeTradeOffer } from '../worldmap/data'
@@ -144,7 +144,7 @@ const normalizePlanForUi = (plan: ProductionPlan | undefined, recipeIds: string[
 		const raw = plan?.[id] ?? 0
 		return totalEnabled > 0 ? Math.round((raw / totalEnabled) * 100) : 0
 	})
-	let diff = 100 - scaled.reduce((sum, value) => sum + value, 0)
+	const diff = 100 - scaled.reduce((sum, value) => sum + value, 0)
 	if (diff !== 0 && scaled.length > 0) {
 		scaled[0] = Math.max(0, scaled[0] + diff)
 	}
@@ -199,7 +199,7 @@ const adjustPlanWeights = (plan: ProductionPlan, recipeIds: string[], recipeId: 
 	}
 
 	const scaled = otherIds.map(id => Math.round(((plan[id] ?? 0) / otherTotal) * targetOtherTotal))
-	let diff = targetOtherTotal - scaled.reduce((sum, value) => sum + value, 0)
+	const diff = targetOtherTotal - scaled.reduce((sum, value) => sum + value, 0)
 	if (diff !== 0 && scaled.length > 0) {
 		scaled[0] = Math.max(0, scaled[0] + diff)
 	}
@@ -258,6 +258,7 @@ export const BuildingInfoPanel: React.FC = () => {
 	const [selectedTradeNodeId, setSelectedTradeNodeId] = useState('')
 	const [selectedTradeOfferId, setSelectedTradeOfferId] = useState('')
 	const [populationVersion, setPopulationVersion] = useState(0)
+	const [isWorkAreaSelecting, setIsWorkAreaSelecting] = useState(false)
 
 	const tradeRouteType = useMemo(() => resolveTradeRouteType(buildingDefinition), [buildingDefinition])
 
@@ -327,10 +328,9 @@ export const BuildingInfoPanel: React.FC = () => {
 			setErrorMessage(null) // Clear any previous errors
 			setWorkerStatus(null) // Clear any previous status
 			setShowDemolishConfirm(false)
+			setIsWorkAreaSelecting(false)
 			setIsVisible(true)
 			EventBus.emit(UiEvents.Building.Highlight, { buildingInstanceId: data.buildingInstance.id, highlighted: true })
-			// Close settler panel if open
-			EventBus.emit(UiEvents.Settler.Close)
 		}
 
 		// Listen for building updates (progress, completion, cancellation)
@@ -354,6 +354,7 @@ export const BuildingInfoPanel: React.FC = () => {
 			if (buildingInstance && buildingInstance.id === data.buildingInstanceId) {
 				setIsVisible(false)
 				setShowDemolishConfirm(false)
+				setIsWorkAreaSelecting(false)
 				EventBus.emit(UiEvents.Building.Highlight, { buildingInstanceId: buildingInstance.id, highlighted: false })
 				setBuildingInstance(null)
 				setBuildingDefinition(null)
@@ -364,6 +365,7 @@ export const BuildingInfoPanel: React.FC = () => {
 		const handleClosePanel = () => {
 			setIsVisible(false)
 			setShowDemolishConfirm(false)
+			setIsWorkAreaSelecting(false)
 			if (buildingInstance) {
 				EventBus.emit(UiEvents.Building.Highlight, { buildingInstanceId: buildingInstance.id, highlighted: false })
 			}
@@ -458,7 +460,7 @@ export const BuildingInfoPanel: React.FC = () => {
 		}
 
 		// Listen for worker unassigned
-			const handleWorkerUnassigned = (_data: { settlerId: string }) => {
+			const handleWorkerUnassigned = () => {
 				if (buildingInstance) {
 					// Force re-render to update worker count
 					setBuildingInstance({ ...buildingInstance })
@@ -496,7 +498,7 @@ export const BuildingInfoPanel: React.FC = () => {
 		}
 
 		// Listen for storage updates
-		const handleStorageUpdated = (data: { buildingInstanceId: string, storage: any }) => {
+		const handleStorageUpdated = (data: { buildingInstanceId: string, storage: unknown }) => {
 			if (buildingInstance && buildingInstance.id === data.buildingInstanceId) {
 				// Force re-render to show updated storage
 				setBuildingInstance({ ...buildingInstance })
@@ -504,7 +506,7 @@ export const BuildingInfoPanel: React.FC = () => {
 		}
 
 		// Listen for production updates
-		const handleProductionUpdated = (data: { buildingInstanceId: string, production: any }) => {
+		const handleProductionUpdated = (data: { buildingInstanceId: string, production: unknown }) => {
 			if (buildingInstance && buildingInstance.id === data.buildingInstanceId) {
 				// Force re-render to show updated production
 				setBuildingInstance({ ...buildingInstance })
@@ -602,6 +604,28 @@ export const BuildingInfoPanel: React.FC = () => {
 		}
 	}, [buildingInstance?.playerId, tradeRouteType])
 
+	useEffect(() => {
+		if (!buildingInstance) {
+			setIsWorkAreaSelecting(false)
+			return
+		}
+
+		const handleWorkAreaSelect = (data: { buildingInstanceId: string }) => {
+			setIsWorkAreaSelecting(data.buildingInstanceId === buildingInstance.id)
+		}
+		const handleWorkAreaCancel = () => {
+			setIsWorkAreaSelecting(false)
+		}
+
+		EventBus.on(UiEvents.Building.WorkAreaSelect, handleWorkAreaSelect)
+		EventBus.on(UiEvents.Building.WorkAreaCancel, handleWorkAreaCancel)
+
+		return () => {
+			EventBus.off(UiEvents.Building.WorkAreaSelect, handleWorkAreaSelect)
+			EventBus.off(UiEvents.Building.WorkAreaCancel, handleWorkAreaCancel)
+		}
+	}, [buildingInstance?.id])
+
 	const handleCancelConstruction = () => {
 		if (buildingInstance && (
 			buildingInstance.stage === ConstructionStage.ClearingSite ||
@@ -661,9 +685,22 @@ export const BuildingInfoPanel: React.FC = () => {
 		}
 		setIsVisible(false)
 		setShowDemolishConfirm(false)
+		setIsWorkAreaSelecting(false)
 		setBuildingInstance(null)
 		setBuildingDefinition(null)
 		EventBus.emit(UiEvents.Building.Close)
+	}
+
+	const handleFocusBuilding = () => {
+		if (!buildingInstance) {
+			return
+		}
+		EventBus.emit(UiEvents.Camera.Focus, {
+			x: buildingInstance.position.x,
+			y: buildingInstance.position.y,
+			duration: 650,
+			mapId: buildingInstance.mapId
+		})
 	}
 
 	const bufferItemTypes = useMemo(() => {
@@ -728,6 +765,8 @@ export const BuildingInfoPanel: React.FC = () => {
 	const isCollectingResources = buildingInstance.stage === ConstructionStage.CollectingResources
 	const hasWorkerSlots = buildingDefinition.workerSlots !== undefined
 	const canPauseWork = Boolean((productionRecipes.length > 0) || buildingDefinition.harvest || buildingDefinition.farm)
+	const workStatus = canPauseWork ? productionService.getProductionStatus(buildingInstance.id) : ProductionStatus.Idle
+	const isWorkPaused = workStatus === ProductionStatus.Paused
 	const handlePlanUpdate = (nextPlan: ProductionPlan) => {
 		if (!buildingInstance || !buildingDefinition) {
 			return
@@ -802,6 +841,11 @@ export const BuildingInfoPanel: React.FC = () => {
 	const workAreaRadiusTiles = buildingDefinition.farm?.plotRadiusTiles ?? buildingDefinition.harvest?.radiusTiles
 	const canSelectWorkArea = isCompleted && typeof workAreaRadiusTiles === 'number' && workAreaRadiusTiles > 0
 	const isWarehouse = Boolean(buildingDefinition.isWarehouse)
+	const isHouse = Boolean(buildingDefinition.spawnsSettlers)
+	const houseCapacity = Math.max(0, buildingDefinition.maxOccupants ?? occupancyCapacity)
+	const houseInhabitants = isHouse
+		? settlers.filter(settler => settler.houseId === buildingInstance.id)
+		: []
 	const warehouseItemTypes = isWarehouse && buildingDefinition.storageSlots?.length
 		? Array.from(new Set(buildingDefinition.storageSlots.map((slot) => slot.itemType))).filter(Boolean)
 		: []
@@ -818,6 +862,13 @@ export const BuildingInfoPanel: React.FC = () => {
 	// Get resource collection progress from building definition costs and collected resources
 	const requiredResources = buildingDefinition.costs || []
 	const collectedResources = (buildingInstance.collectedResources as Record<string, number>) || {}
+	const completedConstructionMaterials = requiredResources.reduce((count, cost) => (
+		(collectedResources[cost.itemType] || 0) >= cost.quantity ? count + 1 : count
+	), 0)
+	const hasConstructionMaterials = isCollectingResources && requiredResources.length > 0
+	const isConstructionInProgress = buildingInstance.stage === ConstructionStage.Constructing
+	const showOverview = !isCompleted || hasConstructionMaterials || isConstructionInProgress || occupancyCapacity > 0
+	const constructionProgressPercent = Math.round(buildingInstance.progress)
 
 	const handleRequestWorker = () => {
 		if (buildingInstance) {
@@ -828,9 +879,20 @@ export const BuildingInfoPanel: React.FC = () => {
 	}
 
 	const handleSelectWorkArea = () => {
+		if (buildingInstance && isWorkAreaSelecting) {
+			EventBus.emit(UiEvents.Building.WorkAreaCancel, {})
+			return
+		}
 		if (buildingInstance) {
 			EventBus.emit(UiEvents.Building.WorkAreaSelect, { buildingInstanceId: buildingInstance.id })
 		}
+	}
+
+	const handleTogglePauseWork = () => {
+		if (!isCompleted || !canPauseWork) {
+			return
+		}
+		buildingService.setProductionPaused(buildingInstance.id, !isWorkPaused)
 	}
 
 	const handleStorageRequestToggle = (itemType: string) => {
@@ -943,110 +1005,177 @@ export const BuildingInfoPanel: React.FC = () => {
 		populationService.unassignWorker(settlerId)
 	}
 
+	const buildingStatusLabel = isConstructing
+			? '🔨 Under Construction'
+			: isCollectingResources
+				? '📦 Collecting Resources'
+				: isClearingSite
+					? '🪓 Clearing Site'
+					: '🏗️ Foundation'
+	const overviewStatusLabel = isCompleted ? 'Operational' : buildingStatusLabel
+
 	return (
-		<DraggablePanel
-			icon={buildingDefinition.icon || '🏗️'}
-			title={buildingDefinition.name}
-			onClose={handleClose}
-		>
-			<div className={sharedStyles.description}>
-				{buildingDefinition.description}
+		<div className={styles.panel}>
+			<div className={styles.header}>
+				<div className={styles.titleWrap}>
+					<span className={styles.titleIcon}>{buildingDefinition.icon || '🏗️'}</span>
+					<div>
+						<h3 className={styles.title}>{buildingDefinition.name}</h3>
+						{!isCompleted ? (
+							<div className={styles.subtitle}>{buildingStatusLabel}</div>
+						) : null}
+					</div>
+				</div>
+				<div className={styles.headerActions}>
+					<button
+						type="button"
+						className={styles.headerIconButton}
+						onClick={handleFocusBuilding}
+						aria-label="Focus building"
+						title="Focus building"
+					>
+						🎯
+					</button>
+					{canSelectWorkArea ? (
+						<button
+							type="button"
+							className={`${styles.headerIconButton} ${isWorkAreaSelecting ? styles.headerIconButtonActive : ''}`}
+							onClick={handleSelectWorkArea}
+							aria-label={isWorkAreaSelecting ? 'Cancel work area selection' : 'Select work area'}
+							title={isWorkAreaSelecting ? 'Cancel work area selection' : 'Select work area'}
+						>
+							🗺
+						</button>
+					) : null}
+					{isCompleted && canPauseWork ? (
+						<button
+							type="button"
+							className={`${styles.headerIconButton} ${isWorkPaused ? styles.headerIconButtonActive : ''}`}
+							onClick={handleTogglePauseWork}
+							aria-label={isWorkPaused ? 'Resume work' : 'Pause work'}
+							title={isWorkPaused ? 'Resume work' : 'Pause work'}
+						>
+							{isWorkPaused ? '▶' : '⏸'}
+						</button>
+					) : null}
+					{canDemolish ? (
+						<>
+							<span className={styles.headerActionDivider} aria-hidden="true" />
+							<button
+								type="button"
+								className={`${styles.headerIconButton} ${styles.headerIconButtonDanger}`}
+								onClick={handleDemolishBuilding}
+								aria-label="Demolish building"
+								title="Demolish building"
+							>
+								🗑
+							</button>
+							<span className={styles.headerActionDivider} aria-hidden="true" />
+						</>
+					) : null}
+					<button
+						type="button"
+						className={styles.closeButton}
+						onClick={handleClose}
+						aria-label="Close building panel"
+					>
+						×
+					</button>
+				</div>
 			</div>
 
-			<div className={sharedStyles.info}>
-				<div className={sharedStyles.infoRow}>
-					<span className={sharedStyles.label}>Status:</span>
-					<span className={sharedStyles.value}>
-						{isCompleted
-							? '✅ Completed'
-							: isConstructing
-								? '🔨 Under Construction'
-								: isCollectingResources
-									? '📦 Collecting Resources'
-									: isClearingSite
-										? '🪓 Clearing Site'
-										: '🏗️ Foundation'}
-					</span>
-				</div>
+			<div className={styles.content}>
+			{showOverview && (
+				<div className={styles.info}>
+					<div className={styles.sectionTitle}>Overview</div>
+					<div className={styles.infoRow}>
+						<span className={styles.label}>Status:</span>
+						<span className={styles.value}>{overviewStatusLabel}</span>
+					</div>
 
-				{isCollectingResources && requiredResources.length > 0 && (
-					<div className={sharedStyles.infoRow}>
-						<span className={sharedStyles.label}>Resources:</span>
-						<span className={sharedStyles.value}>
-							<div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
-								{requiredResources.map((cost, index) => {
+					{hasConstructionMaterials && (
+						<>
+							<div className={styles.infoRow}>
+								<span className={styles.label}>Materials:</span>
+								<span className={styles.value}>{completedConstructionMaterials}/{requiredResources.length} ready</span>
+							</div>
+							<div className={styles.materialsGrid}>
+								{requiredResources.map((cost) => {
 									const collected = collectedResources[cost.itemType] || 0
 									const required = cost.quantity
-									const isComplete = collected >= required
 									return (
-										<div key={index} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-											<ItemEmoji itemType={cost.itemType} />
-											<span style={{ color: isComplete ? '#4caf50' : '#fff' }}>
-												{collected}/{required} {cost.itemType}
-											</span>
-										</div>
+										<StorageResourceTile
+											key={`${cost.itemType}-${required}`}
+											itemType={cost.itemType}
+											amountText={`${collected}/${required}`}
+											isComplete={collected >= required}
+										/>
 									)
 								})}
 							</div>
-						</span>
-					</div>
-				)}
+						</>
+					)}
 
-				{buildingInstance.stage === ConstructionStage.Constructing && (
-					<div className={sharedStyles.infoRow}>
-						<span className={sharedStyles.label}>Construction Progress:</span>
-						<span className={sharedStyles.value}>{Math.round(buildingInstance.progress)}%</span>
-					</div>
-				)}
+					{isConstructionInProgress && (
+						<div className={styles.progressRow}>
+							<ProgressBarRow
+								label="Construction Progress"
+								percent={constructionProgressPercent}
+								valueLabel={`${constructionProgressPercent}%`}
+							/>
+						</div>
+					)}
 
-				{occupancyCapacity > 0 && (
-					<div className={sharedStyles.infoRow}>
-						<span className={sharedStyles.label}>Occupancy:</span>
-						<span className={sharedStyles.value}>
-							{currentOccupancy} / {occupancyCapacity}
-						</span>
-					</div>
-				)}
-			</div>
+					{occupancyCapacity > 0 && (
+						<div className={styles.infoRow}>
+							<span className={styles.label}>Occupancy:</span>
+							<span className={styles.value}>
+								{currentOccupancy} / {occupancyCapacity}
+							</span>
+						</div>
+					)}
+				</div>
+			)}
 
 			{(hasWorkerSlots || assignedWorkers.length > 0) && (
-				<div className={sharedStyles.info}>
-					<div className={sharedStyles.infoRow}>
-						<span className={sharedStyles.label}>Workers:</span>
-						<span className={sharedStyles.value}>
+				<div className={styles.info}>
+					<div className={styles.sectionTitle}>Workforce</div>
+					<div className={styles.infoRow}>
+						<span className={styles.label}>Workers:</span>
+						<span className={styles.value}>
 							{workerCount}
 							{workerMetaParts.length > 0 && ` (${workerMetaParts.join(', ')})`}
 							{hasWorkerSlots && ` / ${maxWorkers}`}
 						</span>
 					</div>
 					{workerCount > 0 ? (
-						<div className={sharedStyles.workerList}>
+						<div className={styles.workerList}>
 							{assignedWorkers.map((settler, index) => {
 								const problemReason = getWorkerProblemReason(settler)
 								return (
-									<div key={settler.id} className={sharedStyles.workerRow}>
+									<div key={settler.id} className={styles.workerRow}>
 										<button
 											type="button"
-											className={sharedStyles.workerRowButton}
+											className={styles.workerRowButton}
 											onClick={() => handleWorkerClick(settler.id)}
 											title="Open settler details"
 										>
-											<span className={sharedStyles.workerInfo}>
-												<span className={sharedStyles.workerIcon}>{professionIcons[settler.profession]}</span>
-												<span className={sharedStyles.workerName} title={settler.id}>
+											<span className={styles.workerInfo}>
+												<span className={styles.workerIcon}>{professionIcons[settler.profession]}</span>
+												<span className={styles.workerName} title={settler.id}>
 													{professionLabels[settler.profession]} #{index + 1}
 												</span>
 											</span>
-											<span className={sharedStyles.workerMeta}>
+											<span className={styles.workerMeta}>
 												{getWorkerStatusLabel(settler)}
 												{problemReason && (
-													<span className={sharedStyles.workerDanger} title={problemReason}>⚠️</span>
+													<span className={styles.workerDanger} title={problemReason}>⚠️</span>
 												)}
 											</span>
 										</button>
 										<button
 											type="button"
-											className={sharedStyles.workerUnassignButton}
+											className={styles.workerUnassignButton}
 											onClick={() => handleUnassignWorker(settler.id)}
 											title="Unassign worker"
 										>
@@ -1057,7 +1186,7 @@ export const BuildingInfoPanel: React.FC = () => {
 							})}
 						</div>
 					) : (
-						<div className={sharedStyles.workerHint}>
+						<div className={styles.workerHint}>
 							{queuedWorkers > 0
 								? `${queuedWorkers} worker${queuedWorkers === 1 ? '' : 's'} queued`
 								: 'No workers assigned yet'}
@@ -1066,40 +1195,78 @@ export const BuildingInfoPanel: React.FC = () => {
 				</div>
 			)}
 
+			{isCompleted && isHouse && (
+				<div className={styles.info}>
+					<div className={styles.sectionTitle}>Inhabitants</div>
+					<div className={styles.infoRow}>
+						<span className={styles.label}>Residents:</span>
+						<span className={styles.value}>
+							{houseInhabitants.length}
+							{houseCapacity > 0 ? ` / ${houseCapacity}` : ''}
+						</span>
+					</div>
+					{houseInhabitants.length > 0 ? (
+						<div className={styles.workerList}>
+							{houseInhabitants.map((settler, index) => (
+								<div key={settler.id} className={styles.workerRow}>
+									<button
+										type="button"
+										className={styles.workerRowButton}
+										onClick={() => handleWorkerClick(settler.id)}
+										title="Open settler details"
+									>
+										<span className={styles.workerInfo}>
+											<span className={styles.workerIcon}>{professionIcons[settler.profession]}</span>
+											<span className={styles.workerName} title={settler.id}>
+												{professionLabels[settler.profession]} #{index + 1}
+											</span>
+										</span>
+										<span className={styles.workerMeta}>{getWorkerStatusLabel(settler)}</span>
+									</button>
+								</div>
+							))}
+						</div>
+					) : (
+						<div className={styles.workerHint}>No inhabitants yet</div>
+					)}
+				</div>
+			)}
+
 			{needsWorkers && (
-				<div className={sharedStyles.actions}>
+				<div className={styles.actions}>
+					<div className={styles.sectionTitle}>Staffing</div>
 					{hasRequiredProfession && (
-						<div className={sharedStyles.infoRow}>
-							<span className={sharedStyles.label}>Required Profession:</span>
-							<span className={sharedStyles.value}>{requiredProfessionLabel}</span>
+						<div className={styles.infoRow}>
+							<span className={styles.label}>Required Profession:</span>
+							<span className={styles.value}>{requiredProfessionLabel}</span>
 						</div>
 					)}
 					{isConstructing && (
-						<div className={sharedStyles.workerHint}>
+						<div className={styles.workerHint}>
 							🔍 Searching for available builder...
 						</div>
 					)}
 					{isCompleted && hasWorkerSlots && workerCount < maxWorkers && (
 						<>
 							<button
-								className={sharedStyles.requestWorkerButton}
+								className={styles.requestWorkerButton}
 								onClick={handleRequestWorker}
 								disabled={workerCount >= maxWorkers}
 							>
 								Request Worker
 							</button>
 							{errorMessage && (
-								<div className={sharedStyles.errorMessage}>
+								<div className={styles.errorMessage}>
 									⚠️ {errorMessage}
 								</div>
 							)}
 							{workerStatus && !errorMessage && (
-								<div className={sharedStyles.workerStatus}>
+								<div className={styles.workerStatus}>
 									{workerStatus}
 								</div>
 							)}
 							{!errorMessage && !workerStatus && (
-								<div className={sharedStyles.workerHint}>
+								<div className={styles.workerHint}>
 									Workers will operate this building
 								</div>
 							)}
@@ -1109,23 +1276,13 @@ export const BuildingInfoPanel: React.FC = () => {
 			)}
 
 			{canCancel && (
-				<div className={sharedStyles.actions}>
-					<button className={sharedStyles.cancelButton} onClick={handleCancelConstruction}>
+				<div className={styles.actions}>
+					<div className={styles.sectionTitle}>Construction</div>
+					<button className={styles.cancelButton} onClick={handleCancelConstruction}>
 						Cancel Construction
 					</button>
-					<div className={sharedStyles.cancelHint}>
+					<div className={styles.cancelHint}>
 						Resources will be refunded to your inventory
-					</div>
-				</div>
-			)}
-
-			{canDemolish && (
-				<div className={sharedStyles.actions}>
-					<button className={sharedStyles.cancelButton} onClick={handleDemolishBuilding}>
-						Demolish Building
-					</button>
-					<div className={sharedStyles.cancelHint}>
-						Drops 50% of construction costs on the ground
 					</div>
 				</div>
 			)}
@@ -1161,41 +1318,37 @@ export const BuildingInfoPanel: React.FC = () => {
 			)}
 
 			{isCompleted && buildingDefinition.storageSlots?.length && (
-				<div className={sharedStyles.info}>
-					<div className={sharedStyles.infoRow}>
-						<span className={sharedStyles.label}>Buffer:</span>
-						<span className={sharedStyles.value}>
-							<div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
-								{bufferItemTypes
-									.filter((itemType) => Boolean(itemType))
-									.map((itemType) => {
-										const capacity = storageService.getStorageCapacity(buildingInstance.id, itemType)
-										const quantity = storageService.getItemQuantity(buildingInstance.id, itemType)
-										const percentage = capacity > 0 ? Math.round((quantity / capacity) * 100) : 0
-										return (
-											<div key={itemType} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-												<ItemEmoji itemType={itemType} />
-												<span>
-													{quantity}/{capacity} {itemType} ({percentage}%)
-												</span>
-											</div>
-										)
-									})}
-							</div>
-						</span>
+				<div className={styles.info}>
+					<div className={styles.sectionTitle}>Storage</div>
+					<div className={styles.storageGrid}>
+						{bufferItemTypes
+							.filter((itemType) => Boolean(itemType))
+							.map((itemType) => {
+								const capacity = storageService.getStorageCapacity(buildingInstance.id, itemType)
+								const quantity = storageService.getItemQuantity(buildingInstance.id, itemType)
+								return (
+									<StorageResourceTile
+										key={itemType}
+										itemType={itemType}
+										amountText={`${quantity}/${capacity}`}
+										isComplete={capacity > 0 && quantity >= capacity}
+									/>
+								)
+							})}
 					</div>
 				</div>
 			)}
 
 			{isCompleted && isTradingRouteBuilding && (
-				<div className={sharedStyles.info}>
-					<div className={sharedStyles.infoRow}>
-						<span className={sharedStyles.label}>Reputation:</span>
-						<span className={sharedStyles.value}>{reputation}</span>
+				<div className={styles.info}>
+					<div className={styles.sectionTitle}>Trade</div>
+					<div className={styles.infoRow}>
+						<span className={styles.label}>Reputation:</span>
+						<span className={styles.value}>{reputation}</span>
 					</div>
-					<div className={sharedStyles.infoRow}>
-						<span className={sharedStyles.label}>Route status:</span>
-						<span className={sharedStyles.value}>
+					<div className={styles.infoRow}>
+						<span className={styles.label}>Route status:</span>
+						<span className={styles.value}>
 							{tradeStatusLabel}
 							{tradeCountdownSeconds !== null ? ` (${tradeCountdownSeconds}s)` : ''}
 						</span>
@@ -1281,20 +1434,21 @@ export const BuildingInfoPanel: React.FC = () => {
 			)}
 
 			{isCompleted && isWarehouse && warehouseItemTypes.length > 0 && (
-				<div className={sharedStyles.info}>
-					<div className={sharedStyles.infoRow}>
-						<span className={sharedStyles.label}>Auto-deliver (low priority):</span>
-						<span className={sharedStyles.value}>
-							<div className={sharedStyles.storageToggleList}>
+				<div className={styles.info}>
+					<div className={styles.sectionTitle}>Logistics</div>
+					<div className={styles.infoRow}>
+						<span className={styles.label}>Auto-deliver (low priority):</span>
+						<span className={styles.value}>
+							<div className={styles.storageToggleList}>
 								{warehouseItemTypes.map((itemType) => (
-									<label key={itemType} className={sharedStyles.storageToggleRow}>
+									<label key={itemType} className={styles.storageToggleRow}>
 										<input
 											type="checkbox"
-											className={sharedStyles.storageToggleCheckbox}
+											className={styles.storageToggleCheckbox}
 											checked={storageRequestSet.has(itemType)}
 											onChange={() => handleStorageRequestToggle(itemType)}
 										/>
-										<span className={sharedStyles.storageToggleLabel}>
+										<span className={styles.storageToggleLabel}>
 											<ItemEmoji itemType={itemType} />
 											<span>{itemType}</span>
 										</span>
@@ -1307,15 +1461,15 @@ export const BuildingInfoPanel: React.FC = () => {
 			)}
 
 			{isCompleted && productionRecipes.length > 0 && (
-				<div className={sharedStyles.info}>
-					<div className={sharedStyles.infoRow}>
-						<span className={sharedStyles.label}>Production:</span>
-						<span className={sharedStyles.value}>
+				<div className={styles.info}>
+					<div className={styles.sectionTitle}>Production</div>
+					<div className={styles.infoRow}>
+						<span className={styles.label}>Production:</span>
+						<span className={styles.value}>
 							{(() => {
 								const production = productionService.getBuildingProduction(buildingInstance.id)
 								const status = production?.status || ProductionStatus.Idle
 								const progress = production?.progress || 0
-								const isPaused = status === ProductionStatus.Paused
 								const currentRecipe = production?.currentRecipe
 								const singleRecipe = productionRecipes.length === 1 ? productionRecipes[0] : null
 
@@ -1382,12 +1536,6 @@ export const BuildingInfoPanel: React.FC = () => {
 								return (
 									<div className={styles.productionPanel}>
 										{statusContent}
-										<button
-											className={sharedStyles.actionButton}
-											onClick={() => buildingService.setProductionPaused(buildingInstance.id, !isPaused)}
-										>
-											{isPaused ? 'Resume Production' : 'Pause Production'}
-										</button>
 										{productionRecipes.length > 1 && (
 											<div className={styles.productionPlan}>
 												<label className={styles.productionPlanGlobal}>
@@ -1464,63 +1612,14 @@ export const BuildingInfoPanel: React.FC = () => {
 				</div>
 			)}
 
-			{isCompleted && productionRecipes.length === 0 && canPauseWork && (
-				<div className={sharedStyles.info}>
-					<div className={sharedStyles.infoRow}>
-						<span className={sharedStyles.label}>Work:</span>
-						<span className={sharedStyles.value}>
-							{(() => {
-								const status = productionService.getProductionStatus(buildingInstance.id)
-								const isPaused = status === ProductionStatus.Paused
-								let statusLabel = '✅ Active'
-								if (status === ProductionStatus.Paused) {
-									statusLabel = '⏸️ Paused'
-								} else if (status === ProductionStatus.NoWorker) {
-									statusLabel = '👷 Needs worker'
-								}
-								return (
-									<div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-										<span>{statusLabel}</span>
-										<button
-											className={sharedStyles.actionButton}
-											onClick={() => buildingService.setProductionPaused(buildingInstance.id, !isPaused)}
-										>
-											{isPaused ? 'Resume Work' : 'Pause Work'}
-										</button>
-									</div>
-								)
-							})()}
-						</span>
-					</div>
-				</div>
-			)}
-
-			{canSelectWorkArea && (
-				<div className={sharedStyles.info}>
-					<div className={sharedStyles.infoRow}>
-						<span className={sharedStyles.label}>Work Area:</span>
-						<span className={sharedStyles.value}>
-							<div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-								<span>Radius: {workAreaRadiusTiles} tiles</span>
-								<button
-									className={sharedStyles.actionButton}
-									onClick={handleSelectWorkArea}
-								>
-									Select Work Area
-								</button>
-							</div>
-						</span>
-					</div>
-				</div>
-			)}
-
 			{isCompleted && !buildingDefinition.storageSlots?.length && productionRecipes.length === 0 && !buildingDefinition.harvest && !buildingDefinition.farm && (
-				<div className={sharedStyles.actions}>
-					<div className={sharedStyles.completedMessage}>
+				<div className={styles.actions}>
+					<div className={styles.completedMessage}>
 						Building is ready for use
 					</div>
 				</div>
 			)}
-		</DraggablePanel>
+			</div>
+		</div>
 	)
 }
