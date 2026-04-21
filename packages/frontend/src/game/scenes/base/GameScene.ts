@@ -66,6 +66,7 @@ export abstract class GameScene extends MapScene {
 	protected npcProximityService: NPCProximityService
 	protected sceneData: any = {}
 	private cameraPanVelocity = { x: 0, y: 0 }
+	private cameraPanInputDirection: { x: number; y: number } | null = null
 	private resourceNodeBatcher: ResourceNodeBatcher | null = null
 	private resourceNodesDirty = false
 	private lastResourceChunkWindow: string | null = null
@@ -226,6 +227,7 @@ export abstract class GameScene extends MapScene {
 		this.resourceNodeSelectionManager = new ResourceNodeSelectionManager(this)
 		this.mapClickIndicator = new MapClickIndicator(this)
 		this.runtime.input.on('pointerup', this.handleMapRightClick)
+		this.cameras.main.enableScrollZoom(this.runtime.input)
 		mark('placements+fx')
 
 		EventBus.emit(UiEvents.Scene.Ready, { mapId: this.mapKey })
@@ -337,6 +339,19 @@ export abstract class GameScene extends MapScene {
 		const targetVelocityY = hasInput ? delta.z * speed : 0
 		const factor = hasInput ? accelFactor : decelFactor
 		const smoothing = 1 - Math.pow(1 - factor, deltaMs / 16.67)
+		const inputDirection = hasInput ? { x: moveX / inputLength, y: moveY / inputLength } : null
+
+		// When the pressed direction changes (e.g. diagonal -> straight up), clear residual side velocity
+		// so camera pan doesn't need to "unwind" before following the new input direction.
+		const previousInputDirection = this.cameraPanInputDirection
+		const inputDirectionChanged =
+			inputDirection !== null &&
+			previousInputDirection !== null &&
+			(inputDirection.x !== previousInputDirection.x || inputDirection.y !== previousInputDirection.y)
+		if (inputDirectionChanged) {
+			this.cameraPanVelocity.x = targetVelocityX
+			this.cameraPanVelocity.y = targetVelocityY
+		}
 
 		this.cameraPanVelocity.x += (targetVelocityX - this.cameraPanVelocity.x) * smoothing
 		this.cameraPanVelocity.y += (targetVelocityY - this.cameraPanVelocity.y) * smoothing
@@ -344,8 +359,10 @@ export abstract class GameScene extends MapScene {
 		if (!hasInput && Math.hypot(this.cameraPanVelocity.x, this.cameraPanVelocity.y) < 0.01) {
 			this.cameraPanVelocity.x = 0
 			this.cameraPanVelocity.y = 0
+			this.cameraPanInputDirection = null
 			return
 		}
+		this.cameraPanInputDirection = inputDirection
 
 		const distance = deltaMs / 1000
 		this.cameras.main.panBy(this.cameraPanVelocity.x * distance, this.cameraPanVelocity.y * distance)
@@ -1262,6 +1279,10 @@ export abstract class GameScene extends MapScene {
 
 	protected cleanupScene(): void {
 		this.runtime.input.off('pointerup', this.handleMapRightClick)
+		this.cameras.main.disableScrollZoom()
+		this.cameraPanInputDirection = null
+		this.cameraPanVelocity.x = 0
+		this.cameraPanVelocity.y = 0
 		this.mapClickIndicator?.destroy()
 		this.mapClickIndicator = null
 		this.selectedSettlerId = null
