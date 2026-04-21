@@ -12,13 +12,27 @@ export interface PointerState {
 	world: Vector3 | null
 }
 
+export interface WheelState {
+	x: number
+	y: number
+	deltaX: number
+	deltaY: number
+	deltaMode: number
+	ctrlKey: boolean
+	shiftKey: boolean
+	altKey: boolean
+	metaKey: boolean
+}
+
 type PointerHandler = (pointer: PointerState) => void
+type WheelHandler = (wheel: WheelState) => void
 
 export class InputManager {
 	private canvas: HTMLCanvasElement
 	private renderer: BabylonRenderer
 	private pointer: PointerState = { x: 0, y: 0, isDown: false, isDragging: false, wasDrag: false, button: -1, buttons: 0, world: null }
 	private handlers: Map<string, Set<PointerHandler>> = new Map()
+	private wheelHandlers: Set<WheelHandler> = new Set()
 	private pickHandlers: Map<number, () => void> = new Map()
 	private dragStartX = 0
 	private dragStartY = 0
@@ -61,13 +75,23 @@ export class InputManager {
 		return this.pointer.world
 	}
 
+	onWheel(handler: WheelHandler): void {
+		this.wheelHandlers.add(handler)
+	}
+
+	offWheel(handler: WheelHandler): void {
+		this.wheelHandlers.delete(handler)
+	}
+
 	dispose(): void {
 		this.canvas.removeEventListener('pointermove', this.handlePointerMove)
 		this.canvas.removeEventListener('pointerdown', this.handlePointerDown)
 		this.canvas.removeEventListener('pointerup', this.handlePointerUp)
+		this.canvas.removeEventListener('wheel', this.handleWheel)
 		this.canvas.removeEventListener('dragstart', this.handleDragStart)
 		this.canvas.removeEventListener('contextmenu', this.handleContextMenu)
 		this.handlers.clear()
+		this.wheelHandlers.clear()
 		this.pickHandlers.clear()
 	}
 
@@ -75,6 +99,7 @@ export class InputManager {
 		this.canvas.addEventListener('pointermove', this.handlePointerMove)
 		this.canvas.addEventListener('pointerdown', this.handlePointerDown)
 		this.canvas.addEventListener('pointerup', this.handlePointerUp)
+		this.canvas.addEventListener('wheel', this.handleWheel, { passive: false })
 	}
 
 	private updatePointer(event: PointerEvent): void {
@@ -136,6 +161,25 @@ export class InputManager {
 		this.updatePointer(event)
 		this.emit('pointerup')
 		this.dragging = false
+	}
+
+	private handleWheel = (event: WheelEvent) => {
+		event.preventDefault()
+		const rect = this.canvas.getBoundingClientRect()
+		const wheelState: WheelState = {
+			x: event.clientX - rect.left,
+			y: event.clientY - rect.top,
+			deltaX: event.deltaX,
+			deltaY: event.deltaY,
+			deltaMode: event.deltaMode,
+			ctrlKey: event.ctrlKey,
+			shiftKey: event.shiftKey,
+			altKey: event.altKey,
+			metaKey: event.metaKey
+		}
+		for (const handler of this.wheelHandlers) {
+			handler(wheelState)
+		}
 	}
 
 	private emit(event: 'pointermove' | 'pointerdown' | 'pointerup'): void {

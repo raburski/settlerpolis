@@ -1,5 +1,5 @@
 import type { BabylonRenderer } from './BabylonRenderer'
-import type { InputManager, PointerState } from '../input/InputManager'
+import type { InputManager, PointerState, WheelState } from '../input/InputManager'
 import { IsometricRotation } from '../../shared/IsometricRotation'
 
 interface PanState {
@@ -37,13 +37,15 @@ export class CameraController {
 	private shakeState: ShakeState | null = null
 	private fadeOverlay: HTMLDivElement | null = null
 	private dragInput: InputManager | null = null
+	private wheelInput: InputManager | null = null
 	private dragLastWorld: { x: number; y: number } | null = null
 	private dragStartWorld: { x: number; y: number } | null = null
 	private dragStartTarget: { x: number; y: number } | null = null
 	private dragStartFollowOffset: { x: number; y: number } | null = null
 	private zoomState: ZoomState | null = null
-	private zoomStep = 1
-	private readonly zoomScales: [number, number, number]
+	private zoomStep = 2
+	private wheelZoomAccumulator = 0
+	private readonly zoomScales: [number, number, number, number, number]
 	private readonly zoomDurationMs = 260
 	private readonly rotationStorageKey = 'rugged:camera-rotation-step'
 	private readonly isoRotation: IsometricRotation
@@ -51,7 +53,13 @@ export class CameraController {
 	constructor(renderer: BabylonRenderer, overlayRoot: HTMLDivElement) {
 		this.renderer = renderer
 		const middleZoom = this.renderer.getOrthoScale()
-		this.zoomScales = [middleZoom * 1.35, middleZoom, middleZoom * 0.75]
+		this.zoomScales = [
+			middleZoom * 1.8,
+			middleZoom * 1.35,
+			middleZoom,
+			middleZoom * 0.75,
+			middleZoom * 0.55
+		]
 		const initialStep = this.restoreRotation()
 		this.isoRotation = new IsometricRotation({ initialStep })
 		this.renderer.camera.alpha = this.isoRotation.getAlphaForStep()
@@ -185,10 +193,13 @@ export class CameraController {
 		}
 
 		if (this.followTarget) {
-			this.renderer.setCameraTarget(
-				this.followTarget.x + this.followOffset.x,
-				this.followTarget.y + this.followOffset.y
-			)
+			const desiredX = this.followTarget.x + this.followOffset.x
+			const desiredY = this.followTarget.y + this.followOffset.y
+			this.renderer.setCameraTarget(desiredX, desiredY)
+			// Keep follow offset aligned with the clamped target to avoid accumulating
+			// hidden offset at map edges (which causes sticky diagonal drift).
+			this.followOffset.x = this.renderer.camera.target.x - this.followTarget.x
+			this.followOffset.y = this.renderer.camera.target.z - this.followTarget.y
 		}
 
 		if (this.shakeState) {
@@ -207,6 +218,7 @@ export class CameraController {
 
 	destroy(): void {
 		this.disableDragPan()
+		this.disableScrollZoom()
 		window.removeEventListener('resize', this.updateSize)
 		if (this.fadeOverlay) {
 			this.fadeOverlay.remove()
@@ -231,6 +243,21 @@ export class CameraController {
 		this.dragInput.off('pointerup', this.handleDragEnd)
 		this.dragInput = null
 		this.dragLastWorld = null
+	}
+
+	enableScrollZoom(input: InputManager): void {
+		if (this.wheelInput) {
+			this.disableScrollZoom()
+		}
+		this.wheelInput = input
+		this.wheelInput.onWheel(this.handleWheelZoom)
+	}
+
+	disableScrollZoom(): void {
+		if (!this.wheelInput) return
+		this.wheelInput.offWheel(this.handleWheelZoom)
+		this.wheelInput = null
+		this.wheelZoomAccumulator = 0
 	}
 
 	private handleDragStart = (pointer: PointerState) => {
@@ -285,6 +312,34 @@ export class CameraController {
 		this.dragStartFollowOffset = null
 	}
 
+	private handleWheelZoom = (wheel: WheelState) => {
+		if (wheel.deltaY === 0) return
+		const deltaSign = Math.sign(wheel.deltaY)
+		if (deltaSign === 0) return
+		if (this.wheelZoomAccumulator !== 0 && Math.sign(this.wheelZoomAccumulator) !== deltaSign) {
+			this.wheelZoomAccumulator = 0
+		}
+		const sensitivity = this.getWheelZoomSensitivity()
+		this.wheelZoomAccumulator += (wheel.deltaY / 120) * sensitivity
+		if (this.wheelZoomAccumulator <= -1) {
+			const beforeStep = this.zoomStep
+			this.zoomIn()
+			if (this.zoomStep === beforeStep) {
+				this.wheelZoomAccumulator = 0
+				return
+			}
+			this.wheelZoomAccumulator = Math.min(0, this.wheelZoomAccumulator + 1)
+		} else if (this.wheelZoomAccumulator >= 1) {
+			const beforeStep = this.zoomStep
+			this.zoomOut()
+			if (this.zoomStep === beforeStep) {
+				this.wheelZoomAccumulator = 0
+				return
+			}
+			this.wheelZoomAccumulator = Math.max(0, this.wheelZoomAccumulator - 1)
+		}
+	}
+
 	private updateRotation(): void {
 		const update = this.isoRotation.update(Date.now())
 		if (update) {
@@ -331,6 +386,16 @@ export class CameraController {
 		const t = Math.min(1, Math.max(0, elapsed / this.zoomState.duration))
 		const eased = t * t * (3 - 2 * t)
 		return this.zoomState.start + (this.zoomState.end - this.zoomState.start) * eased
+	}
+
+	private getWheelZoomSensitivity(): number {
+		const reference = 0.02
+		const wheelDelta = this.renderer.camera.wheelDeltaPercentage
+		if (!Number.isFinite(wheelDelta) || wheelDelta <= 0) {
+			return 1
+		}
+		const normalized = Math.sqrt(wheelDelta / reference)
+		return Math.min(2.5, Math.max(0.3, normalized))
 	}
 
 	private persistRotation(): void {
