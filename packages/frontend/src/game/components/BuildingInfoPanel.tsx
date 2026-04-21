@@ -251,7 +251,6 @@ export const BuildingInfoPanel: React.FC = () => {
 	const [buildingInstance, setBuildingInstance] = useState<BuildingInstance | null>(null)
 	const [buildingDefinition, setBuildingDefinition] = useState<BuildingDefinition | null>(null)
 	const [errorMessage, setErrorMessage] = useState<string | null>(null)
-	const [workerStatus, setWorkerStatus] = useState<string | null>(null)
 	const [showDemolishConfirm, setShowDemolishConfirm] = useState(false)
 	const [tradeRoute, setTradeRoute] = useState<TradeRouteState | null>(null)
 	const [reputation, setReputation] = useState(0)
@@ -326,7 +325,6 @@ export const BuildingInfoPanel: React.FC = () => {
 			setBuildingInstance(data.buildingInstance)
 			setBuildingDefinition(data.buildingDefinition)
 			setErrorMessage(null) // Clear any previous errors
-			setWorkerStatus(null) // Clear any previous status
 			setShowDemolishConfirm(false)
 			setIsWorkAreaSelecting(false)
 			setIsVisible(true)
@@ -415,45 +413,16 @@ export const BuildingInfoPanel: React.FC = () => {
 			}
 		}
 
-		// Check if any settler is moving to this building
-			const checkWorkerMovingToBuilding = (settlerId?: string) => {
-				if (buildingInstance) {
-					const findMovingWorker = (settler: { state: SettlerState, stateContext: { targetId?: string } } | undefined) => {
-						if (!settler) {
-							return false
-						}
-						return settler.state === SettlerState.MovingToBuilding && settler.stateContext.targetId === buildingInstance.id
-					}
-
-					const workerMoving = settlerId
-						? findMovingWorker(populationService.getSettler(settlerId))
-						: populationService.getSettlers().some(findMovingWorker)
-					if (workerMoving) {
-						setWorkerStatus('Worker is moving to building...')
-						setErrorMessage(null) // Clear any errors
-					}
-				}
+		const handlePopulationSettlerUpdated = () => {
+			if (buildingInstance) {
+				setPopulationVersion((prev) => prev + 1)
 			}
-
-			const handlePopulationSettlerUpdated = (data: { settlerId: string }) => {
-				checkWorkerMovingToBuilding(data.settlerId)
-				if (buildingInstance) {
-					setPopulationVersion((prev) => prev + 1)
-				}
-			}
+		}
 
 		// Listen for worker assigned
-		const handleWorkerAssigned = (data: { buildingInstanceId: string, settlerId: string }) => {
+		const handleWorkerAssigned = (data: { buildingInstanceId: string }) => {
 			if (buildingInstance && buildingInstance.id === data.buildingInstanceId) {
-				const isConstruction = (
-					buildingInstance.stage === ConstructionStage.ClearingSite ||
-					buildingInstance.stage === ConstructionStage.CollectingResources ||
-					buildingInstance.stage === ConstructionStage.Constructing
-				)
-				setWorkerStatus(isConstruction ? 'Worker assigned! Construction speeded up.' : 'Worker assigned! Building is now operational.')
 				setErrorMessage(null) // Clear any errors
-				// Clear status after 3 seconds
-				setTimeout(() => setWorkerStatus(null), 3000)
 				// Force re-render to update worker count
 				setBuildingInstance({ ...buildingInstance })
 			}
@@ -527,9 +496,6 @@ export const BuildingInfoPanel: React.FC = () => {
 		EventBus.on(UiEvents.Population.WorkerUnassigned, handleWorkerUnassigned)
 		EventBus.on(UiEvents.Storage.Updated, handleStorageUpdated)
 		EventBus.on(UiEvents.Production.Updated, handleProductionUpdated)
-
-		// Check immediately when building is selected
-		checkWorkerMovingToBuilding()
 
 		return () => {
 			EventBus.off(UiEvents.Building.Select, handleBuildingSelect)
@@ -813,31 +779,27 @@ export const BuildingInfoPanel: React.FC = () => {
 	const assignedWorkers = settlers.filter(
 		settler => settler.buildingId === buildingInstance.id && Boolean(settler.stateContext.assignmentId)
 	)
-	const workingWorkers = assignedWorkers.filter(
-		settler => settler.state === SettlerState.Working || settler.state === SettlerState.Harvesting
-	)
-	const movingWorkers = assignedWorkers.filter(
-		settler => settler.state === SettlerState.MovingToBuilding || settler.state === SettlerState.MovingToResource || settler.state === SettlerState.MovingToTool
-	)
 	const workerCount = assignedWorkers.length
 	const queuedWorkers = buildingInstance.pendingWorkers ?? 0
 	const maxWorkers = buildingDefinition.workerSlots || 0
-	const workerMetaParts: string[] = []
-	if (workingWorkers.length > 0) {
-		workerMetaParts.push(`${workingWorkers.length} active`)
-	}
-	if (movingWorkers.length > 0) {
-		workerMetaParts.push(`${movingWorkers.length} en route`)
-	}
-	if (queuedWorkers > 0) {
-		workerMetaParts.push(`${queuedWorkers} queued`)
-	}
 	// Buildings only need workers during Constructing stage (builders) or Completed stage (production workers)
 	// During CollectingResources, carriers are automatically requested by the system
 	const needsWorkers = buildingInstance.stage === ConstructionStage.Constructing ||
 		(isCompleted && hasWorkerSlots && workerCount < maxWorkers)
+	const canRequestWorker = needsWorkers && isCompleted && hasWorkerSlots && workerCount < maxWorkers
+	const showWorkforceSection = needsWorkers || assignedWorkers.length > 0 || (hasWorkerSlots && maxWorkers > 0)
 	const requiredProfessionLabel = isConstructing ? 'builder' : buildingDefinition.requiredProfession
 	const hasRequiredProfession = requiredProfessionLabel !== undefined
+	const workforceSlotCount = isConstructing
+		? Math.max(1, workerCount + (queuedWorkers > 0 ? 1 : 0))
+		: (hasWorkerSlots ? maxWorkers : workerCount)
+	const emptyWorkerSlots = Math.max(0, workforceSlotCount - workerCount)
+	const emptyWorkerStatusLabel = isConstructing
+		? (queuedWorkers > 0 ? '⏳ Queued' : '🔍 Searching')
+		: 'Open slot'
+	const workforceHeaderMeta = workforceSlotCount > 0
+		? `${workerCount} / ${workforceSlotCount}`
+		: `${workerCount}`
 	const workAreaRadiusTiles = buildingDefinition.farm?.plotRadiusTiles ?? buildingDefinition.harvest?.radiusTiles
 	const canSelectWorkArea = isCompleted && typeof workAreaRadiusTiles === 'number' && workAreaRadiusTiles > 0
 	const isWarehouse = Boolean(buildingDefinition.isWarehouse)
@@ -846,6 +808,7 @@ export const BuildingInfoPanel: React.FC = () => {
 	const houseInhabitants = isHouse
 		? settlers.filter(settler => settler.houseId === buildingInstance.id)
 		: []
+	const hasDestructiveAction = canDemolish || canCancel
 	const warehouseItemTypes = isWarehouse && buildingDefinition.storageSlots?.length
 		? Array.from(new Set(buildingDefinition.storageSlots.map((slot) => slot.itemType))).filter(Boolean)
 		: []
@@ -873,7 +836,6 @@ export const BuildingInfoPanel: React.FC = () => {
 	const handleRequestWorker = () => {
 		if (buildingInstance) {
 			setErrorMessage(null) // Clear previous errors
-			setWorkerStatus(null) // Clear previous status
 			populationService.requestWorker(buildingInstance.id)
 		}
 	}
@@ -937,6 +899,12 @@ export const BuildingInfoPanel: React.FC = () => {
 		[ProfessionType.Vendor]: '🛍️',
 		[ProfessionType.Hunter]: '🏹'
 	}
+	const requiredProfessionIcon = hasRequiredProfession
+		? (professionIcons[requiredProfessionLabel as ProfessionType] || '👤')
+		: '👤'
+	const requiredProfessionName = hasRequiredProfession
+		? `${requiredProfessionLabel.charAt(0).toUpperCase()}${requiredProfessionLabel.slice(1)}`
+		: 'Worker'
 
 	const formatWaitReason = (reason?: string): string | null => {
 		if (!reason) {
@@ -997,6 +965,43 @@ export const BuildingInfoPanel: React.FC = () => {
 		return null
 	}
 
+	const renderRecipeFlow = (recipe: ProductionRecipe): React.ReactNode => {
+		const primaryInput = recipe.inputs?.[0]
+		const secondaryInput = recipe.inputs?.[1]
+		const primaryOutput = recipe.outputs?.[0]
+
+		if (!primaryInput || !primaryOutput) {
+			return null
+		}
+
+		return (
+			<div className={styles.productionRecipeFlow}>
+				<div className={styles.productionFlowTile}>
+					<StorageResourceTile
+						itemType={primaryInput.itemType}
+						amountText={`${primaryInput.quantity}x`}
+					/>
+				</div>
+				{secondaryInput ? <span className={styles.productionFlowSymbol}>+</span> : null}
+				{secondaryInput ? (
+					<div className={styles.productionFlowTile}>
+						<StorageResourceTile
+							itemType={secondaryInput.itemType}
+							amountText={`${secondaryInput.quantity}x`}
+						/>
+					</div>
+				) : null}
+				<span className={styles.productionFlowSymbol}>➡️</span>
+				<div className={styles.productionFlowTile}>
+					<StorageResourceTile
+						itemType={primaryOutput.itemType}
+						amountText={`${primaryOutput.quantity}x`}
+					/>
+				</div>
+			</div>
+		)
+	}
+
 	const handleWorkerClick = (settlerId: string) => {
 		EventBus.emit(UiEvents.Settler.Click, { settlerId })
 	}
@@ -1021,9 +1026,6 @@ export const BuildingInfoPanel: React.FC = () => {
 					<span className={styles.titleIcon}>{buildingDefinition.icon || '🏗️'}</span>
 					<div>
 						<h3 className={styles.title}>{buildingDefinition.name}</h3>
-						{!isCompleted ? (
-							<div className={styles.subtitle}>{buildingStatusLabel}</div>
-						) : null}
 					</div>
 				</div>
 				<div className={styles.headerActions}>
@@ -1058,15 +1060,15 @@ export const BuildingInfoPanel: React.FC = () => {
 							{isWorkPaused ? '▶' : '⏸'}
 						</button>
 					) : null}
-					{canDemolish ? (
+					{hasDestructiveAction ? (
 						<>
 							<span className={styles.headerActionDivider} aria-hidden="true" />
 							<button
 								type="button"
 								className={`${styles.headerIconButton} ${styles.headerIconButtonDanger}`}
-								onClick={handleDemolishBuilding}
-								aria-label="Demolish building"
-								title="Demolish building"
+								onClick={canDemolish ? handleDemolishBuilding : handleCancelConstruction}
+								aria-label={canDemolish ? 'Demolish building' : 'Cancel construction'}
+								title={canDemolish ? 'Demolish building' : 'Cancel construction'}
 							>
 								🗑
 							</button>
@@ -1137,59 +1139,75 @@ export const BuildingInfoPanel: React.FC = () => {
 				</div>
 			)}
 
-			{(hasWorkerSlots || assignedWorkers.length > 0) && (
+			{showWorkforceSection && (
 				<div className={styles.info}>
-					<div className={styles.sectionTitle}>Workforce</div>
-					<div className={styles.infoRow}>
-						<span className={styles.label}>Workers:</span>
-						<span className={styles.value}>
-							{workerCount}
-							{workerMetaParts.length > 0 && ` (${workerMetaParts.join(', ')})`}
-							{hasWorkerSlots && ` / ${maxWorkers}`}
-						</span>
+					<div className={styles.sectionHeaderRow}>
+						<div className={styles.sectionTitle}>Workforce</div>
+						<div className={styles.sectionHeaderMeta}>{workforceHeaderMeta}</div>
 					</div>
-					{workerCount > 0 ? (
-						<div className={styles.workerList}>
-							{assignedWorkers.map((settler, index) => {
-								const problemReason = getWorkerProblemReason(settler)
-								return (
-									<div key={settler.id} className={styles.workerRow}>
-										<button
-											type="button"
-											className={styles.workerRowButton}
-											onClick={() => handleWorkerClick(settler.id)}
-											title="Open settler details"
-										>
-											<span className={styles.workerInfo}>
-												<span className={styles.workerIcon}>{professionIcons[settler.profession]}</span>
-												<span className={styles.workerName} title={settler.id}>
-													{professionLabels[settler.profession]} #{index + 1}
-												</span>
+					<div className={styles.workerList}>
+						{assignedWorkers.map((settler, index) => {
+							const problemReason = getWorkerProblemReason(settler)
+							return (
+								<div key={settler.id} className={styles.workerRow}>
+									<button
+										type="button"
+										className={styles.workerRowButton}
+										onClick={() => handleWorkerClick(settler.id)}
+										title="Open settler details"
+									>
+										<span className={styles.workerInfo}>
+											<span className={styles.workerIcon}>{professionIcons[settler.profession]}</span>
+											<span className={styles.workerName} title={settler.id}>
+												{professionLabels[settler.profession]} #{index + 1}
 											</span>
-											<span className={styles.workerMeta}>
-												{getWorkerStatusLabel(settler)}
-												{problemReason && (
-													<span className={styles.workerDanger} title={problemReason}>⚠️</span>
-												)}
-											</span>
-										</button>
-										<button
-											type="button"
-											className={styles.workerUnassignButton}
-											onClick={() => handleUnassignWorker(settler.id)}
-											title="Unassign worker"
-										>
-											✕
-										</button>
-									</div>
-								)
-							})}
-						</div>
-					) : (
-						<div className={styles.workerHint}>
-							{queuedWorkers > 0
-								? `${queuedWorkers} worker${queuedWorkers === 1 ? '' : 's'} queued`
-								: 'No workers assigned yet'}
+										</span>
+										<span className={styles.workerMeta}>
+											{getWorkerStatusLabel(settler)}
+											{problemReason && (
+												<span className={styles.workerDanger} title={problemReason}>⚠️</span>
+											)}
+										</span>
+									</button>
+									<button
+										type="button"
+										className={styles.workerUnassignButton}
+										onClick={() => handleUnassignWorker(settler.id)}
+										title="Unassign worker"
+									>
+										✕
+									</button>
+								</div>
+							)
+						})}
+						{Array.from({ length: emptyWorkerSlots }).map((_, index) => (
+							<div key={`empty-slot-${index}`} className={styles.workerRow}>
+								<div className={`${styles.workerRowButton} ${styles.workerRowPlaceholder}`}>
+									<span className={styles.workerInfo}>
+										<span className={styles.workerIcon}>{requiredProfessionIcon}</span>
+										<span className={styles.workerName}>
+											{requiredProfessionName} slot
+										</span>
+									</span>
+									<span className={styles.workerMeta}>{emptyWorkerStatusLabel}</span>
+								</div>
+								{canRequestWorker ? (
+									<button
+										type="button"
+										className={styles.workerAssignButton}
+										onClick={handleRequestWorker}
+										title="Request worker"
+									>
+										+
+									</button>
+								) : null}
+							</div>
+						))}
+					</div>
+
+					{errorMessage && (
+						<div className={styles.errorMessage}>
+							⚠️ {errorMessage}
 						</div>
 					)}
 				</div>
@@ -1197,13 +1215,12 @@ export const BuildingInfoPanel: React.FC = () => {
 
 			{isCompleted && isHouse && (
 				<div className={styles.info}>
-					<div className={styles.sectionTitle}>Inhabitants</div>
-					<div className={styles.infoRow}>
-						<span className={styles.label}>Residents:</span>
-						<span className={styles.value}>
+					<div className={styles.sectionHeaderRow}>
+						<div className={styles.sectionTitle}>Residents</div>
+						<div className={styles.sectionHeaderMeta}>
 							{houseInhabitants.length}
 							{houseCapacity > 0 ? ` / ${houseCapacity}` : ''}
-						</span>
+						</div>
 					</div>
 					{houseInhabitants.length > 0 ? (
 						<div className={styles.workerList}>
@@ -1227,63 +1244,8 @@ export const BuildingInfoPanel: React.FC = () => {
 							))}
 						</div>
 					) : (
-						<div className={styles.workerHint}>No inhabitants yet</div>
+						<div className={styles.workerHint}>No residents yet</div>
 					)}
-				</div>
-			)}
-
-			{needsWorkers && (
-				<div className={styles.actions}>
-					<div className={styles.sectionTitle}>Staffing</div>
-					{hasRequiredProfession && (
-						<div className={styles.infoRow}>
-							<span className={styles.label}>Required Profession:</span>
-							<span className={styles.value}>{requiredProfessionLabel}</span>
-						</div>
-					)}
-					{isConstructing && (
-						<div className={styles.workerHint}>
-							🔍 Searching for available builder...
-						</div>
-					)}
-					{isCompleted && hasWorkerSlots && workerCount < maxWorkers && (
-						<>
-							<button
-								className={styles.requestWorkerButton}
-								onClick={handleRequestWorker}
-								disabled={workerCount >= maxWorkers}
-							>
-								Request Worker
-							</button>
-							{errorMessage && (
-								<div className={styles.errorMessage}>
-									⚠️ {errorMessage}
-								</div>
-							)}
-							{workerStatus && !errorMessage && (
-								<div className={styles.workerStatus}>
-									{workerStatus}
-								</div>
-							)}
-							{!errorMessage && !workerStatus && (
-								<div className={styles.workerHint}>
-									Workers will operate this building
-								</div>
-							)}
-						</>
-					)}
-				</div>
-			)}
-
-			{canCancel && (
-				<div className={styles.actions}>
-					<div className={styles.sectionTitle}>Construction</div>
-					<button className={styles.cancelButton} onClick={handleCancelConstruction}>
-						Cancel Construction
-					</button>
-					<div className={styles.cancelHint}>
-						Resources will be refunded to your inventory
-					</div>
 				</div>
 			)}
 
@@ -1313,28 +1275,6 @@ export const BuildingInfoPanel: React.FC = () => {
 								Demolish
 							</button>
 						</div>
-					</div>
-				</div>
-			)}
-
-			{isCompleted && buildingDefinition.storageSlots?.length && (
-				<div className={styles.info}>
-					<div className={styles.sectionTitle}>Storage</div>
-					<div className={styles.storageGrid}>
-						{bufferItemTypes
-							.filter((itemType) => Boolean(itemType))
-							.map((itemType) => {
-								const capacity = storageService.getStorageCapacity(buildingInstance.id, itemType)
-								const quantity = storageService.getItemQuantity(buildingInstance.id, itemType)
-								return (
-									<StorageResourceTile
-										key={itemType}
-										itemType={itemType}
-										amountText={`${quantity}/${capacity}`}
-										isComplete={capacity > 0 && quantity >= capacity}
-									/>
-								)
-							})}
 					</div>
 				</div>
 			)}
@@ -1462,80 +1402,47 @@ export const BuildingInfoPanel: React.FC = () => {
 
 			{isCompleted && productionRecipes.length > 0 && (
 				<div className={styles.info}>
-					<div className={styles.sectionTitle}>Production</div>
-					<div className={styles.infoRow}>
-						<span className={styles.label}>Production:</span>
-						<span className={styles.value}>
-							{(() => {
-								const production = productionService.getBuildingProduction(buildingInstance.id)
-								const status = production?.status || ProductionStatus.Idle
-								const progress = production?.progress || 0
-								const currentRecipe = production?.currentRecipe
-								const singleRecipe = productionRecipes.length === 1 ? productionRecipes[0] : null
+					{(() => {
+						const production = productionService.getBuildingProduction(buildingInstance.id)
+						const status = production?.status || ProductionStatus.Idle
+						const progress = production?.progress || 0
+						const currentRecipe = production?.currentRecipe
+						const singleRecipe = productionRecipes.length === 1 ? productionRecipes[0] : null
 
-								let statusContent: React.ReactNode
-								if (status === ProductionStatus.InProduction) {
-									statusContent = (
-										<div className={styles.productionStatus}>
-											<span>🔄 Producing... {Math.round(progress)}%</span>
-											{currentRecipe && productionRecipes.length > 1 && (
-												<div className={styles.productionStatusDetail}>
-													<span>Current:</span>
-													{currentRecipe.outputs.map((output, idx) => (
-														<span key={`${output.itemType}-${idx}`} className={styles.productionStatusItem}>
-															<ItemEmoji itemType={output.itemType} />
-															{output.quantity}x {output.itemType}
-														</span>
-													))}
-												</div>
-											)}
-											{singleRecipe && (
-												<div className={styles.productionStatusDetail}>
-													<span>Inputs:</span>
-													{singleRecipe.inputs.map((input, idx) => (
-														<span key={`${input.itemType}-${idx}`} className={styles.productionStatusItem}>
-															<ItemEmoji itemType={input.itemType} />
-															{input.quantity}x {input.itemType}
-														</span>
-													))}
-													<span>Outputs:</span>
-													{singleRecipe.outputs.map((output, idx) => (
-														<span key={`${output.itemType}-${idx}`} className={styles.productionStatusItem}>
-															<ItemEmoji itemType={output.itemType} />
-															{output.quantity}x {output.itemType}
-														</span>
-													))}
-												</div>
-											)}
-										</div>
-									)
-								} else if (status === ProductionStatus.NoInput) {
-									statusContent = (
-										<div className={styles.productionStatus}>
-											<span>⏸️ Waiting for inputs</span>
-											{singleRecipe && (
-												<div className={styles.productionStatusDetail}>
-													{singleRecipe.inputs.map((input, idx) => (
-														<span key={`${input.itemType}-${idx}`} className={styles.productionStatusItem}>
-															<ItemEmoji itemType={input.itemType} />
-															Need {input.quantity}x {input.itemType}
-														</span>
-													))}
-												</div>
-											)}
-										</div>
-									)
-								} else if (status === ProductionStatus.NoWorker) {
-									statusContent = <span>👷 Needs worker</span>
-								} else if (status === ProductionStatus.Paused) {
-									statusContent = <span>⏸️ Paused</span>
-								} else {
-									statusContent = <span>✅ Idle</span>
-								}
+						const statusLabel = (() => {
+							if (status === ProductionStatus.InProduction) {
+								return `🔄 ${Math.round(progress)}%`
+							}
+							if (status === ProductionStatus.NoInput) {
+								return '⏸ Waiting inputs'
+							}
+							if (status === ProductionStatus.NoWorker) {
+								return '👷 Needs worker'
+							}
+							if (status === ProductionStatus.Paused) {
+								return '⏸ Paused'
+							}
+							return 'Idle'
+						})()
 
-								return (
+						return (
+							<>
+								<div className={styles.sectionHeaderRow}>
+									<div className={styles.sectionTitle}>Production</div>
+									<div className={styles.sectionHeaderMeta}>{statusLabel}</div>
+								</div>
+								<div className={styles.productionBody}>
 									<div className={styles.productionPanel}>
-										{statusContent}
+										{status === ProductionStatus.InProduction && (currentRecipe || singleRecipe) && (
+											<div className={styles.productionStatusDetail}>
+												{renderRecipeFlow((currentRecipe || singleRecipe) as ProductionRecipe)}
+											</div>
+										)}
+										{status === ProductionStatus.NoInput && singleRecipe && (
+											<div className={styles.productionStatusDetail}>
+												{renderRecipeFlow(singleRecipe)}
+											</div>
+										)}
 										{productionRecipes.length > 1 && (
 											<div className={styles.productionPlan}>
 												<label className={styles.productionPlanGlobal}>
@@ -1558,16 +1465,12 @@ export const BuildingInfoPanel: React.FC = () => {
 																		checked={isEnabled}
 																		onChange={() => handlePlanToggle(recipe.id)}
 																	/>
-																	<span className={styles.productionPlanTitle}>
-																		{recipe.outputs.map((output, idx) => (
-																			<span key={`${recipe.id}-out-${idx}`} className={styles.productionPlanItem}>
-																				<ItemEmoji itemType={output.itemType} />
-																				{output.quantity}x {output.itemType}
-																			</span>
-																		))}
-																	</span>
+																	<span>Enabled</span>
 																</label>
 																<span className={styles.productionPlanWeight}>{Math.round(weight)}%</span>
+															</div>
+															<div className={styles.productionPlanFlow}>
+																{renderRecipeFlow(recipe)}
 															</div>
 															<input
 																type="range"
@@ -1579,35 +1482,37 @@ export const BuildingInfoPanel: React.FC = () => {
 																onChange={(event) => handlePlanWeightChange(recipe.id, Number(event.target.value))}
 																className={styles.productionPlanSlider}
 															/>
-															<div className={styles.productionPlanDetails}>
-																<div>
-																	<span>Inputs:</span>
-																	{recipe.inputs.map((input, idx) => (
-																		<span key={`${recipe.id}-in-${idx}`} className={styles.productionPlanItem}>
-																			<ItemEmoji itemType={input.itemType} />
-																			{input.quantity}x {input.itemType}
-																		</span>
-																	))}
-																</div>
-																<div>
-																	<span>Outputs:</span>
-																	{recipe.outputs.map((output, idx) => (
-																		<span key={`${recipe.id}-out-detail-${idx}`} className={styles.productionPlanItem}>
-																			<ItemEmoji itemType={output.itemType} />
-																			{output.quantity}x {output.itemType}
-																		</span>
-																	))}
-																</div>
-															</div>
 														</div>
 													)
 												})}
 											</div>
 										)}
 									</div>
+								</div>
+							</>
+						)
+					})()}
+				</div>
+			)}
+
+			{isCompleted && buildingDefinition.storageSlots?.length && (
+				<div className={styles.info}>
+					<div className={styles.sectionTitle}>Storage</div>
+					<div className={styles.storageGrid}>
+						{bufferItemTypes
+							.filter((itemType) => Boolean(itemType))
+							.map((itemType) => {
+								const capacity = storageService.getStorageCapacity(buildingInstance.id, itemType)
+								const quantity = storageService.getItemQuantity(buildingInstance.id, itemType)
+								return (
+									<StorageResourceTile
+										key={itemType}
+										itemType={itemType}
+										amountText={`${quantity}/${capacity}`}
+										isComplete={capacity > 0 && quantity >= capacity}
+									/>
 								)
-							})()}
-						</span>
+							})}
 					</div>
 				</div>
 			)}

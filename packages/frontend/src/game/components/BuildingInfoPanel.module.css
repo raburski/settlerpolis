@@ -182,6 +182,19 @@
 	letter-spacing: 0.08em;
 }
 
+.sectionHeaderRow {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.sectionHeaderMeta {
+	color: #fffbe7;
+	font-size: 0.52rem;
+	line-height: 1.35;
+}
+
 .infoRow {
 	display: flex;
 	justify-content: space-between;
@@ -216,17 +229,16 @@
 }
 
 .actionButton,
-.requestWorkerButton,
 .cancelButton,
 .tradeButton,
 .tradeButtonSecondary,
 .workerRowButton,
-.workerUnassignButton {
+.workerUnassignButton,
+.workerAssignButton {
 	font-family: 'Press Start 2P', monospace;
 }
 
 .actionButton,
-.requestWorkerButton,
 .cancelButton,
 .tradeButton,
 .tradeButtonSecondary {
@@ -240,14 +252,12 @@
 }
 
 .actionButton:hover,
-.requestWorkerButton:hover,
 .cancelButton:hover,
 .tradeButton:hover:not(:disabled),
 .tradeButtonSecondary:hover {
 	background: #4a2c1f;
 }
 
-.requestWorkerButton:disabled,
 .tradeButton:disabled {
 	opacity: 0.55;
 	cursor: not-allowed;
@@ -277,8 +287,7 @@
 	text-align: center;
 }
 
-.errorMessage,
-.workerStatus {
+.errorMessage {
 	margin-top: 8px;
 	padding: 8px;
 	font-size: 0.52rem;
@@ -290,12 +299,6 @@
 	color: #ffd4d4;
 	background: rgba(127, 29, 29, 0.35);
 	border: 1px solid rgba(248, 113, 113, 0.55);
-}
-
-.workerStatus {
-	color: #c9f7d1;
-	background: rgba(21, 128, 61, 0.25);
-	border: 1px solid rgba(74, 222, 128, 0.45);
 }
 
 .workerList {
@@ -331,6 +334,16 @@
 	border-color: rgba(255, 255, 255, 0.2);
 }
 
+.workerRowPlaceholder {
+	cursor: default;
+	opacity: 0.86;
+}
+
+.workerRowPlaceholder:hover {
+	background: rgba(255, 255, 255, 0.04);
+	border-color: rgba(255, 255, 255, 0.12);
+}
+
 .workerUnassignButton {
 	display: inline-flex;
 	align-items: center;
@@ -346,6 +359,23 @@
 
 .workerUnassignButton:hover {
 	background: rgba(127, 29, 29, 0.35);
+}
+
+.workerAssignButton {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	background: rgba(21, 128, 61, 0.22);
+	border: 1px solid rgba(74, 222, 128, 0.4);
+	color: #c7f9cc;
+	font-size: 0.6rem;
+	cursor: pointer;
+}
+
+.workerAssignButton:hover {
+	background: rgba(21, 128, 61, 0.35);
 }
 
 .workerInfo {
@@ -413,6 +443,10 @@
 	gap: 8px;
 }
 
+.productionBody {
+	margin-top: 2px;
+}
+
 .productionStatus {
 	display: flex;
 	flex-direction: column;
@@ -422,17 +456,32 @@
 
 .productionStatusDetail {
 	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
+	flex-direction: column;
+	gap: 4px;
 	font-size: 0.5rem;
 	color: #d6d6d6;
+	align-items: center;
 }
 
-.productionStatusItem,
-.productionPlanItem {
-	display: inline-flex;
+.productionRecipeFlow {
+	display: flex;
 	align-items: center;
-	gap: 4px;
+	justify-content: center;
+	gap: 6px;
+	width: 100%;
+	min-width: 0;
+}
+
+.productionFlowTile {
+	flex: 0 1 82px;
+	max-width: 82px;
+	min-width: 0;
+}
+
+.productionFlowSymbol {
+	font-size: 0.54rem;
+	color: #d8ccb3;
+	flex: 0 0 auto;
 }
 
 .productionPlan {
@@ -474,27 +523,19 @@
 	color: #f0e5cf;
 }
 
-.productionPlanTitle {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
-}
-
 .productionPlanWeight {
 	font-size: 0.5rem;
 	color: #d8ccb3;
 }
 
-.productionPlanSlider {
-	width: 100%;
+.productionPlanFlow {
+	margin-top: 2px;
+	display: flex;
+	justify-content: center;
 }
 
-.productionPlanDetails {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-	font-size: 0.48rem;
-	color: #d8ccb3;
+.productionPlanSlider {
+	width: 100%;
 }
 
 .tradeControls {

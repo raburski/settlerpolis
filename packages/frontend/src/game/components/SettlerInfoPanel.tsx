@@ -405,7 +405,7 @@ export const SettlerInfoPanel: React.FC = () => {
 				<div className={styles.titleWrap}>
 					<span className={styles.titleIcon}>{professionIcons[settler.profession]}</span>
 					<div>
-						<h3 className={styles.title}>Settler</h3>
+						<h3 className={styles.title}>{professionLabels[settler.profession]}</h3>
 					</div>
 				</div>
 				<div className={styles.headerActions}>

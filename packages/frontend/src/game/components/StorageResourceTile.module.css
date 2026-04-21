@@ -4,6 +4,7 @@
 	gap: 7px;
 	padding: 4px;
 	min-width: 0;
+	width: 100%;
 }
 
 .icon {
@@ -39,4 +40,24 @@
 
 .countComplete {
 	color: #c7f9cc;
+}
+
+.compact {
+	gap: 4px;
+	padding: 2px;
+}
+
+.compact .icon {
+	width: 20px;
+	height: 20px;
+	flex-basis: 20px;
+	font-size: 0.9rem;
+}
+
+.compact .name {
+	font-size: 0.42rem;
+}
+
+.compact .count {
+	font-size: 0.48rem;
 }

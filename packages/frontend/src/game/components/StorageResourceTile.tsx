@@ -6,9 +6,17 @@ interface StorageResourceTileProps {
 	itemType: string
 	amountText: string
 	isComplete?: boolean
+	compact?: boolean
+	showName?: boolean
 }
 
-export const StorageResourceTile: React.FC<StorageResourceTileProps> = ({ itemType, amountText, isComplete = false }) => {
+export const StorageResourceTile: React.FC<StorageResourceTileProps> = ({
+	itemType,
+	amountText,
+	isComplete = false,
+	compact = false,
+	showName = true
+}) => {
 	const [itemName, setItemName] = useState(() => itemService.getItemType(itemType)?.name || itemType)
 	const [itemEmoji, setItemEmoji] = useState(() => itemService.getItemType(itemType)?.emoji || itemType)
 
@@ -34,10 +42,10 @@ export const StorageResourceTile: React.FC<StorageResourceTileProps> = ({ itemTy
 	}, [itemType])
 
 	return (
-		<div className={styles.tile}>
+		<div className={`${styles.tile} ${compact ? styles.compact : ''}`}>
 			<div className={styles.icon}>{itemEmoji}</div>
 			<div className={styles.meta}>
-				<div className={styles.name}>{itemName}</div>
+				{showName ? <div className={styles.name}>{itemName}</div> : null}
 				<div className={`${styles.count} ${isComplete ? styles.countComplete : ''}`}>{amountText}</div>
 			</div>
 		</div>
