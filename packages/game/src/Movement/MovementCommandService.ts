@@ -90,12 +90,12 @@ export class MovementCommandService {
 		return this.startMovementWithPath(entityId, normalizedPath, options)
 	}
 
-	public cancelMovement(entityId: string): void {
+	public cancelMovement(entityId: string, options?: { suppressCallbacks?: boolean }): void {
 		const task = this.deps.state.tasks.get(entityId)
 		if (task) {
 			this.deps.logger.debug(`cancelMovement: entityId=${entityId}`)
 			releaseTileReservation(task, this.deps.state, this.deps.occupancy)
-			if (task.onCancelled) {
+			if (!options?.suppressCallbacks && task.onCancelled) {
 				task.onCancelled(task)
 			}
 			this.deps.state.tasks.delete(entityId)

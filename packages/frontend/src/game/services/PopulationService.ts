@@ -460,6 +460,15 @@ class PopulationServiceClass {
 		EventBus.emit(Event.Population.CS.RequestList, {})
 	}
 
+	// Request an immediate high-priority move for a settler
+	public requestSettlerMove(settlerId: string, position: { x: number; y: number }, mapId?: string): void {
+		EventBus.emit(Event.Population.CS.RequestMove, {
+			settlerId,
+			position,
+			mapId
+		})
+	}
+
 	// Request a carrier to pick up a profession tool
 	public requestProfessionToolPickup(profession: ProfessionType): void {
 		EventBus.emit(Event.Population.CS.RequestProfessionToolPickup, {

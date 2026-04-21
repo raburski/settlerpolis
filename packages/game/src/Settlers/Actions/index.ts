@@ -9,8 +9,14 @@ import type { RoadManager } from '../../Roads'
 import type { ReservationSystem } from '../../Reservation'
 import type { NPCManager } from '../../NPC'
 import type { WildlifeManager } from '../../Wildlife'
-import type { SettlerAction } from './types'
-import { SettlerActionType } from './types'
+import type { ActionQueueInterruptionOptions, SettlerAction } from './types'
+import {
+	ActionInterruptibility,
+	InterruptionFailurePolicy,
+	InterruptionPreemptMode,
+	QueueInterruptionReason,
+	SettlerActionType
+} from './types'
 import type { Logger } from '../../Logs'
 import { Receiver } from '../../Receiver'
 import { WorkProviderEvents } from '../Work/events'
@@ -20,6 +26,7 @@ import type { MapManager } from '../../Map'
 import { SimulationEvents } from '../../Simulation/events'
 import type { SimulationTickData } from '../../Simulation/types'
 import { SettlerActionsState } from './SettlerActionsState'
+import type { ActionQueueRuntimeState } from './SettlerActionsState'
 import { SettlerActionsEvents } from './events'
 import { releaseActionReservations } from './releaseReservations'
 import { SettlerActionFailureReason } from '../failureReasons'
@@ -38,8 +45,36 @@ export interface SettlerActionsDeps {
 	wildlife: WildlifeManager
 }
 
+interface InterruptedQueueFrame {
+	queue: ActionQueueRuntimeState
+}
+
+const ACTION_INTERRUPTIBILITY: Record<SettlerActionType, ActionInterruptibility> = {
+	[SettlerActionType.Move]: ActionInterruptibility.InterruptibleReplay,
+	[SettlerActionType.FollowPath]: ActionInterruptibility.InterruptibleReplay,
+	[SettlerActionType.Wait]: ActionInterruptibility.InterruptibleReplay,
+	[SettlerActionType.Construct]: ActionInterruptibility.NonInterruptible,
+	[SettlerActionType.BuildRoad]: ActionInterruptibility.NonInterruptible,
+	[SettlerActionType.PickupTool]: ActionInterruptibility.NonInterruptibleDeferNext,
+	[SettlerActionType.PickupLoot]: ActionInterruptibility.NonInterruptibleDeferNext,
+	[SettlerActionType.WithdrawStorage]: ActionInterruptibility.NonInterruptibleDeferNext,
+	[SettlerActionType.DeliverStorage]: ActionInterruptibility.NonInterruptibleDeferNext,
+	[SettlerActionType.DeliverConstruction]: ActionInterruptibility.NonInterruptibleDeferNext,
+	[SettlerActionType.HarvestNode]: ActionInterruptibility.NonInterruptibleDeferNext,
+	[SettlerActionType.HuntNpc]: ActionInterruptibility.NonInterruptibleDeferNext,
+	[SettlerActionType.Produce]: ActionInterruptibility.NonInterruptibleDeferNext,
+	[SettlerActionType.Plant]: ActionInterruptibility.NonInterruptibleDeferNext,
+	[SettlerActionType.ChangeProfession]: ActionInterruptibility.NonInterruptibleDeferNext,
+	[SettlerActionType.ChangeHome]: ActionInterruptibility.NonInterruptibleDeferNext,
+	[SettlerActionType.Consume]: ActionInterruptibility.NonInterruptible,
+	[SettlerActionType.Sleep]: ActionInterruptibility.NonInterruptible,
+	[SettlerActionType.ProspectNode]: ActionInterruptibility.NonInterruptibleDeferNext,
+	[SettlerActionType.Socialize]: ActionInterruptibility.NonInterruptible
+}
+
 export class SettlerActionsManager {
 	private readonly state = new SettlerActionsState()
+	private readonly interruptionStacks = new Map<string, InterruptedQueueFrame[]>()
 
 	constructor(
 		private managers: SettlerActionsDeps,
@@ -74,7 +109,7 @@ export class SettlerActionsManager {
 		if (!action) {
 			return false
 		}
-		return action.type === SettlerActionType.Wait || action.type === SettlerActionType.Move || action.type === SettlerActionType.FollowPath
+		return ACTION_INTERRUPTIBILITY[action.type] === ActionInterruptibility.InterruptibleReplay
 	}
 
 	public expediteCurrentWaitAction(settlerId: string): boolean {
@@ -111,15 +146,67 @@ export class SettlerActionsManager {
 
 	public abort(settlerId: string): void {
 		const queue = this.state.getQueue(settlerId)
-		if (!queue) {
-			return
+		if (queue) {
+			this.managers.movement.cancelMovement(settlerId)
+			releaseActionReservations({
+				actions: queue.actions,
+				deps: this.managers
+			})
+			this.state.deleteQueue(settlerId)
 		}
-		this.managers.movement.cancelMovement(settlerId)
-		releaseActionReservations({
-			actions: queue.actions,
-			deps: this.managers
+		this.clearInterruptionStack(settlerId)
+	}
+
+	public interruptWithActions(
+		settlerId: string,
+		actions: SettlerAction[],
+		options?: ActionQueueInterruptionOptions
+	): boolean {
+		if (actions.length === 0) {
+			return false
+		}
+
+		const queue = this.state.getQueue(settlerId)
+		if (!queue) {
+			this.enqueue(settlerId, actions)
+			return true
+		}
+
+		const reason = options?.reason ?? QueueInterruptionReason.SystemRecovery
+		const failurePolicy = options?.failurePolicy ?? InterruptionFailurePolicy.ResumeParent
+		const preemptMode = options?.preemptMode ?? InterruptionPreemptMode.RequireImmediate
+		const currentAction = this.getCurrentAction(settlerId)
+		if (!currentAction) {
+			return false
+		}
+		const interruptibility = ACTION_INTERRUPTIBILITY[currentAction.type] ?? ActionInterruptibility.NonInterruptible
+
+		if (interruptibility === ActionInterruptibility.NonInterruptibleDeferNext) {
+			return this.insertActionsAfterCurrent(settlerId, actions)
+		}
+
+		if (interruptibility === ActionInterruptibility.NonInterruptible) {
+			if (preemptMode === InterruptionPreemptMode.RequireImmediate) {
+				return false
+			}
+			if (currentAction.type === SettlerActionType.Wait) {
+				this.expediteCurrentWaitAction(settlerId)
+			}
+			return this.insertActionsAfterCurrent(settlerId, actions)
+		}
+
+		this.pushInterruptionFrame(settlerId, this.cloneQueueForReplay(queue))
+		this.managers.movement.cancelMovement(settlerId, { suppressCallbacks: true })
+		this.state.setQueue(settlerId, {
+			actions,
+			index: 0,
+			interruption: {
+				reason,
+				failurePolicy
+			}
 		})
-		this.state.deleteQueue(settlerId)
+		this.startNextAction(settlerId)
+		return true
 	}
 
 	public replaceQueueAfterCurrent(
@@ -265,6 +352,7 @@ export class SettlerActionsManager {
 
 	reset(): void {
 		this.state.reset()
+		this.interruptionStacks.clear()
 	}
 
 	serialize(): ActionSystemSnapshot {
@@ -291,6 +379,10 @@ export class SettlerActionsManager {
 			deps: this.managers
 		})
 		this.state.deleteQueue(settlerId)
+		if (queue.interruption) {
+			this.handleInterruptionQueueSettled(settlerId, reason, queue.interruption.failurePolicy)
+			return
+		}
 		if (reason) {
 			this.event.emit(Receiver.All, SettlerActionsEvents.SS.QueueFailed, {
 				settlerId,
@@ -305,6 +397,88 @@ export class SettlerActionsManager {
 			context: queue.context
 		})
 		queue.onComplete?.()
+	}
+
+	private handleInterruptionQueueSettled(
+		settlerId: string,
+		reason: SettlerActionFailureReason | undefined,
+		failurePolicy: InterruptionFailurePolicy
+	): void {
+		const parentFrame = this.popInterruptionFrame(settlerId)
+		if (!parentFrame) {
+			return
+		}
+
+		if (!reason || failurePolicy === InterruptionFailurePolicy.ResumeParent) {
+			this.state.setQueue(settlerId, parentFrame.queue)
+			this.startNextAction(settlerId)
+			return
+		}
+
+		if (failurePolicy === InterruptionFailurePolicy.FailParent) {
+			this.state.setQueue(settlerId, parentFrame.queue)
+			this.finishQueue(settlerId, reason)
+			return
+		}
+
+		releaseActionReservations({
+			actions: parentFrame.queue.actions,
+			deps: this.managers
+		})
+
+		const ancestor = this.popInterruptionFrame(settlerId)
+		if (!ancestor) {
+			return
+		}
+		this.state.setQueue(settlerId, ancestor.queue)
+		this.startNextAction(settlerId)
+	}
+
+	private clearInterruptionStack(settlerId: string): void {
+		const stack = this.interruptionStacks.get(settlerId)
+		if (!stack || stack.length === 0) {
+			return
+		}
+		for (const frame of stack) {
+			releaseActionReservations({
+				actions: frame.queue.actions,
+				deps: this.managers
+			})
+		}
+		this.interruptionStacks.delete(settlerId)
+	}
+
+	private pushInterruptionFrame(settlerId: string, queue: ActionQueueRuntimeState): void {
+		const stack = this.interruptionStacks.get(settlerId)
+		if (stack) {
+			stack.push({ queue })
+			return
+		}
+		this.interruptionStacks.set(settlerId, [{ queue }])
+	}
+
+	private popInterruptionFrame(settlerId: string): InterruptedQueueFrame | null {
+		const stack = this.interruptionStacks.get(settlerId)
+		if (!stack || stack.length === 0) {
+			return null
+		}
+		const frame = stack.pop() || null
+		if (stack.length === 0) {
+			this.interruptionStacks.delete(settlerId)
+		}
+		return frame
+	}
+
+	private cloneQueueForReplay(queue: ActionQueueRuntimeState): ActionQueueRuntimeState {
+		return {
+			actions: queue.actions.map(action => ({ ...action })),
+			index: queue.index,
+			context: queue.context,
+			interruption: queue.interruption ? { ...queue.interruption } : undefined,
+			onComplete: queue.onComplete,
+			onFail: queue.onFail,
+			carriedItem: queue.carriedItem ? { ...queue.carriedItem } : undefined
+		}
 	}
 
 }

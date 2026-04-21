@@ -1,8 +1,11 @@
 import { BaseManager } from '../../Managers'
+import type { EventClient } from '../../events'
 import { WorkProviderEvents } from '../Work/events'
 import type { WorkAssignmentRemovedEventData } from '../Work/events'
 import { WorkStepType, WorkWaitReason } from '../Work/types'
 import { SettlerState } from '../../Population/types'
+import type { RequestMoveData } from '../../Population/types'
+import { PopulationEvents } from '../../Population/events'
 import type { ActionQueueContext } from '../../state/types'
 import { ActionQueueContextKind, QueueOwner } from '../../state/types'
 import type { SettlerId } from '../../ids'
@@ -10,6 +13,13 @@ import { SimulationEvents } from '../../Simulation/events'
 import type { SimulationTickData } from '../../Simulation/types'
 import { SettlerActionsEvents } from '../Actions/events'
 import type { ActionQueueCompletedEventData, ActionQueueFailedEventData } from '../Actions/events'
+import type { SettlerAction } from '../Actions/types'
+import {
+	InterruptionFailurePolicy,
+	InterruptionPreemptMode,
+	QueueInterruptionReason,
+	SettlerActionType
+} from '../Actions/types'
 import { SettlerBehaviourState, type SettlerBehaviourSnapshot } from './SettlerBehaviourState'
 import type { SettlerBehaviourDeps } from './deps'
 import {
@@ -66,6 +76,7 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 		this.managers.event.on<WorkAssignmentRemovedEventData>(WorkProviderEvents.SS.AssignmentRemoved, this.handleAssignmentRemoved)
 		this.managers.event.on<ActionQueueCompletedEventData>(SettlerActionsEvents.SS.QueueCompleted, this.handleActionQueueCompleted)
 		this.managers.event.on<ActionQueueFailedEventData>(SettlerActionsEvents.SS.QueueFailed, this.handleActionQueueFailed)
+		this.managers.event.on<RequestMoveData>(PopulationEvents.CS.RequestMove, this.handlePopulationCSRequestMove)
 	}
 
 	private readonly handleSimulationSSTick = (data: SimulationTickData): void => {
@@ -116,6 +127,38 @@ export class SettlerBehaviourManager extends BaseManager<SettlerBehaviourDeps> {
 		if (context.kind === ActionQueueContextKind.Routed) {
 			this.routeRoutedQueueFailed(context.owner, context.token, data.reason)
 		}
+	}
+
+	private readonly handlePopulationCSRequestMove = (data: RequestMoveData, client: EventClient): void => {
+		if (!data?.settlerId || !data.position) {
+			return
+		}
+
+		const settler = this.managers.population.getSettler(data.settlerId)
+		if (!settler || settler.playerId !== client.id) {
+			return
+		}
+		if (data.mapId && settler.mapId !== data.mapId) {
+			return
+		}
+
+		const walkableTarget = this.managers.map.findNearestWalkablePosition(settler.mapId, data.position, 2)
+		if (!walkableTarget) {
+			return
+		}
+
+		this.state.clearPendingDispatch(settler.id)
+		const moveAction: SettlerAction = {
+			type: SettlerActionType.Move,
+			position: walkableTarget,
+			setState: settler.stateContext.carryingItemType ? SettlerState.CarryingItem : SettlerState.Moving
+		}
+
+		this.managers.actions.interruptWithActions(settler.id, [moveAction], {
+			reason: QueueInterruptionReason.ManualMove,
+			preemptMode: InterruptionPreemptMode.RequireImmediate,
+			failurePolicy: InterruptionFailurePolicy.ResumeParent
+		})
 	}
 
 	private enqueueIntent(intent: BehaviourIntent): void {

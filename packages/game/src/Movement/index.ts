@@ -153,8 +153,8 @@ export class MovementManager extends BaseManager<MovementDeps> {
 		return this.commands.moveAlongPath(entityId, path, options)
 	}
 
-	public cancelMovement(entityId: string): void {
-		this.commands.cancelMovement(entityId)
+	public cancelMovement(entityId: string, options?: { suppressCallbacks?: boolean }): void {
+		this.commands.cancelMovement(entityId, options)
 	}
 
 	public getEntityPosition(entityId: string): Position | null {

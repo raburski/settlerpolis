@@ -25,6 +25,7 @@ import { ItemPlacementManager } from '../../modules/ItemPlacement'
 import { FX } from '../../modules/FX'
 import { RoadOverlay } from '../../modules/RoadOverlay'
 import { RoadPlacementManager } from '../../modules/RoadPlacement'
+import { MapClickIndicator } from '../../modules/MapClickIndicator'
 import { TextDisplayService } from '../../services/TextDisplayService'
 import { NPCProximityService } from '../../services/NPCProximityService'
 import { ResourceNodeSelectionManager } from '../../modules/ResourceNodeSelectionManager'
@@ -35,6 +36,7 @@ import { Vector3 } from '@babylonjs/core'
 import { itemService } from '../../services/ItemService'
 import { buildingService } from '../../services/BuildingService'
 import { sceneManager } from '../../services/SceneManager'
+import { populationService } from '../../services/PopulationService'
 import type { GameRuntime } from '../../runtime/GameRuntime'
 import type { PointerState } from '../../input/InputManager'
 import { ResourceNodeBatcher } from '../../rendering/ResourceNodeBatcher'
@@ -97,14 +99,28 @@ export abstract class GameScene extends MapScene {
 	private mapObjectSpawnBatched = 0
 	private mapObjectSpawnUnbatched = 0
 	private mapObjectSpawnLastFlush = 0
+	private selectedSettlerId: string | null = null
+	private mapClickIndicator: MapClickIndicator | null = null
 	private readonly handleMapRightClick = (pointer: PointerState) => {
 		if (pointer.wasDrag || pointer.button !== 2) {
 			return
+		}
+		const clickTarget = this.mapClickIndicator?.showAtWorld(pointer.world) ?? null
+		if (clickTarget) {
+			if (this.selectedSettlerId) {
+				populationService.requestSettlerMove(this.selectedSettlerId, { x: clickTarget.x, y: clickTarget.z }, this.mapKey)
+			}
 		}
 		EventBus.emit(UiEvents.Construction.Cancel, {})
 		EventBus.emit(UiEvents.Road.Cancel, {})
 		EventBus.emit(UiEvents.Building.WorkAreaCancel, {})
 		EventBus.emit(UiEvents.MapPopover.Close, { all: true })
+	}
+	private readonly handleSettlerClicked = (data: { settlerId: string }) => {
+		this.selectedSettlerId = data?.settlerId || null
+	}
+	private readonly handleSettlerClosed = () => {
+		this.selectedSettlerId = null
 	}
 
 	constructor(runtime: GameRuntime, config: { mapKey: string; mapPath: string }) {
@@ -208,6 +224,7 @@ export abstract class GameScene extends MapScene {
 		this.resourceNodeBatcher.setPickableNodeTypes(['stone_deposit', 'resource_deposit'])
 		this.mapPopoverManager = new MapPopoverManager(this)
 		this.resourceNodeSelectionManager = new ResourceNodeSelectionManager(this)
+		this.mapClickIndicator = new MapClickIndicator(this)
 		this.runtime.input.on('pointerup', this.handleMapRightClick)
 		mark('placements+fx')
 
@@ -247,6 +264,7 @@ export abstract class GameScene extends MapScene {
 		this.updateResourceNodeStreaming(deltaMs)
 		this.resourceNodeSelectionManager?.update()
 		this.mapPopoverManager?.update()
+		this.mapClickIndicator?.update()
 
 		if (this.player) {
 			this.player.controller.update(deltaMs)
@@ -401,6 +419,8 @@ export abstract class GameScene extends MapScene {
 		EventBus.on(UiEvents.Building.Select, this.handleBuildingSelected, this)
 		EventBus.on(UiEvents.Building.Close, this.handleBuildingClosed, this)
 		EventBus.on(UiEvents.Building.Highlight, this.handleBuildingHighlight, this)
+		EventBus.on(UiEvents.Settler.Click, this.handleSettlerClicked, this)
+		EventBus.on(UiEvents.Settler.Close, this.handleSettlerClosed, this)
 		EventBus.on(UiEvents.Construction.ServiceRangePreview, this.handleConstructionServiceRangePreview, this)
 		EventBus.on(UiEvents.Construction.ServiceRangeClear, this.handleConstructionServiceRangeClear, this)
 		EventBus.on(UiEvents.Camera.Focus, this.handleCameraFocus, this)
@@ -1007,6 +1027,9 @@ export abstract class GameScene extends MapScene {
 	}
 
 	private handleSettlerDied = (data: { settlerId: string }) => {
+		if (this.selectedSettlerId === data.settlerId) {
+			this.selectedSettlerId = null
+		}
 		const settler = this.settlers.get(data.settlerId)
 		if (settler) {
 			settler.destroy()
@@ -1239,6 +1262,9 @@ export abstract class GameScene extends MapScene {
 
 	protected cleanupScene(): void {
 		this.runtime.input.off('pointerup', this.handleMapRightClick)
+		this.mapClickIndicator?.destroy()
+		this.mapClickIndicator = null
+		this.selectedSettlerId = null
 
 		this.keyboard?.destroy()
 		this.keyboard = null
@@ -1341,6 +1367,8 @@ export abstract class GameScene extends MapScene {
 		EventBus.off(UiEvents.Building.Select, this.handleBuildingSelected)
 		EventBus.off(UiEvents.Building.Close, this.handleBuildingClosed)
 		EventBus.off(UiEvents.Building.Highlight, this.handleBuildingHighlight)
+		EventBus.off(UiEvents.Settler.Click, this.handleSettlerClicked)
+		EventBus.off(UiEvents.Settler.Close, this.handleSettlerClosed)
 		EventBus.off(UiEvents.Construction.ServiceRangePreview, this.handleConstructionServiceRangePreview)
 		EventBus.off(UiEvents.Construction.ServiceRangeClear, this.handleConstructionServiceRangeClear)
 		EventBus.off(UiEvents.Camera.Focus, this.handleCameraFocus)

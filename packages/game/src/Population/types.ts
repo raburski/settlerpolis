@@ -179,6 +179,12 @@ export interface RequestListData {
 	// No data needed - server sends full population state for current player and map
 }
 
+export interface RequestMoveData {
+	settlerId: SettlerId
+	position: Position
+	mapId?: MapId
+}
+
 export interface PopulationListData {
 	settlers: Settler[]
 	totalCount: number

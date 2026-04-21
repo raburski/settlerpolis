@@ -37,6 +37,36 @@ export enum SettlerActionType {
 	Socialize = 'socialize'
 }
 
+export enum QueueInterruptionReason {
+	ManualMove = 'manual_move',
+	NeedCritical = 'need_critical',
+	NavigationYield = 'navigation_yield',
+	SystemRecovery = 'system_recovery'
+}
+
+export enum ActionInterruptibility {
+	NonInterruptible = 'non_interruptible',
+	NonInterruptibleDeferNext = 'non_interruptible_defer_next',
+	InterruptibleReplay = 'interruptible_replay'
+}
+
+export enum InterruptionFailurePolicy {
+	ResumeParent = 'resume_parent',
+	FailParent = 'fail_parent',
+	AbortParent = 'abort_parent'
+}
+
+export enum InterruptionPreemptMode {
+	RequireImmediate = 'require_immediate',
+	BestEffort = 'best_effort'
+}
+
+export interface ActionQueueInterruptionOptions {
+	reason: QueueInterruptionReason
+	preemptMode?: InterruptionPreemptMode
+	failurePolicy?: InterruptionFailurePolicy
+}
+
 export type SettlerAction = (
 	| { type: SettlerActionType.Move, position: Position, targetType?: MoveTargetType, targetId?: string, speedMultiplier?: number, setState?: SettlerState }
 	| { type: SettlerActionType.FollowPath, path: Position[], targetType?: MoveTargetType, targetId?: string, speedMultiplier?: number, setState?: SettlerState }

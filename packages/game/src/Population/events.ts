@@ -3,6 +3,7 @@ export const PopulationEvents = {
 		RequestWorker: 'cs:population:request-worker', // Request worker for building (automatic assignment)
 		UnassignWorker: 'cs:population:unassign-worker', // Unassign settler from job
 		RequestList: 'cs:population:request-list', // Request full population state (settlers list + statistics)
+		RequestMove: 'cs:population:request-move', // Request immediate high-priority settler move
 		// Tool pickup is now handled as a capability step in SettlerWork
 	},
 	SC: {
