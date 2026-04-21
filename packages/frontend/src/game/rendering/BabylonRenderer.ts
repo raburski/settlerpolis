@@ -921,6 +921,7 @@ export class BabylonRenderer {
 		if (
 			name.includes('shadow-receiver') ||
 			name.startsWith('box-base-') ||
+			name.startsWith('road-') ||
 			name.includes('ground') ||
 			name.includes('water') ||
 			name.includes('collision') ||
