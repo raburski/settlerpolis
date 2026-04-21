@@ -1,5 +1,6 @@
 import type { SettlerAction } from './types'
 import { SettlerActionType } from './types'
+import type { InterruptionFailurePolicy, QueueInterruptionReason } from './types'
 import type { ActionQueueContext, ActionSystemSnapshot } from '../../state/types'
 import type { SettlerActionFailureReason } from '../failureReasons'
 
@@ -12,6 +13,10 @@ export interface ActionQueueRuntimeState extends ActionQueueCallbacks {
 	actions: SettlerAction[]
 	index: number
 	context?: ActionQueueContext
+	interruption?: {
+		reason: QueueInterruptionReason
+		failurePolicy: InterruptionFailurePolicy
+	}
 	inProgress?: {
 		type: SettlerActionType.Wait | SettlerActionType.Construct | SettlerActionType.BuildRoad | SettlerActionType.Consume | SettlerActionType.Sleep | SettlerActionType.Socialize
 		endAtMs: number

@@ -65,7 +65,7 @@ import type {
 	TimeUpdateEventData
 } from './Time/types'
 import type { PlaceBuildingData, CancelBuildingData, SetProductionPausedData, SetProductionPlanData, SetGlobalProductionPlanData, SetWorkAreaData, SetStorageRequestsData, BuildingPlacedData, BuildingProgressData, BuildingCompletedData, BuildingCancelledData, BuildingCatalogData, BuildingWorkAreaUpdatedData, BuildingStorageRequestsUpdatedData, BuildingWorkerQueueUpdatedData, ProductionPlanUpdatedData, GlobalProductionPlanUpdatedData, ConstructionStage } from './Buildings/types'
-import type { RequestWorkerData, UnassignWorkerData, RequestListData, PopulationListData, PopulationStatsData, Settler, ProfessionType, SettlerPatchedData, WorkerRequestFailureReason } from './Population/types'
+import type { RequestWorkerData, UnassignWorkerData, RequestListData, RequestMoveData, PopulationListData, PopulationStatsData, Settler, ProfessionType, SettlerPatchedData, WorkerRequestFailureReason } from './Population/types'
 import type { WorkAssignment, LogisticsRequest } from './Settlers/Work/types'
 import type { ProductionRecipe, ProductionStatus } from './Buildings/types'
 import type { ScheduleOptions } from './Scheduler/types'
@@ -242,6 +242,7 @@ export type EventPayloads = Record<string, unknown> & {
 	[PopulationEvents.CS.RequestWorker]: RequestWorkerData
 	[PopulationEvents.CS.UnassignWorker]: UnassignWorkerData
 	[PopulationEvents.CS.RequestList]: RequestListData
+	[PopulationEvents.CS.RequestMove]: RequestMoveData
 	[PopulationEvents.SC.SettlerSpawned]: { settler: Settler }
 	[PopulationEvents.SC.SettlerUpdated]: { settler: Settler }
 	[PopulationEvents.SC.SettlerPatched]: SettlerPatchedData
