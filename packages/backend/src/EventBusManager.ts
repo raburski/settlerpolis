@@ -1,4 +1,4 @@
-import { EventManager, EventCallback, LifecycleCallback, EventClient, Receiver } from "@rugged/game"
+import { EventManager, EventCallback, LifecycleCallback, EventClient, Receiver, EventDirection, NETWORK_EVENT_CATALOG } from "@rugged/game"
 import { NetworkManager } from './NetworkManager'
 
 type ServerEventData<T = any> = {
@@ -18,6 +18,27 @@ export class EventBusManager implements EventManager {
 
 	constructor(private networkManager: NetworkManager) {
 		if (this.debug) console.log('[EventBusManager] Initialized')
+		this.registerClientToServerSubscriptions()
+	}
+
+	private registerClientToServerSubscriptions(): void {
+		for (const event of NETWORK_EVENT_CATALOG[EventDirection.ClientToServer]) {
+			this.ensureNetworkSubscription(event)
+		}
+	}
+
+	private ensureNetworkSubscription(event: string): void {
+		if (!event.startsWith('cs:')) {
+			return
+		}
+		if (this.networkHandlers.has(event)) {
+			return
+		}
+
+		const networkHandler: EventCallback = (data: any, client: EventClient) => this.onNetworkEvent(event, data, client)
+		this.networkHandlers.set(event, networkHandler)
+		this.networkManager.on(event, networkHandler)
+		if (this.debug) console.log(`[EventBusManager] Stable network subscription for ${event}`)
 	}
 
 	on<T>(event: string, callback: EventCallback<T>): void {
@@ -26,14 +47,8 @@ export class EventBusManager implements EventManager {
 		const handlers = this.eventHandlers.get(event) || []
 		
 		if (event.startsWith('cs:')) {
-			// For client-to-server events, we need to subscribe to the network manager
-			if (handlers.length === 0) {
-				// No handler registered for this even yet
-				const networkHandler: EventCallback = (data: any, client: EventClient) => this.onNetworkEvent(event, data, client)
-				this.networkHandlers.set(event, networkHandler)
-				this.networkManager.on(event, networkHandler)
-				if (this.debug) console.log(`[EventBusManager] Setting up network subscription for ${event}`)
-			}
+			// Keep cs:* network handlers stable and attached for process lifetime.
+			this.ensureNetworkSubscription(event)
 			handlers.push(callback)
 		} else {
 			handlers.push(callback)
@@ -49,13 +64,6 @@ export class EventBusManager implements EventManager {
 		const nextHandlers = handlers.filter(handler => handler !== callback)
 		if (nextHandlers.length === 0) {
 			this.eventHandlers.delete(event)
-			if (event.startsWith('cs:')) {
-				const networkHandler = this.networkHandlers.get(event)
-				if (networkHandler) {
-					this.networkManager.off(event, networkHandler)
-					this.networkHandlers.delete(event)
-				}
-			}
 		} else {
 			this.eventHandlers.set(event, nextHandlers)
 		}
@@ -78,12 +86,12 @@ export class EventBusManager implements EventManager {
 	}
 
 	onNetworkEvent(event: string, data: any, client: EventClient): void {
-		if (this.debug) console.log(`[EventBusManager] Processing sc: event: ${event}`)
+		if (this.debug) console.log(`[EventBusManager] Processing cs: event: ${event}`)
 		const handlers = this.eventHandlers.get(event) || []
-		if (this.debug) console.log(`[EventBusManager] Found ${handlers.length} handlers for sc: event ${event}`)
+		if (this.debug) console.log(`[EventBusManager] Found ${handlers.length} handlers for cs: event ${event}`)
 		handlers.forEach(handler => {
 			try {
-				if (this.debug) console.log(`[EventBusManager] Calling handler for sc: event ${event}`)
+				if (this.debug) console.log(`[EventBusManager] Calling handler for cs: event ${event}`)
 				handler(data, this.createProxyClient(client))
 			} catch (error) {
 				console.error(`[EventBusManager] Error handling event ${event}:`, error)
