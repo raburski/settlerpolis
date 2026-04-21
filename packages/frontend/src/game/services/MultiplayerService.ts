@@ -1,5 +1,5 @@
 import { EventBus } from '../EventBus'
-import { Receiver, Event, EventManager } from '@rugged/game'
+import { Receiver, EventManager, EventDirection, NETWORK_EVENT_CATALOG } from '@rugged/game'
 
 export enum Gender {
 	Male = 'Male',
@@ -24,10 +24,14 @@ const DEFAULT_APPEARANCE: PlayerAppearance = {
 
 export class MultiplayerService {
 	private debug: boolean
-    private events: string[]
+	private serverToClientEvents: string[]
 	private networkHandlers = new Map<string, (data: any, client: any) => void>()
 	private handleCSEvent = (eventName: string, data: any) => {
-		if (eventName && eventName.startsWith('cs:') && this.event) {
+		if (
+			eventName
+			&& NETWORK_EVENT_CATALOG[EventDirection.ClientToServer].has(eventName)
+			&& this.event
+		) {
 			const workerDebug = String(import.meta.env.VITE_GAME_WORKER_DEBUG || '').toLowerCase() === 'true'
 			if (this.debug || (workerDebug && eventName.startsWith('cs:players'))) {
 				console.log('[MULTIPLAYER SERVICE] Forwarding CS event:', eventName, data)
@@ -39,28 +43,16 @@ export class MultiplayerService {
 	constructor(private event: EventManager) {
 		const rawDebug = import.meta.env.VITE_GAME_MULTIPLAYER_DEBUG
 		this.debug = String(rawDebug).toLowerCase() === 'true'
-		this.events = this.getAllNetworkEvents()
+		this.serverToClientEvents = Array.from(NETWORK_EVENT_CATALOG[EventDirection.ServerToClient])
 		if (this.debug) {
-			console.log('[MultiplayerService] Initializing with events:', this.events.length, 'events')
-			console.log('[MultiplayerService] Building catalog event:', Event.Buildings?.SC?.Catalog)
-		}
-		EventBus.onAny(this.handleCSEvent)
-        this.setupNetworkEventForwarding()
-	}
-
-	private getAllNetworkEvents(): string[] {
-		const events: string[] = []
-		const addEvents = (obj: any) => {
-			Object.values(obj).forEach(value => {
-				if (typeof value === 'string') {
-					events.push(value)
-				} else if (typeof value === 'object') {
-					addEvents(value)
-				}
+			console.log('[MultiplayerService] Event catalog sizes:', {
+				CLIENT_TO_SERVER: NETWORK_EVENT_CATALOG[EventDirection.ClientToServer].size,
+				SERVER_TO_CLIENT: NETWORK_EVENT_CATALOG[EventDirection.ServerToClient].size,
+				SERVER_TO_SERVER: NETWORK_EVENT_CATALOG[EventDirection.ServerToServer].size
 			})
 		}
-		addEvents(Event)
-		return events
+		EventBus.onAny(this.handleCSEvent)
+		this.setupNetworkEventForwarding()
 	}
 
 	private setupNetworkEventForwarding() {
@@ -69,9 +61,9 @@ export class MultiplayerService {
 			return
 		}
 
-		// Subscribe to each event and forward to EventBus
-		this.events.forEach(eventName => {
-			const handler = (data, client) => {
+		// Subscribe only to server->client events and forward to EventBus
+		this.serverToClientEvents.forEach(eventName => {
+			const handler = (data: any, _client: any) => {
 				if (this.debug) {
 					console.log('[MULTIPLAYER SERVICE] Received event from server, forwarding to EventBus:', eventName, data)
 				}
@@ -81,7 +73,7 @@ export class MultiplayerService {
 			this.event.on(eventName, handler)
 		})
 		if (this.debug) {
-			console.log('[MultiplayerService] Set up forwarding for', this.events.length, 'events')
+			console.log('[MultiplayerService] Set up forwarding for', this.serverToClientEvents.length, 'SERVER_TO_CLIENT events')
 		}
 	}
 
