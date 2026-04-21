@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Chat } from './Chat'
 import { Inventory } from './Inventory'
 import { ChatLog } from './ChatLog'
@@ -30,6 +30,7 @@ import { cityCharterService } from '../services/CityCharterService'
 import { timeService } from '../services/TimeService'
 import { UiEvents } from '../uiEvents'
 import type { DayMoment } from '../dayMoment'
+import { useEscapeKey } from './hooks/useEscapeKey'
 
 export const UIContainer = () => {
 	const [isVisible, setIsVisible] = useState(true)
@@ -235,6 +236,22 @@ export const UIContainer = () => {
 	useEffect(() => {
 		EventBus.emit(UiEvents.World.DayMomentChanged, { moment: dayMoment })
 	}, [dayMoment])
+
+	const closeOverlaysOnEscape = useCallback(() => {
+		setSaveLoadMode(null)
+		setIsWorldMapOpen(false)
+		setIsStockOpen(false)
+		setIsPopulationOpen(false)
+		setIsLogisticsOpen(false)
+		setIsPrioritiesOpen(false)
+		setIsCharterOpen(false)
+		setIsReputationOpen(false)
+		EventBus.emit(UiEvents.Building.Close, {})
+		EventBus.emit(UiEvents.Settler.Close, {})
+		EventBus.emit(UiEvents.MapPopover.Close, { all: true })
+	}, [])
+
+	useEscapeKey(closeOverlaysOnEscape, isVisible)
 
 	if (!isVisible) {
 		return null
