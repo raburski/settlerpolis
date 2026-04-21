@@ -5,6 +5,7 @@ import type { BabylonRenderer } from './BabylonRenderer'
 import type { MapObject } from '@rugged/game'
 import { itemService } from '../services/ItemService'
 import { resourceNodeRenderService } from '../services/ResourceNodeRenderService'
+import { WindSwayController, WIND_REACTIVE_NODE_TYPES } from './WindSwayController'
 
 const BASE_OFFSET = 100000
 const perfNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
@@ -69,6 +70,8 @@ export class ResourceNodeBatcher {
 	private visibleBatchKeys: Set<string> = new Set()
 	private visibleIdOrder: Map<string, string[]> = new Map()
 	private growthStates: Map<string, GrowthState> = new Map()
+	private baseVisibleMatricesByBatch = new Map<string, Float32Array>()
+	private readonly windSway: WindSwayController
 	private worker: Worker | null = null
 	private workerRequestId = 0
 	private awaitingResult = false
@@ -90,6 +93,7 @@ export class ResourceNodeBatcher {
 		this.renderer = renderer
 		this.tileSize = tileSize
 		this.tileHalf = tileSize / 2
+		this.windSway = new WindSwayController(tileSize, this.tileHalf)
 		if (typeof Worker !== 'undefined') {
 			this.worker = new Worker(new URL('./resourceNodeWorker.ts', import.meta.url), {
 				type: 'module'
@@ -165,6 +169,7 @@ export class ResourceNodeBatcher {
 			this.objectsById.delete(objectId)
 			this.removePendingEmoji(objectId)
 			this.growthStates.delete(objectId)
+			this.windSway.removeObject(objectId)
 			return false
 		}
 		if (key.startsWith('pending-emoji:')) {
@@ -172,6 +177,7 @@ export class ResourceNodeBatcher {
 			this.objectsById.delete(objectId)
 			this.removePendingEmoji(objectId)
 			this.growthStates.delete(objectId)
+			this.windSway.removeObject(objectId)
 			return true
 		}
 		const batch = this.batches.get(key)
@@ -180,6 +186,7 @@ export class ResourceNodeBatcher {
 		this.objectsById.delete(objectId)
 		this.untrackBatchId(key, objectId)
 		this.growthStates.delete(objectId)
+		this.windSway.removeObject(objectId)
 		this.worker?.postMessage({ type: 'remove', key, id: objectId })
 		return true
 	}
@@ -208,6 +215,47 @@ export class ResourceNodeBatcher {
 			updated = true
 		}
 		return updated
+	}
+
+	public updateAmbientMotion(deltaMs: number): void {
+		if (!Number.isFinite(deltaMs) || deltaMs <= 0) return
+		const deltaSec = deltaMs / 1000
+		const visibleWindTiles: Array<{ tileX: number; tileY: number }> = []
+		for (const batchKey of this.visibleBatchKeys) {
+			if (!this.isWindReactiveBatch(batchKey)) continue
+			const visibleIds = this.visibleIdOrder.get(batchKey)
+			if (!visibleIds || visibleIds.length === 0) continue
+			for (const objectId of visibleIds) {
+				if (!objectId) continue
+				const object = this.objectsById.get(objectId)
+				if (!object) continue
+				visibleWindTiles.push({
+					tileX: (object.position.x + this.tileHalf) / this.tileSize,
+					tileY: (object.position.y + this.tileHalf) / this.tileSize
+				})
+			}
+		}
+		this.windSway.step(deltaSec, visibleWindTiles)
+
+		for (const batchKey of this.visibleBatchKeys) {
+			if (!this.isWindReactiveBatch(batchKey)) continue
+			const batch = this.batches.get(batchKey)
+			if (!batch || !batch.ready || !batch.hasBuffer) continue
+			const baseMatrices = this.baseVisibleMatricesByBatch.get(batchKey)
+			if (!baseMatrices || baseMatrices.length === 0) continue
+			const visibleIds = this.visibleIdOrder.get(batchKey)
+			if (!visibleIds || visibleIds.length === 0) continue
+			const animatedMatrices = this.windSway.applySwayToBatch(
+				batchKey,
+				baseMatrices,
+				visibleIds,
+				(objectId) => this.objectsById.get(objectId)?.position ?? null
+			)
+			batch.baseMeshes.forEach((mesh) => {
+				mesh.thinInstanceSetBuffer('matrix', animatedMatrices, 16, true)
+				mesh.thinInstanceCount = baseMatrices.length / 16
+			})
+		}
 	}
 
 	public getObjects(): MapObject[] {
@@ -281,8 +329,21 @@ export class ResourceNodeBatcher {
 		this.modelLoadPromises.clear()
 		this.visibleBatchKeys.clear()
 		this.growthStates.clear()
+		this.baseVisibleMatricesByBatch.clear()
+		this.windSway.reset()
 		this.worker?.terminate()
 		this.worker = null
+	}
+
+	private isWindReactiveBatch(batchKey: string): boolean {
+		const nodeTypes = this.batchKeyNodeTypes.get(batchKey)
+		if (!nodeTypes || nodeTypes.size === 0) return false
+		for (const nodeType of nodeTypes) {
+			if (WIND_REACTIVE_NODE_TYPES.has(nodeType)) {
+				return true
+			}
+		}
+		return false
 	}
 
 	private refreshRenderBatches(): void {
@@ -350,22 +411,33 @@ export class ResourceNodeBatcher {
 				this.pendingResults.set(key, result)
 				continue
 			}
+			const windReactive = this.isWindReactiveBatch(key)
+			const matrices = windReactive ? new Float32Array(result.matrices) : result.matrices
+			if (windReactive) {
+				this.baseVisibleMatricesByBatch.set(key, matrices)
+				const visibleIds = this.buildVisibleIdOrder(key, this.lastUpdateBounds)
+				const visibleOrder = visibleIds.length === result.count ? visibleIds : visibleIds.slice(0, result.count)
+				this.visibleIdOrder.set(key, visibleOrder)
+			} else {
+				this.baseVisibleMatricesByBatch.delete(key)
+				this.windSway.clearBatchAnimation(key)
+				if (this.pickableBatchKeys.has(key)) {
+					const visibleIds = this.buildVisibleIdOrder(key, this.lastUpdateBounds)
+					this.visibleIdOrder.set(
+						key,
+						visibleIds.length === result.count ? visibleIds : visibleIds.slice(0, result.count)
+					)
+				} else {
+					this.visibleIdOrder.set(key, [])
+				}
+			}
 			batch.baseMeshes.forEach((mesh) => {
-				mesh.thinInstanceSetBuffer('matrix', result.matrices, 16, true)
+				mesh.thinInstanceSetBuffer('matrix', matrices, 16, true)
 				mesh.thinInstanceCount = result.count
 				mesh.thinInstanceRefreshBoundingInfo(true)
 			})
 			batch.hasBuffer = true
 			appliedVisibleChange = true
-			if (this.pickableBatchKeys.has(key)) {
-				const visibleIds = this.buildVisibleIdOrder(key, this.lastUpdateBounds)
-				this.visibleIdOrder.set(
-					key,
-					visibleIds.length === result.count ? visibleIds : visibleIds.slice(0, result.count)
-				)
-			} else {
-				this.visibleIdOrder.set(key, [])
-			}
 		}
 
 		for (const key of this.visibleBatchKeys) {
@@ -378,6 +450,8 @@ export class ResourceNodeBatcher {
 			})
 			batch.hasBuffer = false
 			appliedVisibleChange = true
+			this.baseVisibleMatricesByBatch.delete(key)
+			this.windSway.clearBatchAnimation(key)
 			this.visibleIdOrder.set(key, [])
 		}
 		this.visibleBatchKeys = nextVisibleKeys
@@ -602,8 +676,21 @@ export class ResourceNodeBatcher {
 			this.batches.set(batchKey, batch)
 			const pending = this.pendingResults.get(batchKey)
 			if (pending) {
+				const windReactive = this.isWindReactiveBatch(batchKey)
+				const matrices = windReactive ? new Float32Array(pending.matrices) : pending.matrices
+				if (windReactive) {
+					this.baseVisibleMatricesByBatch.set(batchKey, matrices)
+					const visibleIds = this.buildVisibleIdOrder(batchKey, this.lastUpdateBounds)
+					this.visibleIdOrder.set(
+						batchKey,
+						visibleIds.length === pending.count ? visibleIds : visibleIds.slice(0, pending.count)
+					)
+				} else {
+					this.baseVisibleMatricesByBatch.delete(batchKey)
+					this.windSway.clearBatchAnimation(batchKey)
+				}
 				batch.baseMeshes.forEach((mesh) => {
-					mesh.thinInstanceSetBuffer('matrix', pending.matrices, 16, true)
+					mesh.thinInstanceSetBuffer('matrix', matrices, 16, true)
 					mesh.thinInstanceCount = pending.count
 					mesh.thinInstanceRefreshBoundingInfo(true)
 				})
@@ -701,6 +788,14 @@ export class ResourceNodeBatcher {
 				const center = bounds.min.add(bounds.max).scale(0.5)
 				pivotOffset = new Vector3(-center.x * scaleX, -bounds.min.y * scaleY, -center.z * scaleZ)
 				pivot.position.copyFrom(pivotOffset)
+				// Keep sway anchored at the model's base center.
+				this.windSway.setBatchAnchor(batchKey, {
+					x: center.x,
+					y: bounds.min.y,
+					z: center.z
+				})
+			} else {
+				this.windSway.setBatchAnchor(batchKey, { x: 0, y: 0, z: 0 })
 			}
 			root.position = new Vector3(-BASE_OFFSET, -BASE_OFFSET, -BASE_OFFSET)
 
@@ -840,6 +935,9 @@ export class ResourceNodeBatcher {
 		if (order.length === 0) {
 			this.batchIdOrder.delete(batchKey)
 			this.batchIdIndex.delete(batchKey)
+			this.windSway.removeBatch(batchKey)
+			this.baseVisibleMatricesByBatch.delete(batchKey)
+			this.visibleIdOrder.delete(batchKey)
 		}
 	}
 

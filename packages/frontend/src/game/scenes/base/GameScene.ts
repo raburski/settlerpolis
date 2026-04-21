@@ -256,6 +256,7 @@ export abstract class GameScene extends MapScene {
 		if (!this.assetsLoaded) return
 
 		this.processPendingMapObjects()
+		this.resourceNodeBatcher?.updateAmbientMotion(deltaMs)
 		this.updateCameraFromKeyboard(deltaMs)
 		this.updateCameraRotationFromKeyboard()
 		this.updateCameraZoomFromKeyboard()
