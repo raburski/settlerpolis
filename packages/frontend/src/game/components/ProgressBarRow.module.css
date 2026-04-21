@@ -1,0 +1,50 @@
+@import './variables.module.css';
+
+.row {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.label {
+	font-size: 0.5rem;
+	line-height: 1.35;
+	color: #cfbf9a;
+}
+
+.value {
+	font-size: 0.52rem;
+	line-height: 1.35;
+	color: #fffbe7;
+}
+
+.track {
+	height: 7px;
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	background: rgba(16, 16, 16, 0.7);
+	overflow: hidden;
+}
+
+.fill {
+	height: 100%;
+	background: var(--wellbeing-good-start);
+}
+
+.fill[data-level='healthy'] {
+	background: linear-gradient(90deg, var(--wellbeing-good-start), var(--wellbeing-good-end));
+}
+
+.fill[data-level='urgent'] {
+	background: linear-gradient(90deg, var(--wellbeing-mid-start), var(--wellbeing-mid-end));
+}
+
+.fill[data-level='critical'] {
+	background: linear-gradient(90deg, var(--wellbeing-low-start), var(--wellbeing-low-end));
+}

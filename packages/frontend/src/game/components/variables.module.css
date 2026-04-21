@@ -81,6 +81,14 @@
 	/* Border Widths */
 	--dialog-border-width: 2px;
 	--dialog-border-radius: 0;
+
+	/* Wellbeing meter palette */
+	--wellbeing-good-start: #84cc16;
+	--wellbeing-good-end: #bef264;
+	--wellbeing-mid-start: #f59e0b;
+	--wellbeing-mid-end: #facc15;
+	--wellbeing-low-start: #ef4444;
+	--wellbeing-low-end: #f87171;
 }
 
 /* Common utility classes */
