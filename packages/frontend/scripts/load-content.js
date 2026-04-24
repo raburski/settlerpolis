@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { config } from 'dotenv';
 import { spawn } from 'node:child_process';
 import { generateBuildingsModule } from './buildings-module.js';
+import { generateLodVariants } from './lod-pipeline.js';
 
 // Define paths for setting up environment
 const __filename = fileURLToPath(import.meta.url);
@@ -167,9 +168,10 @@ function collectAssetFiles(sourceDir, extensions, baseDir = sourceDir) {
 function copyAssetLibrary(sourceDir, targetDir, extensions, publicPath, indexEntries) {
 	if (!fs.existsSync(sourceDir)) {
 		console.error(`Source directory does not exist: ${sourceDir}`);
-		return;
+		return [];
 	}
 	const files = collectAssetFiles(sourceDir, extensions);
+	const modelEntries = [];
 	files.forEach((relativePath) => {
 		const sourcePath = path.join(sourceDir, relativePath);
 		const targetPath = path.join(targetDir, relativePath);
@@ -182,9 +184,15 @@ function copyAssetLibrary(sourceDir, targetDir, extensions, publicPath, indexEnt
 		if (modelExtensions.includes(ext)) {
 			const webPath = `${publicPath}/${relativePath.split(path.sep).join('/')}`;
 			indexEntries.push(webPath);
+			modelEntries.push({
+				sourcePath,
+				targetPath,
+				webPath
+			});
 		}
 	});
 	console.log(`Copied ${files.length} asset files from ${sourceDir} to ${targetDir}`);
+	return modelEntries;
 }
 
 // Main execution
@@ -207,7 +215,22 @@ function copyAssetLibrary(sourceDir, targetDir, extensions, publicPath, indexEnt
 
 	const assetIndexEntries = [];
 	console.log(`Copying asset library from ${libraryAssetsDir} to ${libraryTargetDir}`);
-	copyAssetLibrary(libraryAssetsDir, libraryTargetDir, assetExtensions, '/assets/library', assetIndexEntries);
+	const copiedModelEntries = copyAssetLibrary(
+		libraryAssetsDir,
+		libraryTargetDir,
+		assetExtensions,
+		'/assets/library',
+		assetIndexEntries
+	);
+
+	const lodEnabled = String(process.env.VITE_GENERATE_MODEL_LODS ?? 'true').toLowerCase() !== 'false';
+	if (lodEnabled) {
+		const generatedLodEntries = await generateLodVariants(copiedModelEntries, { verbose: true });
+		assetIndexEntries.push(...generatedLodEntries);
+		console.log(`Generated/loaded ${generatedLodEntries.length} LOD model entries`);
+	} else {
+		console.log('LOD generation disabled via VITE_GENERATE_MODEL_LODS=false');
+	}
 
 	if (fs.existsSync(resourceRenderSource)) {
 		fs.copyFileSync(resourceRenderSource, resourceRenderTarget);

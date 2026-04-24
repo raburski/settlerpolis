@@ -6,12 +6,19 @@ import type { MapObject } from '@rugged/game'
 import { itemService } from '../services/ItemService'
 import { resourceNodeRenderService } from '../services/ResourceNodeRenderService'
 import { WindSwayController, WIND_REACTIVE_NODE_TYPES } from './WindSwayController'
+import { GraphicsQuality } from '../types/graphicsQuality'
+import { LodController } from './LodController'
 
 const BASE_OFFSET = 100000
 const perfNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
 const TREE_GROWTH_SCALES = [0.4, 0.7, 1]
 const MODEL_RETRY_DELAY_MS = 1000
 const MODEL_MAX_RETRIES = 6
+const ZOOM_LOD_TO_MID_ENTER_SCALE = 1.6
+const ZOOM_LOD_TO_MID_EXIT_SCALE = 1.38
+const ZOOM_LOD_TO_FAR_ENTER_SCALE = 2.15
+const ZOOM_LOD_TO_FAR_EXIT_SCALE = 1.92
+const ZOOM_LOD_SWITCH_STABLE_MS = 220
 
 interface Batch {
 	type: 'emoji' | 'model'
@@ -86,6 +93,9 @@ export class ResourceNodeBatcher {
 	private unsupportedModelSrcs = new Set<string>()
 	private modelRetryTimers = new Map<string, number>()
 	private modelRetryCounts = new Map<string, number>()
+	private modelPrewarmInFlight = new Set<string>()
+	private currentGraphicsQuality: GraphicsQuality
+	private readonly zoomLodController: LodController
 
 	private static modelContainerCacheByScene = new WeakMap<Scene, Map<string, Promise<AssetContainer>>>()
 
@@ -93,7 +103,13 @@ export class ResourceNodeBatcher {
 		this.renderer = renderer
 		this.tileSize = tileSize
 		this.tileHalf = tileSize / 2
-		this.windSway = new WindSwayController(tileSize, this.tileHalf)
+		this.windSway = new WindSwayController(tileSize, this.tileHalf, BASE_OFFSET)
+		this.currentGraphicsQuality = this.renderer.getGraphicsQuality()
+		this.zoomLodController = new LodController({
+			initialTier: this.resolveZoomLodTier(this.renderer.getOrthoScale(), 0),
+			stableMs: ZOOM_LOD_SWITCH_STABLE_MS,
+			resolveTier: (orthoScale, currentTier) => this.resolveZoomLodTier(orthoScale, currentTier)
+		})
 		if (typeof Worker !== 'undefined') {
 			this.worker = new Worker(new URL('./resourceNodeWorker.ts', import.meta.url), {
 				type: 'module'
@@ -163,13 +179,15 @@ export class ResourceNodeBatcher {
 		return this.addEmojiNode(object, scale)
 	}
 
-	remove(objectId: string): boolean {
+	remove(objectId: string, options?: { preserveWindState?: boolean }): boolean {
 		const key = this.idToBatchKey.get(objectId)
 		if (!key) {
 			this.objectsById.delete(objectId)
 			this.removePendingEmoji(objectId)
 			this.growthStates.delete(objectId)
-			this.windSway.removeObject(objectId)
+			if (!options?.preserveWindState) {
+				this.windSway.removeObject(objectId)
+			}
 			return false
 		}
 		if (key.startsWith('pending-emoji:')) {
@@ -177,7 +195,9 @@ export class ResourceNodeBatcher {
 			this.objectsById.delete(objectId)
 			this.removePendingEmoji(objectId)
 			this.growthStates.delete(objectId)
-			this.windSway.removeObject(objectId)
+			if (!options?.preserveWindState) {
+				this.windSway.removeObject(objectId)
+			}
 			return true
 		}
 		const batch = this.batches.get(key)
@@ -186,7 +206,9 @@ export class ResourceNodeBatcher {
 		this.objectsById.delete(objectId)
 		this.untrackBatchId(key, objectId)
 		this.growthStates.delete(objectId)
-		this.windSway.removeObject(objectId)
+		if (!options?.preserveWindState) {
+			this.windSway.removeObject(objectId)
+		}
 		this.worker?.postMessage({ type: 'remove', key, id: objectId })
 		return true
 	}
@@ -219,23 +241,17 @@ export class ResourceNodeBatcher {
 
 	public updateAmbientMotion(deltaMs: number): void {
 		if (!Number.isFinite(deltaMs) || deltaMs <= 0) return
-		const deltaSec = deltaMs / 1000
-		const visibleWindTiles: Array<{ tileX: number; tileY: number }> = []
-		for (const batchKey of this.visibleBatchKeys) {
-			if (!this.isWindReactiveBatch(batchKey)) continue
-			const visibleIds = this.visibleIdOrder.get(batchKey)
-			if (!visibleIds || visibleIds.length === 0) continue
-			for (const objectId of visibleIds) {
-				if (!objectId) continue
-				const object = this.objectsById.get(objectId)
-				if (!object) continue
-				visibleWindTiles.push({
-					tileX: (object.position.x + this.tileHalf) / this.tileSize,
-					tileY: (object.position.y + this.tileHalf) / this.tileSize
-				})
-			}
+		const quality = this.renderer.getGraphicsQuality()
+		const nowMs = perfNow()
+		const zoomLodChanged = this.zoomLodController.update(this.renderer.getOrthoScale(), nowMs).changed
+		if (quality !== this.currentGraphicsQuality) {
+			this.currentGraphicsQuality = quality
+			this.refreshRenderBatches()
+		} else if (zoomLodChanged) {
+			this.refreshRenderBatches()
 		}
-		this.windSway.step(deltaSec, visibleWindTiles)
+		const deltaSec = deltaMs / 1000
+		this.windSway.step(deltaSec, this.lastUpdateBounds)
 
 		for (const batchKey of this.visibleBatchKeys) {
 			if (!this.isWindReactiveBatch(batchKey)) continue
@@ -248,8 +264,7 @@ export class ResourceNodeBatcher {
 			const animatedMatrices = this.windSway.applySwayToBatch(
 				batchKey,
 				baseMatrices,
-				visibleIds,
-				(objectId) => this.objectsById.get(objectId)?.position ?? null
+				visibleIds
 			)
 			batch.baseMeshes.forEach((mesh) => {
 				mesh.thinInstanceSetBuffer('matrix', animatedMatrices, 16, true)
@@ -337,9 +352,20 @@ export class ResourceNodeBatcher {
 
 	private isWindReactiveBatch(batchKey: string): boolean {
 		const nodeTypes = this.batchKeyNodeTypes.get(batchKey)
-		if (!nodeTypes || nodeTypes.size === 0) return false
-		for (const nodeType of nodeTypes) {
-			if (WIND_REACTIVE_NODE_TYPES.has(nodeType)) {
+		if (nodeTypes && nodeTypes.size > 0) {
+			for (const nodeType of nodeTypes) {
+				if (WIND_REACTIVE_NODE_TYPES.has(nodeType)) {
+					return true
+				}
+			}
+		}
+		// Fallback for batches that might miss type tagging during model variant swaps.
+		const ids = this.batchIdOrder.get(batchKey) || this.visibleIdOrder.get(batchKey) || []
+		for (const id of ids) {
+			const object = this.objectsById.get(id)
+			if (!object) continue
+			const resolved = resolveResourceNodeTypeForRender(object)
+			if (resolved && WIND_REACTIVE_NODE_TYPES.has(resolved)) {
 				return true
 			}
 		}
@@ -348,22 +374,31 @@ export class ResourceNodeBatcher {
 
 	private refreshRenderBatches(): void {
 		if (!resourceNodeRenderService.isLoaded()) return
-		const toUpgrade: MapObject[] = []
+		const toRefresh: MapObject[] = []
 		for (const [id, obj] of this.objectsById.entries()) {
 			if (!obj?.metadata?.resourceNode) continue
 			const nodeType = resolveResourceNodeTypeForRender(obj)
 			const render = this.resolveResourceModelRender(obj, nodeType)
-			if (!render?.modelSrc) continue
 			const key = this.idToBatchKey.get(id)
-			if (!key || key.startsWith('emoji:') || key.startsWith('pending-emoji:')) {
-				toUpgrade.push(obj)
+			if (render?.modelSrc) {
+				const targetKey = this.getModelBatchKey(render)
+				if (key !== targetKey) {
+					toRefresh.push(obj)
+				}
+				continue
+			}
+			if (key && key.startsWith('model:')) {
+				toRefresh.push(obj)
 			}
 		}
 
-		toUpgrade.forEach((obj) => {
-			this.remove(obj.id)
+		toRefresh.forEach((obj) => {
+			this.remove(obj.id, { preserveWindState: true })
 			this.add(obj)
 		})
+		if (toRefresh.length > 0 && this.lastUpdateBounds) {
+			this.requestUpdate(this.lastUpdateBounds)
+		}
 	}
 
 	private requestUpdate(bounds: { minX: number; minY: number; maxX: number; maxY: number }): void {
@@ -453,6 +488,7 @@ export class ResourceNodeBatcher {
 			this.baseVisibleMatricesByBatch.delete(key)
 			this.windSway.clearBatchAnimation(key)
 			this.visibleIdOrder.set(key, [])
+			this.cleanupDormantBatchState(key, nextVisibleKeys)
 		}
 		this.visibleBatchKeys = nextVisibleKeys
 
@@ -580,14 +616,100 @@ export class ResourceNodeBatcher {
 			},
 			object.id
 		)
-		if (resourceRender?.modelSrc && this.isModelRenderable(resourceRender.modelSrc)) {
-			return resourceRender
+		if (resourceRender?.modelSrc) {
+			const selectedModelSrc = this.selectModelSrcForQuality(resourceRender.modelSrc)
+			this.prewarmModelLodVariants(resourceRender.modelSrc, selectedModelSrc)
+			if (this.isModelRenderable(selectedModelSrc)) {
+				return {
+					...resourceRender,
+					modelSrc: selectedModelSrc
+				}
+			}
 		}
 		return null
 	}
 
+	private selectModelSrcForQuality(modelSrc: string): string {
+		const quality = this.renderer.getGraphicsQuality()
+		const effectiveLodTier = this.resolveEffectiveLodTier(quality, this.zoomLodController.getTier())
+		const candidates: string[] =
+			effectiveLodTier >= 3
+				? [appendLodSuffix(modelSrc, 'lod3'), appendLodSuffix(modelSrc, 'lod2'), appendLodSuffix(modelSrc, 'lod1'), modelSrc]
+				: effectiveLodTier >= 2
+					? [appendLodSuffix(modelSrc, 'lod2'), appendLodSuffix(modelSrc, 'lod1'), modelSrc]
+				: effectiveLodTier >= 1
+					? [appendLodSuffix(modelSrc, 'lod1'), modelSrc]
+					: [modelSrc]
+		for (const candidate of candidates) {
+			if (this.isModelRenderable(candidate)) {
+				return candidate
+			}
+		}
+		return modelSrc
+	}
+
+	private resolveEffectiveLodTier(quality: GraphicsQuality, zoomLodTier: number): number {
+		const minimumTierByQuality =
+			quality === GraphicsQuality.Low ? 2 : quality === GraphicsQuality.Medium ? 1 : 0
+		return Math.max(minimumTierByQuality, zoomLodTier)
+	}
+
+	private resolveZoomLodTier(orthoScale: number, currentTier: number): number {
+		if (!Number.isFinite(orthoScale) || orthoScale <= 0) {
+			return currentTier
+		}
+		// Skip the closest zoom LOD transition; first swap happens deeper into zoom-out.
+		if (currentTier <= 1) {
+			if (orthoScale >= ZOOM_LOD_TO_FAR_ENTER_SCALE) return 3
+			if (orthoScale >= ZOOM_LOD_TO_MID_ENTER_SCALE) return 2
+			return 0
+		}
+		if (currentTier === 2) {
+			if (orthoScale >= ZOOM_LOD_TO_FAR_ENTER_SCALE) return 3
+			if (orthoScale <= ZOOM_LOD_TO_MID_EXIT_SCALE) return 0
+			return 2
+		}
+		if (orthoScale <= ZOOM_LOD_TO_MID_EXIT_SCALE) return 0
+		if (orthoScale <= ZOOM_LOD_TO_FAR_EXIT_SCALE) return 2
+		return 3
+	}
+
 	private isModelRenderable(modelSrc: string): boolean {
 		return !this.failedModelSrcs.has(modelSrc) && !this.unsupportedModelSrcs.has(modelSrc)
+	}
+
+	private prewarmModelLodVariants(baseModelSrc: string, selectedModelSrc: string): void {
+		const cache = ResourceNodeBatcher.getSceneModelContainerCache(this.renderer.scene)
+		const candidates = [
+			baseModelSrc,
+			appendLodSuffix(baseModelSrc, 'lod1'),
+			appendLodSuffix(baseModelSrc, 'lod2'),
+			appendLodSuffix(baseModelSrc, 'lod3')
+		]
+		for (const candidate of candidates) {
+			if (!candidate || candidate === selectedModelSrc) continue
+			if (!candidate.toLowerCase().endsWith('.glb')) continue
+			if (!this.isModelRenderable(candidate)) continue
+			if (cache.has(candidate)) continue
+			if (this.modelPrewarmInFlight.has(candidate)) continue
+			this.modelPrewarmInFlight.add(candidate)
+			void ResourceNodeBatcher.getModelContainer(this.renderer.scene, candidate)
+				.then((container) => {
+					if (container.skeletons?.length) {
+						this.unsupportedModelSrcs.add(candidate)
+						cache.delete(candidate)
+						container.dispose()
+					}
+				})
+				.catch((error) => {
+					if (!isSceneDisposedError(error)) {
+						this.failedModelSrcs.add(candidate)
+					}
+				})
+				.finally(() => {
+					this.modelPrewarmInFlight.delete(candidate)
+				})
+		}
 	}
 
 	private clearModelRetry(modelSrc: string): void {
@@ -788,12 +910,7 @@ export class ResourceNodeBatcher {
 				const center = bounds.min.add(bounds.max).scale(0.5)
 				pivotOffset = new Vector3(-center.x * scaleX, -bounds.min.y * scaleY, -center.z * scaleZ)
 				pivot.position.copyFrom(pivotOffset)
-				// Keep sway anchored at the model's base center.
-				this.windSway.setBatchAnchor(batchKey, {
-					x: center.x,
-					y: bounds.min.y,
-					z: center.z
-				})
+				this.bindWindAnchor(batchKey, bounds)
 			} else {
 				this.windSway.setBatchAnchor(batchKey, { x: 0, y: 0, z: 0 })
 			}
@@ -856,6 +973,16 @@ export class ResourceNodeBatcher {
 		)
 		const elevation = renderConfig.transform?.elevation ?? 0
 		return base + elevation * this.tileSize
+	}
+
+	private bindWindAnchor(batchKey: string, bounds: { min: Vector3; max: Vector3 }): void {
+		const center = bounds.min.add(bounds.max).scale(0.5)
+		// Keep sway anchored at the model's base center.
+		this.windSway.setBatchAnchor(batchKey, {
+			x: center.x,
+			y: bounds.min.y,
+			z: center.z
+		})
 	}
 
 	private static async getModelContainer(
@@ -935,10 +1062,20 @@ export class ResourceNodeBatcher {
 		if (order.length === 0) {
 			this.batchIdOrder.delete(batchKey)
 			this.batchIdIndex.delete(batchKey)
-			this.windSway.removeBatch(batchKey)
-			this.baseVisibleMatricesByBatch.delete(batchKey)
-			this.visibleIdOrder.delete(batchKey)
+			this.cleanupDormantBatchState(batchKey)
 		}
+	}
+
+	private cleanupDormantBatchState(batchKey: string, nextVisibleKeys?: Set<string>): void {
+		// During LOD rebatching, worker visibility can lag behind id migration by a frame.
+		// Keep sway data alive until the batch is both empty and no longer visible.
+		if (this.batchIdOrder.has(batchKey)) return
+		if (nextVisibleKeys ? nextVisibleKeys.has(batchKey) : this.visibleBatchKeys.has(batchKey)) return
+		const batch = this.batches.get(batchKey)
+		if (batch?.hasBuffer) return
+		this.windSway.clearBatchAnimation(batchKey)
+		this.baseVisibleMatricesByBatch.delete(batchKey)
+		this.visibleIdOrder.delete(batchKey)
 	}
 
 	private fallbackBatchToEmoji(batchKey: string): void {
@@ -1092,6 +1229,12 @@ function splitAssetUrl(url: string): { rootUrl: string; fileName: string } {
 		rootUrl: trimmed.slice(0, lastSlash + 1),
 		fileName: trimmed.slice(lastSlash + 1)
 	}
+}
+
+function appendLodSuffix(modelSrc: string, suffix: string): string {
+	const trimmed = modelSrc.trim()
+	if (!trimmed) return modelSrc
+	return trimmed.replace(/\.glb$/i, `.${suffix}.glb`)
 }
 
 function resolveResourceNodeTypeForRender(object: MapObject | null | undefined): string | undefined {

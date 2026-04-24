@@ -2,8 +2,9 @@ import { BabylonRenderer } from '../rendering/BabylonRenderer'
 import { InputManager } from '../input/InputManager'
 import { EventBus } from '../EventBus'
 import { UiEvents } from '../uiEvents'
-import { getHighFidelity, getScrollSensitivityWheelDelta } from '../services/DisplaySettings'
+import { getGraphicsQuality, getHighFidelity, getScrollSensitivityWheelDelta } from '../services/DisplaySettings'
 import { DEFAULT_DAY_MOMENT, isDayMoment } from '../dayMoment'
+import { type GraphicsQuality } from '../types/graphicsQuality'
 
 export interface RuntimeScene {
 	start(data?: any): void
@@ -21,6 +22,9 @@ export class GameRuntime {
 	private readonly handleHighFidelity = (data: { enabled: boolean }) => {
 		this.renderer.setHighFidelity(Boolean(data?.enabled))
 	}
+	private readonly handleGraphicsQuality = (data: { quality?: GraphicsQuality }) => {
+		this.renderer.setGraphicsQuality(data?.quality)
+	}
 	private readonly handleScrollSensitivity = (data: { level: number }) => {
 		this.renderer.setScrollWheelDeltaPercentage(getScrollSensitivityWheelDelta(data?.level))
 	}
@@ -37,12 +41,14 @@ export class GameRuntime {
 
 	constructor(canvas: HTMLCanvasElement) {
 		this.renderer = new BabylonRenderer(canvas)
+		this.renderer.setGraphicsQuality(getGraphicsQuality())
 		this.renderer.setHighFidelity(getHighFidelity())
 		this.renderer.setScrollWheelDeltaPercentage(getScrollSensitivityWheelDelta())
 		this.renderer.setDayMoment(DEFAULT_DAY_MOMENT)
 		this.input = new InputManager(canvas, this.renderer)
 		this.overlayRoot = this.createOverlay(canvas)
 		EventBus.on(UiEvents.Settings.HighFidelity, this.handleHighFidelity)
+		EventBus.on(UiEvents.Settings.GraphicsQuality, this.handleGraphicsQuality)
 		EventBus.on(UiEvents.Settings.ScrollSensitivity, this.handleScrollSensitivity)
 		EventBus.on(UiEvents.Debug.RenderStatsToggle, this.handleRenderStatsToggle)
 		EventBus.on(UiEvents.World.DayMomentChanged, this.handleWorldDayMomentChanged)
@@ -69,6 +75,7 @@ export class GameRuntime {
 			this.activeScene = null
 		}
 		EventBus.off(UiEvents.Settings.HighFidelity, this.handleHighFidelity)
+		EventBus.off(UiEvents.Settings.GraphicsQuality, this.handleGraphicsQuality)
 		EventBus.off(UiEvents.Settings.ScrollSensitivity, this.handleScrollSensitivity)
 		EventBus.off(UiEvents.Debug.RenderStatsToggle, this.handleRenderStatsToggle)
 		EventBus.off(UiEvents.World.DayMomentChanged, this.handleWorldDayMomentChanged)

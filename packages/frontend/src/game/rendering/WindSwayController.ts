@@ -54,10 +54,12 @@ type TileBounds = {
 }
 
 type Anchor = { x: number; y: number; z: number }
+type WorldBounds = { minX: number; minY: number; maxX: number; maxY: number }
 
 export class WindSwayController {
 	private readonly tileSize: number
 	private readonly tileHalf: number
+	private readonly baseOffset: number
 	private windTimeSec = 0
 	private deltaSec = 0
 	private windStateByObject = new Map<string, PerInstanceWindState>()
@@ -66,9 +68,10 @@ export class WindSwayController {
 	private windAnchorByBatch = new Map<string, Anchor>()
 	private animatedMatricesByBatch = new Map<string, Float32Array>()
 
-	constructor(tileSize: number, tileHalf: number) {
+	constructor(tileSize: number, tileHalf: number, baseOffset: number) {
 		this.tileSize = tileSize
 		this.tileHalf = tileHalf
+		this.baseOffset = baseOffset
 	}
 
 	public reset(): void {
@@ -98,20 +101,15 @@ export class WindSwayController {
 		this.animatedMatricesByBatch.delete(batchKey)
 	}
 
-	public step(deltaSec: number, visibleWindTiles: Array<{ tileX: number; tileY: number }>): void {
+	public step(deltaSec: number, visibleWorldBounds: WorldBounds | null): void {
 		if (!Number.isFinite(deltaSec) || deltaSec <= 0) return
 		this.deltaSec = deltaSec
 		this.windTimeSec += deltaSec
-		const bounds = this.computeBoundsFromTiles(visibleWindTiles)
+		const bounds = this.computeBoundsFromWorldBounds(visibleWorldBounds)
 		this.updateWindStrokes(deltaSec, bounds)
 	}
 
-	public applySwayToBatch(
-		batchKey: string,
-		baseMatrices: Float32Array,
-		visibleIds: string[],
-		getWorldPosition: (objectId: string) => { x: number; y: number } | null
-	): Float32Array {
+	public applySwayToBatch(batchKey: string, baseMatrices: Float32Array, visibleIds: string[]): Float32Array {
 		if (baseMatrices.length === 0 || visibleIds.length === 0) {
 			return baseMatrices
 		}
@@ -126,10 +124,11 @@ export class WindSwayController {
 		for (let index = 0; index < animateCount; index += 1) {
 			const objectId = visibleIds[index]
 			if (!objectId) continue
-			const world = getWorldPosition(objectId)
-			if (!world) continue
 			const wind = this.ensurePerInstanceWindState(objectId)
-			const gustField = this.sampleWindStrokes((world.x + this.tileHalf) / this.tileSize, (world.y + this.tileHalf) / this.tileSize)
+			const matrixOffset = index * 16
+			const tileX = (baseMatrices[matrixOffset + 12] - this.baseOffset) / this.tileSize
+			const tileY = (baseMatrices[matrixOffset + 14] - this.baseOffset) / this.tileSize
+			const gustField = this.sampleWindStrokes(tileX, tileY)
 			this.updateTreeGustResponse(wind, gustField * WIND_GUST_FORCE_GAIN, this.deltaSec)
 			const gustMultiplier = 1 + wind.gustBoost * WIND_GUST_STRENGTH
 			const tiltX = Math.sin(this.windTimeSec * wind.speedA + wind.phaseA) * wind.tiltAmplitude * gustMultiplier
@@ -192,17 +191,14 @@ export class WindSwayController {
 		return created
 	}
 
-	private computeBoundsFromTiles(tiles: Array<{ tileX: number; tileY: number }>): TileBounds | null {
-		if (tiles.length === 0) return null
-		let minX = Number.POSITIVE_INFINITY
-		let maxX = Number.NEGATIVE_INFINITY
-		let minY = Number.POSITIVE_INFINITY
-		let maxY = Number.NEGATIVE_INFINITY
-		for (const tile of tiles) {
-			minX = Math.min(minX, tile.tileX)
-			maxX = Math.max(maxX, tile.tileX)
-			minY = Math.min(minY, tile.tileY)
-			maxY = Math.max(maxY, tile.tileY)
+	private computeBoundsFromWorldBounds(bounds: WorldBounds | null): TileBounds | null {
+		if (!bounds) return null
+		const minX = (bounds.minX + this.tileHalf) / this.tileSize
+		const maxX = (bounds.maxX + this.tileHalf) / this.tileSize
+		const minY = (bounds.minY + this.tileHalf) / this.tileSize
+		const maxY = (bounds.maxY + this.tileHalf) / this.tileSize
+		if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
+			return null
 		}
 		return {
 			minX,

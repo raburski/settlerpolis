@@ -5,23 +5,30 @@ import { useSlidingPanel } from './hooks/useSlidingPanel'
 import { UiEvents } from '../uiEvents'
 import { EventBus } from '../EventBus'
 import {
+	getGraphicsQuality,
+	getGraphicsQualityOptions,
 	getHighFidelity,
 	getScrollSensitivity,
 	getScrollSensitivityOptions,
+	setGraphicsQuality,
 	setHighFidelity,
 	setScrollSensitivity
 } from '../services/DisplaySettings'
 import { getAutoRequestWorker, setAutoRequestWorker } from '../services/GameplaySettings'
+import { GraphicsQuality, isGraphicsQuality } from '../types/graphicsQuality'
 
 export function Settings() {
 	const { isVisible, isExiting, toggle, close } = useSlidingPanel()
 	const initialHighFidelity = useMemo(() => getHighFidelity(), [])
+	const initialGraphicsQuality = useMemo(() => getGraphicsQuality(), [])
 	const initialScrollSensitivity = useMemo(() => getScrollSensitivity(), [])
 	const initialAutoRequestWorker = useMemo(() => getAutoRequestWorker(), [])
 	const [highFidelity, setHighFidelityState] = useState(initialHighFidelity)
+	const [graphicsQuality, setGraphicsQualityState] = useState<GraphicsQuality>(initialGraphicsQuality)
 	const [scrollSensitivity, setScrollSensitivityState] = useState(initialScrollSensitivity)
 	const [autoRequestWorker, setAutoRequestWorkerState] = useState(initialAutoRequestWorker)
 	const scrollOptions = useMemo(() => getScrollSensitivityOptions(), [])
+	const qualityOptions = useMemo(() => getGraphicsQualityOptions(), [])
 
 	useEventBus(UiEvents.Settings.Toggle, toggle)
 	useEventBus(UiEvents.Inventory.Toggle, close)
@@ -39,6 +46,12 @@ export function Settings() {
 		const level = setScrollSensitivity(Number(event.target.value))
 		setScrollSensitivityState(level)
 		EventBus.emit(UiEvents.Settings.ScrollSensitivity, { level })
+	}
+	const handleGraphicsQualityChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+		const raw = event.target.value
+		const quality = setGraphicsQuality(isGraphicsQuality(raw) ? raw : GraphicsQuality.High)
+		setGraphicsQualityState(quality)
+		EventBus.emit(UiEvents.Settings.GraphicsQuality, { quality })
 	}
 	const handleAutoRequestWorkerChange = (event: React.ChangeEvent<HTMLInputElement>) => {
 		const enabled = event.target.checked
@@ -104,10 +117,17 @@ export function Settings() {
 							</div>
 							<div className={styles.settingRow}>
 								<label htmlFor="quality">Quality</label>
-								<select id="quality" className={styles.select}>
-									<option value="low">Low</option>
-									<option value="medium">Medium</option>
-									<option value="high">High</option>
+								<select
+									id="quality"
+									className={styles.select}
+									value={graphicsQuality}
+									onChange={handleGraphicsQualityChange}
+								>
+									{qualityOptions.map((option) => (
+										<option key={option.value} value={option.value}>
+											{option.label}
+										</option>
+									))}
 								</select>
 							</div>
 						</div>
