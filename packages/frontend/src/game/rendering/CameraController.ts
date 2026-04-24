@@ -45,7 +45,7 @@ export class CameraController {
 	private zoomState: ZoomState | null = null
 	private zoomStep = 2
 	private wheelZoomAccumulator = 0
-	private readonly zoomScales: [number, number, number, number, number]
+	private readonly zoomScales: [number, number, number, number]
 	private readonly zoomDurationMs = 260
 	private readonly rotationStorageKey = 'rugged:camera-rotation-step'
 	private readonly isoRotation: IsometricRotation
@@ -57,8 +57,7 @@ export class CameraController {
 			middleZoom * 1.8,
 			middleZoom * 1.35,
 			middleZoom,
-			middleZoom * 0.75,
-			middleZoom * 0.55
+			middleZoom * 0.75
 		]
 		const initialStep = this.restoreRotation()
 		this.isoRotation = new IsometricRotation({ initialStep })

@@ -22,11 +22,13 @@ import {
 	Vector2,
 	Vector3
 } from '@babylonjs/core'
+import { SceneInstrumentation } from '@babylonjs/core/Instrumentation/sceneInstrumentation'
 import { PlaceholderFactory } from './PlaceholderFactory'
 import type { MapLayer, MapTileset } from '../world/MapLoader'
 import earcut from 'earcut'
 import { DEFAULT_DAY_MOMENT, type DayMoment } from '../dayMoment'
 import { ShadowOnlyMaterial } from '@babylonjs/materials/shadowOnly/shadowOnlyMaterial'
+import { GraphicsQuality, isGraphicsQuality } from '../types/graphicsQuality'
 
 interface GroundTilesConfig {
 	mapUrl: string
@@ -224,6 +226,17 @@ const FILL_LIGHT_SPECULAR_MULTIPLIER = 0.2
 const AMBIENT_COLOR_MULTIPLIER = 0.28
 const GROUND_SHADER_EXPOSURE_MULTIPLIER = 0.84
 const DAY_MOMENT_TRANSITION_MS = 900
+const DYNAMIC_RESOLUTION_SCALE_BY_QUALITY: Record<GraphicsQuality, number> = {
+	[GraphicsQuality.Low]: 0.78,
+	[GraphicsQuality.Medium]: 0.9,
+	[GraphicsQuality.High]: 1
+}
+const SHADOWS_ENABLED_BY_QUALITY: Record<GraphicsQuality, boolean> = {
+	[GraphicsQuality.Low]: false,
+	[GraphicsQuality.Medium]: true,
+	[GraphicsQuality.High]: true
+}
+const DEVICE_RATIO_EPSILON = 0.03
 
 interface DayMomentTransitionState {
 	from: DayMomentLightingProfile
@@ -316,12 +329,16 @@ export class BabylonRenderer {
 	private baseOrthoScale = 1
 	private fidelityScale = 1
 	private highFidelityEnabled = true
+	private graphicsQuality: GraphicsQuality = GraphicsQuality.High
+	private lastAppliedDeviceRatio = 0
+	private shadowRuntimeEnabled = true
 	private dayMoment: DayMoment = DEFAULT_DAY_MOMENT
 	private dayMomentLighting: DayMomentLightingProfile = DAY_MOMENT_LIGHTING[DEFAULT_DAY_MOMENT]
 	private dayMomentTransition: DayMomentTransitionState | null = null
 	private selectionOctreeAddObserver: Observer<AbstractMesh> | null = null
 	private selectionOctreeRemoveObserver: Observer<AbstractMesh> | null = null
 	private selectionOctreeRefreshTimer: number | null = null
+	private readonly sceneInstrumentation: SceneInstrumentation
 	private cameraBoundsPaddingCache: {
 		alpha: number
 		beta: number
@@ -342,6 +359,7 @@ export class BabylonRenderer {
 		this.applyHardwareScaling()
 		this.scene = new Scene(this.engine)
 		this.scene.clearColor = new Color4(0.08, 0.08, 0.08, 1)
+		this.sceneInstrumentation = new SceneInstrumentation(this.scene)
 
 		this.camera = new ArcRotateCamera(
 			'camera',
@@ -375,6 +393,7 @@ export class BabylonRenderer {
 		this.initializeSelectionOctree()
 		this.initializeShadows()
 		this.applyDayMomentLighting()
+		this.applyRuntimeQualityProfile()
 	}
 
 	start(renderStep: (deltaMs: number) => void): void {
@@ -398,6 +417,7 @@ export class BabylonRenderer {
 		this.disposeSelectionOctree()
 		this.disposeShadows()
 		this.resetWaterSurface()
+		this.sceneInstrumentation.dispose()
 		this.scene.dispose()
 		this.engine.dispose()
 	}
@@ -409,7 +429,14 @@ export class BabylonRenderer {
 	}
 
 	private applyHardwareScaling(): void {
-		const ratio = this.highFidelityEnabled ? (window.devicePixelRatio || 1) : 1
+		const ratio = this.computeTargetDeviceRatio()
+		if (
+			this.lastAppliedDeviceRatio > 0 &&
+			Math.abs(this.lastAppliedDeviceRatio - ratio) < DEVICE_RATIO_EPSILON
+		) {
+			return
+		}
+		this.lastAppliedDeviceRatio = ratio
 		this.fidelityScale = ratio
 		this.engine.setHardwareScalingLevel(1 / ratio)
 	}
@@ -508,8 +535,18 @@ export class BabylonRenderer {
 
 	setHighFidelity(enabled: boolean): void {
 		this.highFidelityEnabled = enabled
-		this.applyHardwareScaling()
-		this.updateCameraOrtho()
+		this.applyRuntimeQualityProfile()
+	}
+
+	setGraphicsQuality(quality: unknown): void {
+		const nextQuality = isGraphicsQuality(quality) ? quality : GraphicsQuality.High
+		if (nextQuality === this.graphicsQuality) return
+		this.graphicsQuality = nextQuality
+		this.applyRuntimeQualityProfile()
+	}
+
+	getGraphicsQuality(): GraphicsQuality {
+		return this.graphicsQuality
 	}
 
 	setScrollWheelDeltaPercentage(value: number): void {
@@ -605,6 +642,37 @@ export class BabylonRenderer {
 		const requiredRadius = Math.max(this.baseRadius, minimumCameraHeight / cosBeta)
 		if (Number.isFinite(requiredRadius) && requiredRadius > this.camera.radius) {
 			this.camera.radius = requiredRadius
+		}
+	}
+
+	private applyRuntimeQualityProfile(): void {
+		this.applyHardwareScaling()
+		this.updateCameraOrtho()
+		this.applyShadowRuntimeState()
+	}
+
+	private computeTargetDeviceRatio(): number {
+		const baseRatio = this.highFidelityEnabled ? (window.devicePixelRatio || 1) : 1
+		const qualityScale = this.getDynamicResolutionScaleForQuality()
+		return Math.max(0.5, baseRatio * qualityScale)
+	}
+
+	private getDynamicResolutionScaleForQuality(): number {
+		const scale =
+			DYNAMIC_RESOLUTION_SCALE_BY_QUALITY[this.graphicsQuality] ||
+			DYNAMIC_RESOLUTION_SCALE_BY_QUALITY[GraphicsQuality.High]
+		return scale ?? 1
+	}
+
+	private applyShadowRuntimeState(): void {
+		const shouldEnable =
+			SHADOWS_ENABLED_BY_QUALITY[this.graphicsQuality] ?? SHADOWS_ENABLED_BY_QUALITY[GraphicsQuality.High]
+		if (this.shadowRuntimeEnabled === shouldEnable) return
+		this.shadowRuntimeEnabled = shouldEnable
+		this.scene.shadowsEnabled = shouldEnable
+		if (shouldEnable) {
+			this.unfreezeShadowMap()
+			this.requestEnvironmentShadowBake()
 		}
 	}
 
@@ -3466,6 +3534,10 @@ export class BabylonRenderer {
 		fps: number
 		meshes: number
 		activeMeshes: number
+		drawCalls: number
+		activeIndices: number
+		totalVertices: number
+		forcedActiveMeshes: number
 		instances: number
 		thinInstances: number
 		groups: {
@@ -3473,6 +3545,8 @@ export class BabylonRenderer {
 			collision: number
 			roads: number
 			resourceNodes: number
+			resourceNodeThinHosts: number
+			resourceNodeThinInstances: number
 		}
 	} {
 		const meshes = this.scene.meshes.length
@@ -3487,34 +3561,57 @@ export class BabylonRenderer {
 
 		let instances = 0
 		let thinInstances = 0
+		let forcedActiveMeshes = 0
 		let mapObjects = 0
 		let collision = 0
 		let roads = 0
 		let resourceNodes = 0
+		let resourceNodeThinHosts = 0
+		let resourceNodeThinInstances = 0
 		for (const mesh of this.scene.meshes) {
 			const name = mesh.name || ''
+			const batchKey = (mesh.metadata as { resourceNodeBatchKey?: string } | undefined)?.resourceNodeBatchKey
+			const isResourceNodeMesh = typeof batchKey === 'string' && batchKey.length > 0
 			if (name.startsWith('map-object-')) {
 				mapObjects += 1
 			} else if (name.includes('-collision')) {
 				collision += 1
 			} else if (name.startsWith('road-')) {
 				roads += 1
-			} else if (name.startsWith('resource-node-')) {
+			} else if (name.startsWith('resource-node-') || isResourceNodeMesh) {
 				resourceNodes += 1
 			}
-			if (mesh instanceof Mesh) {
-				instances += mesh.instances?.length ?? 0
-				thinInstances += mesh.thinInstanceCount ?? 0
+				if (mesh.alwaysSelectAsActiveMesh) {
+					forcedActiveMeshes += 1
+				}
+				if (mesh instanceof Mesh) {
+					instances += mesh.instances?.length ?? 0
+					thinInstances += mesh.thinInstanceCount ?? 0
+					if (isResourceNodeMesh && mesh.thinInstanceCount > 0) {
+						resourceNodeThinHosts += 1
+						resourceNodeThinInstances += mesh.thinInstanceCount
+					}
+				}
 			}
-		}
 
 		return {
 			fps: this.engine.getFps(),
 			meshes,
 			activeMeshes,
+			drawCalls: this.sceneInstrumentation.drawCallsCounter.current,
+			activeIndices: this.scene.getActiveIndices(),
+			totalVertices: this.scene.getTotalVertices(),
+			forcedActiveMeshes,
 			instances,
 			thinInstances,
-			groups: { mapObjects, collision, roads, resourceNodes }
+			groups: {
+				mapObjects,
+				collision,
+				roads,
+				resourceNodes,
+				resourceNodeThinHosts,
+				resourceNodeThinInstances
+			}
 		}
 	}
 

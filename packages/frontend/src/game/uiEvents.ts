@@ -8,6 +8,7 @@ export const UiEvents = {
 	Settings: {
 		Toggle: 'ui:settings:toggle',
 		HighFidelity: 'ui:settings:high-fidelity',
+		GraphicsQuality: 'ui:settings:graphics-quality',
 		ScrollSensitivity: 'ui:settings:scroll-sensitivity'
 	},
 	Inventory: {

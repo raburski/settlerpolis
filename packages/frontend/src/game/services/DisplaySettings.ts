@@ -1,7 +1,12 @@
+import { GraphicsQuality, isGraphicsQuality } from '../types/graphicsQuality'
+
 const STORAGE_KEY_HIGH_FIDELITY = 'rugged:graphics:high-fidelity'
+const STORAGE_KEY_GRAPHICS_QUALITY = 'rugged:graphics:quality'
 const STORAGE_KEY_SCROLL_SENSITIVITY = 'rugged:controls:scroll-sensitivity'
 const SCROLL_SENSITIVITY_LEVELS = [0.0025, 0.0075, 0.02, 0.06] as const
 const DEFAULT_SCROLL_SENSITIVITY = 2
+
+const DEFAULT_GRAPHICS_QUALITY = GraphicsQuality.High
 
 export const getHighFidelity = (): boolean => {
 	try {
@@ -22,6 +27,33 @@ export const setHighFidelity = (enabled: boolean): void => {
 		// ignore storage failures
 	}
 }
+
+export const getGraphicsQuality = (): GraphicsQuality => {
+	try {
+		const raw = window.localStorage.getItem(STORAGE_KEY_GRAPHICS_QUALITY)
+		if (!raw) {
+			return DEFAULT_GRAPHICS_QUALITY
+		}
+		return isGraphicsQuality(raw) ? raw : DEFAULT_GRAPHICS_QUALITY
+	} catch {
+		return DEFAULT_GRAPHICS_QUALITY
+	}
+}
+
+export const setGraphicsQuality = (quality: GraphicsQuality): GraphicsQuality => {
+	try {
+		window.localStorage.setItem(STORAGE_KEY_GRAPHICS_QUALITY, quality)
+	} catch {
+		// ignore storage failures
+	}
+	return quality
+}
+
+export const getGraphicsQualityOptions = (): ReadonlyArray<{ label: string; value: GraphicsQuality }> => [
+	{ label: 'Low', value: GraphicsQuality.Low },
+	{ label: 'Medium', value: GraphicsQuality.Medium },
+	{ label: 'High', value: GraphicsQuality.High }
+]
 
 const clampScrollSensitivity = (value: number): number => {
 	if (!Number.isFinite(value)) return DEFAULT_SCROLL_SENSITIVITY
