@@ -215,6 +215,7 @@ const SELECTION_OCTREE_MAX_DEPTH = 3
 const SELECTION_OCTREE_REFRESH_DEBOUNCE_MS = 2500
 const CAMERA_EDGE_BASE_PADDING = 320
 const CAMERA_EDGE_HEIGHT_PADDING_FACTOR = 2.2
+const CAMERA_ORTHO_GROUND_MARGIN = 32
 const SUN_LIGHT_INTENSITY_MULTIPLIER = 1.45
 const FILL_LIGHT_INTENSITY_MULTIPLIER = 0.36
 const FILL_LIGHT_DIFFUSE_MULTIPLIER = 0.5
@@ -578,7 +579,33 @@ export class BabylonRenderer {
 		this.camera.orthoRight = halfWidth
 		this.camera.orthoTop = halfHeight
 		this.camera.orthoBottom = -halfHeight
+		this.ensureCameraRadiusForOrthoGroundCoverage()
 		this.cameraBoundsPaddingCache = null
+	}
+
+	private ensureCameraRadiusForOrthoGroundCoverage(): void {
+		const orthoLeft = this.camera.orthoLeft ?? 0
+		const orthoRight = this.camera.orthoRight ?? 0
+		const orthoTop = this.camera.orthoTop ?? 0
+		const orthoBottom = this.camera.orthoBottom ?? 0
+		const halfWidth = Math.max(Math.abs(orthoLeft), Math.abs(orthoRight))
+		const halfHeight = Math.max(Math.abs(orthoTop), Math.abs(orthoBottom))
+		if (halfWidth <= 0 && halfHeight <= 0) return
+
+		const right = this.camera.getDirection(Vector3.Right())
+		const up = this.camera.getDirection(Vector3.Up())
+		const minimumCameraHeight =
+			Math.abs(right.y) * halfWidth +
+			Math.abs(up.y) * halfHeight +
+			Math.max(0, this.maxGroundElevation) +
+			CAMERA_ORTHO_GROUND_MARGIN
+		const cosBeta = Math.abs(Math.cos(this.camera.beta))
+		if (cosBeta <= 1e-4) return
+
+		const requiredRadius = Math.max(this.baseRadius, minimumCameraHeight / cosBeta)
+		if (Number.isFinite(requiredRadius) && requiredRadius > this.camera.radius) {
+			this.camera.radius = requiredRadius
+		}
 	}
 
 	private getCameraBoundsPadding(): { minOffsetX: number; maxOffsetX: number; minOffsetZ: number; maxOffsetZ: number } {
